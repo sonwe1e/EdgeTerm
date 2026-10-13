@@ -20,8 +20,8 @@ use tokio::time::timeout;
 
 use crate::commands::AppState;
 use crate::error::{err, AppError, Result};
-use crate::session::transfer::{safe_local_child, CancelFlag};
-use crate::session::{SftpRequest, TransferProgress};
+use crate::session::transfer::safe_local_child;
+use crate::session::TransferProgress;
 
 pub const EVENT_REMOTE_EDIT: &str = "remote-edit:state";
 
@@ -273,6 +273,7 @@ async fn watch_loop(
     // The same failure (typically "session not found" while disconnected) is
     // reported once, not on every retry.
     let mut last_error: Option<String> = None;
+    let mut pending: Option<((SystemTime, u64), Arc<crate::file_transfer::Job>)> = None;
 
     loop {
         // Sleep until the next notification. A None means the watcher was
@@ -310,21 +311,47 @@ async fn watch_loop(
 
         emit("uploading", None);
         let state = app.state::<AppState>();
-        let outcome = state
-            .sessions
-            .sftp(
-                &session_id,
-                SftpRequest::Upload {
+        if pending
+            .as_ref()
+            .is_some_and(|(source, _)| *source != current)
+        {
+            let (_, previous) = pending.take().unwrap();
+            if state.file_transfers.control(&previous.id, "cancel").is_ok() {
+                let _ = crate::file_transfer::wait(&previous).await;
+                let _ = state.file_transfers.control(&previous.id, "dismiss");
+            }
+        }
+        let outcome = if let Some((_, job)) = &pending {
+            match state.file_transfers.control(&job.id, "retry") {
+                Ok(()) => crate::file_transfer::wait(job).await,
+                Err(error) => Err(error),
+            }
+        } else {
+            match state.file_transfers.start(
+                app.clone(),
+                session_id.clone(),
+                vec![crate::file_transfer::Item {
                     local: local.to_string_lossy().into_owned(),
                     remote: remote.clone(),
-                    progress: Channel::<TransferProgress>::new(|_| Ok(())),
-                    // A sync runs until it is done; nobody can cancel it.
-                    cancel: CancelFlag::default(),
-                },
-            )
-            .await;
+                    upload: true,
+                    directory: false,
+                }],
+                None,
+                Default::default(),
+                Channel::<TransferProgress>::new(|_| Ok(())),
+            ) {
+                Ok(job) => {
+                    pending = Some((current, job.clone()));
+                    crate::file_transfer::wait(&job).await
+                }
+                Err(error) => Err(error),
+            }
+        };
         match outcome {
             Ok(_) => {
+                if let Some((_, job)) = pending.take() {
+                    let _ = state.file_transfers.control(&job.id, "dismiss");
+                }
                 baseline = Some(current);
                 unsent(false);
                 retry_delay = RETRY_DELAY;

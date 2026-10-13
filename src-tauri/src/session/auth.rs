@@ -82,6 +82,9 @@ pub struct AuthPrompter<'a> {
 }
 
 enum Sink<'a> {
+    /// Background reconnects may use saved credentials, but must not open
+    /// authentication dialogs repeatedly during automatic retries.
+    Background,
     /// Ask the user: emit the challenge and wait for `answer_auth_prompt`.
     Ui {
         app: &'a AppHandle,
@@ -93,6 +96,12 @@ enum Sink<'a> {
 }
 
 impl<'a> AuthPrompter<'a> {
+    pub fn background() -> Self {
+        Self {
+            session_id: "",
+            sink: Sink::Background,
+        }
+    }
     pub fn ui(app: &'a AppHandle, prompts: &'a AuthPrompts, session_id: &'a str) -> Self {
         Self {
             session_id,
@@ -112,6 +121,7 @@ impl<'a> AuthPrompter<'a> {
     /// user cancelled and the connection attempt should stop.
     pub async fn ask(&self, challenge: Challenge) -> Result<Option<Vec<String>>> {
         match self.sink {
+            Sink::Background => Err(AppError::new("additional authentication required; reconnect the session, then retry the transfer")),
             Sink::Ui { app, prompts } => {
                 let (id, answer) = prompts.register();
                 let prompt = AuthPrompt {

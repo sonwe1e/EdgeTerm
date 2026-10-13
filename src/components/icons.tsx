@@ -19,6 +19,8 @@ import cloudDownload from "@vscode/codicons/src/icons/cloud-download.svg?raw";
 import cloudUpload from "@vscode/codicons/src/icons/cloud-upload.svg?raw";
 import copy from "@vscode/codicons/src/icons/copy.svg?raw";
 import debugStop from "@vscode/codicons/src/icons/debug-stop.svg?raw";
+import debugPause from "@vscode/codicons/src/icons/debug-pause.svg?raw";
+import play from "@vscode/codicons/src/icons/play.svg?raw";
 import edit from "@vscode/codicons/src/icons/edit.svg?raw";
 import ellipsis from "@vscode/codicons/src/icons/ellipsis.svg?raw";
 import error from "@vscode/codicons/src/icons/error.svg?raw";
@@ -68,6 +70,8 @@ const SVGS = {
   "cloud-upload": cloudUpload,
   copy,
   "debug-stop": debugStop,
+  "debug-pause": debugPause,
+  play,
   edit,
   ellipsis,
   error,
