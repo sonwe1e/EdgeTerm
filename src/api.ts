@@ -1,5 +1,6 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { OutputConsumption } from "./outputFlow";
 
 import type {
   AppData,
@@ -17,12 +18,6 @@ import type {
   SshImportSummary,
   ThemeMode,
 } from "./types";
-
-export interface OutputEvent {
-  id: string;
-  /** base64-encoded raw bytes */
-  data: string;
-}
 
 export interface StateEvent {
   id: string;
@@ -148,17 +143,52 @@ export const clearCommandHistory = () =>
  * and authenticating its own — how a duplicated tab reaches a server behind
  * MFA without a second challenge. A connection that is no longer up is
  * silently replaced by a connection of this session's own.
+ *
+ * Terminal output streams back on the raw IPC channel created here: the
+ * webview receives ArrayBuffers — one per coalesced batch of bytes, no
+ * base64 detour — ready to feed straight into xterm.js. File sessions
+ * (FTP, SFTP) never produce any.
  */
+const outputConnections = new Map<string, { token: string; consumption: OutputConsumption }>();
+
 export const openSession = (
   profile: SessionProfile,
   sessionId: string,
+  onOutput: (bytes: Uint8Array, consumed: () => void) => void,
   reuseSessionId?: string,
-) =>
-  invoke<OpenSessionOutcome>("open_session", {
+) => {
+  const output = new Channel<ArrayBuffer>();
+  const outputToken = crypto.randomUUID();
+  outputConnections.get(sessionId)?.consumption.dispose();
+  const consumption = new OutputConsumption((consumed) =>
+    invoke<void>("acknowledge_session_output", { token: outputToken, consumed }),
+  );
+  outputConnections.set(sessionId, { token: outputToken, consumption });
+  output.onmessage = (data) => {
+    if (outputConnections.get(sessionId)?.token !== outputToken) return;
+    onOutput(new Uint8Array(data), consumption.receive(data.byteLength));
+  };
+  return invoke<OpenSessionOutcome>("open_session", {
     profile,
     sessionId,
+    onOutput: output,
+    outputToken,
     reuseSessionId: reuseSessionId ?? null,
+  }).then((outcome) => {
+    if (outcome.status !== "connected") retireOutput(sessionId, outputToken);
+    return outcome;
+  }, (error: unknown) => {
+    retireOutput(sessionId, outputToken);
+    throw error;
   });
+};
+
+function retireOutput(id: string, token?: string) {
+  const current = outputConnections.get(id);
+  if (!current || (token !== undefined && current.token !== token)) return;
+  current.consumption.dispose();
+  outputConnections.delete(id);
+}
 
 /** Records the key from a reported change as the host's only known key. */
 export const acceptHostKey = (change: HostKeyChange) =>
@@ -176,7 +206,14 @@ export const acceptHostKey = (change: HostKeyChange) =>
 export const answerAuthPrompt = (id: string, responses: string[] | null) =>
   invoke<void>("answer_auth_prompt", { id, responses });
 
-export const closeSession = (id: string) => invoke<void>("close_session", { id });
+export const closeSession = (id: string) => {
+  const token = outputConnections.get(id)?.token;
+  return invoke<void>("close_session", { id }).then(() => {
+    // A failed close must not strand a live backend by stopping its ACKs.
+    // A late close response must not retire a newly reconnected stream.
+    if (token !== undefined) retireOutput(id, token);
+  });
+};
 
 export const listSessions = () => invoke<SessionInfo[]>("list_sessions");
 
@@ -205,6 +242,19 @@ export const writeSession = (id: string, data: string) =>
 
 export const writeSessionBinary = (id: string, base64: string) =>
   invoke<void>("write_session_binary", { id, data: base64 });
+
+// Only the small metadata header is encoded. File/protocol payloads stay raw,
+// including typed views with non-zero offsets (do not pass their whole buffer).
+function binaryOptions(metadata: unknown) {
+  return {
+    headers: {
+      "x-edgeterm-metadata": bytesToBase64(new TextEncoder().encode(JSON.stringify(metadata))),
+    },
+  };
+}
+
+export const writeSessionBytes = (id: string, bytes: Uint8Array) =>
+  invoke<void>("write_session_bytes", bytes, binaryOptions({ id }));
 
 export const resizeSession = (id: string, cols: number, rows: number) =>
   invoke<void>("resize_session", { id, cols, rows });
@@ -552,11 +602,6 @@ export const listSerialPorts = () =>
   invoke<SerialPortDesc[]>("list_serial_ports");
 
 // --- events -----------------------------------------------------------------
-
-export const onSessionOutput = (
-  handler: (event: OutputEvent) => void,
-): Promise<UnlistenFn> =>
-  listen<OutputEvent>("session:output", (e) => handler(e.payload));
 
 export const onSessionState = (
   handler: (event: StateEvent) => void,

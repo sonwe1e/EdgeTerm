@@ -4,6 +4,7 @@ pub mod encoding;
 pub mod ftp;
 pub mod local;
 pub mod locale;
+pub mod output;
 pub mod recording;
 pub mod serial;
 pub mod ssh;
@@ -12,19 +13,18 @@ pub mod transfer;
 
 use std::collections::HashMap;
 
-use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use encoding_rs::Encoding;
 use parking_lot::Mutex;
 use serde::Serialize;
 use tauri::{ipc::Channel, AppHandle, Emitter};
 use tokio::sync::{mpsc, oneshot};
 
+use self::output::{OutputChannel, OUTPUT_CHUNK};
 use self::recording::Recorder;
 use self::transfer::CancelFlag;
 use crate::error::{AppError, Result};
 use crate::model::{DirListing, FileEntry, SessionInfo, SessionKind, SessionProfile};
 
-pub const EVENT_OUTPUT: &str = "session:output";
 pub const EVENT_STATE: &str = "session:state";
 
 pub enum SftpRequest {
@@ -212,32 +212,10 @@ impl SessionManager {
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct OutputEvent {
-    id: String,
-    /// base64 so that multi-byte UTF-8 sequences split across reads survive the
-    /// trip intact; the frontend feeds the raw bytes straight into xterm.js.
-    data: String,
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 struct StateEvent {
     id: String,
     state: String,
     message: Option<String>,
-}
-
-pub fn emit_output(app: &AppHandle, id: &str, bytes: &[u8]) {
-    if bytes.is_empty() {
-        return;
-    }
-    let _ = app.emit(
-        EVENT_OUTPUT,
-        OutputEvent {
-            id: id.to_string(),
-            data: B64.encode(bytes),
-        },
-    );
 }
 
 /// Reports a change the session went through on its own: it came up, or the
@@ -261,30 +239,42 @@ pub fn emit_state(app: &AppHandle, id: &str, state: &str, message: Option<String
 /// IPC messages. Callers must `flush` whenever their read loop goes idle.
 /// Every byte pushed also goes to the session's recording, when the profile
 /// asked for one (see `recording`); dropping the pump ends the recording.
+///
+/// Bytes leave as raw IPC payloads on the per-session channel the frontend
+/// opened with `open_session` — no base64 detour, so the webview receives an
+/// ArrayBuffer it can hand straight to xterm.js.
 pub struct OutputPump {
-    app: AppHandle,
-    id: String,
+    output: OutputChannel,
     buf: Vec<u8>,
     recorder: Option<Recorder>,
+    deadline: Option<tokio::time::Instant>,
 }
 
 impl OutputPump {
-    const MAX: usize = 64 * 1024;
+    const MAX: usize = OUTPUT_CHUNK;
 
-    pub fn new(app: AppHandle, id: String, recorder: Option<Recorder>) -> Self {
+    pub fn new(output: OutputChannel, recorder: Option<Recorder>) -> Self {
         Self {
-            app,
-            id,
+            output,
             buf: Vec::with_capacity(8192),
             recorder,
+            deadline: None,
         }
     }
 
     pub fn push(&mut self, bytes: &[u8]) {
+        if bytes.is_empty() || self.is_closed() {
+            return;
+        }
         if let Some(recorder) = &self.recorder {
             recorder.write(bytes);
         }
         self.buf.extend_from_slice(bytes);
+        // A fixed deadline from the first byte, not an idle timer reset by
+        // every small packet. Continuous small writes must still be shown.
+        self.deadline.get_or_insert_with(|| {
+            tokio::time::Instant::now() + std::time::Duration::from_millis(8)
+        });
         if self.buf.len() >= Self::MAX {
             self.flush();
         }
@@ -295,11 +285,61 @@ impl OutputPump {
     }
 
     pub fn flush(&mut self) {
-        if self.buf.is_empty() {
-            return;
+        while !self.buf.is_empty() {
+            let count = self.output.send(&mut self.buf);
+            if count == 0 {
+                break;
+            }
         }
-        emit_output(&self.app, &self.id, &self.buf);
-        self.buf.clear();
+        if self.is_closed() {
+            self.buf.clear();
+        }
+        if self.buf.is_empty() {
+            self.deadline = None;
+        }
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.output.is_closed()
+    }
+
+    /// Stop transport reads when one pending batch cannot be delivered.
+    /// Control commands stay outside this gate, including Close and writes.
+    pub fn can_read(&self) -> bool {
+        !self.is_closed() && self.buf.len() < Self::MAX
+    }
+
+    pub async fn ready(&self) {
+        if self.buf.len() < Self::MAX {
+            if let Some(deadline) = self.deadline {
+                tokio::time::sleep_until(deadline).await;
+            }
+        }
+        self.output.writable().await;
+    }
+
+    pub fn wait_readable(&mut self) -> bool {
+        while !self.can_read() && !self.is_closed() {
+            self.output.wait_writable();
+            self.flush();
+        }
+        !self.is_closed()
+    }
+
+    /// Drain the last partial batch on natural EOF. Explicit close cancels
+    /// the credit wait through OutputStreams before closing the transport.
+    pub async fn finish(&mut self) {
+        while !self.is_empty() && !self.is_closed() {
+            self.output.writable().await;
+            self.flush();
+        }
+    }
+
+    pub fn finish_blocking(&mut self) {
+        while !self.is_empty() && !self.is_closed() {
+            self.output.wait_writable();
+            self.flush();
+        }
     }
 }
 
@@ -381,6 +421,212 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
+
+    /// Explicit smoke test of a real ConPTY/Unix PTY, separate from the
+    /// deterministic suite because process startup depends on the host.
+    #[test]
+    #[ignore = "spawns a real local shell; run explicitly for transport validation"]
+    fn native_pty_output_survives_a_stalled_consumer() {
+        use super::output::OutputStreams;
+        use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+        use std::io::{Read, Write};
+        use std::time::Duration;
+        use tauri::ipc::InvokeResponseBody;
+
+        let pair = native_pty_system()
+            .openpty(PtySize {
+                rows: 24,
+                cols: 100,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .unwrap();
+        let mut cmd = if cfg!(windows) {
+            let mut cmd = CommandBuilder::new("cmd.exe");
+            cmd.args([
+                "/D",
+                "/Q",
+                "/C",
+                "for /L %i in (1,1,30000) do @echo native-flow-marker-%i",
+            ]);
+            cmd
+        } else {
+            let mut cmd = CommandBuilder::new("sh");
+            cmd.args(["-c", "i=0; while [ \"$i\" -lt 30000 ]; do i=$((i+1)); printf 'native-flow-marker-%s\\n' \"$i\"; done"]);
+            cmd
+        };
+        cmd.env("TERM", "xterm-256color");
+        let mut child = pair.slave.spawn_command(cmd).unwrap();
+        drop(pair.slave);
+        let mut reader = pair.master.try_clone_reader().unwrap();
+        let mut writer = Some(pair.master.take_writer().unwrap());
+        let mut master = Some(pair.master);
+        let streams = OutputStreams::default();
+        let (sent, received) = std::sync::mpsc::channel();
+        let output = streams
+            .open(
+                "pty",
+                "pty".into(),
+                Channel::new(move |body| {
+                    if let InvokeResponseBody::Raw(bytes) = body {
+                        let _ = sent.send(bytes);
+                    }
+                    Ok(())
+                }),
+            )
+            .unwrap();
+        let worker = std::thread::spawn(move || {
+            let mut pump = OutputPump::new(output, None);
+            let mut bytes = vec![0; 32 * 1024];
+            while pump.wait_readable() {
+                match reader.read(&mut bytes) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        pump.push(&bytes[..n]);
+                        pump.flush();
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                    Err(_) => break,
+                }
+            }
+            pump.finish_blocking();
+        });
+        let mut captured = Vec::new();
+        let mut acknowledged = 0;
+        let mut stalls = 0;
+        let started = std::time::Instant::now();
+        let mut exit_status = None;
+        loop {
+            match received.recv_timeout(Duration::from_millis(100)) {
+                Ok(bytes) => {
+                    captured.extend(bytes);
+                    // ConPTY asks the attached terminal for its initial
+                    // cursor position before allowing the shell to print.
+                    // xterm answers this in the app; this headless consumer
+                    // must answer it as well.
+                    if cfg!(windows) && captured.ends_with(b"\x1b[6n") {
+                        writer.as_mut().unwrap().write_all(b"\x1b[1;1R").unwrap();
+                        writer.as_mut().unwrap().flush().unwrap();
+                    }
+                    // Deliberately exhaust an entire session window before
+                    // returning any credit, then hold it a little longer.
+                    if captured.len() - acknowledged >= 512 * 1024 {
+                        std::thread::sleep(Duration::from_millis(30));
+                        streams.acknowledge("pty", captured.len() as u64);
+                        acknowledged = captured.len();
+                        stalls += 1;
+                    }
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                Err(_) if started.elapsed() < Duration::from_secs(30) => {
+                    if exit_status.is_none() {
+                        exit_status = child.try_wait().unwrap();
+                    }
+                    if exit_status.is_some() {
+                        // ConPTY owns a console host as well as the child;
+                        // close that host after the child exits to yield EOF.
+                        writer.take();
+                        master.take();
+                    }
+                }
+                Err(error) => {
+                    streams.close_session("pty");
+                    let _ = child.kill();
+                    panic!("native PTY stalled after {} bytes: {error}", captured.len());
+                }
+            }
+        }
+        streams.acknowledge("pty", captured.len() as u64);
+        worker.join().unwrap();
+        assert!(exit_status
+            .unwrap_or_else(|| child.wait().unwrap())
+            .success());
+        let text = String::from_utf8_lossy(&captured);
+        assert!(
+            stalls > 0,
+            "must exercise backpressure, not just a small banner"
+        );
+        assert_eq!(text.matches("native-flow-marker-").count(), 30000);
+        assert!(text.contains("native-flow-marker-30000"));
+    }
+
+    #[tokio::test]
+    async fn output_pump_preserves_order_across_slow_consumption_and_final_partial_batch() {
+        use super::output::OutputStreams;
+        use tauri::ipc::InvokeResponseBody;
+        let streams = OutputStreams::default();
+        let delivered = Arc::new(Mutex::new(Vec::new()));
+        let capture = delivered.clone();
+        let channel = Channel::new(move |body| {
+            if let InvokeResponseBody::Raw(bytes) = body {
+                assert!(bytes.len() <= OUTPUT_CHUNK);
+                capture.lock().extend(bytes);
+            }
+            Ok(())
+        });
+        let mut pump =
+            OutputPump::new(streams.open("test", "token".into(), channel).unwrap(), None);
+        let input: Vec<u8> = (0..2 * 1024 * 1024 + 17).map(|i| (i % 251) as u8).collect();
+        for part in input.chunks(32 * 1024) {
+            if !pump.can_read() {
+                let consumed = delivered.lock().len() as u64;
+                streams.acknowledge("token", consumed);
+                pump.flush();
+                assert!(pump.can_read());
+            }
+            pump.push(part);
+            pump.flush();
+            assert!(pump.buf.len() <= OUTPUT_CHUNK);
+        }
+        let consumed = delivered.lock().len() as u64;
+        streams.acknowledge("token", consumed);
+        pump.finish().await;
+        assert_eq!(*delivered.lock(), input);
+    }
+
+    #[tokio::test]
+    async fn small_packets_keep_the_first_flush_deadline() {
+        use super::output::OutputStreams;
+        let streams = OutputStreams::default();
+        let output = streams
+            .open("small", "small".into(), Channel::new(|_| Ok(())))
+            .unwrap();
+        let mut pump = OutputPump::new(output, None);
+        pump.push(b"one");
+        let deadline = pump.deadline;
+        for _ in 0..100 {
+            pump.push(b"two");
+        }
+        assert_eq!(pump.deadline, deadline);
+        tokio::time::timeout(std::time::Duration::from_secs(1), pump.ready())
+            .await
+            .unwrap();
+        pump.flush();
+        assert!(pump.is_empty());
+        assert!(pump.deadline.is_none());
+    }
+
+    #[tokio::test]
+    async fn cancellation_releases_an_eof_waiting_for_credits() {
+        use super::output::OutputStreams;
+        let streams = OutputStreams::default();
+        let output = streams
+            .open("eof", "eof".into(), Channel::new(|_| Ok(())))
+            .unwrap();
+        let mut pump = OutputPump::new(output, None);
+        while pump.can_read() {
+            pump.push(&vec![0; OUTPUT_CHUNK]);
+        }
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(10), pump.finish())
+                .await
+                .is_err()
+        );
+        streams.close_session("eof");
+        tokio::time::timeout(std::time::Duration::from_secs(1), pump.finish())
+            .await
+            .unwrap();
+    }
 
     #[tokio::test]
     async fn confirmed_binary_write_waits_for_the_session_owner() {
