@@ -1,4 +1,5 @@
 import {
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -24,10 +25,12 @@ import {
   type DropTarget,
   type PaneSide,
 } from "../paneDrop";
+import { createFrameGate } from "../frameGate";
+import { useStore, type Tab } from "../store";
+import type { FileEntry, ThemeMode } from "../types";
+import { useStableCallback } from "../useStableCallback";
 import { FileIcon } from "./FileIcon";
 import { Icon } from "./icons";
-import { useStore, type Tab } from "../store";
-import type { FileEntry } from "../types";
 
 /** Pointer travel before a press on a row turns into a drag. */
 const DRAG_THRESHOLD = 5;
@@ -46,23 +49,6 @@ interface TransferState {
   message?: string;
 }
 
-/**
- * The pointer-drag wiring a browser pane gets from its FtpPane. The gesture
- * lives on the rows: a press captures the pointer, and once it travels far
- * enough the entry is dragged, with the drop read from whatever sits under
- * the pointer at release.
- */
-interface PaneDnd {
-  onItemPointerDown: (entry: FileEntry, event: ReactPointerEvent) => void;
-  onItemPointerMove: (event: ReactPointerEvent) => void;
-  onItemPointerUp: (event: ReactPointerEvent) => void;
-  endDrag: () => void;
-  /** The row being dragged, so it can dim; null when there is none. */
-  draggingPath: string | null;
-  /** The folder or pane the pointer is over, for highlighting. */
-  hover: { side: PaneSide; dir: string } | null;
-}
-
 interface FileBrowserProps {
   title: string;
   subtitle: string;
@@ -74,7 +60,19 @@ interface FileBrowserProps {
   error: string | null;
   actions?: ReactNode;
   side: PaneSide;
-  dnd: PaneDnd;
+  /** The pointer-drag wiring; see FtpPane's `beginPress` / `dragMove`. */
+  onItemPointerDown: (
+    side: PaneSide,
+    entry: FileEntry,
+    event: ReactPointerEvent,
+  ) => void;
+  onItemPointerMove: (event: ReactPointerEvent) => void;
+  onItemPointerUp: (event: ReactPointerEvent) => void;
+  onDragCancel: () => void;
+  /** The row being dragged, so rows can dim it; null when there is none. */
+  draggingPath: string | null;
+  /** The folder or pane under the pointer, for highlighting. */
+  dropHover: { side: PaneSide; dir: string } | null;
   onDraftChange: (value: string) => void;
   onOpenPath: (path: string) => void;
   onHome: () => void;
@@ -433,6 +431,36 @@ export function FtpPane({ tab, active }: Props) {
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
+  const endDragState = () => {
+    // A scheduled hit test must not fire after the drag is over and light a
+    // highlight nothing will clear.
+    hoverGate.current?.cancel();
+    dragPressRef.current = null;
+    draggedRef.current = null;
+    setDragging(null);
+    setDropHover(null);
+  };
+
+  // The drop-target hit test runs once per frame on the pointer's latest
+  // position, not per pointermove: `elementFromPoint` forces a layout when
+  // the DOM is dirty, and a fast pointer crosses dozens of positions a
+  // frame. The release does its own hit test, so a collapsed one loses
+  // nothing. See frameGate.ts.
+  const hoverApply = useStableCallback((at: { x: number; y: number }) => {
+    const hover = targetAt(at.x, at.y);
+    setDropHover((current) =>
+      current?.side === hover?.side && current?.dir === hover?.dir
+        ? current
+        : hover,
+    );
+  });
+  const hoverGate = useRef<
+    ReturnType<typeof createFrameGate<{ x: number; y: number }>> | null
+  >(null);
+  if (hoverGate.current === null) {
+    hoverGate.current = createFrameGate(hoverApply);
+  }
+
   const dragMove = (event: ReactPointerEvent) => {
     const press = dragPressRef.current;
     if (!press || press.pointerId !== event.pointerId) return;
@@ -447,19 +475,7 @@ export function FtpPane({ tab, active }: Props) {
       draggedRef.current = source;
       setDragging(source);
     }
-    const hover = targetAt(event.clientX, event.clientY);
-    setDropHover((current) =>
-      current?.side === hover?.side && current?.dir === hover?.dir
-        ? current
-        : hover,
-    );
-  };
-
-  const endDragState = () => {
-    dragPressRef.current = null;
-    draggedRef.current = null;
-    setDragging(null);
-    setDropHover(null);
+    hoverGate.current!.schedule({ x: event.clientX, y: event.clientY });
   };
 
   /** The release: whatever sits under the pointer takes the drop. */
@@ -488,6 +504,28 @@ export function FtpPane({ tab, active }: Props) {
     window.addEventListener("keydown", cancel);
     return () => window.removeEventListener("keydown", cancel);
   }, [dragging]);
+
+  // The row-boundary callbacks are stable identities (see useStableCallback)
+  // so the memoised rows skip re-rendering when this pane re-renders — a
+  // transfer tick, a hover change, a selection in the other pane. The rows
+  // pass their own `side`, so the handlers need no per-pane closures.
+  const itemPointerDown = useStableCallback(
+    (side: PaneSide, entry: FileEntry, event: ReactPointerEvent) =>
+      beginPress(side, entry, event),
+  );
+  const itemPointerMove = useStableCallback((event: ReactPointerEvent) =>
+    dragMove(event),
+  );
+  const itemPointerUp = useStableCallback((event: ReactPointerEvent) =>
+    dragRelease(event),
+  );
+  const dragCancel = useStableCallback(() => endDragState());
+  const activateRemote = useStableCallback((entry: FileEntry) => {
+    if (entry.isDir) void loadRemote(entry.path);
+  });
+  const activateLocal = useStableCallback((entry: FileEntry) => {
+    if (entry.isDir) void loadLocal(entry.path);
+  });
 
   const createRemoteFolder = async () => {
     if (!remotePath || transferring) return;
@@ -606,15 +644,12 @@ export function FtpPane({ tab, active }: Props) {
               title={`${protocolLabel} Server`}
               subtitle={tab.info.address}
               side="remote"
-              dnd={{
-                onItemPointerDown: (entry, event) =>
-                  beginPress("remote", entry, event),
-                onItemPointerMove: dragMove,
-                onItemPointerUp: dragRelease,
-                endDrag: endDragState,
-                draggingPath: dragging?.entry.path ?? null,
-                hover: dropHover,
-              }}
+              onItemPointerDown={itemPointerDown}
+              onItemPointerMove={itemPointerMove}
+              onItemPointerUp={itemPointerUp}
+              onDragCancel={dragCancel}
+              draggingPath={dragging?.entry.path ?? null}
+              dropHover={dropHover}
               path={remotePath}
               draft={remoteDraft}
               entries={remoteEntries}
@@ -627,9 +662,7 @@ export function FtpPane({ tab, active }: Props) {
               onParent={() => void loadRemote(remoteParent(remotePath))}
               onRefresh={() => void loadRemote(remotePath || remoteHome)}
               onSelect={setRemoteSelected}
-              onActivate={(entry) => {
-                if (entry.isDir) void loadRemote(entry.path);
-              }}
+              onActivate={activateRemote}
               actions={
                 <>
                   <ToolButton
@@ -683,15 +716,12 @@ export function FtpPane({ tab, active }: Props) {
               title="Local Computer"
               subtitle="This device"
               side="local"
-              dnd={{
-                onItemPointerDown: (entry, event) =>
-                  beginPress("local", entry, event),
-                onItemPointerMove: dragMove,
-                onItemPointerUp: dragRelease,
-                endDrag: endDragState,
-                draggingPath: dragging?.entry.path ?? null,
-                hover: dropHover,
-              }}
+              onItemPointerDown={itemPointerDown}
+              onItemPointerMove={itemPointerMove}
+              onItemPointerUp={itemPointerUp}
+              onDragCancel={dragCancel}
+              draggingPath={dragging?.entry.path ?? null}
+              dropHover={dropHover}
               path={localPath}
               draft={localDraft}
               entries={localEntries}
@@ -706,9 +736,7 @@ export function FtpPane({ tab, active }: Props) {
               }}
               onRefresh={() => void loadLocal(localPath || localHome)}
               onSelect={setLocalSelected}
-              onActivate={(entry) => {
-                if (entry.isDir) void loadLocal(entry.path);
-              }}
+              onActivate={activateLocal}
               actions={
                 <>
                   <ToolButton
@@ -792,7 +820,12 @@ function FileBrowser({
   error,
   actions,
   side,
-  dnd,
+  onItemPointerDown,
+  onItemPointerMove,
+  onItemPointerUp,
+  onDragCancel,
+  draggingPath,
+  dropHover,
   onDraftChange,
   onOpenPath,
   onHome,
@@ -878,7 +911,7 @@ function FileBrowser({
       </div>
 
       <div
-        className={`ftp-browser-list${dnd.hover != null && dnd.hover.side === side && dnd.hover.dir === path ? " is-drop-target" : ""}`}
+        className={`ftp-browser-list${dropHover != null && dropHover.side === side && dropHover.dir === path ? " is-drop-target" : ""}`}
         data-drop-side={side}
         data-drop-dir={path}
         role="listbox"
@@ -891,30 +924,25 @@ function FileBrowser({
         )}
         {!error &&
           sortedEntries.map((entry) => (
-            <div
+            <FtpFileRow
               key={entry.path}
-              className={`ftp-file-row${selected === entry.path ? " is-selected" : ""}${entry.isDir ? " is-directory" : ""}${dnd.draggingPath === entry.path ? " is-drag-source" : ""}${dnd.hover != null && dnd.hover.side === side && dnd.hover.dir === entry.path ? " is-drop-target" : ""}`}
-              role="option"
-              aria-selected={selected === entry.path}
-              data-drop-side={entry.isDir ? side : undefined}
-              data-drop-dir={entry.isDir ? entry.path : undefined}
-              onPointerDown={(event) => dnd.onItemPointerDown(entry, event)}
-              onPointerMove={dnd.onItemPointerMove}
-              onPointerUp={dnd.onItemPointerUp}
-              onPointerCancel={dnd.endDrag}
-              onClick={() => onSelect(entry.path)}
-              onDoubleClick={() => onActivate(entry)}
-              title={entry.path}
-            >
-              <span className="ftp-file-name">
-                <span className="ftp-file-icon" aria-hidden="true">
-                  <FileIcon name={entry.name} isDir={entry.isDir} theme={theme} />
-                </span>
-                <span>{entry.name}</span>
-              </span>
-              <span>{entry.isDir ? "—" : formatBytes(entry.size)}</span>
-              <span>{formatDate(entry.modified)}</span>
-            </div>
+              entry={entry}
+              side={side}
+              selected={selected === entry.path}
+              dragSource={draggingPath === entry.path}
+              dropTarget={
+                dropHover != null &&
+                dropHover.side === side &&
+                dropHover.dir === entry.path
+              }
+              theme={theme}
+              onSelect={onSelect}
+              onActivate={onActivate}
+              onPointerDown={onItemPointerDown}
+              onPointerMove={onItemPointerMove}
+              onPointerUp={onItemPointerUp}
+              onDragCancel={onDragCancel}
+            />
           ))}
       </div>
       <div className="ftp-browser-footer">
@@ -924,6 +952,72 @@ function FileBrowser({
     </section>
   );
 }
+
+/**
+ * One row of a browser pane, memoised so a re-render that nothing on the row
+ * depends on — a transfer tick, a hover elsewhere, a selection in the other
+ * pane — skips every row instead of rebuilding its JSX, size and date
+ * strings. Only primitive props and stable callbacks cross this boundary
+ * (see useStableCallback); the drag/drop flags arrive as booleans so a
+ * hover change re-renders at most the one row it moved to.
+ */
+const FtpFileRow = memo(function FtpFileRow({
+  entry,
+  side,
+  selected,
+  dragSource,
+  dropTarget,
+  theme,
+  onSelect,
+  onActivate,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onDragCancel,
+}: {
+  entry: FileEntry;
+  side: PaneSide;
+  selected: boolean;
+  dragSource: boolean;
+  dropTarget: boolean;
+  theme: ThemeMode;
+  onSelect: (path: string) => void;
+  onActivate: (entry: FileEntry) => void;
+  onPointerDown: (
+    side: PaneSide,
+    entry: FileEntry,
+    event: ReactPointerEvent,
+  ) => void;
+  onPointerMove: (event: ReactPointerEvent) => void;
+  onPointerUp: (event: ReactPointerEvent) => void;
+  onDragCancel: () => void;
+}) {
+  return (
+    <div
+      className={`ftp-file-row${selected ? " is-selected" : ""}${entry.isDir ? " is-directory" : ""}${dragSource ? " is-drag-source" : ""}${dropTarget ? " is-drop-target" : ""}`}
+      role="option"
+      aria-selected={selected}
+      data-drop-side={entry.isDir ? side : undefined}
+      data-drop-dir={entry.isDir ? entry.path : undefined}
+      onPointerDown={(event) => onPointerDown(side, entry, event)}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onDragCancel}
+      onClick={() => onSelect(entry.path)}
+      onDoubleClick={() => onActivate(entry)}
+      title={entry.path}
+    >
+      <span className="ftp-file-name">
+        <span className="ftp-file-icon" aria-hidden="true">
+          <FileIcon name={entry.name} isDir={entry.isDir} theme={theme} />
+        </span>
+        <span>{entry.name}</span>
+      </span>
+      <span>{entry.isDir ? "—" : formatBytes(entry.size)}</span>
+      <span>{formatDate(entry.modified)}</span>
+    </div>
+  );
+});
 
 function ToolButton({
   label,
@@ -975,15 +1069,21 @@ function formatBytes(bytes: number): string {
   return `${value >= 10 || index === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
 }
 
+// One formatter for every row's date: `toLocaleString` with options builds
+// an Intl.DateTimeFormat per call, and a thousand-row list re-renders its
+// dates often enough for that to show. `toLocaleString` is specified as
+// exactly this constructor plus `format`, so the output is identical.
+const ROW_DATE = new Intl.DateTimeFormat([], {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 function formatDate(seconds: number | null): string {
   if (seconds == null) return "—";
-  return new Date(seconds * 1000).toLocaleString([], {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return ROW_DATE.format(new Date(seconds * 1000));
 }
 
 function friendlyFtpError(error: unknown): string {
