@@ -5,6 +5,7 @@
 /dist/
 /dist-ssr/
 /coverage/
+/artifacts/performance/
 /src-tauri/target/
 /src-tauri/gen/schemas/
 *.tsbuildinfo
@@ -25,7 +26,6 @@ lerna-debug.log*
 !.env.example
 !.env.*.example
 /.claude/settings.local.json
-/AGENTS.md
 /CLAUDE.md
 
 # Editor directories and files
