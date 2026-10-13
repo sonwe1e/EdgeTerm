@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import Zmodem from "zmodem.js";
 vi.mock("./api", () => ({
   writeSessionBytes: vi.fn(), zmodemFileInfo: vi.fn(), zmodemReadBytes: vi.fn(),
-  zmodemCreateFile: vi.fn(), zmodemWriteChunk: vi.fn(), zmodemFinishFile: vi.fn(),
+  zmodemCreateFile: vi.fn(), zmodemWriteBytes: vi.fn(), zmodemFinishFile: vi.fn(),
 }));
 vi.mock("./nativeDialog", () => ({ open: vi.fn(), save: vi.fn() }));
 import * as api from "./api";
@@ -26,7 +26,7 @@ describe("ZMODEM controller binary pipeline", () => {
     vi.mocked(api.zmodemFileInfo).mockImplementation(async (path) => ({ name: path, size: source.get(path)!.length, modified: null }));
     vi.mocked(api.zmodemReadBytes).mockImplementation(async (path, offset, length) => source.get(path)!.slice(offset, offset + length));
     vi.mocked(api.zmodemCreateFile).mockImplementation(async (path) => { written.set(path, []); });
-    vi.mocked(api.zmodemWriteChunk).mockImplementation(async (path, _offset, bytes) => { written.get(path)!.push(bytes.slice()); });
+    vi.mocked(api.zmodemWriteBytes).mockImplementation(async (path, _offset, bytes) => { written.get(path)!.push(bytes.slice()); });
     let finish!: () => void;
     const completed = new Promise<void>((r) => { finish = r; });
     const notices: string[] = [];

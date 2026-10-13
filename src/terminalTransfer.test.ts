@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("./api", () => ({
-  zmodemWriteChunk: vi.fn(async () => {}), zmodemFinishFile: vi.fn(async () => {}),
+  zmodemWriteBytes: vi.fn(async () => {}), zmodemFinishFile: vi.fn(async () => {}),
   zmodemReadBytes: vi.fn(),
 }));
 import * as api from "./api";
@@ -15,7 +15,7 @@ describe("binary file streaming", () => {
     input[0] = 0; input[input.length - 1] = 255;
     writer.push(input); input.fill(42);
     expect(await writer.finish()).toBe(FILE_CHUNK_SIZE + 17);
-    const calls = vi.mocked(api.zmodemWriteChunk).mock.calls;
+    const calls = vi.mocked(api.zmodemWriteBytes).mock.calls;
     expect(calls.map((c) => [c[1], c[2].length])).toEqual([[0, FILE_CHUNK_SIZE], [FILE_CHUNK_SIZE, 17]]);
     expect(calls[0][2][0]).toBe(0);
     expect(calls[1][2][16]).toBe(255);
@@ -23,7 +23,7 @@ describe("binary file streaming", () => {
   });
   it("reports disk failure once and does not finalize incomplete output", async () => {
     const failure = new Error("disk full");
-    vi.mocked(api.zmodemWriteChunk).mockRejectedValueOnce(failure);
+    vi.mocked(api.zmodemWriteBytes).mockRejectedValueOnce(failure);
     const onError = vi.fn();
     const writer = new BufferedFileWriter("file", vi.fn(), onError);
     writer.push(new Uint8Array(FILE_CHUNK_SIZE));

@@ -559,6 +559,16 @@ export function FtpPane({ tab, active }: Props) {
     return () => window.removeEventListener("keydown", cancel);
   }, [dragging]);
 
+  // A drag torn down by unmount (the tab switched mid-drag) must not let a
+  // gated hit test or the edge auto-scroll fire afterwards.
+  useEffect(
+    () => () => {
+      hoverGate.current?.cancel();
+      dragScroll.current?.stop();
+    },
+    [],
+  );
+
   // The row-boundary callbacks are stable identities (see useStableCallback)
   // so the memoised rows skip re-rendering when this pane re-renders — a
   // transfer tick, a hover change, a selection in the other pane. The rows

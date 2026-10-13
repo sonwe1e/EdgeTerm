@@ -83,5 +83,8 @@ VS Code 的 `TerminalResizeDebouncer` 是本仓库 resize 策略的参照实现�
 ## 九、已知未竟事项（2026-10 审计时点）
 
 - 4 个非 store 偏好（senderRepeat / senderSaveLevel / filerOpenWith / transfer-options）已纳入 reset/export/import 覆盖，但组件仍在挂载时读一次本地 state；"恢复默认设置"后要等组件重新挂载才反映。彻底做法是全部迁入 store。
-- 传输引擎的 `durable`（远端 fsync）默认关闭：换速度、保原子提交（rename），但服务器掉电窗口内的持久性需用户显式开启。
+- 传输引擎的 `durable`（远端 fsync）默认关闭：换速度、保原子提交（rename），但服务器掉电窗口内的持久性需用户显式开启。与之相对，本地 journal 每文件约 5 次 fsync 仍在——实验证明在 NVMe 上不构成瓶颈（1.677s vs 1.695s），且支撑"未登记的 partial 永不认领"的所有权语义，予以保留；在慢速磁盘（HDD）上的代价未测。
 - mkdir 流水线依赖"单 channel 请求按序处理"（OpenSSH 及多数服务器如此）；对乱序服务器已做 drain-retry 兜底（`create_directories`）。
+- 后端仍保留 `write_session_binary` / `zmodem_read_chunk` 两个 base64 兼容命令（有测试覆盖、前端已不再调用）；彻底删除需同步清理 commands.rs / lib.rs / tests.rs。
+- `VirtualFileRows` 的隐含契约：父元素必须是滚动容器、`rowHeight` 必须与 CSS 行距严格相等、`resetKey` 变化会重置滚动位置（切换排序列即回到顶部）。改动行高样式时必须同步两处。
+- 历史提交说明中的小误差无法事后修改（已推送）：60c8ee2 的 "6.8x" 实为 6.5x；229c62d / 29c0323 / 13364b4 只有标题没有正文，行为细节只能从代码反推——这正是 R7 要求提交说明声明已验证事实的原因。

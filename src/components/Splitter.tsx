@@ -55,7 +55,11 @@ export function Splitter({ orientation, onResize }: Props) {
       // The drag's final delta lands now, with the pointer-up, rather than
       // one frame later.
       batch.current!.flush();
-      event.currentTarget.releasePointerCapture(event.pointerId);
+      // A pointercancel can arrive for a pointer already gone; releasing a
+      // capture it no longer holds would throw and skip the state reset.
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
       setDragging(false);
     },
     [],

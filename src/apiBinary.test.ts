@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 const ipc = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: ipc.invoke, Channel: class {} }));
-import { writeSessionBytes, zmodemReadBytes, zmodemWriteChunk } from "./api";
+import { writeSessionBytes, zmodemReadBytes, zmodemWriteBytes } from "./api";
 
 describe("binary transfer IPC", () => {
   it("sends typed subviews unchanged with Unicode metadata separately encoded", async () => {
     const view = Uint8Array.of(99, 0, 128, 255, 99).subarray(1, 4);
     const path = "C:\\测试\\é #%.bin";
-    await zmodemWriteChunk(path, 1048576, view);
+    await zmodemWriteBytes(path, 1048576, view);
     const [command, bytes, options] = ipc.invoke.mock.lastCall!;
     expect(command).toBe("zmodem_write_bytes");
     expect(bytes).toBe(view);

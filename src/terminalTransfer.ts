@@ -78,7 +78,7 @@ export class BufferedFileWriter {
     this.queue = this.queue.then(async () => {
       if (this.error) return;
       try {
-        await api.zmodemWriteChunk(this.path, offset, bytes);
+        await api.zmodemWriteBytes(this.path, offset, bytes);
         this.onProgress(offset + bytes.length);
       } catch (error) {
         this.error = error;
