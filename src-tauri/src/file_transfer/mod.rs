@@ -202,13 +202,20 @@ pub struct Options {
     pub requests: usize,
     pub chunk_kib: usize,
     pub files: usize,
+    /// Flush every uploaded file on the server's disk (fsync@openssh.com)
+    /// before committing it. Off by default: the flush waits for the
+    /// server's disk on every file and paces small-file batches, while the
+    /// commit's atomicity comes from the rename either way.
+    #[serde(default)]
+    pub durable: bool,
 }
 impl Default for Options {
     fn default() -> Self {
         Self {
             requests: 32,
             chunk_kib: 128,
-            files: 4,
+            files: 8,
+            durable: false,
         }
     }
 }
@@ -216,7 +223,7 @@ impl Options {
     pub fn validate(&self) -> Result<()> {
         if !(1..=32).contains(&self.requests)
             || !(16..=256).contains(&self.chunk_kib)
-            || !(1..=8).contains(&self.files)
+            || !(1..=16).contains(&self.files)
         {
             return Err(AppError::new("invalid transfer concurrency or chunk size"));
         }
@@ -735,13 +742,18 @@ async fn run_job(job: &Arc<Job>, limit: Arc<Semaphore>) -> TransferResult<()> {
 
 #[cfg(test)]
 fn test_job(root: PathBuf) -> Arc<Job> {
+    test_job_items(root, vec![])
+}
+
+#[cfg(test)]
+fn test_job_items(root: PathBuf, items: Vec<Item>) -> Arc<Job> {
     let directory = root.join("journal");
     std::fs::create_dir_all(&directory).unwrap();
     let options = Options::default();
     Arc::new(Job {
         id: uuid::Uuid::new_v4().to_string(),
         session_id: "test".into(),
-        items: vec![],
+        items,
         options: options.clone(),
         profile: serde_json::from_value(
             serde_json::json!({"name":"test", "kind":"sftp", "host":"fixture"}),

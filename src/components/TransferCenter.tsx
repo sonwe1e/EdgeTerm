@@ -44,11 +44,14 @@ export function TransferCenter() {
             const chunkKib = Number(e.target.value); if (!Number.isInteger(chunkKib) || chunkKib < 16 || chunkKib > 256) return;
             const next = { ...options, chunkKib }; setOptions(next); saveTransferOptions(next);
           }} /></label>
-          <label>Files <input aria-label="Concurrent files" type="number" min={1} max={8} value={options.files} onChange={(e) => {
-            const files = Number(e.target.value); if (!Number.isInteger(files) || files < 1 || files > 8) return;
+          <label>Files <input aria-label="Concurrent files" type="number" min={1} max={16} value={options.files} onChange={(e) => {
+            const files = Number(e.target.value); if (!Number.isInteger(files) || files < 1 || files > 16) return;
             const next = { ...options, files }; setOptions(next); saveTransferOptions(next);
           }} /></label>
-        </div><p>Server limits may lower these values. FTP uses up to two file connections.</p>
+          <label className="transfer-durable"><input aria-label="Flush each file on the server before committing" type="checkbox" checked={options.durable} onChange={(e) => {
+            const next = { ...options, durable: e.target.checked }; setOptions(next); saveTransferOptions(next);
+          }} /> Durable writes (fsync)</label>
+        </div><p>Server limits may lower these values. FTP uses up to two file connections. Durable writes flush every file on the server's disk before committing; leave it off for the fastest small-file transfers.</p>
       </details>
       {error && <div role="alert" className="transfer-job-error">{error}</div>}
       {jobs.length === 0 && <p>No transfers yet.</p>}

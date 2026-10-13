@@ -127,12 +127,13 @@ impl Remote {
             extensions: version.extensions,
             read_len,
             write_len,
-            files: job.options.files.min(
-                limits
-                    .open_handles
-                    .map(|n| (n / 2).max(1) as usize)
-                    .unwrap_or(job.options.files),
-            ),
+            files: match limits.open_handles {
+                Some(n) => job.options.files.min((n / 2).max(1) as usize),
+                // A server that does not advertise limits may be a
+                // constrained appliance; keep the historical default
+                // ceiling instead of the full configured width.
+                None => job.options.files.min(4),
+            },
             requests: Semaphore::new(job.options.requests),
             _transport: Some(transport),
         }))
@@ -295,23 +296,27 @@ impl Remote {
         result
     }
     async fn mkdir(&self, path: &str, control: &Control) -> TransferResult<()> {
-        match self.attrs(path, control).await? {
-            Some(a) if a.is_dir() && !a.is_symlink() => Ok(()),
-            Some(_) => Err(Failure::conflict(format!(
-                "target is not a real directory: {path}"
-            ))),
-            None => {
-                control
-                    .run(async {
-                        self.raw
-                            .mkdir(path, FileAttributes::empty())
-                            .await
-                            .map(|_| ())
-                            .map_err(Failure::from)
-                    })
-                    .await
-            }
-        }
+        // The mkdir is issued without a probing stat: creating a fresh
+        // directory is the common case and costs one round trip. Servers
+        // answer "failure" both for real errors and for an existing
+        // directory, so only then is a stat spent to tell them apart.
+        control
+            .run(async {
+                match self.raw.mkdir(path, FileAttributes::empty()).await {
+                    Ok(_) => Ok(()),
+                    Err(Error::Status(s)) if s.status_code == StatusCode::Failure => {
+                        match self.raw.lstat(path).await {
+                            Ok(v) if v.attrs.is_dir() && !v.attrs.is_symlink() => Ok(()),
+                            Ok(_) => Err(Failure::conflict(format!(
+                                "target is not a real directory: {path}"
+                            ))),
+                            Err(e) => Err(e.into()),
+                        }
+                    }
+                    Err(e) => Err(e.into()),
+                }
+            })
+            .await
     }
     async fn list(
         &self,
@@ -394,6 +399,11 @@ async fn copy_files(job: &Job, remote: &Remote, files: Vec<Item>) -> TransferRes
     }
 }
 
+/// How many directory creations or parent resolutions stay in flight at
+/// once during planning. Requests on one SFTP channel are processed in
+/// order, so parents are still created before the children behind them.
+const PLAN_WINDOW: usize = 8;
+
 async fn plan(job: &Job, remote: &Remote) -> TransferResult<Vec<Item>> {
     if let Some(plan) = job.plan.lock().clone() {
         return Ok(plan);
@@ -426,8 +436,18 @@ async fn plan(job: &Job, remote: &Remote) -> TransferResult<Vec<Item>> {
             .await
             .map_err(Failure::local)?
             .map_err(Failure::local)?;
+            let mut creates = FuturesOrdered::new();
             for dir in &plan.directories {
-                remote.mkdir(dir, &job.control).await?;
+                job.control.check()?;
+                creates.push_back(remote.mkdir(dir, &job.control));
+                while creates.len() >= PLAN_WINDOW {
+                    if let Some(result) = creates.next().await {
+                        result?;
+                    }
+                }
+            }
+            while let Some(result) = creates.next().await {
+                result?;
             }
             for file in plan.files {
                 sizes.push(file.size);
@@ -487,7 +507,51 @@ async fn plan(job: &Job, remote: &Remote) -> TransferResult<Vec<Item>> {
     }
     // Duplicate destinations in one batch are rejected before any file is written.
     let mut destinations = std::collections::HashSet::new();
+    // Resolve every distinct parent up front and in parallel: a project
+    // with many folders would otherwise pay one round-trip latency per
+    // folder before the first byte moves.
+    let mut unique_parents = Vec::new();
+    {
+        let mut seen = std::collections::HashSet::new();
+        for item in &files {
+            let (parent, _) = item
+                .remote
+                .rsplit_once('/')
+                .unwrap_or((".", item.remote.as_str()));
+            let parent = if parent.is_empty() { "/" } else { parent };
+            if seen.insert(parent.to_string()) {
+                unique_parents.push(parent.to_string());
+            }
+        }
+    }
     let mut parents = HashMap::new();
+    {
+        let mut queue = unique_parents.into_iter();
+        let mut resolves = FuturesOrdered::new();
+        loop {
+            job.control.check()?;
+            while resolves.len() < PLAN_WINDOW {
+                let Some(parent) = queue.next() else { break };
+                resolves.push_back(async move {
+                    job.control
+                        .run(async { remote.raw.realpath(&parent).await.map_err(Failure::from) })
+                        .await
+                        .map(|resolved| (parent, resolved))
+                });
+            }
+            let Some(result) = resolves.next().await else {
+                break;
+            };
+            let (parent, resolved) = result?;
+            let path = resolved
+                .files
+                .first()
+                .ok_or_else(|| Failure::conflict("remote parent could not be resolved"))?
+                .filename
+                .clone();
+            parents.insert(parent, path);
+        }
+    }
     for item in &mut files {
         job.control.check()?;
         item.local = local::normalize(&item.local)?;
@@ -496,21 +560,9 @@ async fn plan(job: &Job, remote: &Remote) -> TransferResult<Vec<Item>> {
             .rsplit_once('/')
             .unwrap_or((".", item.remote.as_str()));
         let parent = if parent.is_empty() { "/" } else { parent };
-        let resolved = if let Some(path) = parents.get(parent) {
-            path
-        } else {
-            let resolved = job
-                .control
-                .run(async { remote.raw.realpath(parent).await.map_err(Failure::from) })
-                .await?;
-            let path = resolved
-                .files
-                .first()
-                .ok_or_else(|| Failure::conflict("remote parent could not be resolved"))?
-                .filename
-                .clone();
-            parents.entry(parent.to_string()).or_insert(path)
-        };
+        let resolved = parents
+            .get(parent)
+            .ok_or_else(|| Failure::conflict("remote parent could not be resolved"))?;
         item.remote = crate::session::join_remote(resolved, name);
         let target = super::target_key(&job.profile, item);
         if !destinations.insert(target) {
@@ -599,6 +651,7 @@ async fn copy(
             job.save(&cp)?;
             cp
         };
+        let mut handle: Option<String> = None;
         if !cp.owns_temporary {
             if item.upload {
                 let h = remote
@@ -610,7 +663,9 @@ async fn copy(
                     .await?;
                 cp.owns_temporary = true;
                 job.save(&cp)?;
-                remote.close(&h).await;
+                // The write path keeps this handle: closing the placeholder
+                // only to reopen it costs two round trips per file.
+                handle = Some(h);
             } else {
                 local::create_partial(Path::new(&cp.temporary))?;
                 cp.owns_temporary = true;
@@ -625,7 +680,7 @@ async fn copy(
             return Ok(());
         }
         if item.upload {
-            upload(job, remote, &mut cp, depth).await?;
+            upload(job, remote, &mut cp, depth, handle).await?;
         } else {
             download(job, remote, &mut cp, depth).await?;
         }
@@ -722,48 +777,58 @@ async fn upload(
     remote: &Remote,
     cp: &mut Checkpoint,
     depth: usize,
+    fresh_handle: Option<String>,
 ) -> TransferResult<()> {
     let mut hash = local::prefix_async(Path::new(&cp.item.local), cp.offset, &job.control).await?;
     if local::hex(hash.clone().finish().as_ref()) != cp.prefix_hash {
         return Err(Failure::conflict("source prefix changed"));
     }
-    let Some(meta) = remote.attrs(&cp.temporary, &job.control).await? else {
-        return Err(Failure::conflict("remote partial disappeared"));
-    };
-    if meta.is_symlink() || meta.is_dir() || meta.size.unwrap_or(0) < cp.offset {
-        return Err(Failure::conflict("remote partial is invalid"));
-    }
-    if cp.offset > 0 {
-        job.phase("verifying resume prefix");
-        if remote.hash(&cp.temporary, cp.offset, &job.control).await? != cp.prefix_hash {
-            return Err(Failure::conflict("remote partial checkpoint changed"));
+    // A handle from this run's placeholder open proves the partial is a
+    // fresh, zero-length file this job owns; re-statting it and truncating
+    // it back to the offset it was created at would both be extra round
+    // trips on every small-file upload.
+    let handle = match fresh_handle {
+        Some(h) if cp.offset == 0 => h,
+        _ => {
+            let Some(meta) = remote.attrs(&cp.temporary, &job.control).await? else {
+                return Err(Failure::conflict("remote partial disappeared"));
+            };
+            if meta.is_symlink() || meta.is_dir() || meta.size.unwrap_or(0) < cp.offset {
+                return Err(Failure::conflict("remote partial is invalid"));
+            }
+            if cp.offset > 0 {
+                job.phase("verifying resume prefix");
+                if remote.hash(&cp.temporary, cp.offset, &job.control).await? != cp.prefix_hash {
+                    return Err(Failure::conflict("remote partial checkpoint changed"));
+                }
+            }
+            remote
+                .open(&cp.temporary, OpenFlags::WRITE, &job.control)
+                .await?
         }
-    }
-    let handle = remote
-        .open(
-            &cp.temporary,
-            OpenFlags::WRITE,
-            &job.control,
-        )
-        .await?;
+    };
     let result = async {
         let mut source = tokio::fs::File::open(&cp.item.local).await?;
-        job.control
-            .run(async {
-                remote
-                    .raw
-                    .fsetstat(
-                        &handle,
-                        FileAttributes {
-                            size: Some(cp.offset),
-                            ..FileAttributes::empty()
-                        },
-                    )
-                    .await
-                    .map(|_| ())
-                    .map_err(Failure::from)
-            })
-            .await?;
+        if cp.offset > 0 {
+            // Resume: drop any unconfirmed tail beyond the checkpointed
+            // prefix before appending to it.
+            job.control
+                .run(async {
+                    remote
+                        .raw
+                        .fsetstat(
+                            &handle,
+                            FileAttributes {
+                                size: Some(cp.offset),
+                                ..FileAttributes::empty()
+                            },
+                        )
+                        .await
+                        .map(|_| ())
+                        .map_err(Failure::from)
+                })
+                .await?;
+        }
         source.seek(std::io::SeekFrom::Start(cp.offset)).await?;
         let mut writes = FuturesOrdered::new();
         let mut next = cp.offset;
@@ -799,7 +864,10 @@ async fn upload(
                 saved = cp.offset;
             }
         }
-        if remote.extensions.contains_key("fsync@openssh.com") {
+        // fsync waits for the server's disk on every file; it is opt-in so
+        // small-file batches are not paced by it. Commit atomicity comes
+        // from the rename, not from this flush.
+        if job.options.durable && remote.extensions.contains_key("fsync@openssh.com") {
             job.control
                 .run(async {
                     remote
@@ -880,7 +948,13 @@ async fn commit(job: &Job, remote: &Remote, cp: &mut Checkpoint) -> TransferResu
     job.phase("committing");
     if cp.item.upload {
         let current = remote.signature(&cp.item.remote, &job.control).await?;
-        let backup = remote.signature(&cp.backup, &job.control).await?;
+        // When nothing was ever moved out of the way, no backup can exist
+        // and the lookup would only cost a round trip per file.
+        let backup = if cp.original.is_none() && !cp.owns_backup {
+            None
+        } else {
+            remote.signature(&cp.backup, &job.control).await?
+        };
         let recovering_backup = cp.committing
             && cp.owns_backup
             && current.is_none()
@@ -891,35 +965,39 @@ async fn commit(job: &Job, remote: &Remote, cp: &mut Checkpoint) -> TransferResu
                 "remote destination changed during transfer",
             ));
         }
-        // Preserve the destination's permission bits when replacing it.
-        if let Some(meta) = remote
-            .attrs(
-                if recovering_backup {
-                    &cp.backup
-                } else {
-                    &cp.item.remote
-                },
-                &job.control,
-            )
-            .await?
-        {
-            if let Some(permissions) = meta.permissions {
-                job.control
-                    .run(async {
-                        remote
-                            .raw
-                            .setstat(
-                                &cp.temporary,
-                                FileAttributes {
-                                    permissions: Some(permissions),
-                                    ..FileAttributes::empty()
-                                },
-                            )
-                            .await
-                            .map(|_| ())
-                            .map_err(Failure::from)
-                    })
-                    .await?;
+        // Preserve the destination's permission bits when replacing it. A
+        // destination that never existed has nothing to preserve, so the
+        // stat is skipped entirely on the fresh-upload fast path.
+        if cp.original.is_some() || recovering_backup {
+            if let Some(meta) = remote
+                .attrs(
+                    if recovering_backup {
+                        &cp.backup
+                    } else {
+                        &cp.item.remote
+                    },
+                    &job.control,
+                )
+                .await?
+            {
+                if let Some(permissions) = meta.permissions {
+                    job.control
+                        .run(async {
+                            remote
+                                .raw
+                                .setstat(
+                                    &cp.temporary,
+                                    FileAttributes {
+                                        permissions: Some(permissions),
+                                        ..FileAttributes::empty()
+                                    },
+                                )
+                                .await
+                                .map(|_| ())
+                                .map_err(Failure::from)
+                        })
+                        .await?;
+                }
             }
         }
         cp.committing = true;

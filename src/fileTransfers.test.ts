@@ -15,7 +15,7 @@ import { readTransferOptions, saveTransferOptions } from "./transferSettings";
 const job = (id: string, changes: Partial<FileTransfer> = {}): FileTransfer => ({
   revision: 1, id, sessionId: "ssh", name: "backup.bin", status: "running", phase: "transferring",
   transferred: 100, total: 1000, completedFiles: 0, totalFiles: 1, failedFiles: [], error: null,
-  attempt: 1, options: { requests: 32, chunkKib: 128, files: 4 }, ...changes,
+  attempt: 1, options: { requests: 32, chunkKib: 128, files: 8, durable: false }, ...changes,
 });
 let changed: (job: FileTransfer) => void;
 let removed: (id: string) => void;
@@ -57,10 +57,10 @@ describe("background transfer state", () => {
     expect(unlisten).toHaveBeenCalledOnce(); expect(unlistenRemoved).toHaveBeenCalledOnce();
   });
   it("persists bounded options and rejects malformed stored limits", () => {
-    saveTransferOptions({ requests: 8, chunkKib: 32, files: 2 });
-    expect(readTransferOptions()).toEqual({ requests: 8, chunkKib: 32, files: 2 });
+    saveTransferOptions({ requests: 8, chunkKib: 32, files: 2, durable: true });
+    expect(readTransferOptions()).toEqual({ requests: 8, chunkKib: 32, files: 2, durable: true });
     localStorage.setItem("edgeterm.transfer-options", '{"requests":1000,"chunkKib":32,"files":2}');
-    expect(readTransferOptions()).toEqual({ requests: 32, chunkKib: 128, files: 4 });
+    expect(readTransferOptions()).toEqual({ requests: 32, chunkKib: 128, files: 8, durable: false });
   });
   it("controls a backend job across pause/resume and terminal states", async () => {
     api.listFileTransfers.mockResolvedValue([job("controls")]);

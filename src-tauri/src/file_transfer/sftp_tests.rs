@@ -8,6 +8,7 @@ use russh_sftp::protocol::{Attrs, Data, Handle, Version};
 #[derive(Default)]
 struct Server {
     files: HashMap<String, Vec<u8>>,
+    dirs: std::collections::HashSet<String>,
     links: HashMap<String, String>,
     fail_write_at: Option<u64>,
     stall_writes: bool,
@@ -17,6 +18,7 @@ struct Server {
     peak: usize,
     delay_ms: u64,
     lose_rename_reply: bool,
+    counts: HashMap<String, usize>,
 }
 
 struct Fixture {
@@ -89,6 +91,9 @@ impl Fixture {
     fn job(&self) -> Arc<Job> {
         super::super::test_job(self.root.clone())
     }
+    fn count(&self, label: &str) -> usize {
+        self.state.lock().counts.get(label).copied().unwrap_or(0)
+    }
     fn upload(&self, bytes: &[u8]) -> Item {
         let path = self.root.join("source.bin");
         std::fs::write(&path, bytes).unwrap();
@@ -101,8 +106,33 @@ impl Fixture {
     }
 }
 
+fn label(packet: &Packet) -> String {
+    match packet {
+        Packet::Open(_) => "open",
+        Packet::Read(_) => "read",
+        Packet::Write(_) => "write",
+        Packet::Lstat(_) => "lstat",
+        Packet::Stat(_) => "stat",
+        Packet::FSetStat(_) => "fsetstat",
+        Packet::SetStat(_) => "setstat",
+        Packet::Fstat(_) => "fstat",
+        Packet::Close(_) => "close",
+        Packet::Rename(_) => "rename",
+        Packet::Remove(_) => "remove",
+        Packet::MkDir(_) => "mkdir",
+        Packet::RmDir(_) => "rmdir",
+        Packet::RealPath(_) => "realpath",
+        Packet::OpenDir(_) => "opendir",
+        Packet::ReadDir(_) => "readdir",
+        Packet::Extended(p) => return p.request.clone(),
+        _ => "other",
+    }
+    .into()
+}
+
 fn response(server: &mut Server, packet: Packet) -> (Option<Packet>, u64) {
     let id = packet.get_request_id();
+    *server.counts.entry(label(&packet)).or_default() += 1;
     let mut delay = server.delay_ms;
     let reply = match packet {
         Packet::Init(_) => Packet::Version(Version {
@@ -113,6 +143,13 @@ fn response(server: &mut Server, packet: Packet) -> (Option<Packet>, u64) {
             id,
             attrs: FileAttributes {
                 permissions: Some(0o120777),
+                ..FileAttributes::empty()
+            },
+        }),
+        Packet::Lstat(p) if server.dirs.contains(&p.path) => Packet::Attrs(Attrs {
+            id,
+            attrs: FileAttributes {
+                permissions: Some(0o040755),
                 ..FileAttributes::empty()
             },
         }),
@@ -130,15 +167,25 @@ fn response(server: &mut Server, packet: Packet) -> (Option<Packet>, u64) {
         },
         Packet::Stat(p) => {
             let path = server.links.get(&p.path).unwrap_or(&p.path);
-            Packet::Attrs(Attrs {
-                id,
-                attrs: FileAttributes {
-                    size: Some(server.files[path].len() as u64),
-                    permissions: Some(0o100644),
-                    mtime: Some(1),
-                    ..FileAttributes::empty()
-                },
-            })
+            if server.dirs.contains(path) {
+                Packet::Attrs(Attrs {
+                    id,
+                    attrs: FileAttributes {
+                        permissions: Some(0o040755),
+                        ..FileAttributes::empty()
+                    },
+                })
+            } else {
+                Packet::Attrs(Attrs {
+                    id,
+                    attrs: FileAttributes {
+                        size: Some(server.files[path].len() as u64),
+                        permissions: Some(0o100644),
+                        mtime: Some(1),
+                        ..FileAttributes::empty()
+                    },
+                })
+            }
         }
         Packet::Open(mut p) => {
             if let Some(path) = server.links.get(&p.filename) {
@@ -203,6 +250,34 @@ fn response(server: &mut Server, packet: Packet) -> (Option<Packet>, u64) {
             Packet::error(id, StatusCode::Ok)
         }
         Packet::SetStat(_) | Packet::Close(_) => Packet::error(id, StatusCode::Ok),
+        Packet::MkDir(p) => {
+            if server.dirs.contains(&p.path) || server.files.contains_key(&p.path) {
+                Packet::error(id, StatusCode::Failure)
+            } else {
+                // A real sftp-server refuses a directory whose parent has
+                // not been created yet, so an ordering mistake in a
+                // pipelined plan cannot slip through as a success.
+                let parent_missing = match p.path.rsplit_once('/') {
+                    Some(("", _)) => false,
+                    Some((parent, _)) => !server.dirs.contains(parent),
+                    None => false,
+                };
+                if parent_missing {
+                    Packet::error(id, StatusCode::NoSuchFile)
+                } else {
+                    server.dirs.insert(p.path.clone());
+                    Packet::error(id, StatusCode::Ok)
+                }
+            }
+        }
+        Packet::RealPath(p) => Packet::Name(russh_sftp::protocol::Name {
+            id,
+            files: vec![russh_sftp::protocol::File {
+                filename: p.path.trim_end_matches('/').to_string(),
+                longname: String::new(),
+                attrs: FileAttributes::empty(),
+            }],
+        }),
         Packet::Rename(p) => {
             if server.files.contains_key(&p.newpath) {
                 Packet::error(id, StatusCode::Failure)
@@ -216,6 +291,9 @@ fn response(server: &mut Server, packet: Packet) -> (Option<Packet>, u64) {
             } else {
                 Packet::error(id, StatusCode::NoSuchFile)
             }
+        }
+        Packet::Extended(p) if p.request == "fsync@openssh.com" => {
+            Packet::error(id, StatusCode::Ok)
         }
         Packet::Extended(p) if p.request == "posix-rename@openssh.com" => {
             let mut bytes = Bytes::from(p.data);
@@ -596,6 +674,95 @@ async fn local_resume_discards_unconfirmed_tail_and_rejects_changed_destination(
 }
 
 #[tokio::test]
+async fn fresh_upload_takes_the_small_file_fast_path() {
+    let mut f = Fixture::new(Server::default()).await;
+    {
+        let remote = Arc::get_mut(&mut f.remote).unwrap();
+        remote
+            .extensions
+            .insert("fsync@openssh.com".into(), "1".into());
+        remote
+            .extensions
+            .insert("posix-rename@openssh.com".into(), "1".into());
+    }
+    let item = f.upload(b"fast path");
+    let job = f.job();
+    copy(&job, &f.remote, item.clone(), 4, &Semaphore::new(2))
+        .await
+        .unwrap();
+    assert_eq!(f.state.lock().files["/target"], b"fast path");
+    // Five round trips per fresh file: probe the destination, create the
+    // partial, write it, close it and rename it into place. Stat'ing the
+    // partial this run just created, truncating a zero offset, probing for
+    // a backup that cannot exist and flushing the server's disk are all
+    // skipped on this path.
+    assert_eq!(f.count("lstat"), 2);
+    assert_eq!(f.count("open"), 1);
+    assert_eq!(f.count("write"), 1);
+    assert_eq!(f.count("close"), 1);
+    assert_eq!(f.count("posix-rename@openssh.com"), 1);
+    assert_eq!(f.count("fsetstat"), 0);
+    assert_eq!(f.count("fsync@openssh.com"), 0);
+}
+
+#[tokio::test]
+async fn durable_option_restores_the_per_file_fsync() {
+    let mut f = Fixture::new(Server::default()).await;
+    Arc::get_mut(&mut f.remote)
+        .unwrap()
+        .extensions
+        .insert("fsync@openssh.com".into(), "1".into());
+    let item = f.upload(b"contents");
+    let mut job = f.job();
+    Arc::get_mut(&mut job).unwrap().options.durable = true;
+    copy(&job, &f.remote, item, 4, &Semaphore::new(2))
+        .await
+        .unwrap();
+    assert_eq!(f.count("fsync@openssh.com"), 1);
+}
+
+#[tokio::test]
+async fn empty_files_upload_through_the_fast_path() {
+    let f = Fixture::new(Server::default()).await;
+    let item = f.upload(b"");
+    let job = f.job();
+    copy(&job, &f.remote, item.clone(), 4, &Semaphore::new(2))
+        .await
+        .unwrap();
+    assert_eq!(f.state.lock().files["/target"], b"");
+    assert_eq!(f.count("write"), 0);
+    assert!(job.checkpoint(&job.key(&item)).unwrap().complete);
+}
+
+#[tokio::test]
+async fn replanned_uploads_tolerate_directories_that_already_exist() {
+    let f = Fixture::new(Server::default()).await;
+    let root = f.root.join("project");
+    std::fs::create_dir_all(root.join("pkg/deep")).unwrap();
+    std::fs::write(root.join("pkg/deep/mod.py"), b"first").unwrap();
+    let item = Item {
+        local: root.to_string_lossy().into(),
+        remote: "/site".into(),
+        upload: true,
+        directory: true,
+    };
+    let job = super::super::test_job_items(f.root.clone(), vec![item.clone()]);
+    let files = plan(&job, &f.remote).await.unwrap();
+    copy_files(&job, &f.remote, files).await.unwrap();
+    assert_eq!(f.state.lock().files["/site/pkg/deep/mod.py"], b"first");
+    // A second run recreates the plan over the existing tree; every mkdir
+    // now fails with "already exists" and must be recognised as such.
+    std::fs::write(root.join("pkg/deep/mod.py"), b"second").unwrap();
+    let job = super::super::test_job_items(f.root.clone(), vec![item]);
+    let files = plan(&job, &f.remote).await.unwrap();
+    copy_files(&job, &f.remote, files).await.unwrap();
+    assert_eq!(f.state.lock().files["/site/pkg/deep/mod.py"], b"second");
+    for dir in ["/site", "/site/pkg", "/site/pkg/deep"] {
+        assert!(f.state.lock().dirs.contains(dir), "{dir} must exist");
+    }
+}
+
+#[tokio::test]
 #[ignore = "repeatable simulated-latency benchmark; run with --ignored --nocapture"]
 async fn benchmark_pipeline_at_20ms_rtt() {
     for depth in [1, 8, 32] {
@@ -654,6 +821,59 @@ async fn benchmark_pipeline_at_20ms_rtt() {
         eprintln!(
             "upload 24 x 4KiB, file_concurrency={files}, elapsed={:?}",
             started.elapsed()
+        );
+    }
+}
+
+/// Models the user-reported case: dragging a small project folder (many small
+/// files in nested directories) to a remote with real round-trip latency.
+#[tokio::test]
+#[ignore = "repeatable simulated-latency benchmark; run with --ignored --nocapture"]
+async fn benchmark_small_file_batch_at_20ms_rtt() {
+    for files in [4, 8] {
+        let mut f = Fixture::new(Server {
+            delay_ms: 20,
+            ..Server::default()
+        })
+        .await;
+        {
+            let remote = Arc::get_mut(&mut f.remote).unwrap();
+            remote.files = files;
+            remote
+                .extensions
+                .insert("fsync@openssh.com".into(), "1".into());
+            remote
+                .extensions
+                .insert("posix-rename@openssh.com".into(), "1".into());
+        }
+        let root = f.root.join("project");
+        for d in 0..10 {
+            let dir = root.join(format!("pkg-{d}"));
+            std::fs::create_dir_all(&dir).unwrap();
+            for n in 0..5 {
+                std::fs::write(dir.join(format!("mod-{n}.py")), payload(4096)).unwrap();
+            }
+        }
+        let job = super::super::test_job_items(
+            f.root.clone(),
+            vec![Item {
+                local: root.to_string_lossy().into(),
+                remote: "/site".into(),
+                upload: true,
+                directory: true,
+            }],
+        );
+        let started = std::time::Instant::now();
+        let items = plan(&job, &f.remote).await.unwrap();
+        let planned = started.elapsed();
+        let started = std::time::Instant::now();
+        copy_files(&job, &f.remote, items).await.unwrap();
+        let copied = started.elapsed();
+        assert_eq!(f.state.lock().files.len(), 50);
+        assert_eq!(f.state.lock().dirs.len(), 11);
+        eprintln!(
+            "upload 50 x 4KiB in 11 dirs, file_concurrency={files}: plan={planned:?}, copy={copied:?}, total={:?}",
+            planned + copied
         );
     }
 }
