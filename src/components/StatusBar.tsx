@@ -4,6 +4,7 @@ import * as api from "../api";
 import { useActiveTab, useStore } from "../store";
 import { isFileSession, type LegacyAlgorithms } from "../types";
 import { Icon } from "./icons";
+import { TransferCenter } from "./TransferCenter";
 
 /** The folder half of a recording's path, for the Reveal click. */
 const parentDir = (path: string): string =>
@@ -41,6 +42,7 @@ function StatusBarBase() {
         {error ?? status}
       </span>
       <div className="status-spacer" />
+      <TransferCenter />
       {tab && (
         <>
           {legacy.length > 0 && (

@@ -1,6 +1,7 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { OutputConsumption } from "./outputFlow";
+import { readTransferOptions } from "./transferSettings";
 
 import type {
   AppData,
@@ -29,6 +30,45 @@ export interface TransferProgress {
   transferred: number;
   total: number;
 }
+
+export interface TransferItem {
+  local: string;
+  remote: string;
+  upload: boolean;
+  directory?: boolean;
+}
+export interface TransferOptions { requests: number; chunkKib: number; files: number; durable: boolean }
+export interface FileTransfer {
+  revision: number;
+  id: string;
+  sessionId: string;
+  name: string;
+  status: "queued" | "running" | "pausing" | "paused" | "retrying" | "cancelling" | "cancelled" | "complete" | "error";
+  phase: string;
+  transferred: number;
+  total: number;
+  completedFiles: number;
+  totalFiles: number;
+  failedFiles: string[];
+  error: { code: string; message: string; retryable: boolean } | null;
+  attempt: number;
+  options: TransferOptions;
+}
+export const transferFiles = (
+  id: string, items: TransferItem[], onProgress: (progress: TransferProgress) => void,
+  transfer = newTransferId(), options?: TransferOptions,
+) => {
+  const channel = new Channel<TransferProgress>();
+  channel.onmessage = onProgress;
+  return invoke<void>("transfer_files", { id, items, transfer, options: options ?? readTransferOptions(), onProgress: channel });
+};
+export const listFileTransfers = () => invoke<FileTransfer[]>("list_file_transfers");
+export const controlFileTransfer = (transfer: string, action: "pause" | "resume" | "retry" | "cancel" | "dismiss") =>
+  invoke<void>("control_file_transfer", { transfer, action });
+export const onFileTransfer = (callback: (job: FileTransfer) => void) =>
+  listen<FileTransfer>("transfer:changed", ({ payload }) => callback(payload));
+export const onFileTransferRemoved = (callback: (id: string) => void) =>
+  listen<string>("transfer:removed", ({ payload }) => callback(payload));
 
 export interface ZmodemFileInfo {
   name: string;
@@ -313,8 +353,8 @@ export const sftpRename = (id: string, from: string, to: string) =>
 
 /**
  * `transfer`, on the four transfers below, is an id from `newTransferId`
- * that `cancelTransfer` can name while the copy runs; a transfer without
- * one cannot be cancelled.
+ * that `cancelTransfer` can name while the copy runs. Otherwise the task
+ * gets an id automatically and remains controllable in the transfer center.
  */
 export const sftpDownload = (
   id: string,
@@ -322,17 +362,7 @@ export const sftpDownload = (
   local: string,
   onProgress: (progress: TransferProgress) => void,
   transfer?: string,
-) => {
-  const progress = new Channel<TransferProgress>();
-  progress.onmessage = onProgress;
-  return invoke<void>("sftp_download", {
-    id,
-    remote,
-    local,
-    onProgress: progress,
-    transfer,
-  });
-};
+) => transferFiles(id, [{ local, remote, upload: false, directory: false }], onProgress, transfer);
 
 export const sftpDownloadDirectory = (
   id: string,
@@ -340,17 +370,7 @@ export const sftpDownloadDirectory = (
   local: string,
   onProgress: (progress: TransferProgress) => void,
   transfer?: string,
-) => {
-  const progress = new Channel<TransferProgress>();
-  progress.onmessage = onProgress;
-  return invoke<void>("sftp_download_directory", {
-    id,
-    remote,
-    local,
-    onProgress: progress,
-    transfer,
-  });
-};
+) => transferFiles(id, [{ local, remote, upload: false, directory: true }], onProgress, transfer);
 
 export const sftpUpload = (
   id: string,
@@ -358,17 +378,7 @@ export const sftpUpload = (
   remote: string,
   onProgress: (progress: TransferProgress) => void,
   transfer?: string,
-) => {
-  const progress = new Channel<TransferProgress>();
-  progress.onmessage = onProgress;
-  return invoke<void>("sftp_upload", {
-    id,
-    local,
-    remote,
-    onProgress: progress,
-    transfer,
-  });
-};
+) => transferFiles(id, [{ local, remote, upload: true, directory: false }], onProgress, transfer);
 
 export const sftpUploadDirectory = (
   id: string,
@@ -376,17 +386,7 @@ export const sftpUploadDirectory = (
   remote: string,
   onProgress: (progress: TransferProgress) => void,
   transfer?: string,
-) => {
-  const progress = new Channel<TransferProgress>();
-  progress.onmessage = onProgress;
-  return invoke<void>("sftp_upload_directory", {
-    id,
-    local,
-    remote,
-    onProgress: progress,
-    transfer,
-  });
-};
+) => transferFiles(id, [{ local, remote, upload: true, directory: true }], onProgress, transfer);
 
 let transferSerial = 0;
 

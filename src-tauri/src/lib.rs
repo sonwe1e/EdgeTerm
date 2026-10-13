@@ -1,6 +1,7 @@
 mod commands;
 mod error;
 mod file_promise;
+mod file_transfer;
 mod fonts;
 mod fs_local;
 mod model;
@@ -354,7 +355,7 @@ pub fn run() {
             store: store::Store::load(),
             remote_edits: Default::default(),
             auth_prompts: Default::default(),
-            transfers: Default::default(),
+            file_transfers: Default::default(),
             ssh_transports: Default::default(),
         })
         .on_window_event(|window, event| {
@@ -424,6 +425,9 @@ pub fn run() {
             commands::sftp_upload,
             commands::sftp_upload_directory,
             commands::cancel_transfer,
+            commands::transfer_files,
+            commands::list_file_transfers,
+            commands::control_file_transfer,
             commands::local_home,
             commands::session_cwd,
             commands::local_hostname,

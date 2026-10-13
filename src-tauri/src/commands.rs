@@ -22,7 +22,6 @@ use crate::remote_edit::RemoteEdits;
 use crate::session::auth::{AuthPrompter, AuthPrompts};
 use crate::session::recording::{self, Recorder};
 use crate::session::ssh::{ConnectOutcome, SftpConnectOutcome, SshTransports};
-use crate::session::transfer::Transfers;
 use crate::session::{
     self, SessionCommand, SessionHandle, SessionManager, SftpRequest, SftpResponse,
     TransferProgress,
@@ -38,8 +37,7 @@ pub struct AppState {
     /// Authentication challenges a connecting session is waiting on; see
     /// `answer_auth_prompt`.
     pub auth_prompts: AuthPrompts,
-    /// Transfers in flight, so `cancel_transfer` can reach one.
-    pub transfers: Transfers,
+    pub file_transfers: crate::file_transfer::Transfers,
     /// The authenticated SSH transports open sessions run on, so another
     /// session can be opened on one instead of authenticating again; see
     /// `open_session`'s `reuse_session_id`.
@@ -417,6 +415,7 @@ pub async fn open_session(
         }
     };
 
+    state.file_transfers.remember(&id, &profile);
     state.sessions.insert(SessionHandle {
         info: info.clone(),
         tx,
@@ -448,6 +447,7 @@ pub fn answer_auth_prompt(
 
 #[tauri::command]
 pub fn close_session(state: State<'_, AppState>, id: String) -> Result<()> {
+    state.file_transfers.forget(&id);
     state.outputs.close_session(&id);
     // Nothing new may be opened on this session's connection once it is
     // closing; whether the connection itself goes down depends on the other
@@ -464,16 +464,16 @@ pub fn close_session(state: State<'_, AppState>, id: String) -> Result<()> {
     Ok(())
 }
 
-#[tauri::command]
-pub fn list_sessions(state: State<'_, AppState>) -> Vec<SessionInfo> {
-    state.sessions.list()
-}
-
 /// Consumption acknowledgements must bypass a potentially busy transport's
 /// command queue. Tokens distinguish reconnects that reuse a tab/session id.
 #[tauri::command]
 pub fn acknowledge_session_output(state: State<'_, AppState>, token: String, consumed: u64) {
     state.outputs.acknowledge(&token, consumed);
+}
+
+#[tauri::command]
+pub fn list_sessions(state: State<'_, AppState>) -> Vec<SessionInfo> {
+    state.sessions.list()
 }
 
 /// Where a profile's recordings go when it names no folder of its own; the
@@ -525,6 +525,12 @@ pub async fn write_session_binary(
 #[derive(serde::Deserialize)]
 struct BinarySessionTarget {
     id: String,
+}
+
+#[derive(serde::Deserialize)]
+struct BinaryFileTarget {
+    path: String,
+    offset: u64,
 }
 
 fn binary_metadata<T: serde::de::DeserializeOwned>(encoded: &str) -> Result<T> {
@@ -602,6 +608,10 @@ pub async fn zmodem_file_info(path: String) -> Result<ZmodemFileInfo> {
 
 #[tauri::command]
 pub async fn zmodem_read_chunk(path: String, offset: u64, length: u32) -> Result<String> {
+    Ok(B64.encode(read_transfer_bytes(path, offset, length).await?))
+}
+
+async fn read_transfer_bytes(path: String, offset: u64, length: u32) -> Result<Vec<u8>> {
     let length = length as usize;
     if length == 0 || length > ZMODEM_FILE_CHUNK_SIZE {
         return Err(AppError::new(format!(
@@ -613,7 +623,7 @@ pub async fn zmodem_read_chunk(path: String, offset: u64, length: u32) -> Result
     file.seek(std::io::SeekFrom::Start(offset)).await?;
     let mut bytes = Vec::with_capacity(length);
     file.take(length as u64).read_to_end(&mut bytes).await?;
-    Ok(B64.encode(bytes))
+    Ok(bytes)
 }
 
 #[tauri::command]
@@ -626,6 +636,10 @@ pub async fn zmodem_create_file(path: String) -> Result<()> {
 #[tauri::command]
 pub async fn zmodem_write_chunk(path: String, offset: u64, data: String) -> Result<()> {
     let bytes = B64.decode(data).map_err(err)?;
+    write_transfer_bytes(path, offset, &bytes).await
+}
+
+async fn write_transfer_bytes(path: String, offset: u64, bytes: &[u8]) -> Result<()> {
     if bytes.len() > ZMODEM_FILE_CHUNK_SIZE {
         return Err(AppError::new(format!(
             "ZMODEM write chunk exceeds {ZMODEM_FILE_CHUNK_SIZE} bytes"
@@ -634,7 +648,7 @@ pub async fn zmodem_write_chunk(path: String, offset: u64, data: String) -> Resu
 
     let mut file = tokio::fs::OpenOptions::new().write(true).open(path).await?;
     file.seek(std::io::SeekFrom::Start(offset)).await?;
-    file.write_all(&bytes).await?;
+    file.write_all(bytes).await?;
     Ok(())
 }
 
@@ -647,6 +661,119 @@ pub async fn zmodem_finish_file(path: String, size: u64) -> Result<()> {
 }
 
 // --- remote filesystem ------------------------------------------------------
+
+#[cfg(test)]
+mod binary_transfer_tests {
+    use super::*;
+
+    struct TempFile(String);
+    impl TempFile {
+        fn new() -> Self {
+            Self(
+                std::env::temp_dir()
+                    .join(format!("edgeterm-传输-{}.bin", uuid::Uuid::new_v4()))
+                    .to_string_lossy()
+                    .into_owned(),
+            )
+        }
+    }
+    impl Drop for TempFile {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+
+    #[test]
+    fn binary_metadata_preserves_unicode_paths_and_rejects_invalid_offsets() {
+        let encoded = B64.encode(
+            serde_json::to_vec(&serde_json::json!({
+                "path": "C:\\测试\\é #%.bin", "offset": 1048576
+            }))
+            .unwrap(),
+        );
+        let target: BinaryFileTarget = binary_metadata(&encoded).unwrap();
+        assert_eq!(target.path, "C:\\测试\\é #%.bin");
+        assert_eq!(target.offset, 1048576);
+        for bad in [
+            "!".to_string(),
+            B64.encode(br#"{"path":"a","offset":-1}"#),
+            B64.encode(br#"{"path":"a","offset":1.5}"#),
+            B64.encode(b"{}"),
+        ] {
+            assert!(binary_metadata::<BinaryFileTarget>(&bad).is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn raw_file_chunks_round_trip_all_bytes_offsets_eof_and_truncation() {
+        let file = TempFile::new();
+        zmodem_create_file(file.0.clone()).await.unwrap();
+        let bytes: Vec<u8> = (0..ZMODEM_FILE_CHUNK_SIZE)
+            .map(|i| (i % 256) as u8)
+            .collect();
+        write_transfer_bytes(file.0.clone(), 0, &bytes)
+            .await
+            .unwrap();
+        write_transfer_bytes(file.0.clone(), bytes.len() as u64, &[0, 255, 128])
+            .await
+            .unwrap();
+        assert_eq!(
+            read_transfer_bytes(file.0.clone(), 0, bytes.len() as u32)
+                .await
+                .unwrap(),
+            bytes
+        );
+        assert_eq!(
+            read_transfer_bytes(file.0.clone(), bytes.len() as u64 - 1, 8)
+                .await
+                .unwrap(),
+            [255, 0, 255, 128]
+        );
+        assert!(
+            read_transfer_bytes(file.0.clone(), bytes.len() as u64 + 3, 8)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        zmodem_finish_file(file.0.clone(), 2).await.unwrap();
+        assert_eq!(
+            read_transfer_bytes(file.0.clone(), 0, 8).await.unwrap(),
+            [0, 1]
+        );
+        // Legacy commands still share the same validated I/O implementation.
+        zmodem_write_chunk(file.0.clone(), 0, B64.encode([42, 24]))
+            .await
+            .unwrap();
+        assert_eq!(
+            zmodem_read_chunk(file.0.clone(), 0, 2).await.unwrap(),
+            B64.encode([42, 24])
+        );
+    }
+
+    #[tokio::test]
+    async fn raw_file_io_keeps_chunk_bounds_and_disk_errors() {
+        let file = TempFile::new();
+        assert!(read_transfer_bytes(file.0.clone(), 0, 0).await.is_err());
+        assert!(
+            read_transfer_bytes(file.0.clone(), 0, ZMODEM_FILE_CHUNK_SIZE as u32 + 1)
+                .await
+                .is_err()
+        );
+        assert!(
+            write_transfer_bytes(file.0.clone(), 0, &vec![0; ZMODEM_FILE_CHUNK_SIZE + 1])
+                .await
+                .is_err()
+        );
+        assert!(read_transfer_bytes(file.0.clone(), 0, 1).await.is_err());
+        assert!(write_transfer_bytes(file.0.clone(), 0, &[1]).await.is_err());
+        zmodem_create_file(file.0.clone()).await.unwrap();
+        zmodem_finish_file(file.0.clone(), 0).await.unwrap();
+        assert!(read_transfer_bytes(file.0.clone(), 0, 1)
+            .await
+            .unwrap()
+            .is_empty());
+    }
+}
 
 #[tauri::command]
 pub async fn sftp_home(state: State<'_, AppState>, id: String) -> Result<String> {
@@ -721,9 +848,10 @@ pub async fn sftp_rename(
 
 /// `transfer`, on this and the three transfers below, is the id
 /// `cancel_transfer` can name while the copy runs; without one the transfer
-/// cannot be cancelled.
+/// gets a generated id and can still be controlled in the transfer center.
 #[tauri::command]
 pub async fn sftp_download(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: String,
     remote: String,
@@ -731,24 +859,26 @@ pub async fn sftp_download(
     on_progress: Channel<TransferProgress>,
     transfer: Option<String>,
 ) -> Result<()> {
-    let active = state.transfers.begin(transfer);
-    state
-        .sessions
-        .sftp(
-            &id,
-            SftpRequest::Download {
-                remote,
-                local,
-                progress: on_progress,
-                cancel: active.flag(),
-            },
-        )
-        .await?;
-    Ok(())
+    transfer_files(
+        app,
+        state,
+        id,
+        vec![crate::file_transfer::Item {
+            remote,
+            local,
+            upload: false,
+            directory: false,
+        }],
+        transfer,
+        None,
+        on_progress,
+    )
+    .await
 }
 
 #[tauri::command]
 pub async fn sftp_download_directory(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: String,
     remote: String,
@@ -756,24 +886,26 @@ pub async fn sftp_download_directory(
     on_progress: Channel<TransferProgress>,
     transfer: Option<String>,
 ) -> Result<()> {
-    let active = state.transfers.begin(transfer);
-    state
-        .sessions
-        .sftp(
-            &id,
-            SftpRequest::DownloadDirectory {
-                remote,
-                local,
-                progress: on_progress,
-                cancel: active.flag(),
-            },
-        )
-        .await?;
-    Ok(())
+    transfer_files(
+        app,
+        state,
+        id,
+        vec![crate::file_transfer::Item {
+            remote,
+            local,
+            upload: false,
+            directory: true,
+        }],
+        transfer,
+        None,
+        on_progress,
+    )
+    .await
 }
 
 #[tauri::command]
 pub async fn sftp_upload(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: String,
     local: String,
@@ -781,24 +913,26 @@ pub async fn sftp_upload(
     on_progress: Channel<TransferProgress>,
     transfer: Option<String>,
 ) -> Result<()> {
-    let active = state.transfers.begin(transfer);
-    state
-        .sessions
-        .sftp(
-            &id,
-            SftpRequest::Upload {
-                local,
-                remote,
-                progress: on_progress,
-                cancel: active.flag(),
-            },
-        )
-        .await?;
-    Ok(())
+    transfer_files(
+        app,
+        state,
+        id,
+        vec![crate::file_transfer::Item {
+            remote,
+            local,
+            upload: true,
+            directory: false,
+        }],
+        transfer,
+        None,
+        on_progress,
+    )
+    .await
 }
 
 #[tauri::command]
 pub async fn sftp_upload_directory(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: String,
     local: String,
@@ -806,28 +940,63 @@ pub async fn sftp_upload_directory(
     on_progress: Channel<TransferProgress>,
     transfer: Option<String>,
 ) -> Result<()> {
-    let active = state.transfers.begin(transfer);
-    state
-        .sessions
-        .sftp(
-            &id,
-            SftpRequest::UploadDirectory {
-                local,
-                remote,
-                progress: on_progress,
-                cancel: active.flag(),
-            },
-        )
-        .await?;
-    Ok(())
+    transfer_files(
+        app,
+        state,
+        id,
+        vec![crate::file_transfer::Item {
+            remote,
+            local,
+            upload: true,
+            directory: true,
+        }],
+        transfer,
+        None,
+        on_progress,
+    )
+    .await
 }
 
-/// Stops the transfer the front end registered as `transfer`, if it is still
-/// running: the copy ends within a chunk and takes its half-written file
-/// with it (see `CancelFlag`).
+/// Interrupts pending I/O and asks the background worker to remove its owned
+/// partial files. Existing destination files are preserved.
 #[tauri::command]
 pub fn cancel_transfer(state: State<'_, AppState>, transfer: String) {
-    state.transfers.cancel(&transfer);
+    state.file_transfers.cancel(&transfer);
+}
+
+#[tauri::command]
+pub fn list_file_transfers(state: State<'_, AppState>) -> Vec<crate::file_transfer::Snapshot> {
+    state.file_transfers.snapshots()
+}
+
+#[tauri::command]
+pub fn control_file_transfer(
+    state: State<'_, AppState>,
+    transfer: String,
+    action: String,
+) -> Result<()> {
+    state.file_transfers.control(&transfer, &action)
+}
+
+#[tauri::command]
+pub async fn transfer_files(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    items: Vec<crate::file_transfer::Item>,
+    transfer: Option<String>,
+    options: Option<crate::file_transfer::Options>,
+    on_progress: Channel<TransferProgress>,
+) -> Result<()> {
+    let job = state.file_transfers.start(
+        app,
+        id,
+        items,
+        transfer,
+        options.unwrap_or_default(),
+        on_progress,
+    )?;
+    crate::file_transfer::wait(&job).await
 }
 
 // --- local filesystem -------------------------------------------------------
