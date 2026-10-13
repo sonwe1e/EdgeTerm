@@ -1,10 +1,11 @@
-import Zmodem, {
+import {
   type Detection,
   type Offer,
   type ReceiveSession,
   type SendSession,
   type Session,
 } from "zmodem.js";
+import { ZmodemInput } from "./zmodemInput";
 
 import * as api from "./api";
 import { open as openDialog, save as saveDialog } from "./nativeDialog";
@@ -30,7 +31,7 @@ const PEER_CONFIRM_TIMEOUT_MS = 30_000;
  * to fit in the WebView's memory.
  */
 export class ZmodemController {
-  private readonly sentry: InstanceType<typeof Zmodem.Sentry>;
+  private readonly sentry: ZmodemInput;
   private disposed = false;
   private failed = false;
   private activeSession: Session | null = null;
@@ -46,14 +47,14 @@ export class ZmodemController {
     private readonly sessionId: string,
     private readonly callbacks: TransferCallbacks,
   ) {
-    this.sentry = new Zmodem.Sentry({
+    this.sentry = new ZmodemInput({
       to_terminal: (bytes) => {
         if (!this.disposed && bytes.length > 0) {
           if (this.suppressInitialTerminalBytes) {
             this.suppressInitialTerminalBytes = false;
-            this.hideInitialHandshake(Uint8Array.from(bytes));
+            this.hideInitialHandshake(bytes);
           } else {
-            this.callbacks.toTerminal(Uint8Array.from(bytes));
+            this.callbacks.toTerminal(bytes);
           }
         }
       },
@@ -297,8 +298,7 @@ export class ZmodemController {
         while (offset < info.size) {
           if (this.disposed || session.has_ended()) return;
           const requested = Math.min(FILE_CHUNK_SIZE, info.size - offset);
-          const encoded = await api.zmodemReadChunk(path, offset, requested);
-          const bytes = api.base64ToBytes(encoded);
+          const bytes = await api.zmodemReadBytes(path, offset, requested);
           if (bytes.length === 0) {
             throw new Error(`${info.name} ended before its reported size`);
           }
@@ -375,7 +375,7 @@ export class ZmodemController {
     this.outboundQueue = this.outboundQueue.then(async () => {
       if (this.outboundError || this.disposed) return;
       try {
-        await api.writeSessionBinary(this.sessionId, api.bytesToBase64(bytes));
+        await api.writeSessionBytes(this.sessionId, bytes);
       } catch (error) {
         this.outboundError = error;
         this.failSession(this.activeSession, error);

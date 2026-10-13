@@ -78,7 +78,7 @@ export class BufferedFileWriter {
     this.queue = this.queue.then(async () => {
       if (this.error) return;
       try {
-        await api.zmodemWriteChunk(this.path, offset, bytes);
+        await api.zmodemWriteBytes(this.path, offset, bytes);
         this.onProgress(offset + bytes.length);
       } catch (error) {
         this.error = error;
@@ -130,9 +130,9 @@ export class ChunkedFileReader {
 
   private async load(offset: number) {
     const requested = Math.min(FILE_CHUNK_SIZE, this.size - offset);
-    const encoded = await api.zmodemReadChunk(this.path, offset, requested);
+    const bytes = await api.zmodemReadBytes(this.path, offset, requested);
     this.chunkOffset = offset;
-    this.chunk = api.base64ToBytes(encoded);
+    this.chunk = bytes;
   }
 }
 
