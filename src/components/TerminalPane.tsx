@@ -230,8 +230,10 @@ function TerminalHost({
       setTerminal(controller);
     });
 
+    // scheduleFit, not fit: a splitter or window drag reports dozens of
+    // sizes a second, and each fit resizes the renderer's canvas.
     const observer = new ResizeObserver(() => {
-      getController(id)?.fit();
+      getController(id)?.scheduleFit();
     });
     observer.observe(element);
     return () => {

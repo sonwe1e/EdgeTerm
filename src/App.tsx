@@ -47,6 +47,7 @@ import type { PanelDock } from "./panelDock";
 import { IS_WINDOWS } from "./platform";
 import { matchAppShortcut } from "./shortcuts";
 import { type PanelName, tabTitle, useActiveTab, useStore } from "./store";
+import { setWebglEnabled } from "./terminal";
 import { allControllers, getController } from "./terminalRegistry";
 import { isFileSession, type SessionProfile, type SessionState } from "./types";
 import { useUpdater } from "./updater";
@@ -94,6 +95,8 @@ export default function App() {
   const cursorBlink = useStore((s) => s.cursorBlink);
   const setCursorStyle = useStore((s) => s.setCursorStyle);
   const setCursorBlink = useStore((s) => s.setCursorBlink);
+  const gpuRenderer = useStore((s) => s.gpuRenderer);
+  const setGpuRenderer = useStore((s) => s.setGpuRenderer);
   const shortcuts = useStore((s) => s.shortcuts);
   const setShortcuts = useStore((s) => s.setShortcuts);
   const setActive = useStore((s) => s.setActive);
@@ -280,6 +283,15 @@ export default function App() {
     setClosePrompt(null);
     setQuitPromptOpen(true);
   }, [setClosePrompt]);
+
+  // The renderer preference is module state in terminal.ts (the WebGL
+  // renderers live outside React); applying it here covers both start-up and
+  // Display Settings → Apply. A terminal may have loaded WebGL a frame before
+  // the start-up pass runs; refreshWebgl brings every controller onto the
+  // preference regardless.
+  useEffect(() => {
+    setWebglEnabled(gpuRenderer);
+  }, [gpuRenderer]);
 
   // Closing the window (macOS ✕, the menubar Close button on Windows,
   // Alt+F4) must not silently drop live connections: hold the close and
@@ -666,6 +678,7 @@ export default function App() {
           terminalScrollback={terminalScrollback}
           cursorStyle={cursorStyle}
           cursorBlink={cursorBlink}
+          gpuRenderer={gpuRenderer}
           onApply={(settings) => {
             setPanelFontSize(settings.panelFontSize);
             setBufferFontSize(settings.bufferFontSize);
@@ -674,6 +687,7 @@ export default function App() {
             setTerminalScrollback(settings.terminalScrollback);
             setCursorStyle(settings.cursorStyle);
             setCursorBlink(settings.cursorBlink);
+            setGpuRenderer(settings.gpuRenderer);
             setFontSettingsOpen(false);
           }}
           onClose={() => setFontSettingsOpen(false)}

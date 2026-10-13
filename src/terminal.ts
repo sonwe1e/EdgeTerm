@@ -24,6 +24,7 @@ import { parseOsc52, type ProgramClipboardMode } from "./osc52";
 import { IS_MAC, IS_WINDOWS } from "./platform";
 import { matchAppShortcut } from "./shortcuts";
 import { SEARCH_HIGHLIGHT_LIMIT } from "./terminalSearch";
+import { allControllers } from "./terminalRegistry";
 import {
   isShellPrompt,
   semanticLine,
@@ -96,9 +97,35 @@ const WEBGL_MAX_TERMINALS = 6;
 const WEBGL_RECOVERY_DELAY_MS = 2000;
 const WEBGL_RECOVERY_LIMIT = 3;
 const WEBGL_RECOVERY_WINDOW_MS = 60_000;
+/**
+ * The shortest gap between two grid fits. A drag — the window edge, a panel
+ * splitter — reports dozens of sizes a second, and each fit resizes the
+ * renderer's canvas, which on a weak GPU is enough continuous surface churn
+ * to stall the page mid-drag. The grid follows the drag at a few steps a
+ * second instead, and the trailing fit of `scheduleFit` lands the exact
+ * final size once the drag settles.
+ */
+const FIT_MIN_INTERVAL_MS = 150;
 
 /** Terminals holding a WebGL renderer, most recently shown first. */
 const webglTerminals: TerminalController[] = [];
+
+/**
+ * The user's renderer preference (View → Display Settings). WebGL is the
+ * default; on machines whose driver stalls under the canvas resizes a drag
+ * produces, turning it off keeps the terminal on the DOM renderer, which has
+ * no GPU surface to stall.
+ */
+let webglEnabled = true;
+
+/**
+ * Applies the renderer preference to every live terminal: off unloads the
+ * WebGL renderers that exist, on loads it back for the panes on screen.
+ */
+export function setWebglEnabled(enabled: boolean) {
+  webglEnabled = enabled;
+  for (const terminal of allControllers()) terminal.refreshWebgl();
+}
 
 /**
  * How long an agentic CLI has to stay silent before its turn counts as
@@ -502,6 +529,9 @@ export class TerminalController {
   private webglRecoveries = 0;
   private webglLastLoss = 0;
   private webglTimer: number | null = null;
+  /** When `fit` last ran, and the pending rate-limited fit; see scheduleFit. */
+  private lastFitAt = 0;
+  private fitTimer: number | null = null;
   /**
    * Cached so the per-frame gutter sync never reads layout. Recomputed only on
    * fit/resize, which is the only time it can change.
@@ -988,7 +1018,7 @@ export class TerminalController {
    * budget. Semantic colors live in the buffer cells and render on either.
    */
   private loadWebgl() {
-    if (this.disposed || !this.host) return;
+    if (!webglEnabled || this.disposed || !this.host) return;
     if (this.webgl) {
       this.promoteWebgl();
       return;
@@ -1027,6 +1057,12 @@ export class TerminalController {
       ?.getExtension("WEBGL_lose_context")
       ?.loseContext();
     this.setWebgl(null);
+  }
+
+  /** Brings this terminal onto the current renderer preference, if it can. */
+  refreshWebgl() {
+    if (!webglEnabled) this.unloadWebgl();
+    else if (this.visible) this.loadWebgl();
   }
 
   /** The addon's canvas: the one in the screen without a render-layer class. */
@@ -1094,6 +1130,7 @@ export class TerminalController {
 
   fit(): { cols: number; rows: number } | null {
     if (!this.host || this.host.clientWidth === 0) return null;
+    this.lastFitAt = Date.now();
     try {
       this.fitAddon.fit();
     } catch {
@@ -1103,6 +1140,21 @@ export class TerminalController {
     this.syncGutter();
     if (this.inputAnchor || this.candidates.length) this.schedulePopupSync();
     return { cols: this.term.cols, rows: this.term.rows };
+  }
+
+  /**
+   * `fit` rate-limited for the continuous size streams a drag produces: at
+   * most one fit per `FIT_MIN_INTERVAL_MS`, and one trailing fit once the
+   * stream has gone quiet, so the terminal always ends up at the exact final
+   * size while the canvas churn stays bounded.
+   */
+  scheduleFit() {
+    if (this.disposed || this.fitTimer !== null) return;
+    const wait = Math.max(0, FIT_MIN_INTERVAL_MS - (Date.now() - this.lastFitAt));
+    this.fitTimer = window.setTimeout(() => {
+      this.fitTimer = null;
+      this.fit();
+    }, wait);
   }
 
   write(data: Uint8Array) {
@@ -1657,6 +1709,10 @@ export class TerminalController {
     if (this.webglTimer !== null) {
       window.clearTimeout(this.webglTimer);
       this.webglTimer = null;
+    }
+    if (this.fitTimer !== null) {
+      window.clearTimeout(this.fitTimer);
+      this.fitTimer = null;
     }
     this.unloadWebgl();
     this.zmodem.dispose();
