@@ -2,7 +2,10 @@ use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
-use tauri::{ipc::Channel, AppHandle, State};
+use tauri::{
+    ipc::{Channel, InvokeResponseBody},
+    AppHandle, State,
+};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 
@@ -252,6 +255,10 @@ pub async fn open_session(
     // once per tab. A connection that has gone down in
     // the meantime is simply dialled again.
     reuse_session_id: Option<String>,
+    // The raw channel this session's terminal bytes stream out on, opened by
+    // the same invoke that opens the session; see OutputPump. File sessions
+    // (FTP, SFTP) never write to it.
+    on_output: Channel<InvokeResponseBody>,
 ) -> Result<OpenSessionOutcome> {
     // A profile may arrive by id (from the tree) or inline (quick connect).
     let profile = if !profile.id.is_empty() {
@@ -298,7 +305,7 @@ pub async fn open_session(
         }
         SessionKind::Local => {
             let recorder = start_recording(&mut info)?;
-            session::local::spawn(app.clone(), id.clone(), &profile, rx, recorder)?;
+            session::local::spawn(app.clone(), id.clone(), &profile, rx, recorder, on_output)?;
             None
         }
         SessionKind::Serial => {
@@ -309,6 +316,7 @@ pub async fn open_session(
                 &profile,
                 rx,
                 recorder,
+                on_output,
             )?)
         }
         SessionKind::Telnet => {
@@ -322,6 +330,7 @@ pub async fn open_session(
                 rx,
                 recorder,
                 session::telnet::AutoLogin::new(&profile, std::time::Instant::now()),
+                on_output,
             );
             None
         }
@@ -368,7 +377,7 @@ pub async fn open_session(
             info.legacy_algorithms = conn.legacy_algorithms().to_vec();
             state.ssh_transports.register(&id, &conn.transport());
             let recorder = start_recording(&mut info)?;
-            session::ssh::spawn(app.clone(), id.clone(), conn, rx, recorder);
+            session::ssh::spawn(app.clone(), id.clone(), conn, rx, recorder, on_output);
             None
         }
         SessionKind::Sftp => {
