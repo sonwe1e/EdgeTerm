@@ -1,6 +1,7 @@
 import type { PhysicalPosition } from "@tauri-apps/api/dpi";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -25,6 +26,7 @@ import { open as openDialog, save as saveDialog } from "../../nativeDialog";
 import { IS_MAC, IS_WINDOWS } from "../../platform";
 import { chordLabel } from "../../shortcuts";
 import { tabTitle, useActiveTab, useStore } from "../../store";
+import { useStableCallback } from "../../useStableCallback";
 import { ContextMenu, type MenuItem } from "../ContextMenu";
 import { DeleteEntryDialog } from "../DeleteEntryDialog";
 import { FileIcon } from "../FileIcon";
@@ -1202,6 +1204,25 @@ export function FilerPanel() {
     });
   };
 
+  // The row callbacks go through stable identities (see useStableCallback)
+  // so a re-render of this panel — a transfer tick, a drag-over change, a
+  // selection elsewhere — leaves the memoised rows' props equal and skipped.
+  const rowSelect = useStableCallback((path: string) => setSelected(path));
+  const rowActivate = useStableCallback((entry: FileEntry) => activate(entry));
+  const rowPointerDown = useStableCallback(
+    (entry: FileEntry, event: ReactPointerEvent<HTMLDivElement>) =>
+      onEntryPointerDown(entry, event),
+  );
+  const rowPointerMove = useStableCallback((event: ReactPointerEvent<HTMLDivElement>) =>
+    onEntryPointerMove(event),
+  );
+  const rowContextMenu = useStableCallback(
+    (event: MouseEvent, entry: FileEntry) => {
+      setSelected(entry.path);
+      openMenu(event, entryMenu(entry));
+    },
+  );
+
   return (
     <div
       ref={panelRef}
@@ -1389,34 +1410,20 @@ export function FilerPanel() {
             />
           </div>
         )}
-        {sortedEntries.map((entry) => {
-          const kind = entryKind(entry);
-          return (
-            <div
-              key={entry.path}
-              className={`row filer-entry is-${kind}${entry.path === selected ? " is-active" : ""}${dragOut?.path === entry.path ? " is-dragging-out" : ""}`}
-              onMouseDown={() => setSelected(entry.path)}
-              onPointerDown={(event) => onEntryPointerDown(entry, event)}
-              onPointerMove={onEntryPointerMove}
-              onDoubleClick={() => activate(entry)}
-              onContextMenu={(event) => {
-                setSelected(entry.path);
-                openMenu(event, entryMenu(entry));
-              }}
-              title={entryTitle(entry)}
-            >
-              <FilerEntryIcon
-                name={entry.name}
-                isDir={entry.isDir}
-                theme={theme}
-              />
-              <span className="row-label">{entry.name}</span>
-              <span className="filer-col-date row-meta">
-                {formatDate(entry.modified)}
-              </span>
-            </div>
-          );
-        })}
+        {sortedEntries.map((entry) => (
+          <FilerRow
+            key={entry.path}
+            entry={entry}
+            selected={entry.path === selected}
+            draggingOut={dragOut?.path === entry.path}
+            theme={theme}
+            onSelect={rowSelect}
+            onActivate={rowActivate}
+            onPointerDown={rowPointerDown}
+            onPointerMove={rowPointerMove}
+            onContextMenu={rowContextMenu}
+          />
+        ))}
       </div>
 
       {menu && (
@@ -1558,7 +1565,62 @@ type FilerEntryKind = "directory" | "file" | "symlink";
 /** An entry being named inline at the top of the list before it exists. */
 type NewEntryDraft = { kind: "file" | "folder"; name: string };
 
-function FilerEntryIcon({
+/**
+ * One file row, memoised so a panel re-render that nothing on the row
+ * depends on — a transfer footer tick, a drag-over verdict, another row
+ * being selected — skips every row instead of rebuilding their JSX, titles
+ * and dates. Only primitive/stable props cross this boundary; the callbacks
+ * come from useStableCallback in the panel.
+ */
+const FilerRow = memo(function FilerRow({
+  entry,
+  selected,
+  draggingOut,
+  theme,
+  onSelect,
+  onActivate,
+  onPointerDown,
+  onPointerMove,
+  onContextMenu,
+}: {
+  entry: FileEntry;
+  selected: boolean;
+  draggingOut: boolean;
+  theme: ThemeMode;
+  onSelect: (path: string) => void;
+  onActivate: (entry: FileEntry) => void;
+  onPointerDown: (
+    entry: FileEntry,
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) => void;
+  onPointerMove: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onContextMenu: (event: MouseEvent, entry: FileEntry) => void;
+}) {
+  const kind = entryKind(entry);
+  return (
+    <div
+      className={`row filer-entry is-${kind}${selected ? " is-active" : ""}${draggingOut ? " is-dragging-out" : ""}`}
+      onMouseDown={() => onSelect(entry.path)}
+      onPointerDown={(event) => onPointerDown(entry, event)}
+      onPointerMove={onPointerMove}
+      onDoubleClick={() => onActivate(entry)}
+      onContextMenu={(event) => onContextMenu(event, entry)}
+      title={entryTitle(entry)}
+    >
+      <FilerEntryIcon
+        name={entry.name}
+        isDir={entry.isDir}
+        theme={theme}
+      />
+      <span className="row-label">{entry.name}</span>
+      <span className="filer-col-date row-meta">
+        {formatDate(entry.modified)}
+      </span>
+    </div>
+  );
+});
+
+const FilerEntryIcon = memo(function FilerEntryIcon({
   name,
   isDir,
   theme,
@@ -1572,7 +1634,7 @@ function FilerEntryIcon({
       <FileIcon name={name} isDir={isDir} theme={theme} />
     </span>
   );
-}
+});
 
 
 /** Applications the user has opened files with, most recent first. */
