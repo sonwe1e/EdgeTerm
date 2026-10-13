@@ -31,6 +31,7 @@ import type { FileEntry, ThemeMode } from "../types";
 import { useStableCallback } from "../useStableCallback";
 import { FileIcon } from "./FileIcon";
 import { Icon } from "./icons";
+import { VirtualFileRows } from "./VirtualFileRows";
 
 /** Pointer travel before a press on a row turns into a drag. */
 const DRAG_THRESHOLD = 5;
@@ -185,11 +186,13 @@ export function FtpPane({ tab, active }: Props) {
     };
   }, [loadLocal, loadRemote, sessionId, tab.state]);
 
-  const selectedRemote = remoteEntries.find(
-    (entry) => entry.path === remoteSelected,
+  const selectedRemote = useMemo(
+    () => remoteEntries.find((entry) => entry.path === remoteSelected),
+    [remoteEntries, remoteSelected],
   );
-  const selectedLocal = localEntries.find(
-    (entry) => entry.path === localSelected,
+  const selectedLocal = useMemo(
+    () => localEntries.find((entry) => entry.path === localSelected),
+    [localEntries, localSelected],
   );
 
   const updateProgress = (progress: api.TransferProgress) => {
@@ -809,7 +812,7 @@ export function FtpPane({ tab, active }: Props) {
   );
 }
 
-function FileBrowser({
+export function FileBrowser({
   title,
   subtitle,
   path,
@@ -922,28 +925,37 @@ function FileBrowser({
         {!error && !loading && entries.length === 0 && (
           <div className="ftp-browser-message">This folder is empty.</div>
         )}
-        {!error &&
-          sortedEntries.map((entry) => (
-            <FtpFileRow
-              key={entry.path}
-              entry={entry}
-              side={side}
-              selected={selected === entry.path}
-              dragSource={draggingPath === entry.path}
-              dropTarget={
-                dropHover != null &&
-                dropHover.side === side &&
-                dropHover.dir === entry.path
-              }
-              theme={theme}
-              onSelect={onSelect}
-              onActivate={onActivate}
-              onPointerDown={onItemPointerDown}
-              onPointerMove={onItemPointerMove}
-              onPointerUp={onItemPointerUp}
-              onDragCancel={onDragCancel}
-            />
-          ))}
+        {!error && (
+          <VirtualFileRows
+            entries={sortedEntries}
+            rowHeight={29}
+            resetKey={`${side}:${path}:${sort.key}:${sort.direction}`}
+          >
+            {(entry, index) => (
+              <FtpFileRow
+                key={entry.path}
+                entry={entry}
+                position={index + 1}
+                total={sortedEntries.length}
+                side={side}
+                selected={selected === entry.path}
+                dragSource={draggingPath === entry.path}
+                dropTarget={
+                  dropHover != null &&
+                  dropHover.side === side &&
+                  dropHover.dir === entry.path
+                }
+                theme={theme}
+                onSelect={onSelect}
+                onActivate={onActivate}
+                onPointerDown={onItemPointerDown}
+                onPointerMove={onItemPointerMove}
+                onPointerUp={onItemPointerUp}
+                onDragCancel={onDragCancel}
+              />
+            )}
+          </VirtualFileRows>
+        )}
       </div>
       <div className="ftp-browser-footer">
         <span>{entries.length} items</span>
@@ -963,6 +975,8 @@ function FileBrowser({
  */
 const FtpFileRow = memo(function FtpFileRow({
   entry,
+  position,
+  total,
   side,
   selected,
   dragSource,
@@ -976,6 +990,8 @@ const FtpFileRow = memo(function FtpFileRow({
   onDragCancel,
 }: {
   entry: FileEntry;
+  position: number;
+  total: number;
   side: PaneSide;
   selected: boolean;
   dragSource: boolean;
@@ -996,6 +1012,8 @@ const FtpFileRow = memo(function FtpFileRow({
     <div
       className={`ftp-file-row${selected ? " is-selected" : ""}${entry.isDir ? " is-directory" : ""}${dragSource ? " is-drag-source" : ""}${dropTarget ? " is-drop-target" : ""}`}
       role="option"
+      aria-posinset={position}
+      aria-setsize={total}
       aria-selected={selected}
       data-drop-side={entry.isDir ? side : undefined}
       data-drop-dir={entry.isDir ? entry.path : undefined}

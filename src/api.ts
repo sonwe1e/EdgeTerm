@@ -243,6 +243,19 @@ export const writeSession = (id: string, data: string) =>
 export const writeSessionBinary = (id: string, base64: string) =>
   invoke<void>("write_session_binary", { id, data: base64 });
 
+// Only the small metadata header is encoded. File/protocol payloads stay raw,
+// including typed views with non-zero offsets (do not pass their whole buffer).
+function binaryOptions(metadata: unknown) {
+  return {
+    headers: {
+      "x-edgeterm-metadata": bytesToBase64(new TextEncoder().encode(JSON.stringify(metadata))),
+    },
+  };
+}
+
+export const writeSessionBytes = (id: string, bytes: Uint8Array) =>
+  invoke<void>("write_session_bytes", bytes, binaryOptions({ id }));
+
 export const resizeSession = (id: string, cols: number, rows: number) =>
   invoke<void>("resize_session", { id, cols, rows });
 
@@ -259,6 +272,9 @@ export const zmodemReadChunk = (
   length: number,
 ) => invoke<string>("zmodem_read_chunk", { path, offset, length });
 
+export const zmodemReadBytes = async (path: string, offset: number, length: number) =>
+  new Uint8Array(await invoke<ArrayBuffer>("zmodem_read_bytes", { path, offset, length }));
+
 export const zmodemCreateFile = (path: string) =>
   invoke<void>("zmodem_create_file", { path });
 
@@ -267,11 +283,7 @@ export const zmodemWriteChunk = (
   offset: number,
   bytes: Uint8Array,
 ) =>
-  invoke<void>("zmodem_write_chunk", {
-    path,
-    offset,
-    data: bytesToBase64(bytes),
-  });
+  invoke<void>("zmodem_write_bytes", bytes, binaryOptions({ path, offset }));
 
 export const zmodemFinishFile = (path: string, size: number) =>
   invoke<void>("zmodem_finish_file", { path, size });

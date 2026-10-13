@@ -1986,6 +1986,7 @@ textarea:focus {
 .ftp-browser-columns > :nth-child(n + 2),
 .ftp-file-row > span:nth-child(n + 2) {
   text-align: right;
+  white-space: nowrap;
 }
 
 /* Column captions are buttons so they can sort the list; they restyle to the
@@ -2020,6 +2021,7 @@ textarea:focus {
 
 .ftp-file-row {
   min-height: 29px;
+  height: 29px;
   align-items: center;
   padding: 3px 9px;
   border-bottom: 1px solid var(--row-separator);

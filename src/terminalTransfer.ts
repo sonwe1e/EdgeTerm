@@ -130,9 +130,9 @@ export class ChunkedFileReader {
 
   private async load(offset: number) {
     const requested = Math.min(FILE_CHUNK_SIZE, this.size - offset);
-    const encoded = await api.zmodemReadChunk(this.path, offset, requested);
+    const bytes = await api.zmodemReadBytes(this.path, offset, requested);
     this.chunkOffset = offset;
-    this.chunk = api.base64ToBytes(encoded);
+    this.chunk = bytes;
   }
 }
 

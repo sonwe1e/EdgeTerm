@@ -31,6 +31,7 @@ import { ContextMenu, type MenuItem } from "../ContextMenu";
 import { DeleteEntryDialog } from "../DeleteEntryDialog";
 import { FileIcon } from "../FileIcon";
 import { Icon } from "../icons";
+import { VirtualFileRows } from "../VirtualFileRows";
 import type { FileEntry, ThemeMode } from "../../types";
 
 interface TransferState {
@@ -1189,7 +1190,11 @@ export function FilerPanel() {
   // The Windows drive list is virtual: drives can be opened but not created,
   // deleted or navigated above.
   const atDrivesRoot = !remoteId && path === api.LOCAL_DRIVES_ROOT;
-  const selectedEntry = entries.find((e) => e.path === selected) ?? null;
+  const selectedEntry = useMemo(
+    () => entries.find((e) => e.path === selected) ?? null,
+    [entries, selected],
+  );
+  const panelFontSize = useStore((s) => s.panelFontSize);
   const sortedEntries = useMemo(
     () => sortFileEntries(entries, sort),
     [entries, sort],
@@ -1410,20 +1415,26 @@ export function FilerPanel() {
             />
           </div>
         )}
-        {sortedEntries.map((entry) => (
-          <FilerRow
-            key={entry.path}
-            entry={entry}
-            selected={entry.path === selected}
-            draggingOut={dragOut?.path === entry.path}
-            theme={theme}
-            onSelect={rowSelect}
-            onActivate={rowActivate}
-            onPointerDown={rowPointerDown}
-            onPointerMove={rowPointerMove}
-            onContextMenu={rowContextMenu}
-          />
-        ))}
+        <VirtualFileRows
+          entries={sortedEntries}
+          rowHeight={Math.max(24, panelFontSize + 10) + 2}
+          resetKey={`${remoteId ?? "local"}:${path}:${sort.key}:${sort.direction}`}
+        >
+          {(entry) => (
+            <FilerRow
+              key={entry.path}
+              entry={entry}
+              selected={entry.path === selected}
+              draggingOut={dragOut?.path === entry.path}
+              theme={theme}
+              onSelect={rowSelect}
+              onActivate={rowActivate}
+              onPointerDown={rowPointerDown}
+              onPointerMove={rowPointerMove}
+              onContextMenu={rowContextMenu}
+            />
+          )}
+        </VirtualFileRows>
       </div>
 
       {menu && (
