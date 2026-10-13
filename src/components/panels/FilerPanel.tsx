@@ -137,7 +137,7 @@ const rememberPath = (source: string, path: string) => {
   lastPaths.set(source, path);
 };
 
-export function FilerPanel() {
+function FilerPanelBase() {
   const tab = useActiveTab();
   const theme = useStore((s) => s.theme);
   const sshFiles = Boolean(
@@ -1197,6 +1197,9 @@ export function FilerPanel() {
     () => sortFileEntries(entries, sort),
     [entries, sort],
   );
+  // The footer walks every entry; a large directory must not pay that on
+  // each of the app's re-renders.
+  const entrySummary = useMemo(() => formatEntrySummary(entries), [entries]);
 
   /** Re-sorts the list for a clicked column caption and remembers the choice. */
   const sortBy = (key: SortKey) => {
@@ -1535,7 +1538,7 @@ export function FilerPanel() {
           <span className="filer-drop-blocked">{dragOver.reason}</span>
         ) : (
           <>
-            <span>{formatEntrySummary(entries)}</span>
+            <span>{entrySummary}</span>
             {busy && <span>working…</span>}
           </>
         )}
@@ -1781,3 +1784,7 @@ function formatBytes(bytes: number): string {
   }
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${unit}`;
 }
+
+// The Filer takes no props: memoising it keeps the app's re-renders (a tab
+// switch, a status change) from re-walking a large directory's rows.
+export const FilerPanel = memo(FilerPanelBase);

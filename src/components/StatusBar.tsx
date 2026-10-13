@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 
 import * as api from "../api";
 import { useActiveTab, useStore } from "../store";
@@ -17,7 +17,7 @@ const legacyTitle = (servers: LegacyAlgorithms[]): string =>
     ...servers.map(({ address, algorithms }) => `${address}: ${algorithms.join(", ")}`),
   ].join("\n");
 
-export function StatusBar() {
+function StatusBarBase() {
   const tab = useActiveTab();
   const status = useStore((s) => s.status);
   const error = useStore((s) => s.error);
@@ -78,3 +78,7 @@ export function StatusBar() {
     </div>
   );
 }
+
+// Memoised: the bar takes no props, so the app's re-renders skip it and it
+// redraws only for the store slices and clock it reads itself.
+export const StatusBar = memo(StatusBarBase);

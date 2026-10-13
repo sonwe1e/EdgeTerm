@@ -6,11 +6,11 @@ import {
   Suspense,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type CSSProperties,
 } from "react";
+import { useShallow } from "zustand/react/shallow";
 
 import {
   acceptHostKey,
@@ -46,7 +46,7 @@ import { commandHistory } from "./history";
 import type { PanelDock } from "./panelDock";
 import { IS_WINDOWS } from "./platform";
 import { matchAppShortcut } from "./shortcuts";
-import { type PanelName, tabTitle, useActiveTab, useStore } from "./store";
+import { type PanelName, tabTitle, useActiveTab, useStore, type Tab } from "./store";
 import { setWebglEnabled } from "./terminal";
 import { allControllers, getController } from "./terminalRegistry";
 import { isFileSession, type SessionProfile, type SessionState } from "./types";
@@ -61,6 +61,9 @@ const SessionDialog = lazy(() =>
 );
 
 const REPO_URL = "https://github.com/miskin-lee/EdgeTerm";
+
+/** Stable empty result for the closing-tabs selector (see `useShallow`). */
+const EMPTY_CLOSING_TABS: Tab[] = [];
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
@@ -115,7 +118,6 @@ export default function App() {
   const theme = useStore((s) => s.theme);
   const activeTab = useActiveTab();
   const fileMode = activeTab ? isFileSession(activeTab.info.kind) : false;
-  const closePrompt = useStore((s) => s.closePrompt);
   const pastePrompt = useStore((s) => s.pastePrompt);
   const setPastePrompt = useStore((s) => s.setPastePrompt);
   const setPasteWarning = useStore((s) => s.setPasteWarning);
@@ -127,13 +129,16 @@ export default function App() {
       ? s.tabs.find((tab) => tab.info.id === clipboardPrompt.sessionId)
       : undefined,
   );
-  const tabs = useStore((s) => s.tabs);
-  const closingTabs = useMemo(
-    () =>
-      closePrompt
-        ? tabs.filter((tab) => closePrompt.includes(tab.info.id))
-        : [],
-    [closePrompt, tabs],
+  // Derived with a shallow selector: the tab list changes identity on
+  // every resize or another tab's command state, and none of that may
+  // re-render the whole tree — only a pending close's own tabs matter.
+  const closingTabs = useStore(
+    useShallow((s) => {
+      const prompt = s.closePrompt;
+      return prompt
+        ? s.tabs.filter((tab) => prompt.includes(tab.info.id))
+        : EMPTY_CLOSING_TABS;
+    }),
   );
 
   const [dialog, setDialog] = useState<{ profile: SessionProfile | null } | null>(
