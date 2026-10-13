@@ -24,6 +24,7 @@ import { parseOsc52, type ProgramClipboardMode } from "./osc52";
 import { IS_MAC, IS_WINDOWS } from "./platform";
 import { matchAppShortcut } from "./shortcuts";
 import { SEARCH_HIGHLIGHT_LIMIT } from "./terminalSearch";
+import { isWebglEnabled } from "./terminalRegistry";
 import {
   isShellPrompt,
   semanticLine,
@@ -125,6 +126,14 @@ const LINE_TIME_SLACK = 4096;
  */
 const BACKLOG_QUIET_MS = 200;
 const BACKLOG_SLICE_MS = 8;
+/**
+ * Column changes can reflow scrollback. For normal buffers of at least
+ * 200 lines, wait until the last width change has settled for this long.
+ * Rows always update immediately, including during a diagonal drag;
+ * Buffer._reflow returns when the column count is unchanged.
+ */
+const FIT_SETTLE_MS = 100;
+const FIT_BUFFER_THRESHOLD = 200;
 
 /**
  * Data xterm sends back on the terminal's own behalf rather than the user's:
@@ -350,6 +359,12 @@ interface Callbacks {
   onData: (data: string) => void;
   onResize: (cols: number, rows: number) => void;
   onStatus: (message: string, error?: boolean) => void;
+  /**
+   * Enter pressed while the session is dead and the terminal locked: the
+   * one keystroke a dead session still answers, reconnecting it the way
+   * WindTerm does.
+   */
+  onReconnect?: () => void;
   /** An executed command line, captured from the buffer after Enter. */
   onCommand: (command: string) => void;
   /**
@@ -405,6 +420,8 @@ export class TerminalController {
   private erase = "\x7f";
   private readonly transferNotice: HTMLElement;
   private transferNoticeTimer: number | null = null;
+  /** Only large-buffer column changes wait for the width to settle. */
+  private fitTimer: number | null = null;
 
   private root: HTMLElement | null = null;
   private host: HTMLElement | null = null;
@@ -581,11 +598,7 @@ export class TerminalController {
 
     // A file transfer owns the byte stream while it is active. Forwarding
     // keystrokes or paste data in the middle of a binary frame corrupts it.
-    this.term.onData((data) => {
-      if (this.isTransferActive()) return;
-      this.trackInput(data);
-      this.callbacks.onData(data);
-    });
+    this.term.onData((data) => this.handleData(data));
     // Shells with OSC 7 / 1337 / 9;9 integration announce their working
     // directory at every prompt. Only the latest report is kept: it answers
     // "Reveal Working Directory in Filer" exactly, nested shells and sudo
@@ -977,6 +990,7 @@ export class TerminalController {
       this.loadWebgl();
       this.scheduleBacklog();
     } else {
+      this.cancelFit();
       this.stopBacklog();
     }
   }
@@ -988,7 +1002,7 @@ export class TerminalController {
    * budget. Semantic colors live in the buffer cells and render on either.
    */
   private loadWebgl() {
-    if (this.disposed || !this.host) return;
+    if (!isWebglEnabled() || this.disposed || !this.host) return;
     if (this.webgl) {
       this.promoteWebgl();
       return;
@@ -1027,6 +1041,12 @@ export class TerminalController {
       ?.getExtension("WEBGL_lose_context")
       ?.loseContext();
     this.setWebgl(null);
+  }
+
+  /** Brings this terminal onto the current renderer preference, if it can. */
+  refreshWebgl() {
+    if (!isWebglEnabled()) this.unloadWebgl();
+    else if (this.visible) this.loadWebgl();
   }
 
   /** The addon's canvas: the one in the screen without a render-layer class. */
@@ -1092,20 +1112,66 @@ export class TerminalController {
     }
   }
 
-  fit(): { cols: number; rows: number } | null {
-    if (!this.host || this.host.clientWidth === 0) return null;
+  fit(immediate = false): { cols: number; rows: number } | null {
+    if (this.disposed || !this.visible || !this.host || this.host.clientWidth === 0) return null;
+    let proposal: { cols: number; rows: number } | null = null;
+    try {
+      proposal = this.fitAddon.proposeDimensions() ?? null;
+    } catch {
+      proposal = null;
+    }
+    if (!proposal || !Number.isFinite(proposal.cols) || !Number.isFinite(proposal.rows)) return null;
+    this.cancelFit();
+    if (immediate || this.term.buffer.normal.length < FIT_BUFFER_THRESHOLD || proposal.cols === this.term.cols) {
+      return this.applyFit();
+    }
+    // A diagonal drag must update rows immediately, preserving the current
+    // columns until the expensive reflow is due.
+    if (proposal.rows !== this.term.rows) {
+      this.term.resize(this.term.cols, proposal.rows);
+      this.syncFitMetrics();
+    }
+    this.fitTimer = window.setTimeout(() => {
+      this.fitTimer = null;
+      this.applyFit();
+    }, FIT_SETTLE_MS);
+    return { cols: this.term.cols, rows: this.term.rows };
+  }
+
+  private cancelFit() {
+    if (this.fitTimer !== null) window.clearTimeout(this.fitTimer);
+    this.fitTimer = null;
+  }
+
+  private applyFit(): { cols: number; rows: number } | null {
+    if (this.disposed || !this.visible || !this.host || this.host.clientWidth === 0) return null;
     try {
       this.fitAddon.fit();
     } catch {
       return null;
     }
-    this.measureCell();
-    this.syncGutter();
-    if (this.inputAnchor || this.candidates.length) this.schedulePopupSync();
+    this.syncFitMetrics();
     return { cols: this.term.cols, rows: this.term.rows };
   }
 
-  write(data: Uint8Array) {
+  private syncFitMetrics() {
+    this.measureCell();
+    this.syncGutter();
+    if (this.inputAnchor || this.candidates.length) this.schedulePopupSync();
+  }
+
+  /** ResizeObserver entry point; uses the same settle policy as explicit fits. */
+  scheduleFit() {
+    // ResizeObserver and explicit fits share one scheduler. An outer fixed
+    // interval would let the inner settle window expire during a live drag.
+    this.fit();
+  }
+
+  write(data: Uint8Array, consumed?: () => void) {
+    if (this.disposed) {
+      consumed?.();
+      return;
+    }
     // Cheap enough for the byte path: one timestamp, only while a turn is
     // open, and the quiet timer reads it instead of being re-armed here.
     if (this.aiTurn) this.aiOutputAt = Date.now();
@@ -1114,6 +1180,11 @@ export class TerminalController {
     // passes ordinary output through to xterm.
     if (this.xmodem.isActive()) this.xmodem.consume(data);
     else this.zmodem.consume(data);
+    // The protocol sentries may emit several decoded writes, or consume the
+    // whole chunk themselves. A barrier accounts for the ORIGINAL byte count
+    // only after all synchronous terminal output from this chunk is parsed.
+    // It also works on hidden terminals, without a render/rAF dependency.
+    if (consumed) this.term.write("", consumed);
   }
 
   /**
@@ -1197,15 +1268,15 @@ export class TerminalController {
   }
 
   /**
-   * Locks the terminal once its session has ended: keystrokes, paste and
-   * completions no longer reach `onData`, and the cursor is hidden so the
-   * pane does not look like it is waiting for input. Unlocking restores both
-   * for a reconnect.
+   * Locks the terminal once its session has ended: keystrokes and paste
+   * stay local — except Enter, which asks `onReconnect` to bring the
+   * session back — and the cursor is hidden so the pane does not look
+   * like it is waiting for input. Unlocking restores both for a
+   * reconnect.
    */
   setLocked(locked: boolean) {
     if (this.locked === locked) return;
     this.locked = locked;
-    this.term.options.disableStdin = locked;
     this.term.write(locked ? "\x1b[?25l" : "\x1b[?25h");
     if (locked) {
       this.hidePopup();
@@ -1217,6 +1288,22 @@ export class TerminalController {
       // of reach: fail it now rather than after its own timeouts.
       this.xmodem.sessionEnded();
     }
+  }
+
+  /**
+   * One keystroke or paste from xterm. A file transfer owns the byte
+   * stream while it is active, and a locked terminal keeps everything
+   * local except Enter — the one key a dead session still answers, which
+   * asks `onReconnect` to bring it back the way WindTerm does.
+   */
+  private handleData(data: string): void {
+    if (this.isTransferActive()) return;
+    if (this.locked) {
+      if (data === "\r") this.callbacks.onReconnect?.();
+      return;
+    }
+    this.trackInput(data);
+    this.callbacks.onData(data);
   }
 
   /**
@@ -1317,7 +1404,7 @@ export class TerminalController {
 
   /**
    * Hands text to the terminal as if it were typed. xterm applies bracketed
-   * paste and drops it while the terminal is locked (`disableStdin`).
+   * paste; a locked terminal keeps it out of `onData` (see `setLocked`).
    *
    * A paste the shell would run as several commands is confirmed first
    * (issue #63): the lines after the first are executed the moment they
@@ -1574,7 +1661,7 @@ export class TerminalController {
   /** The cell size follows the font. */
   private refreshFontMetrics() {
     this.cellHeight = 0;
-    this.fit();
+    this.fit(true);
   }
 
   setTheme(theme: ThemeMode) {
@@ -1654,6 +1741,7 @@ export class TerminalController {
       window.clearTimeout(this.transferNoticeTimer);
       this.transferNoticeTimer = null;
     }
+    this.cancelFit();
     if (this.webglTimer !== null) {
       window.clearTimeout(this.webglTimer);
       this.webglTimer = null;

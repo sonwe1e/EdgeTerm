@@ -24,6 +24,7 @@ export interface DisplaySettings {
   terminalScrollback: number;
   cursorStyle: CursorStyle;
   cursorBlink: boolean;
+  gpuRenderer: boolean;
 }
 
 interface Props extends DisplaySettings {
@@ -42,6 +43,7 @@ export function FontSizeDialog({
   terminalScrollback,
   cursorStyle,
   cursorBlink,
+  gpuRenderer,
   onApply,
   onClose,
 }: Props) {
@@ -52,6 +54,7 @@ export function FontSizeDialog({
   const [scrollback, setScrollback] = useState(terminalScrollback);
   const [cursor, setCursor] = useState<CursorStyle>(cursorStyle);
   const [blink, setBlink] = useState(cursorBlink);
+  const [gpu, setGpu] = useState(gpuRenderer);
 
   // Probing the machine for installed families measures text on a canvas, so
   // it happens once when the dialog opens rather than on every keystroke.
@@ -120,6 +123,7 @@ export function FontSizeDialog({
             terminalScrollback: scrollback,
             cursorStyle: cursor,
             cursorBlink: blink,
+            gpuRenderer: gpu,
           });
         }}
       >
@@ -233,6 +237,24 @@ export function FontSizeDialog({
             </label>
           </div>
 
+          <label className="font-size-setting gpu-setting">
+            <span>
+              <strong>GPU rendering</strong>
+              <small>
+                Faster terminal drawing; turn off if resizing or dragging
+                freezes the window
+              </small>
+            </span>
+            <span className="cursor-blink">
+              <input
+                type="checkbox"
+                checked={gpu}
+                onChange={(event) => setGpu(event.target.checked)}
+              />
+              Enabled
+            </span>
+          </label>
+
           <label className="font-size-setting scrollback-setting">
             <span>
               <strong>Scrollback</strong>
@@ -270,6 +292,7 @@ export function FontSizeDialog({
               setScrollback(TERMINAL_SCROLLBACK.default);
               setCursor("block");
               setBlink(true);
+              setGpu(true);
             }}
           >
             Reset Defaults

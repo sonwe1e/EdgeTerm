@@ -170,6 +170,7 @@ const RIGHT_CLICK_KEY = "edgeterm.rightClick";
 const SHORTCUTS_KEY = "edgeterm.shortcuts";
 const CURSOR_STYLE_KEY = "edgeterm.cursorStyle";
 const CURSOR_BLINK_KEY = "edgeterm.cursorBlink";
+const GPU_RENDERER_KEY = "edgeterm.gpuRenderer";
 const PASTE_WARNING_KEY = "edgeterm.pasteWarning";
 const COPY_ON_SELECT_KEY = "edgeterm.copyOnSelect";
 const PROGRAM_CLIPBOARD_KEY = "edgeterm.programClipboard";
@@ -452,6 +453,15 @@ const loadCursorBlink = (): boolean => {
   }
 };
 
+// Same shape: absent means the WebGL renderer, an explicit "off" the DOM one.
+const loadGpuRenderer = (): boolean => {
+  try {
+    return localStorage.getItem(GPU_RENDERER_KEY) !== "off";
+  } catch {
+    return true;
+  }
+};
+
 const saveSetting = (key: string, value: string) => {
   try {
     localStorage.setItem(key, value);
@@ -511,6 +521,8 @@ export interface AppSettings {
   terminalScrollback: number;
   cursorStyle: CursorStyle;
   cursorBlink: boolean;
+  /** Whether the terminal renders on the GPU (WebGL) or the DOM. */
+  gpuRenderer: boolean;
   suggestionsEnabled: boolean;
   /** Confirm a paste that would submit more than one command. */
   pasteWarning: boolean;
@@ -564,6 +576,8 @@ interface AppStore {
   /** The terminal cursor's shape and whether it blinks. */
   cursorStyle: CursorStyle;
   cursorBlink: boolean;
+  /** Whether the terminal renders on the GPU (WebGL) or the DOM. */
+  gpuRenderer: boolean;
   /** Command history recording + fish-style inline suggestions. */
   suggestionsEnabled: boolean;
   /** Whether a multi-line paste is confirmed first; see `pastePrompt`. */
@@ -718,6 +732,7 @@ interface AppStore {
   setTerminalScrollback: (rows: number) => void;
   setCursorStyle: (style: CursorStyle) => void;
   setCursorBlink: (blink: boolean) => void;
+  setGpuRenderer: (enabled: boolean) => void;
   setSuggestionsEnabled: (enabled: boolean) => void;
   setPasteWarning: (enabled: boolean) => void;
   setPastePrompt: (prompt: PastePrompt | null) => void;
@@ -877,6 +892,7 @@ export const useStore = create<AppStore>((set, get) => ({
   terminalScrollback: loadScrollback(),
   cursorStyle: loadCursorStyle(),
   cursorBlink: loadCursorBlink(),
+  gpuRenderer: loadGpuRenderer(),
   suggestionsEnabled: loadSuggestionsEnabled(),
   pasteWarning: loadPasteWarning(),
   copyOnSelect: loadCopyOnSelect(),
@@ -1352,6 +1368,10 @@ export const useStore = create<AppStore>((set, get) => ({
     set({ cursorBlink: blink });
     saveSetting(CURSOR_BLINK_KEY, blink ? "on" : "off");
   },
+  setGpuRenderer(enabled) {
+    set({ gpuRenderer: enabled });
+    saveSetting(GPU_RENDERER_KEY, enabled ? "on" : "off");
+  },
 
   setPasteWarning(enabled) {
     set({ pasteWarning: enabled });
@@ -1422,6 +1442,7 @@ export const useStore = create<AppStore>((set, get) => ({
       terminalScrollback: TERMINAL_SCROLLBACK.default,
       cursorStyle: "block",
       cursorBlink: true,
+      gpuRenderer: true,
       suggestionsEnabled: false,
       pasteWarning: true,
       copyOnSelect: defaultCopyOnSelect(),
@@ -1440,6 +1461,7 @@ export const useStore = create<AppStore>((set, get) => ({
       localStorage.removeItem(TERMINAL_SCROLLBACK_KEY);
       localStorage.removeItem(CURSOR_STYLE_KEY);
       localStorage.removeItem(CURSOR_BLINK_KEY);
+      localStorage.removeItem(GPU_RENDERER_KEY);
       localStorage.removeItem(SUGGESTIONS_KEY);
       localStorage.removeItem(PASTE_WARNING_KEY);
       localStorage.removeItem(COPY_ON_SELECT_KEY);
@@ -1469,6 +1491,7 @@ export const useStore = create<AppStore>((set, get) => ({
       terminalScrollback: state.terminalScrollback,
       cursorStyle: state.cursorStyle,
       cursorBlink: state.cursorBlink,
+      gpuRenderer: state.gpuRenderer,
       suggestionsEnabled: state.suggestionsEnabled,
       pasteWarning: state.pasteWarning,
       copyOnSelect: state.copyOnSelect,
@@ -1517,6 +1540,9 @@ export const useStore = create<AppStore>((set, get) => ({
     if (cursorStyle) state.setCursorStyle(cursorStyle);
     if (typeof values.cursorBlink === "boolean") {
       state.setCursorBlink(values.cursorBlink);
+    }
+    if (typeof values.gpuRenderer === "boolean") {
+      state.setGpuRenderer(values.gpuRenderer);
     }
     if (typeof values.suggestionsEnabled === "boolean") {
       state.setSuggestionsEnabled(values.suggestionsEnabled);
