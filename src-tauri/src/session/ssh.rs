@@ -1300,20 +1300,22 @@ async fn connect_agent() -> Result<DynamicAgentClient> {
 /// Drives one SSH shell session: pumps channel output to the UI and applies
 /// commands coming back from it. `recorder` is the session's recording,
 /// when the profile asked for one; it is fed here and closed with the task.
+/// `output` is the per-session raw IPC channel the terminal's bytes go out on.
 pub fn spawn(
     app: AppHandle,
     id: String,
     conn: SshConnection,
     mut rx: UnboundedReceiver<SessionCommand>,
     recorder: Option<Recorder>,
+    output: super::output::OutputChannel,
 ) {
     tauri::async_runtime::spawn(async move {
         let SshConnection { transport, channel } = conn;
         // Held for as long as this session runs; the transport goes down
-        // when the last session on it drops its share (see SharedTransport).
+        // when the last session on it drops its share (see `SharedTransport`).
         let handle = transport.handle.clone();
         let (mut reader, writer) = channel.split();
-        let mut pump = OutputPump::new(app.clone(), id.clone(), recorder);
+        let mut pump = OutputPump::new(output, recorder);
         let mut sftp: Option<Arc<SftpSession>> = None;
         let mut exit_status: Option<u32> = None;
         // Set when the frontend asked for the close; see `emit_state`.
@@ -1322,8 +1324,13 @@ pub fn spawn(
         emit_state(&app, &id, "connected", None);
 
         loop {
+            if pump.is_closed() {
+                let _ = writer.eof().await;
+                let _ = writer.close().await;
+                break;
+            }
             tokio::select! {
-                msg = reader.wait() => {
+                msg = reader.wait(), if pump.can_read() => {
                     match msg {
                         Some(ChannelMsg::Data { data }) => pump.push(&data),
                         Some(ChannelMsg::ExtendedData { data, .. }) => pump.push(&data),
@@ -1381,12 +1388,12 @@ pub fn spawn(
                         }
                     }
                 }
-                _ = tokio::time::sleep(FLUSH_INTERVAL), if !pump.is_empty() => pump.flush(),
+                _ = pump.ready(), if !pump.is_empty() => pump.flush(),
             }
         }
 
-        pump.flush();
-        if !close_requested {
+        pump.finish().await;
+        if !close_requested && !pump.is_closed() {
             emit_state(
                 &app,
                 &id,

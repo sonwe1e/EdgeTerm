@@ -2,7 +2,10 @@ use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
-use tauri::{ipc::Channel, AppHandle, State};
+use tauri::{
+    ipc::{Channel, InvokeResponseBody},
+    AppHandle, State,
+};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 
@@ -29,6 +32,7 @@ use crate::store::{self, Store};
 
 pub struct AppState {
     pub sessions: SessionManager,
+    pub outputs: session::output::OutputStreams,
     pub store: Store,
     pub remote_edits: RemoteEdits,
     /// Authentication challenges a connecting session is waiting on; see
@@ -252,6 +256,11 @@ pub async fn open_session(
     // once per tab. A connection that has gone down in
     // the meantime is simply dialled again.
     reuse_session_id: Option<String>,
+    // The raw channel this session's terminal bytes stream out on, opened by
+    // the same invoke that opens the session; see OutputPump. File sessions
+    // (FTP, SFTP) never write to it.
+    on_output: Channel<InvokeResponseBody>,
+    output_token: String,
 ) -> Result<OpenSessionOutcome> {
     // A profile may arrive by id (from the tree) or inline (quick connect).
     let profile = if !profile.id.is_empty() {
@@ -270,6 +279,10 @@ pub async fn open_session(
         session_id
     };
     let (tx, rx) = mpsc::unbounded_channel();
+    // Reconnects reuse the tab id, but must retire the old generation even
+    // when it ended naturally with some final ACKs still in flight.
+    state.outputs.close_session(&id);
+    let on_output = state.outputs.open(&id, output_token, on_output)?;
     let mut info = session::make_info(&id, &profile);
     // The recording a terminal profile asked for. Opened right before the
     // session starts producing output — after an SSH handshake, so a
@@ -298,7 +311,7 @@ pub async fn open_session(
         }
         SessionKind::Local => {
             let recorder = start_recording(&mut info)?;
-            session::local::spawn(app.clone(), id.clone(), &profile, rx, recorder)?;
+            session::local::spawn(app.clone(), id.clone(), &profile, rx, recorder, on_output)?;
             None
         }
         SessionKind::Serial => {
@@ -309,6 +322,7 @@ pub async fn open_session(
                 &profile,
                 rx,
                 recorder,
+                on_output,
             )?)
         }
         SessionKind::Telnet => {
@@ -322,6 +336,7 @@ pub async fn open_session(
                 rx,
                 recorder,
                 session::telnet::AutoLogin::new(&profile, std::time::Instant::now()),
+                on_output,
             );
             None
         }
@@ -368,7 +383,7 @@ pub async fn open_session(
             info.legacy_algorithms = conn.legacy_algorithms().to_vec();
             state.ssh_transports.register(&id, &conn.transport());
             let recorder = start_recording(&mut info)?;
-            session::ssh::spawn(app.clone(), id.clone(), conn, rx, recorder);
+            session::ssh::spawn(app.clone(), id.clone(), conn, rx, recorder, on_output);
             None
         }
         SessionKind::Sftp => {
@@ -433,6 +448,7 @@ pub fn answer_auth_prompt(
 
 #[tauri::command]
 pub fn close_session(state: State<'_, AppState>, id: String) -> Result<()> {
+    state.outputs.close_session(&id);
     // Nothing new may be opened on this session's connection once it is
     // closing; whether the connection itself goes down depends on the other
     // sessions sharing it (see `session::ssh::SharedTransport`).
@@ -451,6 +467,13 @@ pub fn close_session(state: State<'_, AppState>, id: String) -> Result<()> {
 #[tauri::command]
 pub fn list_sessions(state: State<'_, AppState>) -> Vec<SessionInfo> {
     state.sessions.list()
+}
+
+/// Consumption acknowledgements must bypass a potentially busy transport's
+/// command queue. Tokens distinguish reconnects that reuse a tab/session id.
+#[tauri::command]
+pub fn acknowledge_session_output(state: State<'_, AppState>, token: String, consumed: u64) {
+    state.outputs.acknowledge(&token, consumed);
 }
 
 /// Where a profile's recordings go when it names no folder of its own; the
@@ -497,6 +520,42 @@ pub async fn write_session_binary(
 ) -> Result<()> {
     let bytes = B64.decode(data).map_err(err)?;
     state.sessions.write_confirmed(&id, bytes).await
+}
+
+#[derive(serde::Deserialize)]
+struct BinarySessionTarget {
+    id: String,
+}
+
+fn binary_metadata<T: serde::de::DeserializeOwned>(encoded: &str) -> Result<T> {
+    let bytes = B64.decode(encoded).map_err(err)?;
+    serde_json::from_slice(&bytes).map_err(err)
+}
+
+fn binary_request<T: serde::de::DeserializeOwned>(
+    request: &tauri::ipc::Request<'_>,
+) -> Result<(T, Vec<u8>)> {
+    let encoded = request
+        .headers()
+        .get("x-edgeterm-metadata")
+        .ok_or_else(|| AppError::new("missing binary metadata"))?
+        .to_str()
+        .map_err(err)?;
+    let metadata = binary_metadata(encoded)?;
+    match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) => Ok((metadata, bytes.clone())),
+        _ => Err(AppError::new("expected a raw binary body")),
+    }
+}
+
+/// Preserve write confirmation/backpressure while avoiding base64 payloads.
+#[tauri::command]
+pub async fn write_session_bytes(
+    state: State<'_, AppState>,
+    request: tauri::ipc::Request<'_>,
+) -> Result<()> {
+    let (target, bytes) = binary_request::<BinarySessionTarget>(&request)?;
+    state.sessions.write_confirmed(&target.id, bytes).await
 }
 
 #[tauri::command]

@@ -2,6 +2,7 @@ use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use super::output::OutputChannel;
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use tauri::AppHandle;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -45,12 +46,14 @@ fn login_flag(argv: &[String], macos: bool) -> Option<&'static str> {
 /// command queue. The pty crate is blocking, so neither belongs on the async
 /// runtime. `recorder` is the session's recording, when the profile asked
 /// for one; the reader thread feeds it and closes it when the shell exits.
+/// `output` is the per-session raw IPC channel the terminal's bytes go out on.
 pub fn spawn(
     app: AppHandle,
     id: String,
     profile: &SessionProfile,
     mut rx: UnboundedReceiver<SessionCommand>,
     recorder: Option<Recorder>,
+    output: OutputChannel,
 ) -> Result<()> {
     let pty = native_pty_system();
     let pair = pty
@@ -114,9 +117,12 @@ pub fn spawn(
     std::thread::Builder::new()
         .name(format!("edgeterm-pty-read-{id}"))
         .spawn(move || {
-            let mut pump = OutputPump::new(reader_app.clone(), reader_id.clone(), recorder);
+            let mut pump = OutputPump::new(output, recorder);
             let mut buf = vec![0u8; 32 * 1024];
             loop {
+                if !pump.wait_readable() {
+                    break;
+                }
                 match reader.read(&mut buf) {
                     Ok(0) => break,
                     Ok(n) => {
@@ -129,8 +135,8 @@ pub fn spawn(
                     Err(_) => break,
                 }
             }
-            pump.flush();
-            if !reader_close_requested.load(Ordering::SeqCst) {
+            pump.finish_blocking();
+            if !reader_close_requested.load(Ordering::SeqCst) && !pump.is_closed() {
                 emit_state(&reader_app, &reader_id, "closed", None);
             }
         })

@@ -23,6 +23,7 @@
 
 use std::time::{Duration, Instant};
 
+use super::output::OutputChannel;
 use tauri::AppHandle;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -681,7 +682,8 @@ pub async fn connect(profile: &SessionProfile) -> Result<TcpStream> {
 }
 
 /// Runs the session on a connected socket. `recorder` is the session's
-/// recording, when the profile asked for one.
+/// recording, when the profile asked for one. `output` is the per-session
+/// raw IPC channel the terminal's bytes go out on.
 pub fn spawn(
     app: AppHandle,
     id: String,
@@ -690,10 +692,11 @@ pub fn spawn(
     mut rx: UnboundedReceiver<SessionCommand>,
     recorder: Option<Recorder>,
     mut login: Option<AutoLogin>,
+    output: OutputChannel,
 ) {
     tauri::async_runtime::spawn(async move {
         let (mut reader, mut writer) = stream.into_split();
-        let mut pump = OutputPump::new(app.clone(), id.clone(), recorder);
+        let mut pump = OutputPump::new(output, recorder);
         let mut telnet = Telnet::new(80, 24);
         let mut buf = vec![0u8; 16 * 1024];
         // Set when the frontend asked for the close; see `emit_state`.
@@ -710,8 +713,12 @@ pub fn spawn(
         }
 
         loop {
+            if pump.is_closed() {
+                break;
+            }
             tokio::select! {
-                read = reader.read(&mut buf) => {
+                _ = pump.ready(), if !pump.is_empty() => pump.flush(),
+                read = reader.read(&mut buf), if pump.can_read() => {
                     let n = match read {
                         Ok(0) | Err(_) => break,
                         Ok(n) => n,
@@ -788,9 +795,9 @@ pub fn spawn(
             }
         }
 
-        pump.flush();
+        pump.finish().await;
         let _ = writer.shutdown().await;
-        if !close_requested {
+        if !close_requested && !pump.is_closed() {
             emit_state(&app, &id, "closed", None);
         }
     });
