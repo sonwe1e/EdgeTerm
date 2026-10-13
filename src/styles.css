@@ -1990,7 +1990,8 @@ textarea:focus {
 }
 
 /* Column captions are buttons so they can sort the list; they restyle to the
-   span look they replaced. */
+   span look they replaced. Text aligns left like the first column under it —
+   a button's own default is centered, and only the later columns go right. */
 .ftp-browser-columns button {
   display: block;
   min-width: 0;
@@ -1999,6 +2000,7 @@ textarea:focus {
   background: none;
   color: inherit;
   font: inherit;
+  text-align: left;
   cursor: pointer;
   user-select: none;
 }
@@ -2272,7 +2274,9 @@ textarea:focus {
     grid-template-columns: minmax(0, 1fr) 64px;
   }
 
-  .ftp-browser-columns span:last-child,
+  /* The captions are buttons, not spans (see the sorting feature); the row
+     cells remain spans. */
+  .ftp-browser-columns > :last-child,
   .ftp-file-row > span:last-child {
     display: none;
   }
@@ -4745,6 +4749,8 @@ textarea:focus {
 
 .filer-col-name {
   flex: 1;
+  /* Left like the names under it: a button's own default is centered. */
+  text-align: left;
 }
 
 .filer-col-date {

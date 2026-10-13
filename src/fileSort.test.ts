@@ -3,9 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_FILE_SORT,
   loadFileSort,
+  parseFileSort,
   saveFileSort,
   sortFileEntries,
-  sortIndicator,
   toggleFileSort,
   type FileSort,
 } from "./fileSort";
@@ -29,19 +29,26 @@ const entry = (name: string, overrides: Partial<FileEntry> = {}): FileEntry => (
 const names = (entries: FileEntry[]): string[] => entries.map((e) => e.name);
 
 describe("sortFileEntries", () => {
-  it("sorts by name case-insensitively and in natural numeric order", () => {
+  it("passes the listing through untouched at the default order", () => {
+    // The backends list directories first and names in their own
+    // case-insensitive order; a user who never touched the columns keeps
+    // seeing exactly that, including its byte-ish name order (file10
+    // before file2) instead of the collator's numeric order.
+    const entries = [entry("file10"), entry("file2"), entry("a-dir", { isDir: true })];
+    const sorted = sortFileEntries(entries, DEFAULT_FILE_SORT);
+    expect(names(sorted)).toEqual(["file10", "file2", "a-dir"]);
+    expect(sorted).not.toBe(entries);
+  });
+
+  it("sorts by name case-insensitively and in natural numeric order once asked", () => {
     const entries = [
       entry("readme10.txt"),
       entry("Beta"),
       entry("alpha"),
       entry("file2"),
     ];
-    expect(names(sortFileEntries(entries, { key: "name", direction: "asc" }))).toEqual([
-      "alpha",
-      "Beta",
-      "file2",
-      "readme10.txt",
-    ]);
+    // Descending is the only non-default name order, so it is the one that
+    // exercises the collator; ascending name order is the passthrough above.
     expect(names(sortFileEntries(entries, { key: "name", direction: "desc" }))).toEqual([
       "readme10.txt",
       "file2",
@@ -89,6 +96,11 @@ describe("sortFileEntries", () => {
     ];
     for (const key of ["name", "modified", "size"] as const) {
       for (const direction of ["asc", "desc"] as const) {
+        if (key === "name" && direction === "asc") {
+          // The default order passes through untouched; the backend is the
+          // one that lists directories first (see the test above).
+          continue;
+        }
         const sorted = sortFileEntries(entries, { key, direction });
         // The two directories lead in their own directional order; only the
         // file/dir split itself is fixed.
@@ -113,12 +125,17 @@ describe("toggleFileSort", () => {
   });
 });
 
-describe("sortIndicator", () => {
-  it("marks only the active column and its direction", () => {
-    const sort: FileSort = { key: "modified", direction: "desc" };
-    expect(sortIndicator(sort, "name")).toBe("");
-    expect(sortIndicator(sort, "modified")).toBe(" ↓");
-    expect(sortIndicator({ ...sort, direction: "asc" }, "modified")).toBe(" ↑");
+describe("parseFileSort", () => {
+  it("accepts a valid sort from an untrusted file and rejects the rest", () => {
+    expect(parseFileSort({ key: "modified", direction: "desc" })).toEqual({
+      key: "modified",
+      direction: "desc",
+    });
+    expect(parseFileSort({ key: "name", direction: "asc" })).toEqual(DEFAULT_FILE_SORT);
+    expect(parseFileSort({ key: "bogus", direction: "asc" })).toBeNull();
+    expect(parseFileSort({ key: "name", direction: "sideways" })).toBeNull();
+    expect(parseFileSort("name")).toBeNull();
+    expect(parseFileSort(null)).toBeNull();
   });
 });
 

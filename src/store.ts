@@ -1,6 +1,13 @@
 import { create } from "zustand";
 
 import * as api from "./api";
+import {
+  DEFAULT_FILE_SORT,
+  loadFileSort,
+  parseFileSort,
+  saveFileSort,
+  type FileSort,
+} from "./fileSort";
 import { commandHistory } from "./history";
 import {
   adjacentPane,
@@ -24,6 +31,7 @@ import {
   samePanelDocks,
 } from "./panelDock";
 import { IS_MAC } from "./platform";
+import { PANEL_PREFERENCE_KEYS, SORT_STORAGE_KEY } from "./persistKeys";
 import {
   DEFAULT_SHORTCUTS,
   defaultShortcuts,
@@ -534,6 +542,14 @@ export interface AppSettings {
   rightClickAction: RightClickAction;
   /** Only the key bindings that differ from the platform defaults. */
   shortcuts: Partial<ShortcutBindings>;
+  /** Column order of the Filer and dual-pane file lists; see fileSort.ts. */
+  filerSort: FileSort;
+  /**
+   * Raw persisted panel preferences, keyed by their registered localStorage
+   * keys (see persistKeys.ts). Their owning modules validate and clamp on
+   * every load, so the file carries the stored values verbatim.
+   */
+  preferences: Record<string, unknown>;
 }
 
 interface AppStore {
@@ -555,6 +571,11 @@ interface AppStore {
   draggingTabId: string | null;
   dropTarget: DropTarget | null;
   gutterMode: GutterMode;
+  /**
+   * The column order of the Filer and the dual-pane browsers, shared so the
+   * three lists follow one choice (see `setFilerSort`).
+   */
+  filerSort: FileSort;
   theme: ThemeMode;
   panelFontSize: number;
   bufferFontSize: number;
@@ -722,6 +743,8 @@ interface AppStore {
   ) => void;
   resetPanelLayout: () => void;
   setGutterMode: (mode: GutterMode) => void;
+  /** One column order shared by the Filer and both dual-pane browsers. */
+  setFilerSort: (sort: FileSort) => void;
   setTheme: (theme: ThemeMode) => void;
   setPanelFontSize: (size: number) => void;
   setBufferFontSize: (size: number) => void;
@@ -882,6 +905,7 @@ export const useStore = create<AppStore>((set, get) => ({
   tabs: [],
   activeId: null,
   gutterMode: loadGutterMode(),
+  filerSort: loadFileSort(),
   theme: loadTheme(),
   panelFontSize: loadFontSize(PANEL_FONT_SIZE_KEY, PANEL_FONT_SIZE),
   bufferFontSize: loadFontSize(BUFFER_FONT_SIZE_KEY, BUFFER_FONT_SIZE),
@@ -1302,6 +1326,11 @@ export const useStore = create<AppStore>((set, get) => ({
     }
   },
 
+  setFilerSort(sort) {
+    set({ filerSort: sort });
+    saveFileSort(sort);
+  },
+
   setTheme(theme) {
     set({ theme });
     try {
@@ -1434,6 +1463,7 @@ export const useStore = create<AppStore>((set, get) => ({
       panels: { ...DEFAULT_PANELS },
       panelDocks: defaultPanelDocks(),
       gutterMode: "both",
+      filerSort: DEFAULT_FILE_SORT,
       theme: "dark",
       panelFontSize: PANEL_FONT_SIZE.default,
       bufferFontSize: BUFFER_FONT_SIZE.default,
@@ -1453,6 +1483,11 @@ export const useStore = create<AppStore>((set, get) => ({
       localStorage.removeItem(PANELS_KEY);
       localStorage.removeItem(PANEL_DOCKS_KEY);
       localStorage.removeItem(GUTTER_MODE_KEY);
+      localStorage.removeItem(SORT_STORAGE_KEY);
+      // Panel preferences kept outside the store reset by key; their owning
+      // modules fall back to their defaults on the next load (see
+      // persistKeys.ts).
+      for (const key of PANEL_PREFERENCE_KEYS) localStorage.removeItem(key);
       localStorage.removeItem(THEME_KEY);
       localStorage.removeItem(PANEL_FONT_SIZE_KEY);
       localStorage.removeItem(BUFFER_FONT_SIZE_KEY);
@@ -1483,6 +1518,21 @@ export const useStore = create<AppStore>((set, get) => ({
         bottom: [...state.panelDocks.bottom],
       },
       gutterMode: state.gutterMode,
+      filerSort: state.filerSort,
+      preferences: Object.fromEntries(
+        PANEL_PREFERENCE_KEYS.flatMap((key) => {
+          const raw = localStorage.getItem(key);
+          if (raw === null) return [];
+          // Most preferences are JSON; a few (the save level) are plain
+          // text. An unparseable value is carried as the string it is, and
+          // written back verbatim on import.
+          try {
+            return [[key, JSON.parse(raw)]];
+          } catch {
+            return [[key, raw]];
+          }
+        }),
+      ),
       theme: state.theme,
       panelFontSize: state.panelFontSize,
       bufferFontSize: state.bufferFontSize,
@@ -1511,6 +1561,26 @@ export const useStore = create<AppStore>((set, get) => ({
     if (theme) state.setTheme(theme);
     const gutterMode = parseGutterMode(values.gutterMode);
     if (gutterMode) state.setGutterMode(gutterMode);
+    const filerSort = parseFileSort(values.filerSort);
+    if (filerSort) state.setFilerSort(filerSort);
+    const preferences = values.preferences;
+    if (preferences && typeof preferences === "object" && !Array.isArray(preferences)) {
+      // Only registered keys are written, verbatim: every owning module
+      // validates and clamps its value when it loads it back.
+      for (const [key, value] of Object.entries(
+        preferences as Record<string, unknown>,
+      )) {
+        if (!PANEL_PREFERENCE_KEYS.includes(key) || value === undefined) continue;
+        try {
+          localStorage.setItem(
+            key,
+            typeof value === "string" ? value : JSON.stringify(value),
+          );
+        } catch {
+          // A blocked value is skipped; the rest of the import continues.
+        }
+      }
+    }
     const panels = parsePanels(values.panels, state.panels);
     if (panels) {
       set({ panels });

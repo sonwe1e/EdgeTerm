@@ -1,6 +1,7 @@
 import type { TransferOptions } from "./api";
+import { TRANSFER_OPTIONS_KEY } from "./persistKeys";
 
-const KEY = "edgeterm.transfer-options";
+const KEY = TRANSFER_OPTIONS_KEY;
 export const DEFAULT_TRANSFER_OPTIONS: TransferOptions = { requests: 32, chunkKib: 128, files: 8, durable: false };
 
 export function readTransferOptions(): TransferOptions {

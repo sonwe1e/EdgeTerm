@@ -100,3 +100,85 @@ describe("panel layout", () => {
     expect(useStore.getState().panelDocks.right).toEqual(["filer", "sessions"]);
   });
 });
+
+describe("filer sort preference", () => {
+  it("is shared through the store and travels with exports", () => {
+    useStore.getState().setFilerSort({ key: "size", direction: "desc" });
+    expect(useStore.getState().filerSort).toEqual({ key: "size", direction: "desc" });
+    expect(JSON.parse(localStorage.getItem("edgeterm.filerSort") ?? "null")).toEqual({
+      key: "size",
+      direction: "desc",
+    });
+
+    const exported = useStore.getState().exportSettings();
+    expect(exported.filerSort).toEqual({ key: "size", direction: "desc" });
+
+    useStore.getState().resetSettings();
+    expect(useStore.getState().filerSort).toEqual({ key: "name", direction: "asc" });
+    expect(localStorage.getItem("edgeterm.filerSort")).toBeNull();
+
+    useStore.getState().applySettings(exported);
+    expect(useStore.getState().filerSort).toEqual({ key: "size", direction: "desc" });
+
+    // A sort a settings file must never produce leaves the choice alone.
+    useStore.getState().applySettings({ filerSort: { key: "bogus", direction: "asc" } });
+    expect(useStore.getState().filerSort).toEqual({ key: "size", direction: "desc" });
+  });
+});
+
+describe("registered panel preferences", () => {
+  it("carry out with an export and back in with an import", () => {
+    localStorage.setItem("edgeterm.senderRepeat", JSON.stringify({ every: 120, times: 3 }));
+    localStorage.setItem("edgeterm.senderSaveLevel", "profile");
+    localStorage.setItem("edgeterm.filerOpenWith", JSON.stringify(["C:/tools/app.exe"]));
+    localStorage.setItem(
+      "edgeterm.transfer-options",
+      JSON.stringify({ requests: 8, chunkKib: 64, files: 2, durable: true }),
+    );
+    const exported = useStore.getState().exportSettings();
+    expect(exported.preferences).toEqual({
+      "edgeterm.senderRepeat": { every: 120, times: 3 },
+      "edgeterm.senderSaveLevel": "profile",
+      "edgeterm.filerOpenWith": ["C:/tools/app.exe"],
+      "edgeterm.transfer-options": { requests: 8, chunkKib: 64, files: 2, durable: true },
+    });
+
+    localStorage.clear();
+    useStore.getState().applySettings(exported);
+    expect(JSON.parse(localStorage.getItem("edgeterm.senderRepeat") ?? "null")).toEqual({
+      every: 120,
+      times: 3,
+    });
+    expect(localStorage.getItem("edgeterm.senderSaveLevel")).toBe("profile");
+    expect(JSON.parse(localStorage.getItem("edgeterm.filerOpenWith") ?? "null")).toEqual([
+      "C:/tools/app.exe",
+    ]);
+    expect(JSON.parse(localStorage.getItem("edgeterm.transfer-options") ?? "null")).toEqual({
+      requests: 8,
+      chunkKib: 64,
+      files: 2,
+      durable: true,
+    });
+  });
+
+  it("imports no key that is not registered, and resets them all", () => {
+    useStore.getState().applySettings({
+      preferences: { "edgeterm.not-registered": "value" },
+    });
+    expect(localStorage.getItem("edgeterm.not-registered")).toBeNull();
+
+    localStorage.setItem("edgeterm.senderRepeat", "1");
+    localStorage.setItem("edgeterm.senderSaveLevel", "1");
+    localStorage.setItem("edgeterm.filerOpenWith", "1");
+    localStorage.setItem("edgeterm.transfer-options", "1");
+    useStore.getState().resetSettings();
+    for (const key of [
+      "edgeterm.senderRepeat",
+      "edgeterm.senderSaveLevel",
+      "edgeterm.filerOpenWith",
+      "edgeterm.transfer-options",
+    ]) {
+      expect(localStorage.getItem(key)).toBeNull();
+    }
+  });
+});

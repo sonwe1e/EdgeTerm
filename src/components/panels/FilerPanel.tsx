@@ -15,16 +15,13 @@ import { revealCwdInFiler } from "../../actions";
 import * as api from "../../api";
 import { useFileTransfers } from "../../fileTransfers";
 import {
-  loadFileSort,
-  saveFileSort,
   sortFileEntries,
-  sortIndicator,
   toggleFileSort,
-  type FileSort,
   type SortKey,
 } from "../../fileSort";
 import { open as openDialog, save as saveDialog } from "../../nativeDialog";
 import { IS_MAC, IS_WINDOWS } from "../../platform";
+import { FILER_OPEN_WITH_KEY } from "../../persistKeys";
 import { chordLabel } from "../../shortcuts";
 import { tabTitle, useActiveTab, useStore } from "../../store";
 import { useStableCallback } from "../../useStableCallback";
@@ -32,6 +29,7 @@ import { ContextMenu, type MenuItem } from "../ContextMenu";
 import { DeleteEntryDialog } from "../DeleteEntryDialog";
 import { FileIcon } from "../FileIcon";
 import { Icon } from "../icons";
+import { SortIndicator } from "../SortIndicator";
 import { VirtualFileRows } from "../VirtualFileRows";
 import type { FileEntry, ThemeMode } from "../../types";
 
@@ -171,7 +169,11 @@ function FilerPanelBase() {
   const [path, setPath] = useState("");
   const [draft, setDraft] = useState("");
   const [entries, setEntries] = useState<FileEntry[]>([]);
-  const [sort, setSort] = useState<FileSort>(loadFileSort);
+  // The sort lives in the store so the Filer and both dual-pane browsers
+  // follow one choice as it changes, instead of each reading the stored
+  // preference once at mount and drifting apart.
+  const sort = useStore((s) => s.filerSort);
+  const setFilerSort = useStore((s) => s.setFilerSort);
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1203,11 +1205,7 @@ function FilerPanelBase() {
 
   /** Re-sorts the list for a clicked column caption and remembers the choice. */
   const sortBy = (key: SortKey) => {
-    setSort((current) => {
-      const next = toggleFileSort(current, key);
-      saveFileSort(next);
-      return next;
-    });
+    setFilerSort(toggleFileSort(useStore.getState().filerSort, key));
   };
 
   // The row callbacks go through stable identities (see useStableCallback)
@@ -1367,7 +1365,7 @@ function FilerPanelBase() {
           onClick={() => sortBy("name")}
           aria-label="Sort by name"
         >
-          Name{sortIndicator(sort, "name")}
+          Name<SortIndicator sort={sort} column="name" />
         </button>
         <button
           type="button"
@@ -1375,7 +1373,7 @@ function FilerPanelBase() {
           onClick={() => sortBy("modified")}
           aria-label="Sort by last modified"
         >
-          Modified{sortIndicator(sort, "modified")}
+          Modified<SortIndicator sort={sort} column="modified" />
         </button>
       </div>
 
@@ -1662,7 +1660,7 @@ const FilerEntryIcon = memo(function FilerEntryIcon({
 
 
 /** Applications the user has opened files with, most recent first. */
-const OPEN_WITH_KEY = "edgeterm.filerOpenWith";
+const OPEN_WITH_KEY = FILER_OPEN_WITH_KEY;
 const OPEN_WITH_LIMIT = 6;
 
 function loadOpenWithApps(): string[] {

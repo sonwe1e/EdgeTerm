@@ -7,17 +7,15 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type RefObject,
 } from "react";
 
 import * as api from "../api";
+import { createDragAutoScroll } from "../edgeScroll";
 import { useFileTransfers } from "../fileTransfers";
 import {
-  loadFileSort,
-  saveFileSort,
   sortFileEntries,
-  sortIndicator,
   toggleFileSort,
-  type FileSort,
   type SortKey,
 } from "../fileSort";
 import {
@@ -27,6 +25,7 @@ import {
   type PaneSide,
 } from "../paneDrop";
 import { createFrameGate } from "../frameGate";
+import { SortIndicator } from "./SortIndicator";
 import { useStore, type Tab } from "../store";
 import type { FileEntry, ThemeMode } from "../types";
 import { useStableCallback } from "../useStableCallback";
@@ -62,6 +61,8 @@ interface FileBrowserProps {
   error: string | null;
   actions?: ReactNode;
   side: PaneSide;
+  /** The scrolling row list, for the drag's edge auto-scroll; see FtpPane. */
+  listRef?: RefObject<HTMLDivElement | null>;
   /** The pointer-drag wiring; see FtpPane's `beginPress` / `dragMove`. */
   onItemPointerDown: (
     side: PaneSide,
@@ -236,7 +237,10 @@ export function FtpPane({ tab, active }: Props) {
    * The gate every landing shares: same-name checks with the target pane's
    * wording. False means stop — an error was shown or the user declined.
    * `moves` refuses a folder onto a same-named folder outright: a rename
-   * cannot merge the way an uploaded directory walk can.
+   * cannot merge the way an uploaded directory walk can. A same-named file
+   * is also refused for remote moves: the v3 SFTP rename (and most FTP
+   * servers' RNFR/RNTO) will not replace an existing target, so a
+   * "Replace?" prompt would promise an outcome the call cannot deliver.
    */
   const mayLand = (
     side: PaneSide,
@@ -262,6 +266,15 @@ export function FtpPane({ tab, active }: Props) {
       setError(`A ${side} folder named “${incoming.name}” already exists.`);
       return false;
     }
+    if (moves && side === "remote") {
+      setError(
+        `“${incoming.name}” already exists there, and the server's rename will not replace it; delete or rename the existing entry first.`,
+      );
+      return false;
+    }
+    // A local rename does replace a same-named file (POSIX rename(2) and
+    // Windows MoveFileExW both do), so for local moves the prompt below
+    // describes what will actually happen.
     const prompt = incoming.isDir
       ? `Merge into ${side} folder “${incoming.name}”? Existing files with the same names will be replaced.`
       : `Replace ${side} file “${incoming.name}”?`;
@@ -388,6 +401,11 @@ export function FtpPane({ tab, active }: Props) {
       return;
     }
     if (!mayLand(source.side, incoming, existing, true)) return;
+    // A move is a rename with no undo, and the drag that triggers it starts
+    // five pixels away from an ordinary click; say where it is going.
+    if (!window.confirm(`Move “${incoming.name}” into “${target.dir}”?`)) {
+      return;
+    }
 
     setError(null);
     try {
@@ -453,11 +471,28 @@ export function FtpPane({ tab, active }: Props) {
     // A scheduled hit test must not fire after the drag is over and light a
     // highlight nothing will clear.
     hoverGate.current?.cancel();
+    dragScroll.current?.stop();
     dragPressRef.current = null;
     draggedRef.current = null;
     setDragging(null);
     setDropHover(null);
   };
+
+  // A drag held at a list's top or bottom edge keeps that list scrolling
+  // (see edgeScroll.ts); the pointer position arrives with each gated hover
+  // pass, and the loop keeps itself alive only while it is near an edge.
+  const remoteListRef = useRef<HTMLDivElement>(null);
+  const localListRef = useRef<HTMLDivElement>(null);
+  const dragScroll = useRef<ReturnType<typeof createDragAutoScroll> | null>(
+    null,
+  );
+  if (dragScroll.current === null) {
+    dragScroll.current = createDragAutoScroll(() =>
+      [remoteListRef.current, localListRef.current].filter(
+        (element): element is HTMLDivElement => element !== null,
+      ),
+    );
+  }
 
   // The drop-target hit test runs once per frame on the pointer's latest
   // position, not per pointermove: `elementFromPoint` forces a layout when
@@ -466,6 +501,7 @@ export function FtpPane({ tab, active }: Props) {
   // nothing. See frameGate.ts.
   const hoverApply = useStableCallback((at: { x: number; y: number }) => {
     const hover = targetAt(at.x, at.y);
+    dragScroll.current?.update(at.x, at.y);
     setDropHover((current) =>
       current?.side === hover?.side && current?.dir === hover?.dir
         ? current
@@ -662,6 +698,7 @@ export function FtpPane({ tab, active }: Props) {
               title={`${protocolLabel} Server`}
               subtitle={tab.info.address}
               side="remote"
+              listRef={remoteListRef}
               onItemPointerDown={itemPointerDown}
               onItemPointerMove={itemPointerMove}
               onItemPointerUp={itemPointerUp}
@@ -734,6 +771,7 @@ export function FtpPane({ tab, active }: Props) {
               title="Local Computer"
               subtitle="This device"
               side="local"
+              listRef={localListRef}
               onItemPointerDown={itemPointerDown}
               onItemPointerMove={itemPointerMove}
               onItemPointerUp={itemPointerUp}
@@ -848,6 +886,7 @@ export function FileBrowser({
   error,
   actions,
   side,
+  listRef,
   onItemPointerDown,
   onItemPointerMove,
   onItemPointerUp,
@@ -863,7 +902,11 @@ export function FileBrowser({
   onActivate,
 }: FileBrowserProps) {
   const theme = useStore((s) => s.theme);
-  const [sort, setSort] = useState<FileSort>(loadFileSort);
+  // One shared choice for both browsers and the Filer panel (see the store's
+  // `filerSort`); reading the stored preference once per mount let the two
+  // panes drift apart after a change on either side.
+  const sort = useStore((s) => s.filerSort);
+  const setFilerSort = useStore((s) => s.setFilerSort);
   const sortedEntries = useMemo(
     () => sortFileEntries(entries, sort),
     [entries, sort],
@@ -871,11 +914,7 @@ export function FileBrowser({
 
   /** Re-sorts the list for a clicked column caption and remembers the choice. */
   const sortBy = (key: SortKey) => {
-    setSort((current) => {
-      const next = toggleFileSort(current, key);
-      saveFileSort(next);
-      return next;
-    });
+    setFilerSort(toggleFileSort(useStore.getState().filerSort, key));
   };
 
   return (
@@ -918,7 +957,7 @@ export function FileBrowser({
           onClick={() => sortBy("name")}
           aria-label="Sort by name"
         >
-          Name{sortIndicator(sort, "name")}
+          Name<SortIndicator sort={sort} column="name" />
         </button>
         <button
           type="button"
@@ -926,7 +965,7 @@ export function FileBrowser({
           onClick={() => sortBy("size")}
           aria-label="Sort by size"
         >
-          Size{sortIndicator(sort, "size")}
+          Size<SortIndicator sort={sort} column="size" />
         </button>
         <button
           type="button"
@@ -934,11 +973,12 @@ export function FileBrowser({
           onClick={() => sortBy("modified")}
           aria-label="Sort by last modified"
         >
-          Modified{sortIndicator(sort, "modified")}
+          Modified<SortIndicator sort={sort} column="modified" />
         </button>
       </div>
 
       <div
+        ref={listRef}
         className={`ftp-browser-list${dropHover != null && dropHover.side === side && dropHover.dir === path ? " is-drop-target" : ""}`}
         data-drop-side={side}
         data-drop-dir={path}
