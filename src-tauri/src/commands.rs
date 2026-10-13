@@ -611,6 +611,17 @@ pub async fn zmodem_read_chunk(path: String, offset: u64, length: u32) -> Result
     Ok(B64.encode(read_transfer_bytes(path, offset, length).await?))
 }
 
+#[tauri::command]
+pub async fn zmodem_read_bytes(
+    path: String,
+    offset: u64,
+    length: u32,
+) -> Result<tauri::ipc::Response> {
+    Ok(tauri::ipc::Response::new(
+        read_transfer_bytes(path, offset, length).await?,
+    ))
+}
+
 async fn read_transfer_bytes(path: String, offset: u64, length: u32) -> Result<Vec<u8>> {
     let length = length as usize;
     if length == 0 || length > ZMODEM_FILE_CHUNK_SIZE {
@@ -637,6 +648,12 @@ pub async fn zmodem_create_file(path: String) -> Result<()> {
 pub async fn zmodem_write_chunk(path: String, offset: u64, data: String) -> Result<()> {
     let bytes = B64.decode(data).map_err(err)?;
     write_transfer_bytes(path, offset, &bytes).await
+}
+
+#[tauri::command]
+pub async fn zmodem_write_bytes(request: tauri::ipc::Request<'_>) -> Result<()> {
+    let (target, bytes) = binary_request::<BinaryFileTarget>(&request)?;
+    write_transfer_bytes(target.path, target.offset, &bytes).await
 }
 
 async fn write_transfer_bytes(path: String, offset: u64, bytes: &[u8]) -> Result<()> {

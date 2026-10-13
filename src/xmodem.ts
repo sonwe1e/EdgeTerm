@@ -800,7 +800,7 @@ export class XmodemController {
   private activate(): XmodemTransfer {
     const transfer = new XmodemTransfer({
       send: (bytes) =>
-        api.writeSessionBinary(this.sessionId, api.bytesToBase64(bytes)),
+        api.writeSessionBytes(this.sessionId, bytes),
     });
     for (const bytes of this.held ?? []) transfer.consume(bytes);
     this.held = null;
