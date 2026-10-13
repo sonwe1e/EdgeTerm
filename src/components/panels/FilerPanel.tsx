@@ -13,6 +13,7 @@ import {
 
 import { revealCwdInFiler } from "../../actions";
 import * as api from "../../api";
+import { useFileTransfers } from "../../fileTransfers";
 import {
   loadFileSort,
   saveFileSort,
@@ -211,6 +212,10 @@ export function FilerPanel() {
   const transferClearTimer = useRef<number | null>(null);
   const transferRateSamples = useRef<TransferRateSample[]>([]);
   const activeTransfer = useRef<ActiveTransfer | null>(null);
+  const visibleTransferId = useRef<string | undefined>(undefined);
+  const ownsTransfer = (id: string | undefined) => visibleTransferId.current === id;
+  const backgroundTransfer = useFileTransfers((s) => s.jobs[activeTransfer.current?.id ?? ""]);
+  const listRequest = useRef(0);
 
   remoteIdRef.current = remoteId;
   offlineReasonRef.current = offlineReason;
@@ -234,6 +239,7 @@ export function FilerPanel() {
     activeTransfer.current = cancellable
       ? { id: api.newTransferId(), cancelled: false }
       : null;
+    visibleTransferId.current = activeTransfer.current?.id;
     setTransfer({
       kind,
       name,
@@ -291,7 +297,12 @@ export function FilerPanel() {
     );
   };
 
-  const finishTransfer = (status: "complete" | "error" | "cancelled") => {
+  const progressFor = (id: string | undefined) => (progress: api.TransferProgress) => {
+    if (ownsTransfer(id)) updateTransferProgress(progress);
+  };
+
+  const finishTransfer = (status: "complete" | "error" | "cancelled", id = visibleTransferId.current) => {
+    if (!ownsTransfer(id)) return;
     activeTransfer.current = null;
     setTransfer((current) =>
       current
@@ -327,8 +338,9 @@ export function FilerPanel() {
   };
 
   /** Ends the transfer a rejection belongs to: cancelled, or failed with `e`. */
-  const failTransfer = (e: unknown) => {
-    if (activeTransfer.current?.cancelled) {
+  const failTransfer = (e: unknown, id = visibleTransferId.current) => {
+    if (!ownsTransfer(id)) return;
+    if (activeTransfer.current?.cancelled || String(e).includes("transfer cancelled")) {
       finishTransfer("cancelled");
       return;
     }
@@ -344,7 +356,8 @@ export function FilerPanel() {
    */
   const load = useCallback(
     async (target: string, quiet = false): Promise<boolean> => {
-      if (offline) return false;
+      if (offline || remoteIdRef.current !== remoteId) return false;
+      const request = ++listRequest.current;
       setBusy(true);
       setError(null);
       try {
@@ -353,7 +366,7 @@ export function FilerPanel() {
           : await api.localList(target);
         // The user switched sessions while this was listing; showing it now
         // would put the previous session's files under the new one.
-        if (remoteIdRef.current !== remoteId) return false;
+        if (remoteIdRef.current !== remoteId || request !== listRequest.current) return false;
         setPath(listing.path);
         setDraft(listing.path);
         setEntries(listing.entries);
@@ -361,10 +374,10 @@ export function FilerPanel() {
         rememberPath(remoteId ?? LOCAL_SOURCE, listing.path);
         return true;
       } catch (e) {
-        if (!quiet) setError(String(e));
+        if (!quiet && request === listRequest.current && remoteIdRef.current === remoteId) setError(String(e));
         return false;
       } finally {
-        setBusy(false);
+        if (request === listRequest.current && remoteIdRef.current === remoteId) setBusy(false);
       }
     },
     [remoteId, offline],
@@ -466,7 +479,7 @@ export function FilerPanel() {
           remoteId,
           entry.path,
           target,
-          updateTransferProgress,
+          progressFor(transfer),
           transfer,
         );
       } else {
@@ -474,15 +487,15 @@ export function FilerPanel() {
           remoteId,
           entry.path,
           target,
-          updateTransferProgress,
+          progressFor(transfer),
           transfer,
         );
       }
-      finishTransfer("complete");
+      finishTransfer("complete", transfer);
     } catch (e) {
-      failTransfer(e);
+      failTransfer(e, transfer);
     } finally {
-      setBusy(false);
+      if (ownsTransfer(transfer)) setBusy(false);
     }
   };
 
@@ -494,39 +507,23 @@ export function FilerPanel() {
     busyRef.current = true;
     setBusy(true);
     setError(null);
+    const transfer = beginTransfer("upload", localPaths.length === 1 ? localFileName(localPaths[0]) : `${localPaths.length} items`, true);
     try {
-      for (const localPath of localPaths) {
-        const name = localFileName(localPath);
-        const isDirectory = await api.localIsDirectory(localPath);
-        const transfer = beginTransfer("upload", name, true);
-        if (isDirectory) {
-          await api.sftpUploadDirectory(
-            remoteId,
-            localPath,
-            joinRemote(destination, name),
-            updateTransferProgress,
-            transfer,
-          );
-        } else {
-          await api.sftpUpload(
-            remoteId,
-            localPath,
-            joinRemote(destination, name),
-            updateTransferProgress,
-            transfer,
-          );
-        }
-        finishTransfer("complete");
-      }
+      const items: api.TransferItem[] = localPaths.map((localPath) => ({
+        local: localPath, remote: joinRemote(destination, localFileName(localPath)),
+        upload: true,
+      }));
+      await api.transferFiles(remoteId, items, progressFor(transfer), transfer);
+      finishTransfer("complete", transfer);
       await load(destination);
     } catch (e) {
       // Reload first: it clears the error line, and what did arrive should
       // show.
       await load(destination);
-      failTransfer(e);
+      failTransfer(e, transfer);
     } finally {
-      busyRef.current = false;
-      setBusy(false);
+      if (ownsTransfer(transfer)) busyRef.current = false;
+      if (ownsTransfer(transfer)) setBusy(false);
     }
   };
 
@@ -696,7 +693,7 @@ export function FilerPanel() {
           sessionId,
           entry.path,
           destination,
-          updateTransferProgress,
+          progressFor(transfer),
           transfer,
         );
       } else {
@@ -704,19 +701,19 @@ export function FilerPanel() {
           sessionId,
           entry.path,
           destination,
-          updateTransferProgress,
+          progressFor(transfer),
           transfer,
         );
       }
-      finishTransfer("complete");
+      finishTransfer("complete", transfer);
     } catch (e) {
       failure = activeTransfer.current?.cancelled
         ? `${entry.name}: download cancelled`
         : String(e);
-      failTransfer(e);
+      failTransfer(e, transfer);
     } finally {
-      busyRef.current = false;
-      setBusy(false);
+      if (ownsTransfer(transfer)) busyRef.current = false;
+      if (ownsTransfer(transfer)) setBusy(false);
     }
     try {
       await api.finishPromisedFile(token, failure);
@@ -756,7 +753,7 @@ export function FilerPanel() {
           sessionId,
           entry.path,
           staged,
-          updateTransferProgress,
+          progressFor(transfer),
           transfer,
         );
       } else {
@@ -764,11 +761,11 @@ export function FilerPanel() {
           sessionId,
           entry.path,
           staged,
-          updateTransferProgress,
+          progressFor(transfer),
           transfer,
         );
       }
-      finishTransfer("complete");
+      finishTransfer("complete", transfer);
       if (pointerHeld.current) {
         await handToSystem(entry, [staged]);
       } else {
@@ -781,10 +778,10 @@ export function FilerPanel() {
       }
     } catch (e) {
       updateDragOut(null);
-      failTransfer(e);
+      failTransfer(e, transfer);
     } finally {
-      busyRef.current = false;
-      setBusy(false);
+      if (ownsTransfer(transfer)) busyRef.current = false;
+      if (ownsTransfer(transfer)) setBusy(false);
     }
   };
 
@@ -852,6 +849,7 @@ export function FilerPanel() {
   // Progress of remote files edited locally, whichever tab is active: the
   // footer shows the save going out, and a failure lands in the error line.
   remoteEditRef.current = (event) => {
+    if (activeTransfer.current) return;
     if (event.status === "uploading") {
       beginTransfer("sync", event.name);
     } else if (event.status === "synced") {
@@ -969,17 +967,17 @@ export function FilerPanel() {
         remoteId,
         entry.path,
         target,
-        updateTransferProgress,
+        progressFor(transfer),
         transfer,
       );
       await api.watchRemoteEdit(remoteId, target, entry.path);
-      finishTransfer("complete");
+      finishTransfer("complete", transfer);
       return target;
     } catch (e) {
-      failTransfer(e);
+      failTransfer(e, transfer);
       return null;
     } finally {
-      setBusy(false);
+      if (ownsTransfer(transfer)) setBusy(false);
     }
   };
 
@@ -1482,6 +1480,18 @@ export function FilerPanel() {
                       ? formatBytes(transfer.transferred)
                       : `${transferPercent}%`}
               </span>
+              {transfer.status === "running" && transfer.cancellable && (
+                <button type="button" className="panel-action filer-action"
+                  disabled={!backgroundTransfer || !["queued", "running", "retrying", "paused"].includes(backgroundTransfer.status)}
+                  onClick={() => {
+                    const id = activeTransfer.current?.id;
+                    if (id) void api.controlFileTransfer(id, backgroundTransfer?.status === "paused" ? "resume" : "pause").catch((e) => setError(String(e)));
+                  }}
+                  title={backgroundTransfer?.status === "paused" ? "Resume" : "Pause"}
+                  aria-label={backgroundTransfer?.status === "paused" ? "Resume transfer" : "Pause transfer"}>
+                  <Icon name={backgroundTransfer?.status === "paused" ? "play" : "debug-pause"} />
+                </button>
+              )}
               {transfer.status === "running" && transfer.cancellable && (
                 <button
                   className="panel-action filer-action filer-transfer-cancel"

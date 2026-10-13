@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use parking_lot::Mutex;
 use russh::client::{
@@ -16,22 +16,17 @@ use russh::keys::{Algorithm, HashAlg, PrivateKeyWithHashAlg, PublicKey};
 use russh::{
     cipher, kex, mac, AlgorithmKind, Channel, ChannelMsg, MethodKind, MethodSet, Names, Preferred,
 };
-use russh_sftp::client::error::Error as SftpError;
 use russh_sftp::client::SftpSession;
-use russh_sftp::protocol::{OpenFlags, StatusCode};
+use russh_sftp::protocol::OpenFlags;
 use tauri::AppHandle;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use super::auth::{AuthPrompter, Challenge};
 use super::recording::Recorder;
-use super::transfer::{
-    ensure_local_directory, plan_local_upload, safe_local_child, validate_local_file_target,
-    CancelFlag, ProgressReporter,
-};
 use super::{
     emit_state, join_remote, locale, sort_entries, OutputPump, SessionCommand, SftpRequest,
-    SftpResponse, TransferProgress,
+    SftpResponse,
 };
 use crate::error::{AppError, Result};
 use crate::model::{
@@ -39,8 +34,6 @@ use crate::model::{
     SessionProfile,
 };
 
-const TRANSFER_PROGRESS_INTERVAL: Duration = Duration::from_millis(50);
-const TRANSFER_CHUNK_SIZE: usize = 1024 * 1024;
 /// How often an SFTP-only session, which has no channel to read from, checks
 /// that its transport is still alive so a dropped connection is reported.
 const SFTP_HEALTH_INTERVAL: Duration = Duration::from_secs(5);
@@ -148,6 +141,8 @@ fn client_config() -> client::Config {
         keepalive_interval: Some(Duration::from_secs(30)),
         keepalive_max: 3,
         nodelay: true,
+        // Match the bounded transfer pipeline on high-latency links.
+        window_size: 8 * 1024 * 1024,
         preferred: Preferred {
             kex: Cow::Owned([KEX_ORDER, LEGACY_KEX, KEX_EXTENSIONS].concat()),
             cipher: Cow::Owned([CIPHER_ORDER, LEGACY_CIPHERS].concat()),
@@ -465,6 +460,30 @@ impl Endpoint {
 }
 
 impl SharedTransport {
+    pub async fn transfer_channel(&self) -> Result<russh::ChannelStream<Msg>> {
+        let mut channel = self.handle.channel_open_session().await?;
+        channel.request_subsystem(true, "sftp").await?;
+        let answer = tokio::time::timeout(SFTP_SUBSYSTEM_TIMEOUT, async {
+            loop {
+                match channel.wait().await {
+                    Some(ChannelMsg::Success) => return true,
+                    Some(ChannelMsg::Failure | ChannelMsg::Close | ChannelMsg::Eof) | None => {
+                        return false
+                    }
+                    _ => {}
+                }
+            }
+        })
+        .await;
+        if answer != Ok(true) {
+            let _ = channel.close().await;
+            return Err(AppError::new(
+                "the server did not accept the sftp subsystem",
+            ));
+        }
+        Ok(channel.into_stream())
+    }
+
     /// The transports that could only connect on legacy algorithms — this
     /// one and the jump hosts it runs over.
     pub fn legacy_algorithms(&self) -> &[LegacyAlgorithms] {
@@ -1314,7 +1333,7 @@ pub fn spawn(
         let handle = transport.handle.clone();
         let (mut reader, writer) = channel.split();
         let mut pump = OutputPump::new(output, recorder);
-        let mut sftp: Option<Arc<SftpSession>> = None;
+        let sftp = Arc::new(tokio::sync::Mutex::new(None));
         let mut exit_status: Option<u32> = None;
         // Set when the frontend asked for the close; see `emit_state`.
         let mut close_requested = false;
@@ -1356,18 +1375,11 @@ pub fn spawn(
                             let _ = writer.window_change(cols as u32, rows as u32, 0, 0).await;
                         }
                         Some(SessionCommand::Sftp { request, reply }) => {
-                            match ensure_sftp(&handle, &mut sftp).await {
-                                Ok(session) => {
-                                    // Run off the session loop so a large transfer
-                                    // never stalls terminal output.
-                                    tauri::async_runtime::spawn(async move {
-                                        let _ = reply.send(run_sftp(session, request).await);
-                                    });
-                                }
-                                Err(e) => {
-                                    let _ = reply.send(Err(e));
-                                }
-                            }
+                            let transport = transport.clone();
+                            let slot = sftp.clone();
+                            tauri::async_runtime::spawn(async move {
+                                let _ = reply.send(browse_sftp(transport, slot, request).await);
+                            });
                         }
                         Some(SessionCommand::QueryCwd { reply }) => {
                             // Its own exec channel, off the session loop, so
@@ -1421,7 +1433,7 @@ pub fn spawn_sftp(
     tauri::async_runtime::spawn(async move {
         let SftpConnection { transport } = conn;
         let handle = transport.handle.clone();
-        let mut sftp: Option<Arc<SftpSession>> = None;
+        let sftp = Arc::new(tokio::sync::Mutex::new(None));
         // Set when the frontend asked for the close; see `emit_state`.
         let mut close_requested = false;
 
@@ -1430,18 +1442,11 @@ pub fn spawn_sftp(
                 cmd = rx.recv() => {
                     match cmd {
                         Some(SessionCommand::Sftp { request, reply }) => {
-                            match ensure_sftp(&handle, &mut sftp).await {
-                                Ok(session) => {
-                                    // Run off the session loop so a large
-                                    // transfer never stalls the next request.
-                                    tauri::async_runtime::spawn(async move {
-                                        let _ = reply.send(run_sftp(session, request).await);
-                                    });
-                                }
-                                Err(e) => {
-                                    let _ = reply.send(Err(e));
-                                }
-                            }
+                            let transport = transport.clone();
+                            let slot = sftp.clone();
+                            tauri::async_runtime::spawn(async move {
+                                let _ = reply.send(browse_sftp(transport, slot, request).await);
+                            });
                         }
                         Some(SessionCommand::Close) | None => {
                             close_requested = true;
@@ -1518,6 +1523,37 @@ async fn remote_cwd(handle: Arc<Handle<Client>>) -> Result<String> {
         &String::from_utf8_lossy(&stderr),
         status,
     )
+}
+
+async fn browse_sftp(
+    transport: Arc<SharedTransport>,
+    slot: Arc<tokio::sync::Mutex<Option<Arc<SftpSession>>>>,
+    request: SftpRequest,
+) -> Result<SftpResponse> {
+    let session = {
+        let mut cached = slot.lock().await;
+        tokio::time::timeout(
+            Duration::from_secs(10),
+            ensure_sftp(&transport.handle, &mut cached),
+        )
+        .await
+        .map_err(|_| AppError::new("SFTP initialization timed out"))??
+    };
+    let result = tokio::time::timeout(Duration::from_secs(30), run_sftp(session.clone(), request))
+        .await
+        .unwrap_or_else(|_| Err(AppError::new("SFTP operation timed out")));
+    if result.is_err() {
+        let mut cached = slot.lock().await;
+        if cached
+            .as_ref()
+            .is_some_and(|current| Arc::ptr_eq(current, &session))
+        {
+            // Next browse operation opens a fresh subsystem. Other requests
+            // holding this session can still finish; never replay mutations.
+            *cached = None;
+        }
+    }
+    result
 }
 
 async fn ensure_sftp(
@@ -1625,341 +1661,7 @@ async fn run_sftp(sftp: Arc<SftpSession>, request: SftpRequest) -> Result<SftpRe
             sftp.rename(from, to).await?;
             Ok(SftpResponse::Done)
         }
-        SftpRequest::Download {
-            remote,
-            local,
-            progress,
-            cancel,
-        } => {
-            download_file(&sftp, &remote, &local, &progress, &cancel).await?;
-            Ok(SftpResponse::Done)
-        }
-        SftpRequest::DownloadDirectory {
-            remote,
-            local,
-            progress,
-            cancel,
-        } => {
-            download_directory(&sftp, &remote, &local, &progress, &cancel).await?;
-            Ok(SftpResponse::Done)
-        }
-        SftpRequest::Upload {
-            local,
-            remote,
-            progress,
-            cancel,
-        } => {
-            upload_file(&sftp, &local, &remote, &progress, &cancel).await?;
-            Ok(SftpResponse::Done)
-        }
-        SftpRequest::UploadDirectory {
-            local,
-            remote,
-            progress,
-            cancel,
-        } => {
-            upload_directory(&sftp, &local, &remote, &progress, &cancel).await?;
-            Ok(SftpResponse::Done)
-        }
     }
-}
-
-async fn download_file(
-    sftp: &SftpSession,
-    remote: &str,
-    local: &str,
-    progress: &tauri::ipc::Channel<TransferProgress>,
-    cancel: &CancelFlag,
-) -> Result<()> {
-    let total = sftp.metadata(remote).await?.size.unwrap_or(0);
-    let mut last_report = Instant::now();
-
-    report_transfer_progress(progress, 0, total);
-    let transferred = copy_remote_file(sftp, remote, Path::new(local), cancel, |transferred| {
-        if last_report.elapsed() >= TRANSFER_PROGRESS_INTERVAL {
-            report_transfer_progress(progress, transferred, total);
-            last_report = Instant::now();
-        }
-    })
-    .await?;
-    report_transfer_progress(progress, transferred, total);
-    Ok(())
-}
-
-struct SftpDownloadJob {
-    remote: String,
-    local: PathBuf,
-}
-
-async fn download_directory(
-    sftp: &SftpSession,
-    remote: &str,
-    local: &str,
-    progress: &tauri::ipc::Channel<TransferProgress>,
-    cancel: &CancelFlag,
-) -> Result<()> {
-    let local_root = PathBuf::from(local);
-    let mut pending = vec![(remote.to_string(), local_root.clone())];
-    let mut directories = vec![local_root];
-    let mut files = Vec::new();
-    let mut total = 0_u64;
-
-    // Metadata-only plan first so progress covers the whole tree. Contents
-    // are still copied one file at a time through the fixed 1 MiB buffer.
-    while let Some((remote_dir, local_dir)) = pending.pop() {
-        cancel.check()?;
-        for entry in sftp.read_dir(remote_dir.clone()).await? {
-            let name = entry.file_name();
-            if matches!(name.as_str(), "." | "..") {
-                continue;
-            }
-            let local_child = safe_local_child(&local_dir, &name)?;
-            let remote_child = join_remote(&remote_dir, &name);
-            let mut file_type = entry.file_type();
-            let mut size = entry.metadata().size.unwrap_or(0);
-            if file_type.is_symlink() {
-                // Follow links to files; skip dangling links and links to
-                // directories, which could loop back into an ancestor.
-                match sftp.metadata(remote_child.clone()).await {
-                    Ok(target) => {
-                        file_type = target.file_type();
-                        size = target.size.unwrap_or(0);
-                    }
-                    Err(SftpError::Status(status))
-                        if status.status_code == StatusCode::NoSuchFile =>
-                    {
-                        continue
-                    }
-                    Err(error) => return Err(error.into()),
-                }
-                if file_type.is_dir() {
-                    continue;
-                }
-            }
-
-            if file_type.is_dir() {
-                directories.push(local_child.clone());
-                pending.push((remote_child, local_child));
-            } else {
-                total = total.checked_add(size).ok_or_else(|| {
-                    AppError::new("remote folder is too large to report transfer progress")
-                })?;
-                files.push(SftpDownloadJob {
-                    remote: remote_child,
-                    local: local_child,
-                });
-            }
-        }
-    }
-
-    let files = tokio::task::spawn_blocking(move || -> Result<Vec<SftpDownloadJob>> {
-        for directory in &directories {
-            ensure_local_directory(directory)?;
-        }
-        for file in &files {
-            validate_local_file_target(&file.local)?;
-        }
-        Ok(files)
-    })
-    .await
-    .map_err(|error| AppError::new(format!("local folder preparation failed: {error}")))??;
-
-    let mut reporter = ProgressReporter::begin(progress, total);
-    let mut transferred = 0_u64;
-    for file in files {
-        let completed_before_file = transferred;
-        let copied = copy_remote_file(
-            sftp,
-            &file.remote,
-            &file.local,
-            cancel,
-            |file_transferred| {
-                reporter.update(completed_before_file.saturating_add(file_transferred));
-            },
-        )
-        .await?;
-        transferred = transferred.saturating_add(copied);
-    }
-    reporter.finish(transferred);
-    Ok(())
-}
-
-async fn copy_remote_file<F>(
-    sftp: &SftpSession,
-    remote: &str,
-    local: &Path,
-    cancel: &CancelFlag,
-    on_chunk: F,
-) -> Result<u64>
-where
-    F: FnMut(u64),
-{
-    let mut source = sftp.open(remote).await?;
-    let mut target = tokio::fs::File::create(local).await?;
-    let copied = copy_in_chunks(&mut source, &mut target, cancel, on_chunk).await;
-    let transferred = match copied {
-        Ok(transferred) => transferred,
-        Err(error) => {
-            // A cancelled copy leaves nothing behind: the truncated file
-            // would pass for the real one.
-            if cancel.is_cancelled() {
-                let _ = source.close().await;
-                drop(target);
-                let _ = tokio::fs::remove_file(local).await;
-            }
-            return Err(error.into());
-        }
-    };
-    target.flush().await?;
-    source.close().await?;
-    Ok(transferred)
-}
-
-async fn upload_file(
-    sftp: &SftpSession,
-    local: &str,
-    remote: &str,
-    progress: &tauri::ipc::Channel<TransferProgress>,
-    cancel: &CancelFlag,
-) -> Result<()> {
-    let metadata = tokio::fs::metadata(local).await?;
-    if !metadata.is_file() {
-        return Err(AppError::new("only regular files can be uploaded"));
-    }
-    let total = metadata.len();
-    let mut last_report = Instant::now();
-
-    report_transfer_progress(progress, 0, total);
-    let transferred = copy_local_file(sftp, Path::new(local), remote, cancel, |transferred| {
-        if last_report.elapsed() >= TRANSFER_PROGRESS_INTERVAL {
-            report_transfer_progress(progress, transferred, total);
-            last_report = Instant::now();
-        }
-    })
-    .await?;
-    report_transfer_progress(progress, transferred, total);
-    Ok(())
-}
-
-async fn upload_directory(
-    sftp: &SftpSession,
-    local: &str,
-    remote: &str,
-    progress: &tauri::ipc::Channel<TransferProgress>,
-    cancel: &CancelFlag,
-) -> Result<()> {
-    let local_root = PathBuf::from(local);
-    let remote_root = remote.to_string();
-    let plan = tokio::task::spawn_blocking(move || plan_local_upload(&local_root, &remote_root))
-        .await
-        .map_err(|error| AppError::new(format!("local folder scan failed: {error}")))??;
-
-    for directory in &plan.directories {
-        cancel.check()?;
-        ensure_remote_directory(sftp, directory).await?;
-    }
-
-    let mut reporter = ProgressReporter::begin(progress, plan.total);
-    let mut transferred = 0_u64;
-    for file in plan.files {
-        let completed_before_file = transferred;
-        let copied = copy_local_file(
-            sftp,
-            &file.local,
-            &file.remote,
-            cancel,
-            |file_transferred| {
-                reporter.update(completed_before_file.saturating_add(file_transferred));
-            },
-        )
-        .await?;
-        transferred = transferred.saturating_add(copied);
-    }
-    reporter.finish(transferred);
-    Ok(())
-}
-
-/// Accepts an existing remote directory so an upload can merge into it, and
-/// refuses to write a tree through anything that is not a directory.
-async fn ensure_remote_directory(sftp: &SftpSession, path: &str) -> Result<()> {
-    match sftp.metadata(path.to_string()).await {
-        Ok(metadata) if metadata.file_type().is_dir() => Ok(()),
-        Ok(_) => Err(AppError::new(format!(
-            "remote path is not a folder: {path}"
-        ))),
-        Err(SftpError::Status(status)) if status.status_code == StatusCode::NoSuchFile => {
-            sftp.create_dir(path.to_string()).await?;
-            Ok(())
-        }
-        Err(error) => Err(error.into()),
-    }
-}
-
-async fn copy_local_file<F>(
-    sftp: &SftpSession,
-    local: &Path,
-    remote: &str,
-    cancel: &CancelFlag,
-    on_chunk: F,
-) -> Result<u64>
-where
-    F: FnMut(u64),
-{
-    let mut source = tokio::fs::File::open(local).await?;
-    let mut target = sftp.create(remote).await?;
-    let copied = copy_in_chunks(&mut source, &mut target, cancel, on_chunk).await;
-    let transferred = match copied {
-        Ok(transferred) => transferred,
-        Err(error) => {
-            // A cancelled upload takes its half-written file off the server
-            // too, once the handle is closed.
-            if cancel.is_cancelled() {
-                let _ = target.shutdown().await;
-                let _ = sftp.remove_file(remote).await;
-            }
-            return Err(error.into());
-        }
-    };
-    target.shutdown().await?;
-    Ok(transferred)
-}
-
-/// Streams bytes through a fixed-size buffer so transfer memory usage is
-/// independent of the file size. Stops between chunks once `cancel` is
-/// raised, with the `Interrupted` error `CancelFlag::check_io` describes.
-async fn copy_in_chunks<R, W, F>(
-    source: &mut R,
-    target: &mut W,
-    cancel: &CancelFlag,
-    mut on_chunk: F,
-) -> std::io::Result<u64>
-where
-    R: AsyncRead + Unpin,
-    W: AsyncWrite + Unpin,
-    F: FnMut(u64),
-{
-    let mut buffer = vec![0; TRANSFER_CHUNK_SIZE];
-    let mut transferred = 0;
-
-    loop {
-        cancel.check_io()?;
-        let count = source.read(&mut buffer).await?;
-        if count == 0 {
-            return Ok(transferred);
-        }
-
-        target.write_all(&buffer[..count]).await?;
-        transferred += count as u64;
-        on_chunk(transferred);
-    }
-}
-
-fn report_transfer_progress(
-    progress: &tauri::ipc::Channel<TransferProgress>,
-    transferred: u64,
-    total: u64,
-) {
-    let _ = progress.send(TransferProgress { transferred, total });
 }
 
 fn expand_tilde(path: &str) -> String {
@@ -1978,12 +1680,11 @@ mod tests {
     use russh::keys::PublicKey;
 
     use super::{
-        auth_failure, authenticate, client_config, connect, connect_on, connect_sftp,
-        copy_in_chunks, ensure_sftp, handshake_failure, legacy_choices, open_shell,
-        replace_host_key, run_sftp, saved_answer, verify_host_key, AuthPrompter, CancelFlag,
-        Client, ConnectOutcome, Endpoint, Handle, HandshakeError, Hops, LegacyRecord, Prompt,
-        SftpConnectOutcome, SftpRequest, SftpResponse, SharedTransport, SshTransports,
-        SAVED_PASSWORD_REJECTED, TRANSFER_CHUNK_SIZE,
+        auth_failure, authenticate, client_config, connect, connect_on, connect_sftp, ensure_sftp,
+        handshake_failure, legacy_choices, open_shell, replace_host_key, run_sftp, saved_answer,
+        verify_host_key, AuthPrompter, Client, ConnectOutcome, Endpoint, Handle, HandshakeError,
+        Hops, LegacyRecord, Prompt, SftpConnectOutcome, SftpRequest, SftpResponse, SharedTransport,
+        SshTransports, SAVED_PASSWORD_REJECTED,
     };
     use crate::model::{AuthKind, AuthPromptField, SessionKind, SessionProfile};
     use crate::session::auth::CannedAnswers;
@@ -2174,75 +1875,6 @@ mod tests {
         assert!(error.to_string().contains("jump host"), "{error}");
     }
 
-    /// End-to-end check of a cancelled download against a real server, so
-    /// it is ignored by default. Run it with
-    /// `EDGETERM_TEST_TARGET=user@host:port EDGETERM_TEST_KEY=/path/to/key
-    /// EDGETERM_TEST_REMOTE_FILE=/path/on/server cargo test -- --ignored
-    /// cancelled_download`. The remote file must take longer than a
-    /// progress interval to copy: a few hundred MB on a local server.
-    #[tokio::test]
-    #[ignore]
-    async fn a_cancelled_download_removes_its_partial_copy() {
-        let target = profile_from_env("EDGETERM_TEST_TARGET");
-        let remote = std::env::var("EDGETERM_TEST_REMOTE_FILE")
-            .expect("EDGETERM_TEST_REMOTE_FILE names a large remote file");
-        let scratch = KnownHosts::new();
-        let home = scratch.path().parent().expect("scratch dir").to_path_buf();
-        std::fs::create_dir_all(home.join(".ssh")).expect("create .ssh");
-        std::env::set_var("HOME", &home);
-        let user = Mutex::new(CannedAnswers::default());
-        let prompter = AuthPrompter::canned(&user);
-
-        let sftp = match connect_sftp(&target, &[], &prompter)
-            .await
-            .expect("sftp connection")
-        {
-            SftpConnectOutcome::Ready(conn) => conn,
-            SftpConnectOutcome::HostKeyChanged(change) => panic!("{}", change.message),
-        };
-        let mut slot = None;
-        let session = ensure_sftp(&sftp.transport.handle, &mut slot)
-            .await
-            .expect("sftp subsystem");
-
-        // The first report is the 0-byte start; the second arrives once a
-        // progress interval of copying has landed, and cancels the rest.
-        let local = home.join("partial.bin");
-        let cancel = CancelFlag::default();
-        let reports = Arc::new(Mutex::new(0_u32));
-        let progress = {
-            let cancel = cancel.clone();
-            let reports = reports.clone();
-            tauri::ipc::Channel::new(move |_| {
-                let mut reports = reports.lock();
-                *reports += 1;
-                if *reports == 2 {
-                    cancel.cancel();
-                }
-                Ok(())
-            })
-        };
-        let outcome = run_sftp(
-            session,
-            SftpRequest::Download {
-                remote,
-                local: local.to_string_lossy().into_owned(),
-                progress,
-                cancel,
-            },
-        )
-        .await;
-        drop(sftp);
-
-        let error = outcome.expect_err("the download stops").to_string();
-        assert!(error.contains("transfer cancelled"), "{error}");
-        assert!(
-            *reports.lock() >= 2,
-            "the copy ran long enough to be cancelled"
-        );
-        assert!(!local.exists(), "the partial copy is removed");
-    }
-
     #[test]
     fn unknown_host_is_learned_and_then_recognised() {
         let file = KnownHosts::new();
@@ -2324,54 +1956,6 @@ mod tests {
         assert_eq!(file.entries().len(), 2);
     }
 
-    #[tokio::test]
-    async fn copy_in_chunks_streams_large_inputs_with_a_bounded_buffer() {
-        let payload = vec![0x5a; TRANSFER_CHUNK_SIZE * 3 + 17];
-        let mut source = payload.as_slice();
-        let mut target = Vec::new();
-        let mut checkpoints = Vec::new();
-
-        let transferred =
-            copy_in_chunks(&mut source, &mut target, &CancelFlag::default(), |total| {
-                checkpoints.push(total);
-            })
-            .await
-            .expect("copy succeeds");
-
-        assert_eq!(transferred, payload.len() as u64);
-        assert_eq!(target, payload);
-        assert_eq!(checkpoints.len(), 4);
-        assert!(
-            checkpoints
-                .windows(2)
-                .all(|pair| pair[1] - pair[0] <= TRANSFER_CHUNK_SIZE as u64),
-            "no transfer step may exceed the fixed-size buffer"
-        );
-    }
-
-    #[tokio::test]
-    async fn a_cancelled_copy_stops_at_the_next_chunk() {
-        let payload = vec![0x5a; TRANSFER_CHUNK_SIZE * 3];
-        let mut source = payload.as_slice();
-        let mut target = Vec::new();
-        let cancel = CancelFlag::default();
-
-        let error = copy_in_chunks(&mut source, &mut target, &cancel, |_| cancel.cancel())
-            .await
-            .expect_err("the copy stops once the flag is raised");
-
-        assert_eq!(error.kind(), std::io::ErrorKind::Interrupted);
-        assert_eq!(
-            target.len(),
-            TRANSFER_CHUNK_SIZE,
-            "the chunk in flight still completes"
-        );
-    }
-
-    // --- one connection, several sessions -------------------------------------
-
-    /// A server that lets anyone in and counts what it is asked for, so a
-    /// test can tell one login and two channels from two logins.
     #[derive(Clone, Default)]
     struct ShellServer {
         logins: Arc<Mutex<usize>>,

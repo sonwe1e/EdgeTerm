@@ -10,6 +10,7 @@ import {
 } from "react";
 
 import * as api from "../api";
+import { useFileTransfers } from "../fileTransfers";
 import {
   loadFileSort,
   saveFileSort,
@@ -46,7 +47,7 @@ interface TransferState {
   name: string;
   transferred: number;
   total: number;
-  status: "running" | "complete" | "error";
+  status: "running" | "complete" | "error" | "cancelled";
   message?: string;
 }
 
@@ -104,9 +105,12 @@ export function FtpPane({ tab, active }: Props) {
   const [localLoading, setLocalLoading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const localRequest = useRef(0);
+  const remoteRequest = useRef(0);
 
   const [transferring, setTransferring] = useState(false);
   const [transfer, setTransfer] = useState<TransferState | null>(null);
+  const transferId = useRef<string | null>(null);
+  const transferJob = useFileTransfers((s) => s.jobs[transferId.current ?? ""]);
   // The entry a pointer drag is carrying, plus the press that may become
   // one. Refs are what the gesture handlers read; the states re-render the
   // rows so the dragged one can dim and the target can highlight.
@@ -126,18 +130,21 @@ export function FtpPane({ tab, active }: Props) {
 
   const loadRemote = useCallback(
     async (target: string) => {
+      const request = ++remoteRequest.current;
       setRemoteLoading(true);
       setRemoteError(null);
       try {
         const listing = await api.sftpList(sessionId, target);
+        if (request !== remoteRequest.current) return;
         setRemotePath(listing.path);
         setRemoteDraft(listing.path);
         setRemoteEntries(listing.entries);
         setRemoteSelected(null);
       } catch (error) {
+        if (request !== remoteRequest.current) return;
         setRemoteError(friendlyFtpError(error));
       } finally {
-        setRemoteLoading(false);
+        if (request === remoteRequest.current) setRemoteLoading(false);
       }
     },
     [sessionId],
@@ -183,6 +190,8 @@ export function FtpPane({ tab, active }: Props) {
 
     return () => {
       cancelled = true;
+      remoteRequest.current++;
+      localRequest.current++;
     };
   }, [loadLocal, loadRemote, sessionId, tab.state]);
 
@@ -274,6 +283,7 @@ export function FtpPane({ tab, active }: Props) {
 
     setRemoteError(null);
     setTransferring(true);
+    transferId.current = api.newTransferId();
     setTransfer({
       direction: "upload",
       name: incoming.name,
@@ -289,9 +299,10 @@ export function FtpPane({ tab, active }: Props) {
           incoming.path,
           destination,
           updateProgress,
+          transferId.current,
         );
       } else {
-        await api.sftpUpload(sessionId, incoming.path, destination, updateProgress);
+        await api.sftpUpload(sessionId, incoming.path, destination, updateProgress, transferId.current);
       }
       setTransfer((current) =>
         current ? { ...current, status: "complete" } : current,
@@ -300,10 +311,11 @@ export function FtpPane({ tab, active }: Props) {
     } catch (error) {
       setTransfer((current) =>
         current
-          ? { ...current, status: "error", message: String(error) }
+          ? { ...current, status: String(error).includes("transfer cancelled") ? "cancelled" : "error", message: String(error) }
           : current,
       );
     } finally {
+      transferId.current = null;
       setTransferring(false);
     }
   };
@@ -323,6 +335,7 @@ export function FtpPane({ tab, active }: Props) {
 
     setLocalError(null);
     setTransferring(true);
+    transferId.current = api.newTransferId();
     setTransfer({
       direction: "download",
       name: incoming.name,
@@ -338,9 +351,10 @@ export function FtpPane({ tab, active }: Props) {
           incoming.path,
           destination,
           updateProgress,
+          transferId.current,
         );
       } else {
-        await api.sftpDownload(sessionId, incoming.path, destination, updateProgress);
+        await api.sftpDownload(sessionId, incoming.path, destination, updateProgress, transferId.current);
       }
       setTransfer((current) =>
         current ? { ...current, status: "complete" } : current,
@@ -349,10 +363,11 @@ export function FtpPane({ tab, active }: Props) {
     } catch (error) {
       setTransfer((current) =>
         current
-          ? { ...current, status: "error", message: String(error) }
+          ? { ...current, status: String(error).includes("transfer cancelled") ? "cancelled" : "error", message: String(error) }
           : current,
       );
     } finally {
+      transferId.current = null;
       setTransferring(false);
     }
   };
@@ -778,6 +793,8 @@ export function FtpPane({ tab, active }: Props) {
                       ? "Complete"
                       : transfer.status === "error"
                         ? "Failed"
+                        : transfer.status === "cancelled"
+                          ? "Cancelled"
                         : transfer.direction === "upload"
                           ? "Uploading"
                           : "Downloading"}
@@ -801,6 +818,14 @@ export function FtpPane({ tab, active }: Props) {
                 {transfer.message && (
                   <div className="ftp-transfer-error">{transfer.message}</div>
                 )}
+                {transferring && transferId.current && <div className="transfer-job-actions">
+                  <span>{transferJob?.status === "paused" ? "Paused" : transferJob?.phase}</span>
+                  <button type="button" disabled={!transferJob || !["queued", "running", "retrying", "paused"].includes(transferJob.status)}
+                    onClick={() => void api.controlFileTransfer(transferId.current!, transferJob?.status === "paused" ? "resume" : "pause").catch((e) => setRemoteError(String(e)))}>
+                    {transferJob?.status === "paused" ? "Resume" : "Pause"}
+                  </button>
+                  <button type="button" onClick={() => void api.cancelTransfer(transferId.current!).catch((e) => setRemoteError(String(e)))}>Cancel</button>
+                </div>}
               </>
             ) : (
               <span>{`Select a local file or folder to upload, or a ${protocolLabel} file or folder to download.`}</span>

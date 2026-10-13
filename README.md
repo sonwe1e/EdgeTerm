@@ -32,6 +32,7 @@ A small, fast terminal, SSH, Telnet, SFTP, FTP and serial client built with **Ru
 - **Readable output**: a timestamp and line-number gutter, and semantic coloring of IPs, URLs, log levels, HTTP methods, paths, sizes and more.
 - **Split panes and tabs**: split right or down, drag tabs between panes, and see at a glance which background tab is busy or done.
 - **Filer**: browse over SFTP, FTP or the local disk, with drag and drop to and from your desktop.
+- **Background transfers**: Filer and the dual-pane browser share **Transfers** in the status bar, with bounded file concurrency, pause/resume, cancellation, failed-file retries and automatic reconnect attempts. Files are staged beside their destination and replaced only after completion.
 - **Sender**: saved commands and multi-line scripts, sent to one session or all of them, optionally on a timer.
 - **File transfer in the terminal**: ZMODEM (`rz` / `sz`) and XMODEM.
 - **Everyday details**: themes, fonts and cursor style, custom encodings and locale, session recording, Copy on Select, a warning before multi-line pastes, rebindable shortcuts, and export / import of all settings.
@@ -55,9 +56,16 @@ Download from [Releases](https://github.com/miskin-lee/EdgeTerm/releases):
 
 1. **Session → New Session…** (`⌘N` / `Alt+N`) creates a session; double-click it in the Session panel to connect. Right-click a session to edit, duplicate, move or delete it.
 2. The **Filer** on the right follows the active tab. Drop files onto it to upload, drag entries out to download, or press `⌘J` / `Ctrl+Shift+J` to jump to the shell's working directory.
+
 3. The **Sender** at the bottom sends text to the current session or to all sessions. Save frequently used commands as tags.
 4. **Split Right / Split Down** is on the tab's context menu and in **View**. Drag a tab onto another pane to move it there.
 5. **Edit** holds the copy/paste behavior (right click, Copy on Select, OSC 52), and **View** holds the theme, fonts and **Keyboard Shortcuts…**.
+
+### File transfers
+
+File jobs continue across tabs while the app remains open. **Pause** retains partial files and checkpoints; **Resume** validates the source and transferred prefix before continuing. **Cancel** cleans up owned partial files, reporting retained files when the server is unreachable so cleanup can be retried. Jobs are not automatically restored after an app restart. If reconnecting requires interactive authentication, reconnect the session first, then retry the job.
+
+Transfer settings apply to new jobs. SFTP defaults to 32 concurrent data requests, 128 KiB chunks and 4 concurrent files, reduced to the server's advertised limits; each job transfers at most two large files simultaneously. FTP uses separate connections with at most two concurrent files. Resumed FTP uploads read back and verify the partial prefix; servers without REST/APPE support safely restart that file. Transient network errors retry up to three times; permission errors, changed sources and destination conflicts require attention before a manual retry.
 
 ## Keyboard shortcuts
 

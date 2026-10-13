@@ -22,7 +22,6 @@ use crate::remote_edit::RemoteEdits;
 use crate::session::auth::{AuthPrompter, AuthPrompts};
 use crate::session::recording::{self, Recorder};
 use crate::session::ssh::{ConnectOutcome, SftpConnectOutcome, SshTransports};
-use crate::session::transfer::Transfers;
 use crate::session::{
     self, SessionCommand, SessionHandle, SessionManager, SftpRequest, SftpResponse,
     TransferProgress,
@@ -38,8 +37,7 @@ pub struct AppState {
     /// Authentication challenges a connecting session is waiting on; see
     /// `answer_auth_prompt`.
     pub auth_prompts: AuthPrompts,
-    /// Transfers in flight, so `cancel_transfer` can reach one.
-    pub transfers: Transfers,
+    pub file_transfers: crate::file_transfer::Transfers,
     /// The authenticated SSH transports open sessions run on, so another
     /// session can be opened on one instead of authenticating again; see
     /// `open_session`'s `reuse_session_id`.
@@ -417,6 +415,7 @@ pub async fn open_session(
         }
     };
 
+    state.file_transfers.remember(&id, &profile);
     state.sessions.insert(SessionHandle {
         info: info.clone(),
         tx,
@@ -448,6 +447,7 @@ pub fn answer_auth_prompt(
 
 #[tauri::command]
 pub fn close_session(state: State<'_, AppState>, id: String) -> Result<()> {
+    state.file_transfers.forget(&id);
     state.outputs.close_session(&id);
     // Nothing new may be opened on this session's connection once it is
     // closing; whether the connection itself goes down depends on the other
@@ -865,9 +865,10 @@ pub async fn sftp_rename(
 
 /// `transfer`, on this and the three transfers below, is the id
 /// `cancel_transfer` can name while the copy runs; without one the transfer
-/// cannot be cancelled.
+/// gets a generated id and can still be controlled in the transfer center.
 #[tauri::command]
 pub async fn sftp_download(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: String,
     remote: String,
@@ -875,24 +876,26 @@ pub async fn sftp_download(
     on_progress: Channel<TransferProgress>,
     transfer: Option<String>,
 ) -> Result<()> {
-    let active = state.transfers.begin(transfer);
-    state
-        .sessions
-        .sftp(
-            &id,
-            SftpRequest::Download {
-                remote,
-                local,
-                progress: on_progress,
-                cancel: active.flag(),
-            },
-        )
-        .await?;
-    Ok(())
+    transfer_files(
+        app,
+        state,
+        id,
+        vec![crate::file_transfer::Item {
+            remote,
+            local,
+            upload: false,
+            directory: false,
+        }],
+        transfer,
+        None,
+        on_progress,
+    )
+    .await
 }
 
 #[tauri::command]
 pub async fn sftp_download_directory(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: String,
     remote: String,
@@ -900,24 +903,26 @@ pub async fn sftp_download_directory(
     on_progress: Channel<TransferProgress>,
     transfer: Option<String>,
 ) -> Result<()> {
-    let active = state.transfers.begin(transfer);
-    state
-        .sessions
-        .sftp(
-            &id,
-            SftpRequest::DownloadDirectory {
-                remote,
-                local,
-                progress: on_progress,
-                cancel: active.flag(),
-            },
-        )
-        .await?;
-    Ok(())
+    transfer_files(
+        app,
+        state,
+        id,
+        vec![crate::file_transfer::Item {
+            remote,
+            local,
+            upload: false,
+            directory: true,
+        }],
+        transfer,
+        None,
+        on_progress,
+    )
+    .await
 }
 
 #[tauri::command]
 pub async fn sftp_upload(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: String,
     local: String,
@@ -925,24 +930,26 @@ pub async fn sftp_upload(
     on_progress: Channel<TransferProgress>,
     transfer: Option<String>,
 ) -> Result<()> {
-    let active = state.transfers.begin(transfer);
-    state
-        .sessions
-        .sftp(
-            &id,
-            SftpRequest::Upload {
-                local,
-                remote,
-                progress: on_progress,
-                cancel: active.flag(),
-            },
-        )
-        .await?;
-    Ok(())
+    transfer_files(
+        app,
+        state,
+        id,
+        vec![crate::file_transfer::Item {
+            remote,
+            local,
+            upload: true,
+            directory: false,
+        }],
+        transfer,
+        None,
+        on_progress,
+    )
+    .await
 }
 
 #[tauri::command]
 pub async fn sftp_upload_directory(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: String,
     local: String,
@@ -950,28 +957,63 @@ pub async fn sftp_upload_directory(
     on_progress: Channel<TransferProgress>,
     transfer: Option<String>,
 ) -> Result<()> {
-    let active = state.transfers.begin(transfer);
-    state
-        .sessions
-        .sftp(
-            &id,
-            SftpRequest::UploadDirectory {
-                local,
-                remote,
-                progress: on_progress,
-                cancel: active.flag(),
-            },
-        )
-        .await?;
-    Ok(())
+    transfer_files(
+        app,
+        state,
+        id,
+        vec![crate::file_transfer::Item {
+            remote,
+            local,
+            upload: true,
+            directory: true,
+        }],
+        transfer,
+        None,
+        on_progress,
+    )
+    .await
 }
 
-/// Stops the transfer the front end registered as `transfer`, if it is still
-/// running: the copy ends within a chunk and takes its half-written file
-/// with it (see `CancelFlag`).
+/// Interrupts pending I/O and asks the background worker to remove its owned
+/// partial files. Existing destination files are preserved.
 #[tauri::command]
 pub fn cancel_transfer(state: State<'_, AppState>, transfer: String) {
-    state.transfers.cancel(&transfer);
+    state.file_transfers.cancel(&transfer);
+}
+
+#[tauri::command]
+pub fn list_file_transfers(state: State<'_, AppState>) -> Vec<crate::file_transfer::Snapshot> {
+    state.file_transfers.snapshots()
+}
+
+#[tauri::command]
+pub fn control_file_transfer(
+    state: State<'_, AppState>,
+    transfer: String,
+    action: String,
+) -> Result<()> {
+    state.file_transfers.control(&transfer, &action)
+}
+
+#[tauri::command]
+pub async fn transfer_files(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    items: Vec<crate::file_transfer::Item>,
+    transfer: Option<String>,
+    options: Option<crate::file_transfer::Options>,
+    on_progress: Channel<TransferProgress>,
+) -> Result<()> {
+    let job = state.file_transfers.start(
+        app,
+        id,
+        items,
+        transfer,
+        options.unwrap_or_default(),
+        on_progress,
+    )?;
+    crate::file_transfer::wait(&job).await
 }
 
 // --- local filesystem -------------------------------------------------------
