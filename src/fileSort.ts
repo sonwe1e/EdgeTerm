@@ -27,9 +27,18 @@ export function sortIndicator(current: FileSort, key: SortKey): string {
   return current.direction === "asc" ? " ↑" : " ↓";
 }
 
+// One collator for every name comparison. Constructing an ICU collator is
+// orders of magnitude more expensive than comparing with one, and a sort of
+// a large directory runs the comparator tens of thousands of times — the
+// options are exactly what `localeCompare` was given per call before.
+const NAME_COLLATOR = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base",
+});
+
 function compareNames(a: string, b: string): number {
   // Numeric so file2 sorts before file10, the way Explorer and Finder do.
-  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+  return NAME_COLLATOR.compare(a, b);
 }
 
 /**
