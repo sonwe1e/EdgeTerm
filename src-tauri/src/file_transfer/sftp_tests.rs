@@ -18,6 +18,9 @@ struct Server {
     peak: usize,
     delay_ms: u64,
     lose_rename_reply: bool,
+    /// Rejects the first mkdir of this path once, the way a server that has
+    /// not finished an in-flight parent mkdir would.
+    fail_mkdir_once: Option<String>,
     counts: HashMap<String, usize>,
 }
 
@@ -253,6 +256,9 @@ fn response(server: &mut Server, packet: Packet) -> (Option<Packet>, u64) {
         Packet::MkDir(p) => {
             if server.dirs.contains(&p.path) || server.files.contains_key(&p.path) {
                 Packet::error(id, StatusCode::Failure)
+            } else if server.fail_mkdir_once.as_deref() == Some(p.path.as_str()) {
+                server.fail_mkdir_once = None;
+                Packet::error(id, StatusCode::NoSuchFile)
             } else {
                 // A real sftp-server refuses a directory whose parent has
                 // not been created yet, so an ordering mistake in a
@@ -760,6 +766,29 @@ async fn replanned_uploads_tolerate_directories_that_already_exist() {
     for dir in ["/site", "/site/pkg", "/site/pkg/deep"] {
         assert!(f.state.lock().dirs.contains(dir), "{dir} must exist");
     }
+}
+
+#[tokio::test]
+async fn a_deferred_parent_mkdir_is_retried_once() {
+    let f = Fixture::new(Server {
+        fail_mkdir_once: Some("/site/pkg".into()),
+        ..Server::default()
+    })
+    .await;
+    let root = f.root.join("project");
+    std::fs::create_dir_all(root.join("pkg")).unwrap();
+    std::fs::write(root.join("pkg/mod.py"), b"retry").unwrap();
+    let item = Item {
+        local: root.to_string_lossy().into(),
+        remote: "/site".into(),
+        upload: true,
+        directory: true,
+    };
+    let job = super::super::test_job_items(f.root.clone(), vec![item]);
+    let files = plan(&job, &f.remote).await.unwrap();
+    copy_files(&job, &f.remote, files).await.unwrap();
+    assert_eq!(f.state.lock().files["/site/pkg/mod.py"], b"retry");
+    assert!(f.state.lock().dirs.contains("/site/pkg"));
 }
 
 #[tokio::test]

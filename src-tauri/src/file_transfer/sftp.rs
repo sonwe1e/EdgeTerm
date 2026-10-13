@@ -400,9 +400,54 @@ async fn copy_files(job: &Job, remote: &Remote, files: Vec<Item>) -> TransferRes
 }
 
 /// How many directory creations or parent resolutions stay in flight at
-/// once during planning. Requests on one SFTP channel are processed in
-/// order, so parents are still created before the children behind them.
+/// once during planning. OpenSSH's sftp-server (and most servers) process
+/// one channel's requests in order, so a parent is created before the
+/// children behind it arrive; `create_directories` still recovers on a
+/// server that does not.
 const PLAN_WINDOW: usize = 8;
+
+/// Creates the planned directories parents-first, keeping a window of
+/// mkdirs in flight. A child whose parent mkdir is still in flight fails
+/// on a server that processes requests out of order; when that happens the
+/// window is drained (every earlier directory now exists) and the failed
+/// directory is retried once, sequentially.
+async fn create_directories(
+    job: &Job,
+    remote: &Remote,
+    directories: &[String],
+) -> TransferResult<()> {
+    let mut creates = FuturesOrdered::new();
+    for dir in directories {
+        job.control.check()?;
+        let path = dir.clone();
+        creates.push_back(async move {
+            remote
+                .mkdir(&path, &job.control)
+                .await
+                .map_err(|e| (path, e))
+        });
+        while creates.len() >= PLAN_WINDOW {
+            if let Some(result) = creates.next().await {
+                if let Err((path, e)) = result {
+                    if e.stopped() {
+                        return Err(e);
+                    }
+                    while creates.next().await.is_some() {}
+                    remote.mkdir(&path, &job.control).await?;
+                }
+            }
+        }
+    }
+    while let Some(result) = creates.next().await {
+        if let Err((path, e)) = result {
+            if e.stopped() {
+                return Err(e);
+            }
+            remote.mkdir(&path, &job.control).await?;
+        }
+    }
+    Ok(())
+}
 
 async fn plan(job: &Job, remote: &Remote) -> TransferResult<Vec<Item>> {
     if let Some(plan) = job.plan.lock().clone() {
@@ -436,19 +481,7 @@ async fn plan(job: &Job, remote: &Remote) -> TransferResult<Vec<Item>> {
             .await
             .map_err(Failure::local)?
             .map_err(Failure::local)?;
-            let mut creates = FuturesOrdered::new();
-            for dir in &plan.directories {
-                job.control.check()?;
-                creates.push_back(remote.mkdir(dir, &job.control));
-                while creates.len() >= PLAN_WINDOW {
-                    if let Some(result) = creates.next().await {
-                        result?;
-                    }
-                }
-            }
-            while let Some(result) = creates.next().await {
-                result?;
-            }
+            create_directories(job, remote, &plan.directories).await?;
             for file in plan.files {
                 sizes.push(file.size);
                 files.push(Item {
