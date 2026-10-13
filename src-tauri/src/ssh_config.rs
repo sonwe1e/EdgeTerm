@@ -115,7 +115,12 @@ impl Context {
     fn expand_tilde(&self, value: &str) -> String {
         match (value.strip_prefix('~'), &self.home) {
             (Some(rest), Some(home)) if rest.is_empty() || rest.starts_with(['/', '\\']) => {
-                format!("{}{}", home.to_string_lossy(), rest)
+                // Joined as a path rather than by string concatenation, so a
+                // config written with forward separators still names the same
+                // file on Windows.
+                let mut path = home.to_path_buf();
+                path.push(rest.trim_start_matches(['/', '\\']));
+                path.to_string_lossy().into_owned()
             }
             _ => value.to_string(),
         }
