@@ -145,10 +145,12 @@ const LINE_TIME_SLACK = 4096;
 const BACKLOG_QUIET_MS = 200;
 const BACKLOG_SLICE_MS = 8;
 /**
- * A fit resizes xterm, which reflows the whole scrollback buffer; a splitter
- * drag crosses many sizes in a second and would reflow per crossing, freezing
- * the window. The first fit applies at once and the rest inside this window
- * collapse into one final pass (see `Terminal.fit`).
+ * A fit that changes the column count reflows xterm's whole scrollback
+ * buffer, and a splitter drag crosses many widths in a second; those fits
+ * collapse into one final pass inside this window (see `Terminal.fit`).
+ * Row-only changes do not reflow — xterm just appends or removes blank
+ * lines (see `Buffer._reflow`, which returns while the column count
+ * holds) — and never wait for it.
  */
 const FIT_SETTLE_MS = 100;
 
@@ -1133,10 +1135,20 @@ export class TerminalController {
 
   fit(): { cols: number; rows: number } | null {
     if (this.disposed) return null;
-    // Resizing reflows xterm's whole scrollback buffer, so the many sizes a
-    // splitter drag crosses must not each pay for it: the first fit applies
-    // at once (attaching, a font change, a first layout), and the fits behind
-    // it collapse into a single trailing pass once the size has settled.
+    // Only a column change reflows the scrollback (see FIT_SETTLE_MS). A
+    // row-only fit — dragging the bottom dock taller, say — applies at
+    // once, the way VS Code's terminal resizes ("vertical resize is
+    // cheap" there too); anything that would change the columns settles,
+    // so a width drag still collapses into one reflow.
+    let proposal: { cols: number; rows: number } | null = null;
+    try {
+      proposal = this.fitAddon.proposeDimensions() ?? null;
+    } catch {
+      proposal = null;
+    }
+    if (proposal && proposal.cols === this.term.cols) {
+      return this.applyFit();
+    }
     return this.fitThrottle.run();
   }
 
