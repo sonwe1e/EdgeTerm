@@ -1,8 +1,10 @@
 import type { PhysicalPosition } from "@tauri-apps/api/dpi";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
+  memo,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type MouseEvent,
@@ -11,14 +13,24 @@ import {
 
 import { revealCwdInFiler } from "../../actions";
 import * as api from "../../api";
+import { useFileTransfers } from "../../fileTransfers";
+import {
+  sortFileEntries,
+  toggleFileSort,
+  type SortKey,
+} from "../../fileSort";
 import { open as openDialog, save as saveDialog } from "../../nativeDialog";
 import { IS_MAC, IS_WINDOWS } from "../../platform";
+import { FILER_OPEN_WITH_KEY } from "../../persistKeys";
 import { chordLabel } from "../../shortcuts";
 import { tabTitle, useActiveTab, useStore } from "../../store";
+import { useStableCallback } from "../../useStableCallback";
 import { ContextMenu, type MenuItem } from "../ContextMenu";
 import { DeleteEntryDialog } from "../DeleteEntryDialog";
 import { FileIcon } from "../FileIcon";
 import { Icon } from "../icons";
+import { SortIndicator } from "../SortIndicator";
+import { VirtualFileRows } from "../VirtualFileRows";
 import type { FileEntry, ThemeMode } from "../../types";
 
 interface TransferState {
@@ -123,7 +135,7 @@ const rememberPath = (source: string, path: string) => {
   lastPaths.set(source, path);
 };
 
-export function FilerPanel() {
+function FilerPanelBase() {
   const tab = useActiveTab();
   const theme = useStore((s) => s.theme);
   const sshFiles = Boolean(
@@ -157,6 +169,11 @@ export function FilerPanel() {
   const [path, setPath] = useState("");
   const [draft, setDraft] = useState("");
   const [entries, setEntries] = useState<FileEntry[]>([]);
+  // The sort lives in the store so the Filer and both dual-pane browsers
+  // follow one choice as it changes, instead of each reading the stored
+  // preference once at mount and drifting apart.
+  const sort = useStore((s) => s.filerSort);
+  const setFilerSort = useStore((s) => s.setFilerSort);
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -171,6 +188,8 @@ export function FilerPanel() {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [pendingDelete, setPendingDelete] = useState<FileEntry | null>(null);
   const [openWithApps, setOpenWithApps] = useState<string[]>(loadOpenWithApps);
+  const preferencesRevision = useStore((s) => s.panelPreferencesRevision);
+  useEffect(() => setOpenWithApps(loadOpenWithApps()), [preferencesRevision]);
   const [transfer, setTransfer] = useState<TransferState | null>(null);
   const [dragOver, setDragOver] = useState<DropVerdict | null>(null);
   const [dragOut, setDragOut] = useState<DragOutState | null>(null);
@@ -197,6 +216,10 @@ export function FilerPanel() {
   const transferClearTimer = useRef<number | null>(null);
   const transferRateSamples = useRef<TransferRateSample[]>([]);
   const activeTransfer = useRef<ActiveTransfer | null>(null);
+  const visibleTransferId = useRef<string | undefined>(undefined);
+  const ownsTransfer = (id: string | undefined) => visibleTransferId.current === id;
+  const backgroundTransfer = useFileTransfers((s) => s.jobs[activeTransfer.current?.id ?? ""]);
+  const listRequest = useRef(0);
 
   remoteIdRef.current = remoteId;
   offlineReasonRef.current = offlineReason;
@@ -220,6 +243,7 @@ export function FilerPanel() {
     activeTransfer.current = cancellable
       ? { id: api.newTransferId(), cancelled: false }
       : null;
+    visibleTransferId.current = activeTransfer.current?.id;
     setTransfer({
       kind,
       name,
@@ -277,7 +301,12 @@ export function FilerPanel() {
     );
   };
 
-  const finishTransfer = (status: "complete" | "error" | "cancelled") => {
+  const progressFor = (id: string | undefined) => (progress: api.TransferProgress) => {
+    if (ownsTransfer(id)) updateTransferProgress(progress);
+  };
+
+  const finishTransfer = (status: "complete" | "error" | "cancelled", id = visibleTransferId.current) => {
+    if (!ownsTransfer(id)) return;
     activeTransfer.current = null;
     setTransfer((current) =>
       current
@@ -313,8 +342,9 @@ export function FilerPanel() {
   };
 
   /** Ends the transfer a rejection belongs to: cancelled, or failed with `e`. */
-  const failTransfer = (e: unknown) => {
-    if (activeTransfer.current?.cancelled) {
+  const failTransfer = (e: unknown, id = visibleTransferId.current) => {
+    if (!ownsTransfer(id)) return;
+    if (activeTransfer.current?.cancelled || String(e).includes("transfer cancelled")) {
       finishTransfer("cancelled");
       return;
     }
@@ -330,7 +360,8 @@ export function FilerPanel() {
    */
   const load = useCallback(
     async (target: string, quiet = false): Promise<boolean> => {
-      if (offline) return false;
+      if (offline || remoteIdRef.current !== remoteId) return false;
+      const request = ++listRequest.current;
       setBusy(true);
       setError(null);
       try {
@@ -339,7 +370,7 @@ export function FilerPanel() {
           : await api.localList(target);
         // The user switched sessions while this was listing; showing it now
         // would put the previous session's files under the new one.
-        if (remoteIdRef.current !== remoteId) return false;
+        if (remoteIdRef.current !== remoteId || request !== listRequest.current) return false;
         setPath(listing.path);
         setDraft(listing.path);
         setEntries(listing.entries);
@@ -347,10 +378,10 @@ export function FilerPanel() {
         rememberPath(remoteId ?? LOCAL_SOURCE, listing.path);
         return true;
       } catch (e) {
-        if (!quiet) setError(String(e));
+        if (!quiet && request === listRequest.current && remoteIdRef.current === remoteId) setError(String(e));
         return false;
       } finally {
-        setBusy(false);
+        if (request === listRequest.current && remoteIdRef.current === remoteId) setBusy(false);
       }
     },
     [remoteId, offline],
@@ -452,7 +483,7 @@ export function FilerPanel() {
           remoteId,
           entry.path,
           target,
-          updateTransferProgress,
+          progressFor(transfer),
           transfer,
         );
       } else {
@@ -460,15 +491,15 @@ export function FilerPanel() {
           remoteId,
           entry.path,
           target,
-          updateTransferProgress,
+          progressFor(transfer),
           transfer,
         );
       }
-      finishTransfer("complete");
+      finishTransfer("complete", transfer);
     } catch (e) {
-      failTransfer(e);
+      failTransfer(e, transfer);
     } finally {
-      setBusy(false);
+      if (ownsTransfer(transfer)) setBusy(false);
     }
   };
 
@@ -480,39 +511,23 @@ export function FilerPanel() {
     busyRef.current = true;
     setBusy(true);
     setError(null);
+    const transfer = beginTransfer("upload", localPaths.length === 1 ? localFileName(localPaths[0]) : `${localPaths.length} items`, true);
     try {
-      for (const localPath of localPaths) {
-        const name = localFileName(localPath);
-        const isDirectory = await api.localIsDirectory(localPath);
-        const transfer = beginTransfer("upload", name, true);
-        if (isDirectory) {
-          await api.sftpUploadDirectory(
-            remoteId,
-            localPath,
-            joinRemote(destination, name),
-            updateTransferProgress,
-            transfer,
-          );
-        } else {
-          await api.sftpUpload(
-            remoteId,
-            localPath,
-            joinRemote(destination, name),
-            updateTransferProgress,
-            transfer,
-          );
-        }
-        finishTransfer("complete");
-      }
+      const items: api.TransferItem[] = localPaths.map((localPath) => ({
+        local: localPath, remote: joinRemote(destination, localFileName(localPath)),
+        upload: true,
+      }));
+      await api.transferFiles(remoteId, items, progressFor(transfer), transfer);
+      finishTransfer("complete", transfer);
       await load(destination);
     } catch (e) {
       // Reload first: it clears the error line, and what did arrive should
       // show.
       await load(destination);
-      failTransfer(e);
+      failTransfer(e, transfer);
     } finally {
-      busyRef.current = false;
-      setBusy(false);
+      if (ownsTransfer(transfer)) busyRef.current = false;
+      if (ownsTransfer(transfer)) setBusy(false);
     }
   };
 
@@ -682,7 +697,7 @@ export function FilerPanel() {
           sessionId,
           entry.path,
           destination,
-          updateTransferProgress,
+          progressFor(transfer),
           transfer,
         );
       } else {
@@ -690,19 +705,19 @@ export function FilerPanel() {
           sessionId,
           entry.path,
           destination,
-          updateTransferProgress,
+          progressFor(transfer),
           transfer,
         );
       }
-      finishTransfer("complete");
+      finishTransfer("complete", transfer);
     } catch (e) {
       failure = activeTransfer.current?.cancelled
         ? `${entry.name}: download cancelled`
         : String(e);
-      failTransfer(e);
+      failTransfer(e, transfer);
     } finally {
-      busyRef.current = false;
-      setBusy(false);
+      if (ownsTransfer(transfer)) busyRef.current = false;
+      if (ownsTransfer(transfer)) setBusy(false);
     }
     try {
       await api.finishPromisedFile(token, failure);
@@ -742,7 +757,7 @@ export function FilerPanel() {
           sessionId,
           entry.path,
           staged,
-          updateTransferProgress,
+          progressFor(transfer),
           transfer,
         );
       } else {
@@ -750,11 +765,11 @@ export function FilerPanel() {
           sessionId,
           entry.path,
           staged,
-          updateTransferProgress,
+          progressFor(transfer),
           transfer,
         );
       }
-      finishTransfer("complete");
+      finishTransfer("complete", transfer);
       if (pointerHeld.current) {
         await handToSystem(entry, [staged]);
       } else {
@@ -767,10 +782,10 @@ export function FilerPanel() {
       }
     } catch (e) {
       updateDragOut(null);
-      failTransfer(e);
+      failTransfer(e, transfer);
     } finally {
-      busyRef.current = false;
-      setBusy(false);
+      if (ownsTransfer(transfer)) busyRef.current = false;
+      if (ownsTransfer(transfer)) setBusy(false);
     }
   };
 
@@ -838,6 +853,7 @@ export function FilerPanel() {
   // Progress of remote files edited locally, whichever tab is active: the
   // footer shows the save going out, and a failure lands in the error line.
   remoteEditRef.current = (event) => {
+    if (activeTransfer.current) return;
     if (event.status === "uploading") {
       beginTransfer("sync", event.name);
     } else if (event.status === "synced") {
@@ -955,17 +971,17 @@ export function FilerPanel() {
         remoteId,
         entry.path,
         target,
-        updateTransferProgress,
+        progressFor(transfer),
         transfer,
       );
       await api.watchRemoteEdit(remoteId, target, entry.path);
-      finishTransfer("complete");
+      finishTransfer("complete", transfer);
       return target;
     } catch (e) {
-      failTransfer(e);
+      failTransfer(e, transfer);
       return null;
     } finally {
-      setBusy(false);
+      if (ownsTransfer(transfer)) setBusy(false);
     }
   };
 
@@ -1176,7 +1192,42 @@ export function FilerPanel() {
   // The Windows drive list is virtual: drives can be opened but not created,
   // deleted or navigated above.
   const atDrivesRoot = !remoteId && path === api.LOCAL_DRIVES_ROOT;
-  const selectedEntry = entries.find((e) => e.path === selected) ?? null;
+  const selectedEntry = useMemo(
+    () => entries.find((e) => e.path === selected) ?? null,
+    [entries, selected],
+  );
+  const panelFontSize = useStore((s) => s.panelFontSize);
+  const sortedEntries = useMemo(
+    () => sortFileEntries(entries, sort),
+    [entries, sort],
+  );
+  // The footer walks every entry; a large directory must not pay that on
+  // each of the app's re-renders.
+  const entrySummary = useMemo(() => formatEntrySummary(entries), [entries]);
+
+  /** Re-sorts the list for a clicked column caption and remembers the choice. */
+  const sortBy = (key: SortKey) => {
+    setFilerSort(toggleFileSort(useStore.getState().filerSort, key));
+  };
+
+  // The row callbacks go through stable identities (see useStableCallback)
+  // so a re-render of this panel — a transfer tick, a drag-over change, a
+  // selection elsewhere — leaves the memoised rows' props equal and skipped.
+  const rowSelect = useStableCallback((path: string) => setSelected(path));
+  const rowActivate = useStableCallback((entry: FileEntry) => activate(entry));
+  const rowPointerDown = useStableCallback(
+    (entry: FileEntry, event: ReactPointerEvent<HTMLDivElement>) =>
+      onEntryPointerDown(entry, event),
+  );
+  const rowPointerMove = useStableCallback((event: ReactPointerEvent<HTMLDivElement>) =>
+    onEntryPointerMove(event),
+  );
+  const rowContextMenu = useStableCallback(
+    (event: MouseEvent, entry: FileEntry) => {
+      setSelected(entry.path);
+      openMenu(event, entryMenu(entry));
+    },
+  );
 
   return (
     <div
@@ -1310,8 +1361,22 @@ export function FilerPanel() {
       </div>
 
       <div className="filer-columns">
-        <span className="filer-col-name">Name</span>
-        <span className="filer-col-date">Modified</span>
+        <button
+          type="button"
+          className={`filer-col-name${sort.key === "name" ? " is-sorted" : ""}`}
+          onClick={() => sortBy("name")}
+          aria-label="Sort by name"
+        >
+          Name<SortIndicator sort={sort} column="name" />
+        </button>
+        <button
+          type="button"
+          className={`filer-col-date${sort.key === "modified" ? " is-sorted" : ""}`}
+          onClick={() => sortBy("modified")}
+          aria-label="Sort by last modified"
+        >
+          Modified<SortIndicator sort={sort} column="modified" />
+        </button>
       </div>
 
       <div
@@ -1351,34 +1416,26 @@ export function FilerPanel() {
             />
           </div>
         )}
-        {entries.map((entry) => {
-          const kind = entryKind(entry);
-          return (
-            <div
+        <VirtualFileRows
+          entries={sortedEntries}
+          rowHeight={Math.max(24, panelFontSize + 10) + 2}
+          resetKey={`${remoteId ?? "local"}:${path}:${sort.key}:${sort.direction}:${!!sort.explicit}`}
+        >
+          {(entry) => (
+            <FilerRow
               key={entry.path}
-              className={`row filer-entry is-${kind}${entry.path === selected ? " is-active" : ""}${dragOut?.path === entry.path ? " is-dragging-out" : ""}`}
-              onMouseDown={() => setSelected(entry.path)}
-              onPointerDown={(event) => onEntryPointerDown(entry, event)}
-              onPointerMove={onEntryPointerMove}
-              onDoubleClick={() => activate(entry)}
-              onContextMenu={(event) => {
-                setSelected(entry.path);
-                openMenu(event, entryMenu(entry));
-              }}
-              title={entryTitle(entry)}
-            >
-              <FilerEntryIcon
-                name={entry.name}
-                isDir={entry.isDir}
-                theme={theme}
-              />
-              <span className="row-label">{entry.name}</span>
-              <span className="filer-col-date row-meta">
-                {formatDate(entry.modified)}
-              </span>
-            </div>
-          );
-        })}
+              entry={entry}
+              selected={entry.path === selected}
+              draggingOut={dragOut?.path === entry.path}
+              theme={theme}
+              onSelect={rowSelect}
+              onActivate={rowActivate}
+              onPointerDown={rowPointerDown}
+              onPointerMove={rowPointerMove}
+              onContextMenu={rowContextMenu}
+            />
+          )}
+        </VirtualFileRows>
       </div>
 
       {menu && (
@@ -1427,6 +1484,18 @@ export function FilerPanel() {
                       : `${transferPercent}%`}
               </span>
               {transfer.status === "running" && transfer.cancellable && (
+                <button type="button" className="panel-action filer-action"
+                  disabled={!backgroundTransfer || !["queued", "running", "retrying", "paused"].includes(backgroundTransfer.status)}
+                  onClick={() => {
+                    const id = activeTransfer.current?.id;
+                    if (id) void api.controlFileTransfer(id, backgroundTransfer?.status === "paused" ? "resume" : "pause").catch((e) => setError(String(e)));
+                  }}
+                  title={backgroundTransfer?.status === "paused" ? "Resume" : "Pause"}
+                  aria-label={backgroundTransfer?.status === "paused" ? "Resume transfer" : "Pause transfer"}>
+                  <Icon name={backgroundTransfer?.status === "paused" ? "play" : "debug-pause"} />
+                </button>
+              )}
+              {transfer.status === "running" && transfer.cancellable && (
                 <button
                   className="panel-action filer-action filer-transfer-cancel"
                   onClick={cancelTransfer}
@@ -1469,7 +1538,7 @@ export function FilerPanel() {
           <span className="filer-drop-blocked">{dragOver.reason}</span>
         ) : (
           <>
-            <span>{formatEntrySummary(entries)}</span>
+            <span>{entrySummary}</span>
             {busy && <span>working…</span>}
           </>
         )}
@@ -1520,7 +1589,62 @@ type FilerEntryKind = "directory" | "file" | "symlink";
 /** An entry being named inline at the top of the list before it exists. */
 type NewEntryDraft = { kind: "file" | "folder"; name: string };
 
-function FilerEntryIcon({
+/**
+ * One file row, memoised so a panel re-render that nothing on the row
+ * depends on — a transfer footer tick, a drag-over verdict, another row
+ * being selected — skips every row instead of rebuilding their JSX, titles
+ * and dates. Only primitive/stable props cross this boundary; the callbacks
+ * come from useStableCallback in the panel.
+ */
+const FilerRow = memo(function FilerRow({
+  entry,
+  selected,
+  draggingOut,
+  theme,
+  onSelect,
+  onActivate,
+  onPointerDown,
+  onPointerMove,
+  onContextMenu,
+}: {
+  entry: FileEntry;
+  selected: boolean;
+  draggingOut: boolean;
+  theme: ThemeMode;
+  onSelect: (path: string) => void;
+  onActivate: (entry: FileEntry) => void;
+  onPointerDown: (
+    entry: FileEntry,
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) => void;
+  onPointerMove: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onContextMenu: (event: MouseEvent, entry: FileEntry) => void;
+}) {
+  const kind = entryKind(entry);
+  return (
+    <div
+      className={`row filer-entry is-${kind}${selected ? " is-active" : ""}${draggingOut ? " is-dragging-out" : ""}`}
+      onMouseDown={() => onSelect(entry.path)}
+      onPointerDown={(event) => onPointerDown(entry, event)}
+      onPointerMove={onPointerMove}
+      onDoubleClick={() => onActivate(entry)}
+      onContextMenu={(event) => onContextMenu(event, entry)}
+      title={entryTitle(entry)}
+    >
+      <FilerEntryIcon
+        name={entry.name}
+        isDir={entry.isDir}
+        theme={theme}
+      />
+      <span className="row-label">{entry.name}</span>
+      <span className="filer-col-date row-meta">
+        {formatDate(entry.modified)}
+      </span>
+    </div>
+  );
+});
+
+const FilerEntryIcon = memo(function FilerEntryIcon({
   name,
   isDir,
   theme,
@@ -1534,11 +1658,11 @@ function FilerEntryIcon({
       <FileIcon name={name} isDir={isDir} theme={theme} />
     </span>
   );
-}
+});
 
 
 /** Applications the user has opened files with, most recent first. */
-const OPEN_WITH_KEY = "edgeterm.filerOpenWith";
+const OPEN_WITH_KEY = FILER_OPEN_WITH_KEY;
 const OPEN_WITH_LIMIT = 6;
 
 function loadOpenWithApps(): string[] {
@@ -1660,3 +1784,7 @@ function formatBytes(bytes: number): string {
   }
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${unit}`;
 }
+
+// The Filer takes no props: memoising it keeps the app's re-renders (a tab
+// switch, a status change) from re-walking a large directory's rows.
+export const FilerPanel = memo(FilerPanelBase);

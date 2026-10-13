@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 
+import { SENDER_REPEAT_KEY } from "./persistKeys";
 import { newStopSignal, sendUnits, type StopSignal } from "./senderSend";
 import { buildUnits, type SendUnit } from "./senderUnits";
 import { useStore } from "./store";
@@ -22,7 +23,7 @@ export const REPEAT_LIMITS = {
   maxTimes: 100_000,
 } as const;
 
-const REPEAT_KEY = "edgeterm.senderRepeat";
+const REPEAT_KEY = SENDER_REPEAT_KEY;
 const DEFAULT_REPEAT: RepeatSettings = { every: 60, times: 0 };
 
 export function clampRepeat(settings: RepeatSettings): RepeatSettings {

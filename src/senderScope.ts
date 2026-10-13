@@ -1,3 +1,4 @@
+import { SENDER_SAVE_LEVEL_KEY } from "./persistKeys";
 import {
   effectiveGroupId,
   effectiveParentId,
@@ -35,7 +36,7 @@ export const sameScope = (a: CommandScope, b: CommandScope) =>
 
 export type ScopeLevel = CommandScope["type"];
 
-const SAVE_LEVEL_KEY = "edgeterm.senderSaveLevel";
+const SAVE_LEVEL_KEY = SENDER_SAVE_LEVEL_KEY;
 /** Broadest first, so a missing level falls through to the next one up. */
 const LEVELS_NARROW_TO_BROAD: readonly ScopeLevel[] = [
   "profile",
