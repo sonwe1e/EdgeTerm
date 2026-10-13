@@ -307,15 +307,14 @@ async function connectSession(
   try {
     // The controller exists before the backend is asked to connect (see
     // openSession), so the output channel handed over here already has a
-    // terminal to land its bytes on. Credits are acknowledged eagerly for
-    // now; the terminal itself takes over that duty once output consumption
-    // is tied to rendering (see terminal.ts).
+    // terminal to land its bytes on.
     const outcome = await api.openSession(
       profile,
       id,
       (bytes, consumed) => {
-        getController(id)?.write(bytes);
-        consumed();
+        const controller = getController(id);
+        if (controller) controller.write(bytes, consumed);
+        else consumed();
       },
       reuseSessionId,
     );
