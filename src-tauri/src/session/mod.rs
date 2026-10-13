@@ -12,11 +12,13 @@ pub mod transfer;
 
 use std::collections::HashMap;
 
-use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use encoding_rs::Encoding;
 use parking_lot::Mutex;
 use serde::Serialize;
-use tauri::{ipc::Channel, AppHandle, Emitter};
+use tauri::{
+    ipc::{Channel, InvokeResponseBody},
+    AppHandle, Emitter,
+};
 use tokio::sync::{mpsc, oneshot};
 
 use self::recording::Recorder;
@@ -24,7 +26,6 @@ use self::transfer::CancelFlag;
 use crate::error::{AppError, Result};
 use crate::model::{DirListing, FileEntry, SessionInfo, SessionKind, SessionProfile};
 
-pub const EVENT_OUTPUT: &str = "session:output";
 pub const EVENT_STATE: &str = "session:state";
 
 pub enum SftpRequest {
@@ -212,32 +213,10 @@ impl SessionManager {
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct OutputEvent {
-    id: String,
-    /// base64 so that multi-byte UTF-8 sequences split across reads survive the
-    /// trip intact; the frontend feeds the raw bytes straight into xterm.js.
-    data: String,
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 struct StateEvent {
     id: String,
     state: String,
     message: Option<String>,
-}
-
-pub fn emit_output(app: &AppHandle, id: &str, bytes: &[u8]) {
-    if bytes.is_empty() {
-        return;
-    }
-    let _ = app.emit(
-        EVENT_OUTPUT,
-        OutputEvent {
-            id: id.to_string(),
-            data: B64.encode(bytes),
-        },
-    );
 }
 
 /// Reports a change the session went through on its own: it came up, or the
@@ -261,9 +240,12 @@ pub fn emit_state(app: &AppHandle, id: &str, state: &str, message: Option<String
 /// IPC messages. Callers must `flush` whenever their read loop goes idle.
 /// Every byte pushed also goes to the session's recording, when the profile
 /// asked for one (see `recording`); dropping the pump ends the recording.
+///
+/// Bytes leave as raw IPC payloads on the per-session channel the frontend
+/// opened with `open_session` — no base64 detour, so the webview receives an
+/// ArrayBuffer it can hand straight to xterm.js.
 pub struct OutputPump {
-    app: AppHandle,
-    id: String,
+    output: Channel<InvokeResponseBody>,
     buf: Vec<u8>,
     recorder: Option<Recorder>,
 }
@@ -271,10 +253,9 @@ pub struct OutputPump {
 impl OutputPump {
     const MAX: usize = 64 * 1024;
 
-    pub fn new(app: AppHandle, id: String, recorder: Option<Recorder>) -> Self {
+    pub fn new(output: Channel<InvokeResponseBody>, recorder: Option<Recorder>) -> Self {
         Self {
-            app,
-            id,
+            output,
             buf: Vec::with_capacity(8192),
             recorder,
         }
@@ -298,8 +279,10 @@ impl OutputPump {
         if self.buf.is_empty() {
             return;
         }
-        emit_output(&self.app, &self.id, &self.buf);
-        self.buf.clear();
+        let _ = self
+            .output
+            .send(InvokeResponseBody::Raw(std::mem::take(&mut self.buf)));
+        self.buf = Vec::with_capacity(8192);
     }
 }
 

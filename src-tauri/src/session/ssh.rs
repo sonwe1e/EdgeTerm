@@ -19,6 +19,7 @@ use russh::{
 use russh_sftp::client::error::Error as SftpError;
 use russh_sftp::client::SftpSession;
 use russh_sftp::protocol::{OpenFlags, StatusCode};
+use tauri::ipc::{Channel as IpcChannel, InvokeResponseBody};
 use tauri::AppHandle;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -1300,20 +1301,22 @@ async fn connect_agent() -> Result<DynamicAgentClient> {
 /// Drives one SSH shell session: pumps channel output to the UI and applies
 /// commands coming back from it. `recorder` is the session's recording,
 /// when the profile asked for one; it is fed here and closed with the task.
+/// `output` is the per-session raw IPC channel the terminal's bytes go out on.
 pub fn spawn(
     app: AppHandle,
     id: String,
     conn: SshConnection,
     mut rx: UnboundedReceiver<SessionCommand>,
     recorder: Option<Recorder>,
+    output: IpcChannel<InvokeResponseBody>,
 ) {
     tauri::async_runtime::spawn(async move {
         let SshConnection { transport, channel } = conn;
         // Held for as long as this session runs; the transport goes down
-        // when the last session on it drops its share (see SharedTransport).
+        // when the last session on it drops its share (see `SharedTransport`).
         let handle = transport.handle.clone();
         let (mut reader, writer) = channel.split();
-        let mut pump = OutputPump::new(app.clone(), id.clone(), recorder);
+        let mut pump = OutputPump::new(output, recorder);
         let mut sftp: Option<Arc<SftpSession>> = None;
         let mut exit_status: Option<u32> = None;
         // Set when the frontend asked for the close; see `emit_state`.

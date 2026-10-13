@@ -18,12 +18,6 @@ import type {
   ThemeMode,
 } from "./types";
 
-export interface OutputEvent {
-  id: string;
-  /** base64-encoded raw bytes */
-  data: string;
-}
-
 export interface StateEvent {
   id: string;
   state: string;
@@ -148,17 +142,27 @@ export const clearCommandHistory = () =>
  * and authenticating its own — how a duplicated tab reaches a server behind
  * MFA without a second challenge. A connection that is no longer up is
  * silently replaced by a connection of this session's own.
+ *
+ * Terminal output streams back on the raw IPC channel created here: the
+ * webview receives ArrayBuffers — one per coalesced batch of bytes, no
+ * base64 detour — ready to feed straight into xterm.js. File sessions
+ * (FTP, SFTP) never produce any.
  */
 export const openSession = (
   profile: SessionProfile,
   sessionId: string,
+  onOutput: (bytes: Uint8Array) => void,
   reuseSessionId?: string,
-) =>
-  invoke<OpenSessionOutcome>("open_session", {
+) => {
+  const output = new Channel<ArrayBuffer>();
+  output.onmessage = (data) => onOutput(new Uint8Array(data));
+  return invoke<OpenSessionOutcome>("open_session", {
     profile,
     sessionId,
+    onOutput: output,
     reuseSessionId: reuseSessionId ?? null,
   });
+};
 
 /** Records the key from a reported change as the host's only known key. */
 export const acceptHostKey = (change: HostKeyChange) =>
@@ -552,11 +556,6 @@ export const listSerialPorts = () =>
   invoke<SerialPortDesc[]>("list_serial_ports");
 
 // --- events -----------------------------------------------------------------
-
-export const onSessionOutput = (
-  handler: (event: OutputEvent) => void,
-): Promise<UnlistenFn> =>
-  listen<OutputEvent>("session:output", (e) => handler(e.payload));
 
 export const onSessionState = (
   handler: (event: StateEvent) => void,

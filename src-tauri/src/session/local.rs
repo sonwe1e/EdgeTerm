@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::AppHandle;
 use tokio::sync::mpsc::UnboundedReceiver;
 
@@ -45,12 +46,14 @@ fn login_flag(argv: &[String], macos: bool) -> Option<&'static str> {
 /// command queue. The pty crate is blocking, so neither belongs on the async
 /// runtime. `recorder` is the session's recording, when the profile asked
 /// for one; the reader thread feeds it and closes it when the shell exits.
+/// `output` is the per-session raw IPC channel the terminal's bytes go out on.
 pub fn spawn(
     app: AppHandle,
     id: String,
     profile: &SessionProfile,
     mut rx: UnboundedReceiver<SessionCommand>,
     recorder: Option<Recorder>,
+    output: Channel<InvokeResponseBody>,
 ) -> Result<()> {
     let pty = native_pty_system();
     let pair = pty
@@ -114,7 +117,7 @@ pub fn spawn(
     std::thread::Builder::new()
         .name(format!("edgeterm-pty-read-{id}"))
         .spawn(move || {
-            let mut pump = OutputPump::new(reader_app.clone(), reader_id.clone(), recorder);
+            let mut pump = OutputPump::new(output, recorder);
             let mut buf = vec![0u8; 32 * 1024];
             loop {
                 match reader.read(&mut buf) {
