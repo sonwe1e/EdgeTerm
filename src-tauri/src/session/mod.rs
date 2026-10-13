@@ -385,12 +385,15 @@ pub fn join_remote(base: &str, name: &str) -> String {
     }
 }
 
+/// Sorts a listing the way the panels show it by default: folders first,
+/// then names case-insensitively (byte-ish order — `file10` before `file2`).
+/// The web side passes this order through untouched at the default sort and
+/// only re-orders with its collator once the user picks one. The lowercased
+/// key is computed once per entry (`sort_by_cached_key`) rather than twice
+/// per comparison — a large directory paid tens of thousands of throwaway
+/// `String`s otherwise.
 pub fn sort_entries(entries: &mut [FileEntry]) {
-    entries.sort_by(|a, b| {
-        b.is_dir
-            .cmp(&a.is_dir)
-            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-    });
+    entries.sort_by_cached_key(|entry| (!entry.is_dir, entry.name.to_lowercase()));
 }
 
 pub fn make_info(id: &str, profile: &SessionProfile) -> SessionInfo {
