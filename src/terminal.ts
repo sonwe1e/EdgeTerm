@@ -376,6 +376,12 @@ interface Callbacks {
   onData: (data: string) => void;
   onResize: (cols: number, rows: number) => void;
   onStatus: (message: string, error?: boolean) => void;
+  /**
+   * Enter pressed while the session is dead and the terminal locked: the
+   * one keystroke a dead session still answers, reconnecting it the way
+   * WindTerm does.
+   */
+  onReconnect?: () => void;
   /** An executed command line, captured from the buffer after Enter. */
   onCommand: (command: string) => void;
   /**
@@ -612,11 +618,7 @@ export class TerminalController {
 
     // A file transfer owns the byte stream while it is active. Forwarding
     // keystrokes or paste data in the middle of a binary frame corrupts it.
-    this.term.onData((data) => {
-      if (this.isTransferActive()) return;
-      this.trackInput(data);
-      this.callbacks.onData(data);
-    });
+    this.term.onData((data) => this.handleData(data));
     // Shells with OSC 7 / 1337 / 9;9 integration announce their working
     // directory at every prompt. Only the latest report is kept: it answers
     // "Reveal Working Directory in Filer" exactly, nested shells and sudo
@@ -1259,15 +1261,15 @@ export class TerminalController {
   }
 
   /**
-   * Locks the terminal once its session has ended: keystrokes, paste and
-   * completions no longer reach `onData`, and the cursor is hidden so the
-   * pane does not look like it is waiting for input. Unlocking restores both
-   * for a reconnect.
+   * Locks the terminal once its session has ended: keystrokes and paste
+   * stay local — except Enter, which asks `onReconnect` to bring the
+   * session back — and the cursor is hidden so the pane does not look
+   * like it is waiting for input. Unlocking restores both for a
+   * reconnect.
    */
   setLocked(locked: boolean) {
     if (this.locked === locked) return;
     this.locked = locked;
-    this.term.options.disableStdin = locked;
     this.term.write(locked ? "\x1b[?25l" : "\x1b[?25h");
     if (locked) {
       this.hidePopup();
@@ -1279,6 +1281,22 @@ export class TerminalController {
       // of reach: fail it now rather than after its own timeouts.
       this.xmodem.sessionEnded();
     }
+  }
+
+  /**
+   * One keystroke or paste from xterm. A file transfer owns the byte
+   * stream while it is active, and a locked terminal keeps everything
+   * local except Enter — the one key a dead session still answers, which
+   * asks `onReconnect` to bring it back the way WindTerm does.
+   */
+  private handleData(data: string): void {
+    if (this.isTransferActive()) return;
+    if (this.locked) {
+      if (data === "\r") this.callbacks.onReconnect?.();
+      return;
+    }
+    this.trackInput(data);
+    this.callbacks.onData(data);
   }
 
   /**
@@ -1379,7 +1397,7 @@ export class TerminalController {
 
   /**
    * Hands text to the terminal as if it were typed. xterm applies bracketed
-   * paste and drops it while the terminal is locked (`disableStdin`).
+   * paste; a locked terminal keeps it out of `onData` (see `setLocked`).
    *
    * A paste the shell would run as several commands is confirmed first
    * (issue #63): the lines after the first are executed the moment they
