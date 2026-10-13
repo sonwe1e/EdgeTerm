@@ -12,7 +12,8 @@ import {
 import { isFileSession, type SessionInfo, type SessionProfile } from "./types";
 
 /** Line written into a terminal when its session ends, however it ended. */
-export const SESSION_CLOSED_NOTICE = "\r\n\x1b[33m[session closed]\x1b[0m\r\n";
+export const SESSION_CLOSED_NOTICE =
+  "\r\n\x1b[33m[session closed — press Enter to reconnect]\x1b[0m\r\n";
 
 function newSessionId(): string {
   if (typeof crypto?.randomUUID === "function") return crypto.randomUUID();
@@ -100,6 +101,13 @@ export async function ensureController(id: string): Promise<TerminalController> 
     id,
     {
       onData: (data) => void api.writeSession(id, data).catch(() => undefined),
+      // Enter on the dead session reconnects it; the host key dialog owns
+      // the next connection attempt while it is open.
+      onReconnect: () => {
+        const store = useStore.getState();
+        if (store.hostKeyPrompt?.sessionId === id) return;
+        void reconnectSession(id);
+      },
       onCommand: (command) => commandHistory.record(command, historyHost(id)),
       onCommandState: (state, kind) => {
         const store = useStore.getState();
@@ -334,7 +342,7 @@ async function connectSession(
       // Nothing was opened. Park the tab on the refusal and let the user
       // decide in the host key dialog, which reconnects on accept.
       const { change } = outcome;
-      failSession(id, change.message);
+      failSession(id, change.message, false);
       connectedStore.setHostKeyPrompt({ sessionId: id, profile, change });
       return id;
     }
@@ -367,15 +375,21 @@ async function connectSession(
   }
 }
 
-/** Marks a tab's connection as failed and echoes why into its terminal. */
-function failSession(id: string, message: string): void {
+/**
+ * Marks a tab's connection as failed and echoes why into its terminal. The
+ * echo offers Enter-to-reconnect unless another surface (the host key
+ * dialog) owns the next attempt.
+ */
+function failSession(id: string, message: string, hint = true): void {
   const store = useStore.getState();
   store.applyState(id, "error", message);
   store.setError(message, id);
   store.setStatus(`Failed: ${message}`);
   const terminalMessage = message.replace(/[\x00-\x1f\x7f]/g, " ");
   getController(id)?.writeText(
-    `\r\n\x1b[31m[connection failed: ${terminalMessage}]\x1b[0m\r\n`,
+    `\r\n\x1b[31m[connection failed: ${terminalMessage}${
+      hint ? " — press Enter to reconnect" : ""
+    }]\x1b[0m\r\n`,
   );
 }
 
