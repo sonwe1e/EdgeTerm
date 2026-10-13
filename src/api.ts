@@ -1,5 +1,6 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { OutputConsumption } from "./outputFlow";
 
 import type {
   AppData,
@@ -148,21 +149,46 @@ export const clearCommandHistory = () =>
  * base64 detour — ready to feed straight into xterm.js. File sessions
  * (FTP, SFTP) never produce any.
  */
+const outputConnections = new Map<string, { token: string; consumption: OutputConsumption }>();
+
 export const openSession = (
   profile: SessionProfile,
   sessionId: string,
-  onOutput: (bytes: Uint8Array) => void,
+  onOutput: (bytes: Uint8Array, consumed: () => void) => void,
   reuseSessionId?: string,
 ) => {
   const output = new Channel<ArrayBuffer>();
-  output.onmessage = (data) => onOutput(new Uint8Array(data));
+  const outputToken = crypto.randomUUID();
+  outputConnections.get(sessionId)?.consumption.dispose();
+  const consumption = new OutputConsumption((consumed) =>
+    invoke<void>("acknowledge_session_output", { token: outputToken, consumed }),
+  );
+  outputConnections.set(sessionId, { token: outputToken, consumption });
+  output.onmessage = (data) => {
+    if (outputConnections.get(sessionId)?.token !== outputToken) return;
+    onOutput(new Uint8Array(data), consumption.receive(data.byteLength));
+  };
   return invoke<OpenSessionOutcome>("open_session", {
     profile,
     sessionId,
     onOutput: output,
+    outputToken,
     reuseSessionId: reuseSessionId ?? null,
+  }).then((outcome) => {
+    if (outcome.status !== "connected") retireOutput(sessionId, outputToken);
+    return outcome;
+  }, (error: unknown) => {
+    retireOutput(sessionId, outputToken);
+    throw error;
   });
 };
+
+function retireOutput(id: string, token?: string) {
+  const current = outputConnections.get(id);
+  if (!current || (token !== undefined && current.token !== token)) return;
+  current.consumption.dispose();
+  outputConnections.delete(id);
+}
 
 /** Records the key from a reported change as the host's only known key. */
 export const acceptHostKey = (change: HostKeyChange) =>
@@ -180,7 +206,14 @@ export const acceptHostKey = (change: HostKeyChange) =>
 export const answerAuthPrompt = (id: string, responses: string[] | null) =>
   invoke<void>("answer_auth_prompt", { id, responses });
 
-export const closeSession = (id: string) => invoke<void>("close_session", { id });
+export const closeSession = (id: string) => {
+  const token = outputConnections.get(id)?.token;
+  return invoke<void>("close_session", { id }).then(() => {
+    // A failed close must not strand a live backend by stopping its ACKs.
+    // A late close response must not retire a newly reconnected stream.
+    if (token !== undefined) retireOutput(id, token);
+  });
+};
 
 export const listSessions = () => invoke<SessionInfo[]>("list_sessions");
 

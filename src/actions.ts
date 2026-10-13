@@ -311,7 +311,11 @@ async function connectSession(
     const outcome = await api.openSession(
       profile,
       id,
-      (bytes) => getController(id)?.write(bytes),
+      (bytes, consumed) => {
+        const controller = getController(id);
+        if (controller) controller.write(bytes, consumed);
+        else consumed();
+      },
       reuseSessionId,
     );
 

@@ -2,8 +2,9 @@ use std::io::{Read, Write};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
+use super::output::OutputChannel;
 use serialport::{DataBits, FlowControl, Parity, SerialPortType, StopBits};
-use tauri::ipc::{Channel, InvokeResponseBody};
+use std::cell::RefCell;
 use tauri::AppHandle;
 use tokio::sync::mpsc::{error::TryRecvError, UnboundedReceiver};
 
@@ -53,7 +54,7 @@ pub fn spawn(
     profile: &SessionProfile,
     rx: UnboundedReceiver<SessionCommand>,
     recorder: Option<Recorder>,
-    output: Channel<InvokeResponseBody>,
+    output: OutputChannel,
 ) -> Result<JoinHandle<()>> {
     let port_name = profile
         .port_name
@@ -107,15 +108,29 @@ pub fn spawn(
     std::thread::Builder::new()
         .name(format!("edgeterm-serial-{id}"))
         .spawn(move || {
-            let mut pump = OutputPump::new(output, recorder);
-            let close_requested = run_owner_loop(port, rx, |bytes| {
-                pump.push(bytes);
-                pump.flush();
-            });
-            pump.flush();
+            let mut pump = RefCell::new(OutputPump::new(output, recorder));
+            let close_requested = run_owner_loop(
+                port,
+                rx,
+                |bytes| {
+                    let mut pump = pump.borrow_mut();
+                    pump.push(bytes);
+                    pump.flush();
+                },
+                || {
+                    let mut pump = pump.borrow_mut();
+                    pump.flush();
+                    if pump.is_closed() {
+                        None
+                    } else {
+                        Some(pump.can_read())
+                    }
+                },
+            );
+            pump.get_mut().finish_blocking();
             // A close the frontend asked for is not reported back; see
             // `emit_state`.
-            if !close_requested {
+            if !close_requested && !pump.get_mut().is_closed() {
                 emit_state(&app, &id, "closed", None);
             }
         })
@@ -129,14 +144,16 @@ pub fn spawn(
 /// Returns `true` when the loop ended because a close was requested (a Close
 /// command, or the command channel going away with the session manager) and
 /// `false` when the port itself failed.
-fn run_owner_loop<P, F>(
+fn run_owner_loop<P, F, G>(
     mut port: P,
     mut rx: UnboundedReceiver<SessionCommand>,
     mut on_output: F,
+    mut output_ready: G,
 ) -> bool
 where
     P: Read + Write,
     F: FnMut(&[u8]),
+    G: FnMut() -> Option<bool>,
 {
     let mut buf = vec![0u8; 8192];
     loop {
@@ -164,6 +181,17 @@ where
             Err(TryRecvError::Empty) => {}
         }
 
+        match output_ready() {
+            None => return false,
+            Some(false) => {
+                // Keep servicing writes/close while downstream is full.
+                // Hardware/software serial flow control remains as configured
+                // by the profile; a peer without it cannot be paused by TCP.
+                std::thread::sleep(Duration::from_millis(10));
+                continue;
+            }
+            Some(true) => {}
+        }
         match port.read(&mut buf) {
             Ok(0) => std::thread::sleep(Duration::from_millis(10)),
             Ok(n) => on_output(&buf[..n]),
@@ -219,6 +247,31 @@ mod tests {
     }
 
     #[test]
+    fn paused_output_still_services_binary_writes_and_close() {
+        let dropped = Arc::new(AtomicBool::new(false));
+        let port = MockPort {
+            dropped: dropped.clone(),
+            read_started: None,
+        };
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let (reply, response) = tokio::sync::oneshot::channel();
+        tx.send(SessionCommand::WriteConfirmed {
+            data: vec![6],
+            reply,
+        })
+        .unwrap();
+        tx.send(SessionCommand::Close).unwrap();
+        assert!(run_owner_loop(
+            port,
+            rx,
+            |_| panic!("must not read"),
+            || Some(false)
+        ));
+        response.blocking_recv().unwrap().unwrap();
+        assert!(dropped.load(Ordering::SeqCst));
+    }
+
+    #[test]
     fn close_releases_the_owned_serial_handle() {
         let dropped = Arc::new(AtomicBool::new(false));
         let (read_started_tx, read_started_rx) = mpsc::channel();
@@ -228,7 +281,8 @@ mod tests {
         };
         let (command_tx, command_rx) = tokio::sync::mpsc::unbounded_channel();
 
-        let owner = std::thread::spawn(move || run_owner_loop(port, command_rx, |_| {}));
+        let owner =
+            std::thread::spawn(move || run_owner_loop(port, command_rx, |_| {}, || Some(true)));
         read_started_rx
             .recv_timeout(Duration::from_secs(1))
             .expect("owner should start reading");

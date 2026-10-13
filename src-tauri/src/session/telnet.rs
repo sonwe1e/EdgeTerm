@@ -23,7 +23,7 @@
 
 use std::time::{Duration, Instant};
 
-use tauri::ipc::{Channel, InvokeResponseBody};
+use super::output::OutputChannel;
 use tauri::AppHandle;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -692,7 +692,7 @@ pub fn spawn(
     mut rx: UnboundedReceiver<SessionCommand>,
     recorder: Option<Recorder>,
     mut login: Option<AutoLogin>,
-    output: Channel<InvokeResponseBody>,
+    output: OutputChannel,
 ) {
     tauri::async_runtime::spawn(async move {
         let (mut reader, mut writer) = stream.into_split();
@@ -713,8 +713,12 @@ pub fn spawn(
         }
 
         loop {
+            if pump.is_closed() {
+                break;
+            }
             tokio::select! {
-                read = reader.read(&mut buf) => {
+                _ = pump.ready(), if !pump.is_empty() => pump.flush(),
+                read = reader.read(&mut buf), if pump.can_read() => {
                     let n = match read {
                         Ok(0) | Err(_) => break,
                         Ok(n) => n,
@@ -791,9 +795,9 @@ pub fn spawn(
             }
         }
 
-        pump.flush();
+        pump.finish().await;
         let _ = writer.shutdown().await;
-        if !close_requested {
+        if !close_requested && !pump.is_closed() {
             emit_state(&app, &id, "closed", None);
         }
     });

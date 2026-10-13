@@ -32,6 +32,7 @@ use crate::store::{self, Store};
 
 pub struct AppState {
     pub sessions: SessionManager,
+    pub outputs: session::output::OutputStreams,
     pub store: Store,
     pub remote_edits: RemoteEdits,
     /// Authentication challenges a connecting session is waiting on; see
@@ -259,6 +260,7 @@ pub async fn open_session(
     // the same invoke that opens the session; see OutputPump. File sessions
     // (FTP, SFTP) never write to it.
     on_output: Channel<InvokeResponseBody>,
+    output_token: String,
 ) -> Result<OpenSessionOutcome> {
     // A profile may arrive by id (from the tree) or inline (quick connect).
     let profile = if !profile.id.is_empty() {
@@ -277,6 +279,10 @@ pub async fn open_session(
         session_id
     };
     let (tx, rx) = mpsc::unbounded_channel();
+    // Reconnects reuse the tab id, but must retire the old generation even
+    // when it ended naturally with some final ACKs still in flight.
+    state.outputs.close_session(&id);
+    let on_output = state.outputs.open(&id, output_token, on_output)?;
     let mut info = session::make_info(&id, &profile);
     // The recording a terminal profile asked for. Opened right before the
     // session starts producing output — after an SSH handshake, so a
@@ -442,6 +448,7 @@ pub fn answer_auth_prompt(
 
 #[tauri::command]
 pub fn close_session(state: State<'_, AppState>, id: String) -> Result<()> {
+    state.outputs.close_session(&id);
     // Nothing new may be opened on this session's connection once it is
     // closing; whether the connection itself goes down depends on the other
     // sessions sharing it (see `session::ssh::SharedTransport`).
@@ -455,6 +462,13 @@ pub fn close_session(state: State<'_, AppState>, id: String) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Consumption acknowledgements must bypass a potentially busy transport's
+/// command queue. Tokens distinguish reconnects that reuse a tab/session id.
+#[tauri::command]
+pub fn acknowledge_session_output(state: State<'_, AppState>, token: String, consumed: u64) {
+    state.outputs.acknowledge(&token, consumed);
 }
 
 #[tauri::command]

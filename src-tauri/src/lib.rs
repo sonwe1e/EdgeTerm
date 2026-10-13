@@ -350,6 +350,7 @@ pub fn run() {
         })
         .manage(AppState {
             sessions: Default::default(),
+            outputs: Default::default(),
             store: store::Store::load(),
             remote_edits: Default::default(),
             auth_prompts: Default::default(),
@@ -399,6 +400,7 @@ pub fn run() {
             commands::accept_host_key,
             commands::answer_auth_prompt,
             commands::close_session,
+            commands::acknowledge_session_output,
             commands::list_sessions,
             commands::default_recording_dir,
             commands::write_session,

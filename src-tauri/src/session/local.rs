@@ -2,8 +2,8 @@ use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use super::output::OutputChannel;
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
-use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::AppHandle;
 use tokio::sync::mpsc::UnboundedReceiver;
 
@@ -53,7 +53,7 @@ pub fn spawn(
     profile: &SessionProfile,
     mut rx: UnboundedReceiver<SessionCommand>,
     recorder: Option<Recorder>,
-    output: Channel<InvokeResponseBody>,
+    output: OutputChannel,
 ) -> Result<()> {
     let pty = native_pty_system();
     let pair = pty
@@ -120,6 +120,9 @@ pub fn spawn(
             let mut pump = OutputPump::new(output, recorder);
             let mut buf = vec![0u8; 32 * 1024];
             loop {
+                if !pump.wait_readable() {
+                    break;
+                }
                 match reader.read(&mut buf) {
                     Ok(0) => break,
                     Ok(n) => {
@@ -132,8 +135,8 @@ pub fn spawn(
                     Err(_) => break,
                 }
             }
-            pump.flush();
-            if !reader_close_requested.load(Ordering::SeqCst) {
+            pump.finish_blocking();
+            if !reader_close_requested.load(Ordering::SeqCst) && !pump.is_closed() {
                 emit_state(&reader_app, &reader_id, "closed", None);
             }
         })

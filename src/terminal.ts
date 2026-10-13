@@ -98,15 +98,6 @@ const WEBGL_MAX_TERMINALS = 6;
 const WEBGL_RECOVERY_DELAY_MS = 2000;
 const WEBGL_RECOVERY_LIMIT = 3;
 const WEBGL_RECOVERY_WINDOW_MS = 60_000;
-/**
- * The shortest gap between two grid fits. A drag — the window edge, a panel
- * splitter — reports dozens of sizes a second, and each fit resizes the
- * renderer's canvas, which on a weak GPU is enough continuous surface churn
- * to stall the page mid-drag. The grid follows the drag at a few steps a
- * second instead, and the trailing fit of `scheduleFit` lands the exact
- * final size once the drag settles.
- */
-const FIT_MIN_INTERVAL_MS = 150;
 
 /** Terminals holding a WebGL renderer, most recently shown first. */
 const webglTerminals: TerminalController[] = [];
@@ -542,9 +533,6 @@ export class TerminalController {
   private webglRecoveries = 0;
   private webglLastLoss = 0;
   private webglTimer: number | null = null;
-  /** When `fit` last ran, and the pending rate-limited fit; see scheduleFit. */
-  private lastFitAt = 0;
-  private fitTimer: number | null = null;
   /**
    * Cached so the per-frame gutter sync never reads layout. Recomputed only on
    * fit/resize, which is the only time it can change.
@@ -1142,6 +1130,7 @@ export class TerminalController {
   }
 
   fit(): { cols: number; rows: number } | null {
+    if (this.disposed) return null;
     // Resizing reflows xterm's whole scrollback buffer, so the many sizes a
     // splitter drag crosses must not each pay for it: the first fit applies
     // at once (attaching, a font change, a first layout), and the fits behind
@@ -1151,7 +1140,6 @@ export class TerminalController {
 
   private applyFit(): { cols: number; rows: number } | null {
     if (!this.host || this.host.clientWidth === 0) return null;
-    this.lastFitAt = Date.now();
     try {
       this.fitAddon.fit();
     } catch {
@@ -1163,22 +1151,18 @@ export class TerminalController {
     return { cols: this.term.cols, rows: this.term.rows };
   }
 
-  /**
-   * `fit` rate-limited for the continuous size streams a drag produces: at
-   * most one fit per `FIT_MIN_INTERVAL_MS`, and one trailing fit once the
-   * stream has gone quiet, so the terminal always ends up at the exact final
-   * size while the canvas churn stays bounded.
-   */
+  /** ResizeObserver entry point; uses the same settle policy as explicit fits. */
   scheduleFit() {
-    if (this.disposed || this.fitTimer !== null) return;
-    const wait = Math.max(0, FIT_MIN_INTERVAL_MS - (Date.now() - this.lastFitAt));
-    this.fitTimer = window.setTimeout(() => {
-      this.fitTimer = null;
-      this.fit();
-    }, wait);
+    // ResizeObserver and explicit fits share one scheduler. An outer fixed
+    // interval would let the inner settle window expire during a live drag.
+    this.fit();
   }
 
-  write(data: Uint8Array) {
+  write(data: Uint8Array, consumed?: () => void) {
+    if (this.disposed) {
+      consumed?.();
+      return;
+    }
     // Cheap enough for the byte path: one timestamp, only while a turn is
     // open, and the quiet timer reads it instead of being re-armed here.
     if (this.aiTurn) this.aiOutputAt = Date.now();
@@ -1187,6 +1171,11 @@ export class TerminalController {
     // passes ordinary output through to xterm.
     if (this.xmodem.isActive()) this.xmodem.consume(data);
     else this.zmodem.consume(data);
+    // The protocol sentries may emit several decoded writes, or consume the
+    // whole chunk themselves. A barrier accounts for the ORIGINAL byte count
+    // only after all synchronous terminal output from this chunk is parsed.
+    // It also works on hidden terminals, without a render/rAF dependency.
+    if (consumed) this.term.write("", consumed);
   }
 
   /**
@@ -1731,10 +1720,6 @@ export class TerminalController {
     if (this.webglTimer !== null) {
       window.clearTimeout(this.webglTimer);
       this.webglTimer = null;
-    }
-    if (this.fitTimer !== null) {
-      window.clearTimeout(this.fitTimer);
-      this.fitTimer = null;
     }
     this.unloadWebgl();
     this.zmodem.dispose();

@@ -19,7 +19,6 @@ use russh::{
 use russh_sftp::client::error::Error as SftpError;
 use russh_sftp::client::SftpSession;
 use russh_sftp::protocol::{OpenFlags, StatusCode};
-use tauri::ipc::{Channel as IpcChannel, InvokeResponseBody};
 use tauri::AppHandle;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -40,8 +39,6 @@ use crate::model::{
     SessionProfile,
 };
 
-/// How long output may sit in the pump before it is flushed to the UI.
-const FLUSH_INTERVAL: Duration = Duration::from_millis(8);
 const TRANSFER_PROGRESS_INTERVAL: Duration = Duration::from_millis(50);
 const TRANSFER_CHUNK_SIZE: usize = 1024 * 1024;
 /// How often an SFTP-only session, which has no channel to read from, checks
@@ -1308,7 +1305,7 @@ pub fn spawn(
     conn: SshConnection,
     mut rx: UnboundedReceiver<SessionCommand>,
     recorder: Option<Recorder>,
-    output: IpcChannel<InvokeResponseBody>,
+    output: super::output::OutputChannel,
 ) {
     tauri::async_runtime::spawn(async move {
         let SshConnection { transport, channel } = conn;
@@ -1325,8 +1322,13 @@ pub fn spawn(
         emit_state(&app, &id, "connected", None);
 
         loop {
+            if pump.is_closed() {
+                let _ = writer.eof().await;
+                let _ = writer.close().await;
+                break;
+            }
             tokio::select! {
-                msg = reader.wait() => {
+                msg = reader.wait(), if pump.can_read() => {
                     match msg {
                         Some(ChannelMsg::Data { data }) => pump.push(&data),
                         Some(ChannelMsg::ExtendedData { data, .. }) => pump.push(&data),
@@ -1384,12 +1386,12 @@ pub fn spawn(
                         }
                     }
                 }
-                _ = tokio::time::sleep(FLUSH_INTERVAL), if !pump.is_empty() => pump.flush(),
+                _ = pump.ready(), if !pump.is_empty() => pump.flush(),
             }
         }
 
-        pump.flush();
-        if !close_requested {
+        pump.finish().await;
+        if !close_requested && !pump.is_closed() {
             emit_state(
                 &app,
                 &id,
