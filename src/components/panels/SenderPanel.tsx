@@ -117,6 +117,11 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
   // panel does not stop a keepalive; the strip shows and stops it.
   const [repeatOpen, setRepeatOpen] = useState(false);
   const [repeat, setRepeat] = useState(loadRepeatSettings);
+  const preferencesRevision = useStore((s) => s.panelPreferencesRevision);
+  useEffect(() => {
+    setRepeat(loadRepeatSettings());
+    setSaveLevel(loadSaveLevel());
+  }, [preferencesRevision]);
   const schedule = useSchedule();
   const [now, setNow] = useState(() => Date.now());
   /** Abandons the send in progress between its lines. */
