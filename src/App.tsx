@@ -235,14 +235,9 @@ export default function App() {
     );
   }, [bufferFontFamily, panelFontFamily, symbolFontFamilies, systemMonoFamily]);
 
-  useEffect(() => {
-    const unlisten = api.onSessionOutput(({ id, data }) => {
-      getController(id)?.write(api.base64ToBytes(data));
-    });
-    return () => {
-      void unlisten.then((off) => off());
-    };
-  }, []);
+  // Terminal output no longer passes through here: each session streams its
+  // bytes on the raw channel `connectSession` hands the backend, straight
+  // into its controller (see actions.ts and OutputPump in session/mod.rs).
 
   useEffect(() => {
     const unlisten = api.onSessionState(({ id, state, message }) => {

@@ -1,10 +1,39 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 
 import * as api from "../api";
+import {
+  loadFileSort,
+  saveFileSort,
+  sortFileEntries,
+  sortIndicator,
+  toggleFileSort,
+  type FileSort,
+  type SortKey,
+} from "../fileSort";
+import {
+  dropAction,
+  type DraggedEntry,
+  type DropTarget,
+  type PaneSide,
+} from "../paneDrop";
+import { createFrameGate } from "../frameGate";
+import { useStore, type Tab } from "../store";
+import type { FileEntry, ThemeMode } from "../types";
+import { useStableCallback } from "../useStableCallback";
 import { FileIcon } from "./FileIcon";
 import { Icon } from "./icons";
-import { useStore, type Tab } from "../store";
-import type { FileEntry } from "../types";
+
+/** Pointer travel before a press on a row turns into a drag. */
+const DRAG_THRESHOLD = 5;
 
 interface Props {
   tab: Tab;
@@ -30,6 +59,20 @@ interface FileBrowserProps {
   loading: boolean;
   error: string | null;
   actions?: ReactNode;
+  side: PaneSide;
+  /** The pointer-drag wiring; see FtpPane's `beginPress` / `dragMove`. */
+  onItemPointerDown: (
+    side: PaneSide,
+    entry: FileEntry,
+    event: ReactPointerEvent,
+  ) => void;
+  onItemPointerMove: (event: ReactPointerEvent) => void;
+  onItemPointerUp: (event: ReactPointerEvent) => void;
+  onDragCancel: () => void;
+  /** The row being dragged, so rows can dim it; null when there is none. */
+  draggingPath: string | null;
+  /** The folder or pane under the pointer, for highlighting. */
+  dropHover: { side: PaneSide; dir: string } | null;
   onDraftChange: (value: string) => void;
   onOpenPath: (path: string) => void;
   onHome: () => void;
@@ -63,6 +106,22 @@ export function FtpPane({ tab, active }: Props) {
 
   const [transferring, setTransferring] = useState(false);
   const [transfer, setTransfer] = useState<TransferState | null>(null);
+  // The entry a pointer drag is carrying, plus the press that may become
+  // one. Refs are what the gesture handlers read; the states re-render the
+  // rows so the dragged one can dim and the target can highlight.
+  const draggedRef = useRef<DraggedEntry | null>(null);
+  const [dragging, setDragging] = useState<DraggedEntry | null>(null);
+  const dragPressRef = useRef<{
+    side: PaneSide;
+    entry: FileEntry;
+    pointerId: number;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [dropHover, setDropHover] = useState<{
+    side: PaneSide;
+    dir: string;
+  } | null>(null);
 
   const loadRemote = useCallback(
     async (target: string) => {
@@ -145,54 +204,91 @@ export function FtpPane({ tab, active }: Props) {
     );
   };
 
-  const upload = async () => {
-    if (!selectedLocal || !remotePath || transferring) {
-      return;
+  /**
+   * The entries a landing folder holds, for the conflict checks. The pane in
+   * view already has them in hand; a folder row's are fetched.
+   */
+  const entriesAt = async (
+    side: PaneSide,
+    dir: string,
+  ): Promise<FileEntry[]> => {
+    if (side === "remote") {
+      if (dir === remotePath) return remoteEntries;
+      return (await api.sftpList(sessionId, dir)).entries;
     }
+    if (dir === localPath) return localEntries;
+    return (await api.localList(dir)).entries;
+  };
 
-    const existingRemote = remoteEntries.find(
-      (entry) => entry.name === selectedLocal.name,
-    );
-    if (existingRemote && existingRemote.isDir !== selectedLocal.isDir) {
-      setRemoteError(
-        selectedLocal.isDir
-          ? `A remote file named “${selectedLocal.name}” already exists.`
-          : `A remote folder named “${selectedLocal.name}” already exists.`,
+  /**
+   * The gate every landing shares: same-name checks with the target pane's
+   * wording. False means stop — an error was shown or the user declined.
+   * `moves` refuses a folder onto a same-named folder outright: a rename
+   * cannot merge the way an uploaded directory walk can.
+   */
+  const mayLand = (
+    side: PaneSide,
+    incoming: FileEntry,
+    existing: FileEntry | undefined,
+    moves: boolean,
+  ): boolean => {
+    const setError = side === "remote" ? setRemoteError : setLocalError;
+    if (!existing) return true;
+    if (side === "local" && existing.isSymlink) {
+      setError(`Refusing to replace local symlink “${incoming.name}”.`);
+      return false;
+    }
+    if (existing.isDir !== incoming.isDir) {
+      setError(
+        incoming.isDir
+          ? `A ${side} file named “${incoming.name}” already exists.`
+          : `A ${side} folder named “${incoming.name}” already exists.`,
       );
+      return false;
+    }
+    if (moves && incoming.isDir) {
+      setError(`A ${side} folder named “${incoming.name}” already exists.`);
+      return false;
+    }
+    const prompt = incoming.isDir
+      ? `Merge into ${side} folder “${incoming.name}”? Existing files with the same names will be replaced.`
+      : `Replace ${side} file “${incoming.name}”?`;
+    return window.confirm(prompt);
+  };
+
+  const runUpload = async (incoming: FileEntry, destDir: string) => {
+    if (transferring || !destDir) return;
+    let existing: FileEntry | undefined;
+    try {
+      existing = (await entriesAt("remote", destDir)).find(
+        (entry) => entry.name === incoming.name,
+      );
+    } catch (error) {
+      setRemoteError(friendlyFtpError(error));
       return;
     }
-    if (existingRemote) {
-      const prompt = selectedLocal.isDir
-        ? `Merge into remote folder “${selectedLocal.name}”? Existing files with the same names will be replaced.`
-        : `Replace remote file “${selectedLocal.name}”?`;
-      if (!window.confirm(prompt)) return;
-    }
+    if (!mayLand("remote", incoming, existing, false)) return;
 
     setRemoteError(null);
     setTransferring(true);
     setTransfer({
       direction: "upload",
-      name: selectedLocal.name,
+      name: incoming.name,
       transferred: 0,
-      total: selectedLocal.isDir ? 0 : selectedLocal.size,
+      total: incoming.isDir ? 0 : incoming.size,
       status: "running",
     });
     try {
-      const destination = joinRemote(remotePath, selectedLocal.name);
-      if (selectedLocal.isDir) {
+      const destination = joinRemote(destDir, incoming.name);
+      if (incoming.isDir) {
         await api.sftpUploadDirectory(
           sessionId,
-          selectedLocal.path,
+          incoming.path,
           destination,
           updateProgress,
         );
       } else {
-        await api.sftpUpload(
-          sessionId,
-          selectedLocal.path,
-          destination,
-          updateProgress,
-        );
+        await api.sftpUpload(sessionId, incoming.path, destination, updateProgress);
       }
       setTransfer((current) =>
         current ? { ...current, status: "complete" } : current,
@@ -209,58 +305,39 @@ export function FtpPane({ tab, active }: Props) {
     }
   };
 
-  const download = async () => {
-    if (!selectedRemote || !localPath || transferring) {
-      return;
-    }
-
-    const existingLocal = localEntries.find(
-      (entry) => entry.name === selectedRemote.name,
-    );
-    if (existingLocal?.isSymlink) {
-      setLocalError(`Refusing to replace local symlink “${selectedRemote.name}”.`);
-      return;
-    }
-    if (existingLocal && existingLocal.isDir !== selectedRemote.isDir) {
-      setLocalError(
-        selectedRemote.isDir
-          ? `A local file named “${selectedRemote.name}” already exists.`
-          : `A local folder named “${selectedRemote.name}” already exists.`,
+  const runDownload = async (incoming: FileEntry, destDir: string) => {
+    if (transferring || !destDir) return;
+    let existing: FileEntry | undefined;
+    try {
+      existing = (await entriesAt("local", destDir)).find(
+        (entry) => entry.name === incoming.name,
       );
+    } catch (error) {
+      setLocalError(String(error));
       return;
     }
-    if (existingLocal) {
-      const prompt = selectedRemote.isDir
-        ? `Merge into local folder “${selectedRemote.name}”? Existing files with the same names will be replaced.`
-        : `Replace local file “${selectedRemote.name}”?`;
-      if (!window.confirm(prompt)) return;
-    }
+    if (!mayLand("local", incoming, existing, false)) return;
 
     setLocalError(null);
     setTransferring(true);
     setTransfer({
       direction: "download",
-      name: selectedRemote.name,
+      name: incoming.name,
       transferred: 0,
-      total: selectedRemote.isDir ? 0 : selectedRemote.size,
+      total: incoming.isDir ? 0 : incoming.size,
       status: "running",
     });
     try {
-      const destination = joinLocal(localPath, selectedRemote.name);
-      if (selectedRemote.isDir) {
+      const destination = joinLocal(destDir, incoming.name);
+      if (incoming.isDir) {
         await api.sftpDownloadDirectory(
           sessionId,
-          selectedRemote.path,
+          incoming.path,
           destination,
           updateProgress,
         );
       } else {
-        await api.sftpDownload(
-          sessionId,
-          selectedRemote.path,
-          destination,
-          updateProgress,
-        );
+        await api.sftpDownload(sessionId, incoming.path, destination, updateProgress);
       }
       setTransfer((current) =>
         current ? { ...current, status: "complete" } : current,
@@ -276,6 +353,179 @@ export function FtpPane({ tab, active }: Props) {
       setTransferring(false);
     }
   };
+
+  /** A drop inside one pane: a rename into the target folder. */
+  const runMove = async (source: DraggedEntry, target: DropTarget) => {
+    const incoming = source.entry;
+    const setError = source.side === "remote" ? setRemoteError : setLocalError;
+    let existing: FileEntry | undefined;
+    try {
+      existing = (await entriesAt(source.side, target.dir)).find(
+        (entry) => entry.name === incoming.name && entry.path !== incoming.path,
+      );
+    } catch (error) {
+      setError(
+        source.side === "remote" ? friendlyFtpError(error) : String(error),
+      );
+      return;
+    }
+    if (!mayLand(source.side, incoming, existing, true)) return;
+
+    setError(null);
+    try {
+      if (source.side === "remote") {
+        await api.sftpRename(
+          sessionId,
+          incoming.path,
+          joinRemote(target.dir, incoming.name),
+        );
+        await loadRemote(remotePath);
+      } else {
+        await api.localRename(
+          incoming.path,
+          joinLocal(target.dir, incoming.name),
+        );
+        await loadLocal(localPath);
+      }
+    } catch (error) {
+      setError(
+        source.side === "remote" ? friendlyFtpError(error) : String(error),
+      );
+    }
+  };
+
+  const upload = () => {
+    if (selectedLocal) void runUpload(selectedLocal, remotePath);
+  };
+
+  const download = () => {
+    if (selectedRemote) void runDownload(selectedRemote, localPath);
+  };
+
+  /**
+   * Reads the drop target under a point from the panes' data attributes: a
+   * folder row names its own folder, the list behind it names the pane's
+   * directory, and a file row has neither so the list still answers for it.
+   */
+  const targetAt = (x: number, y: number): DropTarget | null => {
+    const element = document
+      .elementFromPoint(x, y)
+      ?.closest("[data-drop-side]");
+    const side = element?.getAttribute("data-drop-side");
+    const dir = element?.getAttribute("data-drop-dir");
+    if ((side !== "local" && side !== "remote") || !dir) return null;
+    return { side, dir };
+  };
+
+  const beginPress = (side: PaneSide, entry: FileEntry, event: ReactPointerEvent) => {
+    if (event.button !== 0 || transferring) return;
+    dragPressRef.current = {
+      side,
+      entry,
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+    };
+    // Without the capture a quick flick leaves the row before the threshold
+    // is reached and the drag never starts.
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const endDragState = () => {
+    // A scheduled hit test must not fire after the drag is over and light a
+    // highlight nothing will clear.
+    hoverGate.current?.cancel();
+    dragPressRef.current = null;
+    draggedRef.current = null;
+    setDragging(null);
+    setDropHover(null);
+  };
+
+  // The drop-target hit test runs once per frame on the pointer's latest
+  // position, not per pointermove: `elementFromPoint` forces a layout when
+  // the DOM is dirty, and a fast pointer crosses dozens of positions a
+  // frame. The release does its own hit test, so a collapsed one loses
+  // nothing. See frameGate.ts.
+  const hoverApply = useStableCallback((at: { x: number; y: number }) => {
+    const hover = targetAt(at.x, at.y);
+    setDropHover((current) =>
+      current?.side === hover?.side && current?.dir === hover?.dir
+        ? current
+        : hover,
+    );
+  });
+  const hoverGate = useRef<
+    ReturnType<typeof createFrameGate<{ x: number; y: number }>> | null
+  >(null);
+  if (hoverGate.current === null) {
+    hoverGate.current = createFrameGate(hoverApply);
+  }
+
+  const dragMove = (event: ReactPointerEvent) => {
+    const press = dragPressRef.current;
+    if (!press || press.pointerId !== event.pointerId) return;
+    if (!draggedRef.current) {
+      if (
+        Math.abs(event.clientX - press.x) < DRAG_THRESHOLD &&
+        Math.abs(event.clientY - press.y) < DRAG_THRESHOLD
+      ) {
+        return;
+      }
+      const source = { side: press.side, entry: press.entry };
+      draggedRef.current = source;
+      setDragging(source);
+    }
+    hoverGate.current!.schedule({ x: event.clientX, y: event.clientY });
+  };
+
+  /** The release: whatever sits under the pointer takes the drop. */
+  const dragRelease = (event: ReactPointerEvent) => {
+    const source = draggedRef.current;
+    const target = source ? targetAt(event.clientX, event.clientY) : null;
+    const action =
+      source && target && !transferring ? dropAction(source, target) : null;
+    endDragState();
+    if (!source || !target || !action) return;
+    if (action.kind === "move") {
+      void runMove(source, target);
+    } else if (action.kind === "upload") {
+      void runUpload(source.entry, target.dir);
+    } else {
+      void runDownload(source.entry, target.dir);
+    }
+  };
+
+  // Escape is the only way out of a drag that stays inside the window.
+  useEffect(() => {
+    if (!dragging) return;
+    const cancel = (event: KeyboardEvent) => {
+      if (event.key === "Escape") endDragState();
+    };
+    window.addEventListener("keydown", cancel);
+    return () => window.removeEventListener("keydown", cancel);
+  }, [dragging]);
+
+  // The row-boundary callbacks are stable identities (see useStableCallback)
+  // so the memoised rows skip re-rendering when this pane re-renders — a
+  // transfer tick, a hover change, a selection in the other pane. The rows
+  // pass their own `side`, so the handlers need no per-pane closures.
+  const itemPointerDown = useStableCallback(
+    (side: PaneSide, entry: FileEntry, event: ReactPointerEvent) =>
+      beginPress(side, entry, event),
+  );
+  const itemPointerMove = useStableCallback((event: ReactPointerEvent) =>
+    dragMove(event),
+  );
+  const itemPointerUp = useStableCallback((event: ReactPointerEvent) =>
+    dragRelease(event),
+  );
+  const dragCancel = useStableCallback(() => endDragState());
+  const activateRemote = useStableCallback((entry: FileEntry) => {
+    if (entry.isDir) void loadRemote(entry.path);
+  });
+  const activateLocal = useStableCallback((entry: FileEntry) => {
+    if (entry.isDir) void loadLocal(entry.path);
+  });
 
   const createRemoteFolder = async () => {
     if (!remotePath || transferring) return;
@@ -389,10 +639,17 @@ export function FtpPane({ tab, active }: Props) {
         </div>
       ) : (
         <>
-          <div className="ftp-dual-pane">
+          <div className={`ftp-dual-pane${dragging ? " is-dragging" : ""}`}>
             <FileBrowser
               title={`${protocolLabel} Server`}
               subtitle={tab.info.address}
+              side="remote"
+              onItemPointerDown={itemPointerDown}
+              onItemPointerMove={itemPointerMove}
+              onItemPointerUp={itemPointerUp}
+              onDragCancel={dragCancel}
+              draggingPath={dragging?.entry.path ?? null}
+              dropHover={dropHover}
               path={remotePath}
               draft={remoteDraft}
               entries={remoteEntries}
@@ -405,9 +662,7 @@ export function FtpPane({ tab, active }: Props) {
               onParent={() => void loadRemote(remoteParent(remotePath))}
               onRefresh={() => void loadRemote(remotePath || remoteHome)}
               onSelect={setRemoteSelected}
-              onActivate={(entry) => {
-                if (entry.isDir) void loadRemote(entry.path);
-              }}
+              onActivate={activateRemote}
               actions={
                 <>
                   <ToolButton
@@ -460,6 +715,13 @@ export function FtpPane({ tab, active }: Props) {
             <FileBrowser
               title="Local Computer"
               subtitle="This device"
+              side="local"
+              onItemPointerDown={itemPointerDown}
+              onItemPointerMove={itemPointerMove}
+              onItemPointerUp={itemPointerUp}
+              onDragCancel={dragCancel}
+              draggingPath={dragging?.entry.path ?? null}
+              dropHover={dropHover}
               path={localPath}
               draft={localDraft}
               entries={localEntries}
@@ -474,9 +736,7 @@ export function FtpPane({ tab, active }: Props) {
               }}
               onRefresh={() => void loadLocal(localPath || localHome)}
               onSelect={setLocalSelected}
-              onActivate={(entry) => {
-                if (entry.isDir) void loadLocal(entry.path);
-              }}
+              onActivate={activateLocal}
               actions={
                 <>
                   <ToolButton
@@ -559,6 +819,13 @@ function FileBrowser({
   loading,
   error,
   actions,
+  side,
+  onItemPointerDown,
+  onItemPointerMove,
+  onItemPointerUp,
+  onDragCancel,
+  draggingPath,
+  dropHover,
   onDraftChange,
   onOpenPath,
   onHome,
@@ -568,6 +835,21 @@ function FileBrowser({
   onActivate,
 }: FileBrowserProps) {
   const theme = useStore((s) => s.theme);
+  const [sort, setSort] = useState<FileSort>(loadFileSort);
+  const sortedEntries = useMemo(
+    () => sortFileEntries(entries, sort),
+    [entries, sort],
+  );
+
+  /** Re-sorts the list for a clicked column caption and remembers the choice. */
+  const sortBy = (key: SortKey) => {
+    setSort((current) => {
+      const next = toggleFileSort(current, key);
+      saveFileSort(next);
+      return next;
+    });
+  };
+
   return (
     <section className="ftp-file-browser">
       <div className="ftp-browser-header">
@@ -602,37 +884,65 @@ function FileBrowser({
       </div>
 
       <div className="ftp-browser-columns">
-        <span>Name</span>
-        <span>Size</span>
-        <span>Modified</span>
+        <button
+          type="button"
+          className={sort.key === "name" ? "is-sorted" : undefined}
+          onClick={() => sortBy("name")}
+          aria-label="Sort by name"
+        >
+          Name{sortIndicator(sort, "name")}
+        </button>
+        <button
+          type="button"
+          className={sort.key === "size" ? "is-sorted" : undefined}
+          onClick={() => sortBy("size")}
+          aria-label="Sort by size"
+        >
+          Size{sortIndicator(sort, "size")}
+        </button>
+        <button
+          type="button"
+          className={sort.key === "modified" ? "is-sorted" : undefined}
+          onClick={() => sortBy("modified")}
+          aria-label="Sort by last modified"
+        >
+          Modified{sortIndicator(sort, "modified")}
+        </button>
       </div>
 
-      <div className="ftp-browser-list" role="listbox" aria-label={`${title} files`}>
+      <div
+        className={`ftp-browser-list${dropHover != null && dropHover.side === side && dropHover.dir === path ? " is-drop-target" : ""}`}
+        data-drop-side={side}
+        data-drop-dir={path}
+        role="listbox"
+        aria-label={`${title} files`}
+      >
         {error && <div className="ftp-browser-message is-error">{error}</div>}
         {!error && loading && <div className="ftp-browser-message">Loading…</div>}
         {!error && !loading && entries.length === 0 && (
           <div className="ftp-browser-message">This folder is empty.</div>
         )}
         {!error &&
-          entries.map((entry) => (
-            <div
+          sortedEntries.map((entry) => (
+            <FtpFileRow
               key={entry.path}
-              className={`ftp-file-row${selected === entry.path ? " is-selected" : ""}${entry.isDir ? " is-directory" : ""}`}
-              role="option"
-              aria-selected={selected === entry.path}
-              onClick={() => onSelect(entry.path)}
-              onDoubleClick={() => onActivate(entry)}
-              title={entry.path}
-            >
-              <span className="ftp-file-name">
-                <span className="ftp-file-icon" aria-hidden="true">
-                  <FileIcon name={entry.name} isDir={entry.isDir} theme={theme} />
-                </span>
-                <span>{entry.name}</span>
-              </span>
-              <span>{entry.isDir ? "—" : formatBytes(entry.size)}</span>
-              <span>{formatDate(entry.modified)}</span>
-            </div>
+              entry={entry}
+              side={side}
+              selected={selected === entry.path}
+              dragSource={draggingPath === entry.path}
+              dropTarget={
+                dropHover != null &&
+                dropHover.side === side &&
+                dropHover.dir === entry.path
+              }
+              theme={theme}
+              onSelect={onSelect}
+              onActivate={onActivate}
+              onPointerDown={onItemPointerDown}
+              onPointerMove={onItemPointerMove}
+              onPointerUp={onItemPointerUp}
+              onDragCancel={onDragCancel}
+            />
           ))}
       </div>
       <div className="ftp-browser-footer">
@@ -642,6 +952,72 @@ function FileBrowser({
     </section>
   );
 }
+
+/**
+ * One row of a browser pane, memoised so a re-render that nothing on the row
+ * depends on — a transfer tick, a hover elsewhere, a selection in the other
+ * pane — skips every row instead of rebuilding its JSX, size and date
+ * strings. Only primitive props and stable callbacks cross this boundary
+ * (see useStableCallback); the drag/drop flags arrive as booleans so a
+ * hover change re-renders at most the one row it moved to.
+ */
+const FtpFileRow = memo(function FtpFileRow({
+  entry,
+  side,
+  selected,
+  dragSource,
+  dropTarget,
+  theme,
+  onSelect,
+  onActivate,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onDragCancel,
+}: {
+  entry: FileEntry;
+  side: PaneSide;
+  selected: boolean;
+  dragSource: boolean;
+  dropTarget: boolean;
+  theme: ThemeMode;
+  onSelect: (path: string) => void;
+  onActivate: (entry: FileEntry) => void;
+  onPointerDown: (
+    side: PaneSide,
+    entry: FileEntry,
+    event: ReactPointerEvent,
+  ) => void;
+  onPointerMove: (event: ReactPointerEvent) => void;
+  onPointerUp: (event: ReactPointerEvent) => void;
+  onDragCancel: () => void;
+}) {
+  return (
+    <div
+      className={`ftp-file-row${selected ? " is-selected" : ""}${entry.isDir ? " is-directory" : ""}${dragSource ? " is-drag-source" : ""}${dropTarget ? " is-drop-target" : ""}`}
+      role="option"
+      aria-selected={selected}
+      data-drop-side={entry.isDir ? side : undefined}
+      data-drop-dir={entry.isDir ? entry.path : undefined}
+      onPointerDown={(event) => onPointerDown(side, entry, event)}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onDragCancel}
+      onClick={() => onSelect(entry.path)}
+      onDoubleClick={() => onActivate(entry)}
+      title={entry.path}
+    >
+      <span className="ftp-file-name">
+        <span className="ftp-file-icon" aria-hidden="true">
+          <FileIcon name={entry.name} isDir={entry.isDir} theme={theme} />
+        </span>
+        <span>{entry.name}</span>
+      </span>
+      <span>{entry.isDir ? "—" : formatBytes(entry.size)}</span>
+      <span>{formatDate(entry.modified)}</span>
+    </div>
+  );
+});
 
 function ToolButton({
   label,
@@ -693,15 +1069,21 @@ function formatBytes(bytes: number): string {
   return `${value >= 10 || index === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
 }
 
+// One formatter for every row's date: `toLocaleString` with options builds
+// an Intl.DateTimeFormat per call, and a thousand-row list re-renders its
+// dates often enough for that to show. `toLocaleString` is specified as
+// exactly this constructor plus `format`, so the output is identical.
+const ROW_DATE = new Intl.DateTimeFormat([], {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 function formatDate(seconds: number | null): string {
   if (seconds == null) return "—";
-  return new Date(seconds * 1000).toLocaleString([], {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return ROW_DATE.format(new Date(seconds * 1000));
 }
 
 function friendlyFtpError(error: unknown): string {

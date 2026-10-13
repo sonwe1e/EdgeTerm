@@ -3,6 +3,7 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use serialport::{DataBits, FlowControl, Parity, SerialPortType, StopBits};
+use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::AppHandle;
 use tokio::sync::mpsc::{error::TryRecvError, UnboundedReceiver};
 
@@ -44,13 +45,15 @@ pub fn list_ports() -> Result<Vec<SerialPortDesc>> {
 
 /// Opens the port and starts its owner thread. `recorder` is the session's
 /// recording, when the profile asked for one; the owner thread feeds it and
-/// closes it with the port.
+/// closes it with the port. `output` is the per-session raw IPC channel the
+/// terminal's bytes go out on.
 pub fn spawn(
     app: AppHandle,
     id: String,
     profile: &SessionProfile,
     rx: UnboundedReceiver<SessionCommand>,
     recorder: Option<Recorder>,
+    output: Channel<InvokeResponseBody>,
 ) -> Result<JoinHandle<()>> {
     let port_name = profile
         .port_name
@@ -104,7 +107,7 @@ pub fn spawn(
     std::thread::Builder::new()
         .name(format!("edgeterm-serial-{id}"))
         .spawn(move || {
-            let mut pump = OutputPump::new(app.clone(), id.clone(), recorder);
+            let mut pump = OutputPump::new(output, recorder);
             let close_requested = run_owner_loop(port, rx, |bytes| {
                 pump.push(bytes);
                 pump.flush();

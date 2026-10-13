@@ -1,4 +1,4 @@
-import { useEffect, useReducer } from "react";
+import { memo, useEffect, useReducer } from "react";
 
 import type { ThemeMode } from "../types";
 
@@ -44,10 +44,16 @@ interface Props {
 
 /**
  * Material file / folder icon for a list row. The wrapping element keeps the
- * 16 px slot while the lazily loaded theme arrives.
+ * 16 px slot while the lazily loaded theme arrives. Memoised: every row of
+ * every file list renders one, all props are primitives, and skipping the
+ * ones that did not change is what keeps a large list cheap to re-render.
  */
-export function FileIcon({ name, isDir, theme: mode }: Props) {
+export const FileIcon = memo(function FileIcon({
+  name,
+  isDir,
+  theme: mode,
+}: Props) {
   const source = useIconSource(name, isDir, mode);
   if (!source) return null;
   return <img src={source} alt="" draggable={false} />;
-}
+});

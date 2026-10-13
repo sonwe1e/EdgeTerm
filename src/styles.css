@@ -1983,9 +1983,33 @@ textarea:focus {
   font-size: 10px;
 }
 
-.ftp-browser-columns span:nth-child(n + 2),
+.ftp-browser-columns > :nth-child(n + 2),
 .ftp-file-row > span:nth-child(n + 2) {
   text-align: right;
+}
+
+/* Column captions are buttons so they can sort the list; they restyle to the
+   span look they replaced. */
+.ftp-browser-columns button {
+  display: block;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ftp-browser-columns button:hover,
+.ftp-browser-columns button.is-sorted {
+  color: var(--fg);
+}
+
+.ftp-browser-columns button:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
 }
 
 .ftp-browser-list {
@@ -2012,6 +2036,37 @@ textarea:focus {
   background: var(--bg-active);
   color: var(--fg);
   box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* Drag-and-drop in the dual-pane browser. An icon must not start its own
+   native image drag under a row's pointer drag, and the pointer travel
+   before a drag starts must not begin a text selection. */
+.ftp-file-row {
+  user-select: none;
+}
+
+.ftp-file-row img {
+  -webkit-user-drag: none;
+}
+
+.ftp-dual-pane.is-dragging,
+.ftp-dual-pane.is-dragging .ftp-file-row {
+  cursor: grabbing;
+}
+
+.ftp-file-row.is-drag-source {
+  opacity: 0.5;
+}
+
+/* The folder row, or the pane background, a drag is over. */
+.ftp-file-row.is-drop-target {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.ftp-browser-list.is-drop-target {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 
 .ftp-file-row.is-directory .ftp-file-name {
@@ -4694,6 +4749,32 @@ textarea:focus {
   width: 74px;
   text-align: right;
   padding-left: 8px;
+}
+
+/* Column captions are buttons so they can sort the list; they restyle to the
+   span look they replaced. */
+.filer-columns button {
+  display: block;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+  user-select: none;
+}
+
+.filer-columns button:hover,
+.filer-columns button.is-sorted {
+  color: var(--fg);
+}
+
+.filer-columns button:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
 }
 
 .filer-icon {
