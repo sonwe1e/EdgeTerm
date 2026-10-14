@@ -748,6 +748,10 @@ async fn copy(
         } else {
             None
         };
+        // Whether this run resumes a journaled file or starts a fresh one,
+        // and whether that fresh file journals only its start and its end.
+        let resumed = job.checkpoint(&key).is_some();
+        let mut coalesced = false;
         let mut cp = if let Some(cp) = job.checkpoint(&key) {
             if cp.source != source {
                 return Err(Failure::conflict(format!(
@@ -782,6 +786,15 @@ async fn copy(
                     String::new(),
                 )
             };
+            // A fresh file that fits in one write journals twice: the
+            // checkpoint that claims the partial, and the completion. Its
+            // intermediate states each cost a blocking disk write and buy
+            // nothing a restart cannot redo, because a restart re-sends the
+            // whole file. A destination that already exists, and a file past
+            // the first chunk, keep every checkpoint: their resume prefix is
+            // worth the write.
+            let coalesced_now = original.is_none() && source.size <= remote.write_len as u64;
+            coalesced = coalesced_now;
             let cp = Checkpoint {
                 key: key.clone(),
                 item: item.clone(),
@@ -793,7 +806,11 @@ async fn copy(
                 prefix_hash: local::digest(&[]),
                 complete: false,
                 committing: false,
-                owns_temporary: false,
+                // Ownership is recorded before the partial exists: the
+                // exclusive open below can only create it, never adopt one,
+                // and a crash can no longer leave an owned `.part` the
+                // journal never recorded.
+                owns_temporary: coalesced_now,
                 owns_backup: false,
             };
             // Persist ownership before creating the partial; unknown partials
@@ -802,8 +819,8 @@ async fn copy(
             cp
         };
         let mut handle: Option<String> = None;
-        if !cp.owns_temporary {
-            if item.upload {
+        if item.upload {
+            if !resumed {
                 let h = remote
                     .open(
                         &cp.temporary,
@@ -811,15 +828,26 @@ async fn copy(
                         &job.control,
                     )
                     .await?;
-                cp.owns_temporary = true;
-                job.save_async(&cp).await?;
+                if !cp.owns_temporary {
+                    cp.owns_temporary = true;
+                    if !coalesced {
+                        job.save_async(&cp).await?;
+                    }
+                }
                 // The write path keeps this handle: closing the placeholder
                 // only to reopen it costs two round trips per file.
                 handle = Some(h);
-            } else {
-                local::create_partial(Path::new(&cp.temporary))?;
+            }
+        } else if !cp.owns_temporary || !resumed {
+            // A coalesced checkpoint already recorded ownership of the
+            // partial; the file itself still has to exist before the write
+            // path opens it. A resumed partial is left exactly as it is.
+            local::create_partial(Path::new(&cp.temporary))?;
+            if !cp.owns_temporary {
                 cp.owns_temporary = true;
-                job.save_async(&cp).await?;
+                if !coalesced {
+                    job.save_async(&cp).await?;
+                }
             }
         }
         job.progress(&key, cp.offset, source.size, cp.complete);
@@ -830,9 +858,15 @@ async fn copy(
             return Ok(());
         }
         if item.upload {
-            upload(job, remote, &mut cp, depth, handle).await?;
+            upload(job, remote, &mut cp, depth, handle, coalesced).await?;
         } else {
-            download(job, remote, &mut cp, depth).await?;
+            download(job, remote, &mut cp, depth, coalesced).await?;
+        }
+        // A recovery path can finish the file inside the transfer itself: the
+        // journal did not record the commit, and the destination already holds
+        // exactly the bytes this job wrote.
+        if cp.complete {
+            return Ok(());
         }
         let current = if item.upload {
             Some(local::signature(Path::new(&item.local))?)
@@ -842,7 +876,7 @@ async fn copy(
         if current.as_ref() != Some(&cp.source) {
             return Err(Failure::conflict("source changed during transfer"));
         }
-        commit(job, remote, &mut cp).await
+        commit(job, remote, &mut cp, coalesced).await
     }
     .await;
     if let Err(e) = &outcome {
@@ -865,9 +899,16 @@ async fn download(
     remote: &Remote,
     cp: &mut Checkpoint,
     depth: usize,
+    coalesced: bool,
 ) -> TransferResult<()> {
     crate::session::transfer::validate_local_file_target(Path::new(&cp.temporary))
         .map_err(Failure::conflict)?;
+    // The partial is gone: either the commit already replaced the target and
+    // crashed before journaling the completion, or something removed it. Only
+    // the first counts as done — see `recover_renamed_download`.
+    if !Path::new(&cp.temporary).exists() && recover_renamed_download(job, remote, cp).await? {
+        return Ok(());
+    }
     let mut hash = local::prefix_async(Path::new(&cp.temporary), cp.offset, &job.control).await?;
     if local::hex(hash.clone().finish().as_ref()) != cp.prefix_hash {
         return Err(Failure::conflict("local partial content changed"));
@@ -906,7 +947,9 @@ async fn download(
                     .run(async { target.sync_data().await.map_err(Failure::from) })
                     .await?;
                 cp.prefix_hash = local::hex(hash.clone().finish().as_ref());
-                job.save_async(cp).await?;
+                if !coalesced {
+                    job.save_async(cp).await?;
+                }
                 saved = cp.offset;
             }
         }
@@ -915,7 +958,11 @@ async fn download(
             .run(async { target.sync_all().await.map_err(Failure::from) })
             .await?;
         cp.prefix_hash = local::hex(hash.finish().as_ref());
-        job.save_async(cp).await
+        if !coalesced {
+            job.save_async(cp).await
+        } else {
+            Ok(())
+        }
     }
     .await;
     remote.close(&handle).await;
@@ -935,6 +982,7 @@ async fn upload(
     cp: &mut Checkpoint,
     depth: usize,
     fresh_handle: Option<String>,
+    coalesced: bool,
 ) -> TransferResult<()> {
     let mut hash = local::prefix_async(Path::new(&cp.item.local), cp.offset, &job.control).await?;
     if local::hex(hash.clone().finish().as_ref()) != cp.prefix_hash {
@@ -949,6 +997,14 @@ async fn upload(
         Some(h) if cp.offset == 0 => h,
         _ => {
             let Some(meta) = remote.attrs(&cp.temporary, &job.control).await? else {
+                // The partial is gone. Either this job already renamed it
+                // into place and crashed before journaling the completion,
+                // or something removed it. Only the first counts as done:
+                // the destination then holds exactly the bytes this job
+                // wrote — see `recover_renamed_partial`.
+                if recover_renamed_partial(job, remote, cp).await? {
+                    return Ok(());
+                }
                 return Err(Failure::conflict("remote partial disappeared"));
             };
             if meta.is_symlink() || meta.is_dir() || meta.size.unwrap_or(0) < cp.offset {
@@ -1046,7 +1102,9 @@ async fn upload(
                     job.progress(&cp.key, cp.offset, cp.source.size, false);
                     if cp.offset - saved >= 4 * 1024 * 1024 || cp.offset == cp.source.size {
                         cp.prefix_hash = local::hex(hash.clone().finish().as_ref());
-                        job.save_async(cp).await?;
+                        if !coalesced {
+                            job.save_async(cp).await?;
+                        }
                         saved = cp.offset;
                     }
                 }
@@ -1081,7 +1139,9 @@ async fn upload(
                 .await?;
         }
         cp.prefix_hash = local::hex(hash.finish().as_ref());
-        job.save_async(cp).await?;
+        if !coalesced {
+            job.save_async(cp).await?;
+        }
         Ok(())
     }
     .await;
@@ -1089,6 +1149,65 @@ async fn upload(
         remote.close(&handle).await;
     }
     result
+}
+
+/// A coalesced journal does not record the commit, so a retry can find the
+/// partial renamed away with the completion unsaved. The job counts the file
+/// as done when the destination holds exactly the bytes this job wrote: the
+/// same size and the same digest as the local source. Anything else — a
+/// destination that never appeared, a different size, different bytes — is
+/// `false`, and the caller reports the partial as disappeared.
+async fn recover_renamed_partial(
+    job: &Job,
+    remote: &Remote,
+    cp: &mut Checkpoint,
+) -> TransferResult<bool> {
+    let Some(meta) = remote.attrs(&cp.item.remote, &job.control).await? else {
+        return Ok(false);
+    };
+    if meta.is_symlink() || meta.is_dir() || meta.size != Some(cp.source.size) {
+        return Ok(false);
+    }
+    let mut context = local::prefix_async(Path::new(&cp.item.local), cp.source.size, &job.control).await?;
+    if remote
+        .hash(&cp.item.remote, cp.source.size, &job.control)
+        .await?
+        != local::hex(context.finish().as_ref())
+    {
+        return Ok(false);
+    }
+    cp.complete = true;
+    job.save_async(cp).await?;
+    job.progress(&cp.key, cp.source.size, cp.source.size, true);
+    Ok(true)
+}
+
+/// The download side of `recover_renamed_partial`: the local partial is gone,
+/// so the file counts as done when the local destination already holds the
+/// source's bytes.
+async fn recover_renamed_download(
+    job: &Job,
+    remote: &Remote,
+    cp: &mut Checkpoint,
+) -> TransferResult<bool> {
+    let Ok(meta) = std::fs::symlink_metadata(&cp.item.local) else {
+        return Ok(false);
+    };
+    if !meta.is_file() || meta.len() != cp.source.size {
+        return Ok(false);
+    }
+    let mut context = local::prefix_async(Path::new(&cp.item.local), cp.source.size, &job.control).await?;
+    if remote
+        .hash(&cp.item.remote, cp.source.size, &job.control)
+        .await?
+        != local::hex(context.finish().as_ref())
+    {
+        return Ok(false);
+    }
+    cp.complete = true;
+    job.save_async(cp).await?;
+    job.progress(&cp.key, cp.source.size, cp.source.size, true);
+    Ok(true)
 }
 
 async fn recover_commit(job: &Job, remote: &Remote, cp: &mut Checkpoint) -> TransferResult<bool> {
@@ -1134,8 +1253,12 @@ async fn recover_commit(job: &Job, remote: &Remote, cp: &mut Checkpoint) -> Tran
     Ok(true)
 }
 
-async fn commit(job: &Job, remote: &Remote, cp: &mut Checkpoint) -> TransferResult<()> {
+async fn commit(job: &Job, remote: &Remote, cp: &mut Checkpoint, coalesced: bool) -> TransferResult<()> {
     job.control.check()?;
+    // A recovery path can mark the file complete inside the transfer itself.
+    if cp.complete {
+        return Ok(());
+    }
     job.phase("committing");
     if cp.item.upload {
         let current = remote.signature(&cp.item.remote, &job.control).await?;
@@ -1192,7 +1315,13 @@ async fn commit(job: &Job, remote: &Remote, cp: &mut Checkpoint) -> TransferResu
             }
         }
         cp.committing = true;
-        job.save_async(cp).await?;
+        // A coalesced journal does not record the commit: a crash before the
+        // rename is redone from scratch, and a crash after it is recognised
+        // by the destination holding this job's bytes (see
+        // `recover_renamed_partial`).
+        if !coalesced {
+            job.save_async(cp).await?;
+        }
         // A destination that did not exist when the transfer started must not
         // be replaced by anything that appears before the rename. posix-rename
         // overwrites, so the check above would leave a window; the plain
@@ -1270,7 +1399,9 @@ async fn commit(job: &Job, remote: &Remote, cp: &mut Checkpoint) -> TransferResu
             )?;
         }
         cp.committing = true;
-        job.save_async(cp).await?;
+        if !coalesced {
+            job.save_async(cp).await?;
+        }
         local::replace(Path::new(&cp.temporary), Path::new(&cp.item.local))?;
         cp.complete = true;
         job.save_async(cp).await?;

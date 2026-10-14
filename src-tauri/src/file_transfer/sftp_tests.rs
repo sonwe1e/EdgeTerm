@@ -849,6 +849,175 @@ async fn the_close_is_sent_behind_the_final_writes() {
     );
 }
 
+/// A fresh small file journals twice: the checkpoint that claims the
+/// partial, and the completion. The previous implementation wrote the
+/// journal six times per file, and each write is a blocking disk call.
+#[tokio::test]
+async fn a_small_file_batch_journals_its_start_and_its_end_only() {
+    let f = Fixture::new(Server::default()).await;
+    let job = f.job();
+    local::save_counts::register(&job.directory);
+    let mut items = Vec::new();
+    for n in 0..100 {
+        let path = f.root.join(format!("small-{n}"));
+        std::fs::write(&path, payload(4096)).unwrap();
+        items.push(Item {
+            local: path.to_string_lossy().into(),
+            remote: format!("/small-{n}"),
+            upload: true,
+            directory: false,
+        });
+    }
+    copy_files(&job, &f.remote, items).await.unwrap();
+    let saves = local::save_counts::count(&job.directory);
+    local::save_counts::clear(&job.directory);
+    assert_eq!(saves, 200);
+    assert_eq!(f.state.lock().files.len(), 100);
+    assert_eq!(job.snapshot.lock().completed_files, 100);
+}
+
+/// A file past the first chunk keeps every checkpoint: its resume prefix is
+/// worth the disk write, so the coalescing does not reach it.
+#[tokio::test]
+async fn a_multi_chunk_file_keeps_its_checkpoints() {
+    let f = Fixture::new(Server::default()).await;
+    let job = f.job();
+    local::save_counts::register(&job.directory);
+    let bytes = payload(3 * 128 * 1024 + 17);
+    let item = f.upload(&bytes);
+    copy(&job, &f.remote, item.clone(), 4, &Semaphore::new(2))
+        .await
+        .unwrap();
+    let saves = local::save_counts::count(&job.directory);
+    local::save_counts::clear(&job.directory);
+    assert_eq!(f.state.lock().files["/target"], bytes);
+    assert_eq!(saves, 6);
+}
+
+/// A coalesced journal does not record the commit, so a retry can find the
+/// partial renamed away with the completion unsaved. The job counts the file
+/// as done when the destination holds exactly the bytes this job wrote: the
+/// same size and the same digest as the local source.
+#[tokio::test]
+async fn a_retry_counts_a_file_done_when_the_target_holds_what_the_job_wrote() {
+    let f = Fixture::new(Server::default()).await;
+    let bytes = b"the whole file".to_vec();
+    let item = f.upload(&bytes);
+    let job = f.job();
+    let key = job.key(&item);
+    // The state a crash between the rename and the completion save leaves:
+    // the partial is gone, the destination holds the file, and the journal
+    // still says the file is unfinished.
+    f.state.lock().files.insert("/target".into(), bytes.clone());
+    let cp = Checkpoint {
+        key,
+        item: item.clone(),
+        source: local::signature(Path::new(&item.local)).unwrap(),
+        original: None,
+        temporary: format!("/.edgeterm-{}.part", job.key(&item)),
+        backup: String::new(),
+        offset: 0,
+        prefix_hash: local::digest(&[]),
+        complete: false,
+        committing: false,
+        owns_temporary: true,
+        owns_backup: false,
+    };
+    job.save(&cp).unwrap();
+    f.state.lock().writes.clear();
+    copy(&job, &f.remote, item.clone(), 4, &Semaphore::new(2))
+        .await
+        .unwrap();
+    assert!(f.state.lock().writes.is_empty(), "the file was rewritten");
+    assert_eq!(f.state.lock().files["/target"], bytes);
+    assert!(job.checkpoint(&job.key(&item)).unwrap().complete);
+}
+
+/// The same recovery refuses when the destination holds anything else: a
+/// destination this job never wrote is never adopted as its result.
+#[tokio::test]
+async fn a_retry_reports_a_conflict_when_the_target_is_not_what_the_job_wrote() {
+    let f = Fixture::new(Server::default()).await;
+    let item = f.upload(b"the whole file");
+    let job = f.job();
+    f.state
+        .lock()
+        .files
+        .insert("/target".into(), b"someone else's file".to_vec());
+    let cp = Checkpoint {
+        key: job.key(&item),
+        item: item.clone(),
+        source: local::signature(Path::new(&item.local)).unwrap(),
+        original: None,
+        temporary: format!("/.edgeterm-{}.part", job.key(&item)),
+        backup: String::new(),
+        offset: 0,
+        prefix_hash: local::digest(&[]),
+        complete: false,
+        committing: false,
+        owns_temporary: true,
+        owns_backup: false,
+    };
+    job.save(&cp).unwrap();
+    let error = copy(&job, &f.remote, item.clone(), 4, &Semaphore::new(2))
+        .await
+        .unwrap_err();
+    assert!(error.message.contains("remote partial disappeared"));
+    assert_eq!(f.state.lock().files["/target"], b"someone else's file");
+}
+
+/// The download side of the same rule: the local partial is gone and the
+/// local destination already holds the source's bytes.
+#[tokio::test]
+async fn a_download_retry_counts_a_file_done_when_the_target_holds_the_source() {
+    let f = Fixture::new(Server {
+        files: HashMap::from([("/source".into(), b"download me".to_vec())]),
+        ..Server::default()
+    })
+    .await;
+    let job = f.job();
+    let target = f.root.join("target");
+    std::fs::write(&target, b"download me").unwrap();
+    let item = Item {
+        local: target.to_string_lossy().into(),
+        remote: "/source".into(),
+        upload: false,
+        directory: false,
+    };
+    let key = job.key(&item);
+    let cp = Checkpoint {
+        key: key.clone(),
+        item: item.clone(),
+        source: f
+            .remote
+            .signature("/source", &job.control)
+            .await
+            .unwrap()
+            .unwrap(),
+        original: None,
+        temporary: local::sibling(&target, &key, "part")
+            .unwrap()
+            .to_string_lossy()
+            .into(),
+        backup: String::new(),
+        offset: 0,
+        prefix_hash: local::digest(&[]),
+        complete: false,
+        committing: false,
+        owns_temporary: true,
+        owns_backup: false,
+    };
+    job.save(&cp).unwrap();
+    copy(&job, &f.remote, item.clone(), 4, &Semaphore::new(2))
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read(&target).unwrap(), b"download me");
+    assert!(job.checkpoint(&key).unwrap().complete);
+    // Two reads sample the source signature and one verifies the recovery;
+    // no data transfer happened.
+    assert_eq!(f.count("read"), 3);
+}
+
 /// A journal save is a blocking disk write. Run inside an async fn it holds
 /// the runtime thread, so every other task on that thread (other files of the
 /// batch, the session's own IO) waits for it. The saves are slowed to 100 ms

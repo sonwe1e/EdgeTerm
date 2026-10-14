@@ -174,9 +174,45 @@ pub(crate) mod slow_saves {
     }
 }
 
+/// Test-only: counts `save_json` calls under a registered directory, so a
+/// test can assert how often a batch journals. Scoped by directory like
+/// `slow_saves`, so tests running in parallel do not count each other.
+#[cfg(test)]
+pub(crate) mod save_counts {
+    use std::path::{Path, PathBuf};
+    use std::sync::Mutex;
+
+    static COUNTS: Mutex<Vec<(PathBuf, usize)>> = Mutex::new(Vec::new());
+
+    pub fn register(dir: &Path) {
+        COUNTS.lock().unwrap().push((dir.to_path_buf(), 0));
+    }
+    pub fn clear(dir: &Path) {
+        COUNTS.lock().unwrap().retain(|(d, _)| d != dir);
+    }
+    pub fn record(path: &Path) {
+        let mut counts = COUNTS.lock().unwrap();
+        for (dir, count) in counts.iter_mut() {
+            if path.starts_with(dir) {
+                *count += 1;
+            }
+        }
+    }
+    pub fn count(dir: &Path) -> usize {
+        COUNTS
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(d, _)| d == dir)
+            .map(|(_, count)| *count)
+            .unwrap_or(0)
+    }
+}
+
 pub fn save_json(path: &Path, value: &impl Serialize) -> TransferResult<()> {
     #[cfg(test)]
     {
+        save_counts::record(path);
         if let Some(delay) = slow_saves::delay_for(path) {
             std::thread::sleep(delay);
         }
