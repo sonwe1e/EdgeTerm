@@ -14,6 +14,8 @@ vi.mock("./api", async (original) => ({
   sftpUploadDirectory: vi.fn(),
   sftpDownload: vi.fn(),
   sftpDownloadDirectory: vi.fn(),
+  compareFiles: vi.fn(),
+  cancelFileDiff: vi.fn(),
 }));
 
 import * as api from "./api";
@@ -111,6 +113,22 @@ const transfers = () => [
 ].flatMap((fn) => vi.mocked(fn).mock.calls);
 
 describe("dragging between and within the dual panes, through FtpPane", () => {
+  it("compares only a selected file on each side through the dialog IPC", async () => {
+    const compare = () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Compare")!;
+    vi.mocked(api.compareFiles).mockReturnValue(new Promise(() => {}));
+    vi.mocked(api.cancelFileDiff).mockResolvedValue(undefined);
+    expect(compare().disabled).toBe(true);
+    await act(async () => row("/remote/folder").click());
+    await act(async () => row("/local/up.txt").click());
+    expect(compare().disabled).toBe(true);
+    await act(async () => row("/remote/a.txt").click());
+    expect(compare().disabled).toBe(false);
+    await act(async () => compare().click());
+    expect(api.compareFiles).toHaveBeenCalledWith("sftp1", expect.any(String), "/local/up.txt", "/remote/a.txt");
+    const id = vi.mocked(api.compareFiles).mock.calls[0][1];
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Close file comparison"]')!.click());
+    expect(api.cancelFileDiff).toHaveBeenCalledWith(id);
+  });
   it("uploads a local file dropped on the remote list (the harness works)", async () => {
     expect(row("/local/up.txt")).not.toBeNull();
     await drag(row("/local/up.txt"), list("SFTP Server files"));

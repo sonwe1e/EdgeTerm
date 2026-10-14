@@ -32,6 +32,7 @@ import { useStableCallback } from "../useStableCallback";
 import { FileIcon } from "./FileIcon";
 import { Icon } from "./icons";
 import { VirtualFileRows } from "./VirtualFileRows";
+import { FileDiffDialog } from "./FileDiffDialog";
 
 /** Pointer travel before a press on a row turns into a drag. */
 const DRAG_THRESHOLD = 5;
@@ -87,6 +88,8 @@ interface FileBrowserProps {
 
 export function FtpPane({ tab, active }: Props) {
   const sessionId = tab.info.id;
+  const [comparison, setComparison] = useState<{local: string; remote: string} | null>(null);
+  useEffect(() => { if (tab.state !== "connected") setComparison(null); }, [tab.state]);
   // The pane serves both FTP and SFTP file sessions; only the labels differ.
   const protocolLabel = tab.info.kind === "sftp" ? "SFTP" : "FTP";
 
@@ -702,6 +705,10 @@ export function FtpPane({ tab, active }: Props) {
             />
 
             <div className="ftp-transfer-rail" aria-label="File transfer actions">
+              <button className="ftp-transfer-button" type="button" disabled={!selectedLocal || selectedLocal.isDir || !selectedRemote || selectedRemote.isDir || localLoading || remoteLoading}
+                onClick={() => { if (selectedLocal && selectedRemote) setComparison({ local: selectedLocal.path, remote: selectedRemote.path }); }} title="Compare selected local and remote files">
+                Compare
+              </button>
               <button
                 className="ftp-transfer-button"
                 onClick={() => void upload()}
@@ -777,6 +784,7 @@ export function FtpPane({ tab, active }: Props) {
             />
           </div>
 
+          {comparison && <FileDiffDialog sessionId={sessionId} local={comparison.local} remote={comparison.remote} active={active} onClose={() => setComparison(null)} />}
           <div className={`ftp-transfer-status${transfer ? " has-transfer" : ""}`}>
             {transfer ? (
               <>
