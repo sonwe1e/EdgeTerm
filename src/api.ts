@@ -37,7 +37,7 @@ export interface TransferItem {
   upload: boolean;
   directory?: boolean;
 }
-export interface TransferOptions { requests: number; chunkKib: number; files: number; durable: boolean; tar: boolean }
+export interface TransferOptions { requests: number; chunkKib: number; files: number; durable: boolean; tar: boolean; rateLimitBps: number }
 export interface FileTransfer {
   revision: number;
   id: string;
@@ -69,6 +69,91 @@ export const onFileTransfer = (callback: (job: FileTransfer) => void) =>
   listen<FileTransfer>("transfer:changed", ({ payload }) => callback(payload));
 export const onFileTransferRemoved = (callback: (id: string) => void) =>
   listen<string>("transfer:removed", ({ payload }) => callback(payload));
+
+// --- interrupted-transfer recovery -------------------------------------------
+
+export interface DiffMetadata {
+  size: number;
+  kind: "text" | "binary" | "tooLarge" | "textLimit" | "undecodable";
+  encoding: string | null;
+  bom: boolean;
+  eol: string;
+  finalNewline: boolean | null;
+  lines: number | null;
+  sha256: string | null;
+  preview: string;
+}
+export interface DiffRow {
+  path: string;
+  kind: "equal" | "modified" | "deleted" | "added";
+  leftLine: number | null;
+  rightLine: number | null;
+  left: string | null;
+  right: string | null;
+  leftEnding: string | null;
+  rightEnding: string | null;
+}
+export interface FileComparison {
+  status: "identical" | "different" | "notCompared";
+  bytesEqual: boolean | null;
+  left: DiffMetadata;
+  right: DiffMetadata;
+  reason: string | null;
+  rows: DiffRow[];
+  alignmentSimplified: boolean;
+}
+export const compareFiles = (id: string, requestId: string, local: string, remote: string) =>
+  invoke<FileComparison>("compare_files", { id, requestId, local, remote });
+export const cancelFileDiff = (requestId: string) => invoke<void>("cancel_file_diff", { requestId });
+
+export interface ResourceMetrics {
+  status: "ok" | "unsupported";
+  cpuPercent: number | null; cpuStatus: string;
+  memory: {usedBytes:number;totalBytes:number} | null; memoryStatus: string;
+  capacity: {usedBytes:number;totalBytes:number;mount:string} | null; capacityStatus: string;
+  diskReadBps:number | null; diskWriteBps:number | null; diskStatus:string;
+  networkReceiveBps:number | null; networkSendBps:number | null; networkStatus:string;
+  gpus: {index:number;name:string;utilization:number | null;usedBytes:number | null;totalBytes:number | null;temperature:number | null}[];
+  gpuStatus: string;
+}
+export const sampleResources = (id:string,requestId:string) => invoke<ResourceMetrics>("sample_resources",{id,requestId});
+export const cancelResourceSample = (requestId:string) => invoke<void>("cancel_resource_sample",{requestId});
+
+/** One journal found on disk after a restart. */
+export interface RecoverableTransfer {
+  id: string;
+  name: string;
+  kind: "sftp" | "ftp" | null;
+  endpoint: string | null;
+  host: string | null;
+  port: number | null;
+  username: string | null;
+  items: number;
+  checkpoints: number;
+  /** The directory exists but its journal cannot be attributed; only Discard is offered. */
+  unrecognized: boolean;
+}
+
+/** Journals of transfers a restart interrupted; the recovery list. */
+export const listRecoverableTransfers = () =>
+  invoke<RecoverableTransfer[]>("list_recoverable_transfers");
+
+/**
+ * Resumes an interrupted transfer on an open session to the same endpoint.
+ * Without a matching open session this fails with the server to connect to.
+ * SFTP reuses authenticated SSH; FTP dials its own transfer connections.
+ */
+export const recoverTransfer = (
+  transfer: string, onProgress: (progress: TransferProgress) => void,
+) => {
+  const channel = new Channel<TransferProgress>();
+  channel.onmessage = onProgress;
+  return invoke<void>("recover_transfer", { transfer, onProgress: channel });
+};
+
+/** Deletes an interrupted transfer's journal; remote partials are left in place. */
+export const discardRecoverableTransfer = (transfer: string) =>
+  invoke<void>("discard_recoverable_transfer", { transfer });
 
 export interface ZmodemFileInfo {
   name: string;
@@ -182,7 +267,8 @@ export const clearCommandHistory = () =>
  * session whose SSH connection this one should run on instead of dialling
  * and authenticating its own — how a duplicated tab reaches a server behind
  * MFA without a second challenge. A connection that is no longer up is
- * silently replaced by a connection of this session's own.
+ * replaced according to the automatic reuse preference. Without an explicit
+ * source, matching authenticated connections are reused when autoReuse is on.
  *
  * Terminal output streams back on the raw IPC channel created here: the
  * webview receives ArrayBuffers — one per coalesced batch of bytes, no
@@ -196,6 +282,7 @@ export const openSession = (
   sessionId: string,
   onOutput: (bytes: Uint8Array, consumed: () => void) => void,
   reuseSessionId?: string,
+  autoReuse = true,
 ) => {
   const output = new Channel<ArrayBuffer>();
   const outputToken = crypto.randomUUID();
@@ -214,6 +301,7 @@ export const openSession = (
     onOutput: output,
     outputToken,
     reuseSessionId: reuseSessionId ?? null,
+    autoReuse,
   }).then((outcome) => {
     if (outcome.status !== "connected") retireOutput(sessionId, outputToken);
     return outcome;
@@ -690,6 +778,32 @@ export const showPointer = (): Promise<void> => invoke("show_pointer");
  * release download page instead.
  */
 export const portableMode = (): Promise<boolean> => invoke("portable_mode");
+
+export interface PortForwardSpec {
+  direction: "local" | "remote";
+  listenHost: string;
+  listenPort: number;
+  targetHost: string;
+  targetPort: number;
+}
+export interface PortForward {
+  id: string;
+  owner: string;
+  address: string;
+  spec: PortForwardSpec;
+  status: "starting" | "listening" | "stopping" | "stopped" | "error";
+  error: string | null;
+  connections: number;
+  sentBytes: number;
+  receivedBytes: number;
+}
+export interface PortDiscovery { status: "ok" | "unsupported"; ports: { host: string; port: number; process: string | null }[]; truncated: boolean }
+export const startPortForward = (id: string, spec: PortForwardSpec): Promise<PortForward> => invoke("start_port_forward", { id, spec });
+export const listPortForwards = (): Promise<PortForward[]> => invoke("list_port_forwards");
+export const stopPortForward = (id: string): Promise<void> => invoke("stop_port_forward", { id });
+export const removePortForward = (id: string): Promise<void> => invoke("remove_port_forward", { id });
+export const discoverListeningPorts = (id: string, requestId: string): Promise<PortDiscovery> => invoke("discover_listening_ports", { id, requestId });
+export const cancelPortDiscovery = (requestId: string): Promise<void> => invoke("cancel_port_discovery", { requestId });
 
 // --- encoding helpers -------------------------------------------------------
 

@@ -20,6 +20,11 @@ function opened() {
 }
 
 describe("raw output IPC", () => {
+  it("passes automatic reuse and preserves an explicit duplicate source", async () => {
+    await openSession({} as SessionProfile, "output-test", () => {}, "source-tab", false);
+    const args = ipc.invoke.mock.calls.find((call) => (call as unknown[])[0] === "open_session") as unknown[];
+    expect(args[1]).toMatchObject({autoReuse:false,reuseSessionId:"source-tab"});
+  });
   it("keeps acknowledgements working if closing the backend fails", async () => {
     let consume!: () => void;
     await openSession({} as SessionProfile, "output-test", (_data, done) => { consume = done; });

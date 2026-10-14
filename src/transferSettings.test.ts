@@ -3,6 +3,7 @@ import {
   DEFAULT_TRANSFER_OPTIONS,
   readTransferOptions,
   saveTransferOptions,
+  validRateLimitBps,
 } from "./transferSettings";
 
 describe("transfer option preferences", () => {
@@ -15,6 +16,7 @@ describe("transfer option preferences", () => {
       files: 16,
       durable: false,
       tar: false,
+      rateLimitBps: 0,
     });
   });
 
@@ -29,6 +31,7 @@ describe("transfer option preferences", () => {
       files: 2,
       durable: false,
       tar: false,
+      rateLimitBps: 0,
     });
   });
 
@@ -65,7 +68,38 @@ describe("transfer option preferences", () => {
   });
 
   it("keeps a saved concurrency at the new upper bound", () => {
-    saveTransferOptions({ requests: 32, chunkKib: 128, files: 32, durable: false, tar: false });
+    saveTransferOptions({ ...DEFAULT_TRANSFER_OPTIONS, files: 32 });
     expect(readTransferOptions().files).toBe(32);
+  });
+
+  it("preserves a saved rate limit and treats zero as unlimited", () => {
+    saveTransferOptions({ ...DEFAULT_TRANSFER_OPTIONS, rateLimitBps: 512 * 1024 });
+    expect(readTransferOptions().rateLimitBps).toBe(512 * 1024);
+    saveTransferOptions({ ...DEFAULT_TRANSFER_OPTIONS, rateLimitBps: 0 });
+    expect(readTransferOptions().rateLimitBps).toBe(0);
+  });
+
+  it("drops a rate limit outside the backend's range to unlimited, keeping the rest", () => {
+    // Below 1 KiB/s, above 1 GiB/s, fractional, negative or non-number
+    // values were never a speed the backend accepts.
+    for (const value of [500, (1 << 30) + 1, 2048.5, -1024, "fast", null]) {
+      localStorage.setItem(
+        "edgeterm.transfer-options",
+        JSON.stringify({ ...DEFAULT_TRANSFER_OPTIONS, rateLimitBps: value }),
+      );
+      const read = readTransferOptions();
+      expect(read.rateLimitBps).toBe(0);
+      expect(read.requests).toBe(DEFAULT_TRANSFER_OPTIONS.requests);
+    }
+  });
+
+  it("accepts exactly the backend's rate range", () => {
+    expect(validRateLimitBps(0)).toBe(true);
+    expect(validRateLimitBps(1024)).toBe(true);
+    expect(validRateLimitBps(1 << 30)).toBe(true);
+    expect(validRateLimitBps(1023)).toBe(false);
+    expect(validRateLimitBps((1 << 30) + 1)).toBe(false);
+    expect(validRateLimitBps(0.5)).toBe(false);
+    expect(validRateLimitBps("1024")).toBe(false);
   });
 });
