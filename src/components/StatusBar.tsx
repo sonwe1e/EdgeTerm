@@ -5,6 +5,7 @@ import { useActiveTab, useStore } from "../store";
 import { isFileSession, type LegacyAlgorithms } from "../types";
 import { Icon } from "./icons";
 import { TransferCenter } from "./TransferCenter";
+import { ForwardCenter } from "./ForwardCenter";
 
 /** The folder half of a recording's path, for the Reveal click. */
 const parentDir = (path: string): string =>
@@ -38,10 +39,11 @@ function StatusBarBase() {
 
   return (
     <div className="statusbar">
-      <span className={`status-item${error ? " is-error" : ""}`}>
+      <span className={`status-item${error ? " is-error" : ""}`} title={error ?? status}>
         {error ?? status}
       </span>
       <div className="status-spacer" />
+      <ForwardCenter />
       <TransferCenter />
       {tab && (
         <>
