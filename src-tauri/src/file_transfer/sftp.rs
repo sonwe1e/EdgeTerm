@@ -1168,7 +1168,7 @@ async fn recover_renamed_partial(
     if meta.is_symlink() || meta.is_dir() || meta.size != Some(cp.source.size) {
         return Ok(false);
     }
-    let mut context =
+    let context =
         local::prefix_async(Path::new(&cp.item.local), cp.source.size, &job.control).await?;
     if remote
         .hash(&cp.item.remote, cp.source.size, &job.control)
@@ -1197,7 +1197,7 @@ async fn recover_renamed_download(
     if !meta.is_file() || meta.len() != cp.source.size {
         return Ok(false);
     }
-    let mut context =
+    let context =
         local::prefix_async(Path::new(&cp.item.local), cp.source.size, &job.control).await?;
     if remote
         .hash(&cp.item.remote, cp.source.size, &job.control)
