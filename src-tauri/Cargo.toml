@@ -64,6 +64,7 @@ futures-util = "0.3"
 
 [dev-dependencies]
 bytes = "1"
+tauri = { version = "2.12", features = ["test"] }
 
 [target."cfg(any(target_os = \"macos\", windows, target_os = \"linux\"))".dependencies]
 tauri-plugin-updater = "2.12"

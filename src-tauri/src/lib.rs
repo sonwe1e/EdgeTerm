@@ -19,6 +19,8 @@ mod store;
 mod window_state;
 
 #[cfg(test)]
+mod feature_ipc_tests;
+#[cfg(test)]
 mod tests;
 
 use commands::AppState;
