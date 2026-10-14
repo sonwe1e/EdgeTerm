@@ -1,17 +1,40 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as api from "../api";
 import { startTransferSubscription, transferActive, transferBytes, useFileTransfers } from "../fileTransfers";
 import { Icon } from "./icons";
-import { readTransferOptions, saveTransferOptions } from "../transferSettings";
+import { readTransferOptions, saveTransferOptions, validRateLimitBps } from "../transferSettings";
 import { useStore } from "../store";
+import { VirtualFileRows } from "./VirtualFileRows";
+import { usePopoverDismiss } from "./usePopoverDismiss";
+
+/** KiB/s the user typed, or 0 for unlimited; the backend stores bytes per second. */
+function rateKib(options: api.TransferOptions): number {
+  return Math.round(options.rateLimitBps / 1024);
+}
 
 export function TransferCenter() {
   const records = useFileTransfers((s) => s.jobs);
   const [open, setOpen] = useState(false);
+  const container=useRef<HTMLDivElement>(null);
+  usePopoverDismiss(open,()=>setOpen(false),container);
   const [error, setError] = useState<string | null>(null);
   const [options, setOptions] = useState(readTransferOptions);
   const preferencesRevision = useStore((s) => s.panelPreferencesRevision);
   useEffect(() => setOptions(readTransferOptions()), [preferencesRevision]);
+  const [recoverable, setRecoverable] = useState<api.RecoverableTransfer[]>([]);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
+  const [failureJob, setFailureJob] = useState<string | null>(null);
+  const recoveryRows = useMemo(() => recoverable.map((entry) => ({ ...entry, path: entry.id })), [recoverable]);
+  const failures = failureJob ? records[failureJob]?.failedFiles : undefined;
+  const failureRows = useMemo(() => (failures ?? []).map((message, index) => ({ path: String(index), message })), [failures]);
+  const alive = useRef(true);
+  // Only the newest list request may render: an older response arriving
+  // late would re-show an entry the user already resumed or forgot.
+  const recoveryRequest = useRef(0);
+  useEffect(() => {
+    alive.current = true;
+    return () => { alive.current = false; ++recoveryRequest.current; };
+  }, []);
   useEffect(() => {
     let disposed = false;
     let stop: (() => void) | undefined;
@@ -20,7 +43,40 @@ export function TransferCenter() {
     }).catch((e) => { if (!disposed) setError(String(e)); });
     return () => { disposed = true; stop?.(); };
   }, []);
-  const jobs = Object.values(records).sort((a, b) => b.id.localeCompare(a.id));
+  const refreshRecoverable = useCallback(() => {
+    const request = ++recoveryRequest.current;
+    api.listRecoverableTransfers()
+      .then((found) => {
+        if (alive.current && recoveryRequest.current === request) {
+          setRecoverable(found);
+          setRecoveryError(null);
+        }
+      })
+      .catch((e) => { if (alive.current && recoveryRequest.current === request) setRecoveryError(String(e)); });
+  }, []);
+  useEffect(() => {
+    if (open) refreshRecoverable();
+  }, [open, refreshRecoverable]);
+  const recover = async (id: string) => {
+    setRecoveryError(null);
+    try {
+      // Progress ticks ride the channel; full snapshots arrive through the
+      // transfer:changed subscription like any other job.
+      await api.recoverTransfer(id, () => {});
+      if (alive.current) refreshRecoverable();
+    } catch (e) { if (alive.current) setRecoveryError(String(e)); }
+  };
+  const forget = async (id: string) => {
+    setRecoveryError(null);
+    try {
+      await api.discardRecoverableTransfer(id);
+      if (!alive.current) return;
+      ++recoveryRequest.current;
+      setRecoverable((found) => found.filter((entry) => entry.id !== id));
+    } catch (e) { if (alive.current) setRecoveryError(String(e)); }
+  };
+  const jobs = useMemo(() => Object.values(records).sort((a, b) => b.id.localeCompare(a.id)),[records]);
+  const jobRows = useMemo(() => jobs.map((job) => ({ ...job, path: job.id })),[jobs]);
   const active = jobs.filter((j) => transferActive(j.status)).length;
   const failed = jobs.filter((j) => j.status === "error").length;
   const control = async (id: string, action: Parameters<typeof api.controlFileTransfer>[1]) => {
@@ -30,13 +86,13 @@ export function TransferCenter() {
       if (action === "dismiss") useFileTransfers.getState().remove(id);
     } catch (e) { setError(String(e)); }
   };
-  return <div className="transfer-center">
+  return <div className="transfer-center" ref={container}>
     <button className="status-item" type="button" aria-expanded={open} onClick={() => setOpen(!open)} title="Background transfers">
       <Icon name="cloud-download" /> Transfers{active > 0 ? ` (${active})` : failed > 0 ? ` (${failed} failed)` : ""}
     </button>
     {open && <section className="transfer-center-popover" aria-label="Background transfers">
       <div className="transfer-center-heading"><strong>Transfers</strong><button type="button" onClick={() => setOpen(false)} aria-label="Close transfers">×</button></div>
-      <p>Transfers continue while this app is open, including when you switch tabs. Pause keeps partial files; Cancel cleans them up when the server is reachable.</p>
+      <p>Transfers continue while this app is open, including when you switch tabs. Pause keeps partial files; Cancel cleans them up when the server is reachable. Up to 2 transfers run at once per server endpoint; the rest wait in the queue and can be paused or cancelled there.</p>
       <details className="transfer-settings"><summary>Settings for new transfers</summary>
         <div className="transfer-job-actions">
           <label>SFTP requests <input aria-label="SFTP requests" type="number" min={1} max={32} value={options.requests} onChange={(e) => {
@@ -51,28 +107,56 @@ export function TransferCenter() {
             const files = Number(e.target.value); if (!Number.isInteger(files) || files < 1 || files > 32) return;
             const next = { ...options, files }; setOptions(next); saveTransferOptions(next);
           }} /></label>
+          <label>Rate limit (KiB/s) <input aria-label="Rate limit in KiB per second, 0 for unlimited" type="number" min={0} max={1048576} value={rateKib(options)} onChange={(e) => {
+            const kib = Number(e.target.value); if (!Number.isInteger(kib) || kib < 0 || kib > 1048576) return;
+            const rateLimitBps = kib * 1024; if (!validRateLimitBps(rateLimitBps)) return;
+            const next = { ...options, rateLimitBps }; setOptions(next); saveTransferOptions(next);
+          }} /></label>
           <label className="transfer-durable"><input aria-label="Flush each file on the server before committing" type="checkbox" checked={options.durable} onChange={(e) => {
             const next = { ...options, durable: e.target.checked }; setOptions(next); saveTransferOptions(next);
           }} /> Durable writes (fsync)</label>
           <label className="transfer-durable"><input aria-label="Stream folder uploads as a tar archive" type="checkbox" checked={options.tar} onChange={(e) => {
             const next = { ...options, tar: e.target.checked }; setOptions(next); saveTransferOptions(next);
           }} /> Tar stream for folder uploads</label>
-        </div><p>Server limits may lower these values. FTP uses up to four file connections. Durable writes require SFTP server support; uploads fail if the server cannot confirm a flush. This option does not apply to downloads.</p>
+        </div><p>SFTP requests, Chunk, Files and the rate limit apply within each transfer task. Requests is the ceiling on data requests one task keeps in flight and Files the ceiling on files it moves at once — they are not the number of parallel tasks. Server limits may lower these values. FTP uses up to four file connections. Durable writes require SFTP server support; uploads fail if the server cannot confirm a flush. This option does not apply to downloads.</p>
+        <p>Rate limit is the whole-task network payload budget in KiB per second, shared by every file, request and data connection that task moves over the wire — uploads, downloads and the remote read-back a resume verifies. Protocol control messages and purely local disk work are not counted; 0 means unlimited. It applies to new tasks only — a running task keeps the limit it started with.</p>
         <p>Tar stream packs a folder upload into one archive and pipes it into <code>tar -xf -</code> on the server. It needs a remote tar with <code>-k</code> and a POSIX shell, and only works for a folder upload into a target directory that does not exist or is empty. There is no per-file resume, no per-file conflict detection and no atomic commit: progress counts the bytes packed on this machine, cancelling leaves whatever tar had already extracted, and a retry starts the whole folder again. Folder names are sent as UTF-8, so a server whose locale is not UTF-8 stores them mangled.</p>
       </details>
       {error && <div role="alert" className="transfer-job-error">{error}</div>}
-      {jobs.length === 0 && <p>No transfers yet.</p>}
+      {(recoveryError || recoverable.length > 0) && <details className="transfer-recovery" open>
+        <summary>Interrupted transfers{recoverable.length > 0 ? ` (${recoverable.length})` : ""}</summary>
+        <p>Resume needs an open session to the same server. SFTP reuses its authenticated SSH connection; FTP opens transfer connections with that session's credentials. Forget removes only the local recovery record; partial files remain for manual cleanup.</p>
+        {recoveryError && <div role="alert" className="transfer-job-error">{recoveryError}</div>}
+        <div className="transfer-recovery-rows"><VirtualFileRows entries={recoveryRows} rowHeight={112} resetKey="recovery">{(entry) => {
+          const whom = [entry.username, entry.host].filter(Boolean).join("@") + (entry.port ? `:${entry.port}` : "");
+          return <article className="transfer-job" key={entry.id}>
+          <div className="transfer-job-title"><strong title={entry.name}>{entry.name}</strong><span>{entry.unrecognized ? "unrecognized" : entry.kind}</span></div>
+          <div className="transfer-job-details">{entry.unrecognized
+            ? "This journal cannot be attributed safely; it can only be forgotten."
+            : `${whom || "unknown endpoint"} · ${entry.items} item(s) · ${entry.checkpoints} checkpoint(s)`}</div>
+          {!entry.unrecognized && <div className="transfer-job-actions">
+            <button type="button" onClick={() => void recover(entry.id)}>Resume</button>
+            <button type="button" onClick={() => void forget(entry.id)}>Forget</button>
+          </div>}
+          {entry.unrecognized && <div className="transfer-job-actions">
+            <button type="button" onClick={() => void forget(entry.id)}>Forget</button>
+          </div>}
+        </article>; }}</VirtualFileRows></div>
+      </details>}
+      {jobs.length === 0 && recoverable.length === 0 && <p>No transfers yet.</p>}
       <div className="transfer-center-jobs">
-        {jobs.map((job) => {
+        <VirtualFileRows entries={jobRows} rowHeight={192} resetKey="transfer-jobs">{(job) => {
           const percent = job.total > 0 ? Math.min(100, job.transferred / job.total * 100) : 0;
           const eta = job.bytesPerSecond > 0 && job.total > job.transferred ? Math.ceil((job.total - job.transferred) / job.bytesPerSecond) : null;
+          const limit = job.options.rateLimitBps > 0 ? `${transferBytes(job.options.rateLimitBps)}/s limit` : "no limit";
           return <article className="transfer-job" key={job.id}>
             <div className="transfer-job-title"><strong title={job.name}>{job.name}</strong><span>{job.status}</span></div>
             <div className="transfer-job-details">{job.phase} · {job.completedFiles}/{job.totalFiles} files · {transferBytes(job.transferred)} / {transferBytes(job.total)}</div>
             <progress max={100} value={percent} aria-label={`${job.name} progress`} />
-            {job.status === "running" && <div className="transfer-job-details">{transferBytes(job.bytesPerSecond)}/s{eta !== null ? ` · about ${eta}s remaining` : ""}</div>}
-            {job.error && <div className="transfer-job-error">{job.error.message}</div>}
-            {job.failedFiles.length > 0 && <details><summary>{job.failedFiles.length} failed file(s)</summary><ul>{job.failedFiles.map((file, i) => <li key={i}>{file}</li>)}</ul></details>}
+            {job.status === "running" && <div className="transfer-job-details">{transferBytes(job.bytesPerSecond)}/s · {limit}{eta !== null ? ` · about ${eta}s remaining` : ""}</div>}
+            {job.status !== "running" && job.options.rateLimitBps > 0 && <div className="transfer-job-details">{limit} (kept from start)</div>}
+            {job.error && <div className="transfer-job-error transfer-job-message" title={job.error.message}>{job.error.message}</div>}
+            {job.failedFiles.length > 0 && <button type="button" className="transfer-failure-button" onClick={() => setFailureJob(failureJob === job.id ? null : job.id)}>View {job.failedFiles.length} failed file(s)</button>}
             <div className="transfer-job-actions">
               {["queued", "running", "retrying"].includes(job.status) && <button type="button" onClick={() => void control(job.id, "pause")}>Pause</button>}
               {job.status === "paused" && <button type="button" onClick={() => void control(job.id, "resume")}>Resume</button>}
@@ -82,8 +166,12 @@ export function TransferCenter() {
               {["complete", "cancelled"].includes(job.status) && !job.error && <button type="button" onClick={() => void control(job.id, "dismiss")}>Dismiss</button>}
             </div>
           </article>;
-        })}
+        }}</VirtualFileRows>
       </div>
+      {failureJob && records[failureJob] && <section aria-label="Failed transfer files" className="transfer-failures">
+        <div className="transfer-center-heading"><strong title={records[failureJob].name}>{records[failureJob].name} · {failureRows.length} failed files</strong><button type="button" aria-label="Close failed files" onClick={() => setFailureJob(null)}>×</button></div>
+        <div className="transfer-failure-rows"><VirtualFileRows entries={failureRows} rowHeight={40} resetKey={failureJob}>{(file) => <div className="transfer-failure-row" title={file.message}>{file.message}</div>}</VirtualFileRows></div>
+      </section>}
     </section>}
   </div>;
 }

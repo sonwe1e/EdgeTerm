@@ -5,9 +5,19 @@ export type TransferView = api.FileTransfer & { bytesPerSecond: number; sampledA
 interface State {
   jobs: Record<string, TransferView>;
   update: (job: api.FileTransfer) => void;
+  mergeSnapshot: (jobs: api.FileTransfer[]) => void;
   remove: (id: string) => void;
 }
 const removed = new Set<string>();
+function view(job: api.FileTransfer, old: TransferView | undefined, now: number): TransferView {
+  const elapsed = old ? (now - old.sampledAt) / 1000 : 0;
+  const instant = old && elapsed > 0 && job.transferred >= old.transferred
+    ? (job.transferred - old.transferred) / elapsed : 0;
+  const bytesPerSecond = job.status === "running"
+    ? old && old.status === "running" ? old.bytesPerSecond * 0.75 + instant * 0.25 : instant
+    : 0;
+  return { ...job, bytesPerSecond, sampledAt: now };
+}
 
 export const useFileTransfers = create<State>((set) => ({
   jobs: {},
@@ -16,13 +26,21 @@ export const useFileTransfers = create<State>((set) => ({
     const old = state.jobs[job.id];
     if (old && old.revision >= job.revision) return state;
     const now = performance.now();
-    const elapsed = old ? (now - old.sampledAt) / 1000 : 0;
-    const instant = old && elapsed > 0 && job.transferred >= old.transferred
-      ? (job.transferred - old.transferred) / elapsed : 0;
-    const bytesPerSecond = job.status === "running"
-      ? old && old.status === "running" ? old.bytesPerSecond * 0.75 + instant * 0.25 : instant
-      : 0;
-    return { jobs: { ...state.jobs, [job.id]: { ...job, bytesPerSecond, sampledAt: now } } };
+    return { jobs: { ...state.jobs, [job.id]: view(job, old, now) } };
+  }),
+  mergeSnapshot: (snapshot) => set((state) => {
+    let jobs: Record<string, TransferView> | undefined;
+    const now = performance.now();
+    for (const job of snapshot) {
+      if (removed.has(job.id)) continue;
+      const old = (jobs ?? state.jobs)[job.id];
+      if (old && old.revision >= job.revision) continue;
+      // One clone and notification for the entire initial snapshot. Live
+      // events received while listing retain their newer revision.
+      jobs ??= { ...state.jobs };
+      jobs[job.id] = view(job, old, now);
+    }
+    return jobs ? { jobs } : state;
   }),
   remove: (id) => set((state) => {
     removed.add(id);
@@ -38,7 +56,7 @@ export async function startTransferSubscription(): Promise<() => void> {
   let stopRemoved: (() => void) | undefined;
   try {
     stopRemoved = await api.onFileTransferRemoved((id) => useFileTransfers.getState().remove(id));
-    for (const job of await api.listFileTransfers()) useFileTransfers.getState().update(job);
+    useFileTransfers.getState().mergeSnapshot(await api.listFileTransfers());
   } catch (error) {
     stop();
     stopRemoved?.();
