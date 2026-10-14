@@ -1403,7 +1403,11 @@ textarea:focus {
   animation: tab-command-stream 1.7s ease-in-out infinite alternate;
 }
 
+/* The glow is dropped while the animation loops: a blurred shadow repainted
+   every frame, per particle and per running tab, is the part a webview
+   without GPU compositing pays for. The finish burst below keeps it. */
 .tab.is-command-running:not(.is-active) .tab-command-particle {
+  box-shadow: none;
   animation-name: tab-command-particle-fall;
   animation-duration: var(--particle-duration);
   animation-timing-function: linear;
