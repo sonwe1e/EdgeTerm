@@ -899,6 +899,54 @@ pub fn connect_sftp_on(
     Ok(SftpConnection { transport })
 }
 
+/// Test-only: logs in to a real server with a key file and returns the
+/// transport a file session would share. Host keys are recorded in
+/// `known_hosts`, a scratch file the caller owns, so a benchmark against a
+/// loopback server never writes to the user's own `~/.ssh/known_hosts`.
+#[cfg(test)]
+pub(crate) async fn test_transport(
+    host: &str,
+    port: u16,
+    user: &str,
+    key_path: &str,
+    known_hosts: &Path,
+) -> Arc<SharedTransport> {
+    let mut handle = client::connect(
+        Arc::new(client_config()),
+        (host, port),
+        Client {
+            host: host.to_string(),
+            port,
+            legacy: LegacyRecord::default(),
+            known_hosts: Some(known_hosts.to_path_buf()),
+        },
+    )
+    .await
+    .expect("handshake");
+    let mut profile = crate::tests::profile(crate::model::SessionKind::Ssh);
+    profile.host = Some(host.to_string());
+    profile.port = Some(port);
+    profile.username = Some(user.to_string());
+    profile.auth = Some(AuthKind::PublicKey);
+    profile.private_key_path = Some(key_path.to_string());
+    let answers = Mutex::new(crate::session::auth::CannedAnswers::default());
+    authenticate(
+        &mut handle,
+        &profile,
+        user,
+        host,
+        &AuthPrompter::canned(&answers),
+    )
+    .await
+    .expect("key login");
+    Arc::new(SharedTransport {
+        handle: Arc::new(handle),
+        hops: Some(Hops(Vec::new())),
+        legacy: Vec::new(),
+        endpoint: Endpoint::of(&profile),
+    })
+}
+
 /// Authenticates one hop. The profile's own method goes first; a server that
 /// answers it with "not enough, continue with keyboard-interactive" — the
 /// shape every SSH MFA deployment takes, whether the second factor is a TOTP

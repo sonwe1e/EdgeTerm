@@ -828,6 +828,87 @@ async fn a_small_download_reads_each_byte_range_once_per_signature() {
     assert_eq!(stored.sample, local::hex(context.finish().as_ref()));
 }
 
+/// Uploads a real folder to a real SFTP server through the production
+/// connect, plan and copy paths, and prints the time of each phase. It needs
+/// a server, so it is ignored by default:
+///
+/// ```text
+/// EDGETERM_BENCH_ADDR=127.0.0.1:2300 EDGETERM_BENCH_USER=me \
+/// EDGETERM_BENCH_KEY=/path/to/key EDGETERM_BENCH_SOURCE=/path/to/folder \
+/// EDGETERM_BENCH_REMOTE=/remote/empty/dir \
+/// cargo test --lib benchmark_real_server_folder_upload -- --ignored --nocapture
+/// ```
+///
+/// The remote directory should not exist yet or be empty. Host keys go to a
+/// scratch file, not the user's known_hosts. It prints numbers and asserts
+/// only that every file arrived; run it with a release build for figures.
+#[tokio::test]
+#[ignore = "needs a real SFTP server; see the doc comment for the environment"]
+async fn benchmark_real_server_folder_upload() {
+    let var = |name: &str| std::env::var(name).unwrap_or_else(|_| panic!("{name} must be set"));
+    let address = var("EDGETERM_BENCH_ADDR");
+    let (host, port) = address
+        .rsplit_once(':')
+        .expect("EDGETERM_BENCH_ADDR is host:port");
+    let scratch = std::env::temp_dir().join(format!("edgeterm-bench-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&scratch).unwrap();
+    let transport = crate::session::ssh::test_transport(
+        host,
+        port.parse().expect("numeric port"),
+        &var("EDGETERM_BENCH_USER"),
+        &var("EDGETERM_BENCH_KEY"),
+        &scratch.join("known_hosts"),
+    )
+    .await;
+    let source = PathBuf::from(var("EDGETERM_BENCH_SOURCE"));
+    let files = walk_count(&source);
+    let job = super::super::test_job_items(
+        scratch.clone(),
+        vec![Item {
+            local: source.to_string_lossy().into(),
+            remote: var("EDGETERM_BENCH_REMOTE"),
+            upload: true,
+            directory: true,
+        }],
+    );
+    *job.transport.lock() = Some(transport);
+
+    let started = std::time::Instant::now();
+    let mut remote = Remote::connect(&job).await.unwrap();
+    // Optional: force the number of files in flight, to see how the time
+    // scales with it. The job's own options are left alone.
+    if let Ok(files) = std::env::var("EDGETERM_BENCH_FILES") {
+        Arc::get_mut(&mut remote).unwrap().files = files.parse().expect("numeric files");
+    }
+    let connected = started.elapsed();
+    let started = std::time::Instant::now();
+    let items = plan(&job, &remote).await.unwrap();
+    let planned = started.elapsed();
+    let started = std::time::Instant::now();
+    copy_files(&job, &remote, items).await.unwrap();
+    let copied = started.elapsed();
+    eprintln!(
+        "real server upload of {files} files: files in flight={}, connect={connected:?}, plan={planned:?}, copy={copied:?}, plan+copy={:?}",
+        remote.files,
+        planned + copied
+    );
+    std::fs::remove_dir_all(&scratch).unwrap();
+}
+
+fn walk_count(dir: &Path) -> usize {
+    std::fs::read_dir(dir)
+        .unwrap()
+        .map(|entry| {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                walk_count(&path)
+            } else {
+                1
+            }
+        })
+        .sum()
+}
+
 #[tokio::test]
 async fn durable_option_restores_the_per_file_fsync() {
     let mut f = Fixture::new(Server::default()).await;
