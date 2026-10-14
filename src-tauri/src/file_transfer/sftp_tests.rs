@@ -11,11 +11,24 @@ struct Server {
     dirs: std::collections::HashSet<String>,
     links: HashMap<String, String>,
     fail_write_at: Option<u64>,
+    /// Reads at or past this offset fail once, mirroring `fail_write_at`
+    /// for interrupted downloads.
+    fail_read_at: Option<u64>,
     stall_writes: bool,
     short_reads: bool,
     writes: Vec<u64>,
     pending: usize,
     peak: usize,
+    /// A rate limit the fixture's Remote paces with: the same shared
+    /// bucket shape production builds from `Options::rate_limit_bps`.
+    rate_limit_bps: Option<u64>,
+    /// Arrival time and payload length of every data-bearing request, for
+    /// burst/rate window checks.
+    arrivals: Vec<(std::time::Instant, usize)>,
+    /// Peak number of data requests answered concurrently (needs delay_ms).
+    peak_data: usize,
+    /// Data requests currently being answered, for `peak_data`.
+    data_pending: usize,
     /// Write replies this server has scheduled but not yet delivered.
     pending_writes: usize,
     /// Whether a close request arrived while a write reply was still
@@ -35,6 +48,11 @@ struct Server {
     /// the next readdir on them answers EOF, the way a server that sent the
     /// whole listing in one page does.
     read_dirs: std::collections::HashSet<String>,
+    /// File handles a close has retired. A write or read arriving after its
+    /// handle's close fails, the way a real sftp-server rejects a
+    /// closed-handle request — a close the client sent while writes were
+    /// still in flight kills those writes here.
+    closed: std::collections::HashSet<String>,
 }
 
 struct Fixture {
@@ -54,6 +72,7 @@ impl Fixture {
     async fn new(server: Server) -> Self {
         let root = std::env::temp_dir().join(format!("edgeterm-wire-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir(&root).unwrap();
+        let rate_limit = server.rate_limit_bps;
         let state = Arc::new(Mutex::new(server));
         let (client, stream) = tokio::io::duplex(2 * 1024 * 1024);
         let shared = state.clone();
@@ -68,6 +87,7 @@ impl Fixture {
                 }
                 let packet = Packet::try_from(&mut Bytes::from(data)).unwrap();
                 let is_write = matches!(packet, Packet::Write(_));
+                let is_data = matches!(packet, Packet::Read(_) | Packet::Write(_));
                 let (reply, delay) = response(&mut shared.lock(), packet);
                 if delay > 0 {
                     let mut server = shared.lock();
@@ -75,6 +95,10 @@ impl Fixture {
                     server.peak = server.peak.max(server.pending);
                     if is_write {
                         server.pending_writes += 1;
+                    }
+                    if is_data {
+                        server.data_pending += 1;
+                        server.peak_data = server.peak_data.max(server.data_pending);
                     }
                 }
                 let Some(reply) = reply else {
@@ -94,6 +118,9 @@ impl Fixture {
                         if is_write {
                             server.pending_writes -= 1;
                         }
+                        if is_data {
+                            server.data_pending -= 1;
+                        }
                     }
                     let bytes = Bytes::try_from(reply).unwrap();
                     let _ = writer.lock().await.write_all(&bytes).await;
@@ -103,14 +130,21 @@ impl Fixture {
         let raw = RawSftpSession::new(client);
         raw.set_timeout(1);
         raw.init().await.unwrap();
+        let pacer = rate_limit.map(|rate| Arc::new(super::super::Pacer::new(rate)));
+        // The production connect() shrinks its read/write lengths to the
+        // pacer's slice; mirror that so paced tests exercise the same shape.
+        let (read_len, write_len) = match &pacer {
+            Some(p) => (p.slice(128 * 1024), p.slice(128 * 1024)),
+            None => (128 * 1024, 128 * 1024),
+        };
         let remote = Arc::new(Remote {
-            pacer: None,
             raw,
             extensions: HashMap::new(),
-            read_len: 128 * 1024,
-            write_len: 128 * 1024,
+            read_len,
+            write_len,
             files: 4,
             requests: Semaphore::new(32),
+            pacer,
             listings: Mutex::new(HashMap::new()),
             _transport: None,
         });
@@ -229,6 +263,8 @@ fn response(server: &mut Server, packet: Packet) -> (Option<Packet>, u64) {
             } else if p.pflags.contains(OpenFlags::CREATE) || server.files.contains_key(&p.filename)
             {
                 server.files.entry(p.filename.clone()).or_default();
+                // A new open of the same path is a new handle generation.
+                server.closed.remove(&p.filename);
                 Packet::Handle(Handle {
                     id,
                     handle: p.filename,
@@ -238,57 +274,83 @@ fn response(server: &mut Server, packet: Packet) -> (Option<Packet>, u64) {
             }
         }
         Packet::Read(p) => {
-            let data = server.files.get(&p.handle).unwrap();
-            let start = p.offset as usize;
-            let count = if server.short_reads {
-                (p.len as usize).min(701)
+            if server.closed.contains(&p.handle) {
+                Packet::error(id, StatusCode::Failure)
             } else {
-                p.len as usize
-            };
-            if start >= data.len() {
-                Packet::error(id, StatusCode::Eof)
-            } else {
-                delay = server.delay_ms;
-                Packet::Data(Data {
-                    id,
-                    data: data[start..(start + count).min(data.len())].to_vec(),
-                })
+                let data = server.files.get(&p.handle).unwrap();
+                let start = p.offset as usize;
+                let count = if server.short_reads {
+                    (p.len as usize).min(701)
+                } else {
+                    p.len as usize
+                };
+                if start >= data.len() {
+                    Packet::error(id, StatusCode::Eof)
+                } else if server.fail_read_at.is_some_and(|at| p.offset >= at) {
+                    Packet::error(id, StatusCode::Failure)
+                } else {
+                    let sent = (start + count).min(data.len()) - start;
+                    server.arrivals.push((std::time::Instant::now(), sent));
+                    delay = server.delay_ms;
+                    Packet::Data(Data {
+                        id,
+                        data: data[start..(start + count).min(data.len())].to_vec(),
+                    })
+                }
             }
         }
         Packet::Write(p) => {
-            server.writes.push(p.offset);
-            if server.fail_write_at.is_some_and(|at| p.offset >= at) {
+            if server.closed.contains(&p.handle) {
                 Packet::error(id, StatusCode::Failure)
             } else {
-                let data = server.files.get_mut(&p.handle).unwrap();
-                let start = p.offset as usize;
-                data.resize(data.len().max(start + p.data.len()), 0);
-                data[start..start + p.data.len()].copy_from_slice(&p.data);
-                if server.stall_writes {
-                    return (None, 0);
+                server.writes.push(p.offset);
+                server
+                    .arrivals
+                    .push((std::time::Instant::now(), p.data.len()));
+                if server.fail_write_at.is_some_and(|at| p.offset >= at) {
+                    Packet::error(id, StatusCode::Failure)
+                } else {
+                    let data = server.files.get_mut(&p.handle).unwrap();
+                    let start = p.offset as usize;
+                    data.resize(data.len().max(start + p.data.len()), 0);
+                    data[start..start + p.data.len()].copy_from_slice(&p.data);
+                    if server.stall_writes {
+                        return (None, 0);
+                    }
+                    // Later chunks receive ACKs first, exercising contiguous checkpoints.
+                    delay = server.delay_ms + if p.offset % (512 * 1024) == 0 { 12 } else { 1 };
+                    Packet::error(id, StatusCode::Ok)
                 }
-                // Later chunks receive ACKs first, exercising contiguous checkpoints.
-                delay = server.delay_ms + if p.offset % (512 * 1024) == 0 { 12 } else { 1 };
-                Packet::error(id, StatusCode::Ok)
             }
         }
         Packet::FSetStat(p) => {
-            if let Some(size) = p.attrs.size {
-                server
-                    .files
-                    .get_mut(&p.handle)
-                    .unwrap()
-                    .resize(size as usize, 0);
+            if server.closed.contains(&p.handle) {
+                Packet::error(id, StatusCode::Failure)
+            } else {
+                if let Some(size) = p.attrs.size {
+                    server
+                        .files
+                        .get_mut(&p.handle)
+                        .unwrap()
+                        .resize(size as usize, 0);
+                }
+                Packet::error(id, StatusCode::Ok)
             }
-            Packet::error(id, StatusCode::Ok)
         }
         Packet::SetStat(_) => Packet::error(id, StatusCode::Ok),
-        Packet::Close(_) => {
+        Packet::Close(p) => {
             server.close_with_pending_write = server.pending_writes > 0;
+            server.closed.insert(p.handle);
             Packet::error(id, StatusCode::Ok)
         }
         Packet::OpenDir(p) => {
             if p.path == "/" || server.dirs.contains(&p.path) {
+                // A fresh opendir delivers a fresh page: the one-page
+                // marker is per handle generation, not per directory
+                // forever (a real single-page server resends the page to
+                // every new opendir, which is what a re-plan after a
+                // restart relies on).
+                server.read_dirs.remove(&p.path);
                 Packet::Handle(Handle { id, handle: p.path })
             } else {
                 Packet::error(id, StatusCode::NoSuchFile)
@@ -822,11 +884,14 @@ async fn fresh_upload_takes_the_small_file_fast_path() {
     assert_eq!(f.count("fsync@openssh.com"), 0);
 }
 
-/// The close is queued behind the final writes instead of waiting for
-/// their acknowledgements. The fixture reports whether the close request
-/// reached the server while a write reply was still undelivered; the
-/// previous implementation awaited every acknowledgement first, so it
-/// never did.
+/// The close runs only after every write has been acknowledged. The
+/// previous implementation queued the close beside the pipelined writes;
+/// the write futures are lazy (they charge the pacer and take their
+/// permit when first polled), so under pacing the close could reach the
+/// server while writes were still waiting, and a real sftp-server then
+/// failed the late writes against a closed handle. The fixture now
+/// retires a handle at close and fails late writes, so a raced close
+/// fails this test outright.
 #[tokio::test]
 async fn the_close_waits_for_every_write_acknowledgement() {
     let f = Fixture::new(Server {
@@ -845,6 +910,29 @@ async fn the_close_waits_for_every_write_acknowledgement() {
         !f.state.lock().close_with_pending_write,
         "the close overlapped write replies still in flight"
     );
+}
+
+/// The same barrier under a low rate with a short final window: the last
+/// pipeline window is not full, several write futures are still waiting
+/// for budget when the end is reached, and the close must not overtake
+/// them. The fixture fails any write that arrives after its close, so a
+/// clean finish with intact content is the assertion.
+#[tokio::test]
+async fn a_paced_upload_with_a_short_final_window_commits_intact() {
+    let rate = 64 * 1024u64;
+    let f = Fixture::new(Server {
+        rate_limit_bps: Some(rate),
+        ..Server::default()
+    })
+    .await;
+    let bytes = payload(150_003);
+    let item = f.upload(&bytes);
+    let job = f.job();
+    copy(&job, &f.remote, item, 4, &Semaphore::new(2))
+        .await
+        .unwrap();
+    assert_eq!(f.state.lock().files["/target"], bytes);
+    assert!(f.count("close") >= 1);
 }
 
 /// A fresh small file journals twice: the checkpoint that claims the
@@ -1564,4 +1652,746 @@ async fn benchmark_small_file_batch_at_20ms_rtt() {
             planned + copied
         );
     }
+}
+
+// --- rate limiting, at the engine entry the production paths use --------------
+
+/// Polls `probe` until it returns `Some`, or panics with `what` after `limit`.
+async fn wait_for<T>(limit: Duration, what: &str, mut probe: impl FnMut() -> Option<T>) -> T {
+    let deadline = tokio::time::Instant::now() + limit;
+    loop {
+        if let Some(value) = probe() {
+            return value;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            panic!("timed out waiting for {what}");
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
+/// Every data payload that arrived by each point in time fits the token
+/// bucket's contract: cumulative bytes ≤ burst + rate × elapsed, with one
+/// slice of slack for the request/reserve boundary.
+fn arrivals_within_budget(
+    arrivals: &[(std::time::Instant, usize)],
+    rate: u64,
+    burst: u64,
+) -> Result<(), String> {
+    let Some((start, _)) = arrivals.first() else {
+        return Ok(());
+    };
+    let slack = rate / 10 + 4096;
+    let mut cumulative = 0usize;
+    for (time, length) in arrivals {
+        cumulative += length;
+        let elapsed = time.saturating_duration_since(*start).as_secs_f64();
+        let allowance = burst as f64 + rate as f64 * elapsed + slack as f64;
+        if cumulative as f64 > allowance {
+            return Err(format!(
+                "{cumulative} bytes had arrived {elapsed:.3}s in: the allowance is {allowance:.0}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// A job whose options and journal directory line up with a fixed id, for
+/// restart-recovery tests that read the journal back through a manager.
+fn named_job(root: &Path, id: &str, items: Vec<Item>) -> Arc<Job> {
+    let mut job = super::super::test_job_items(root.to_path_buf(), items);
+    let mutable = Arc::get_mut(&mut job).unwrap();
+    mutable.id = id.into();
+    mutable.directory = root.join(id);
+    job
+}
+
+#[tokio::test]
+async fn resumed_download_counts_unstarted_files_before_copying() {
+    let f = Fixture::new(Server {
+        files: HashMap::from([
+            ("/first".into(), b"abc".to_vec()),
+            ("/second".into(), b"1234567".to_vec()),
+        ]),
+        ..Server::default()
+    })
+    .await;
+    let items: Vec<Item> = ["first", "second"]
+        .iter()
+        .map(|name| Item {
+            local: local::normalize(&f.root.join(name).to_string_lossy()).unwrap(),
+            remote: format!("/{name}"),
+            upload: false,
+            directory: false,
+        })
+        .collect();
+    let job = f.job();
+    *job.plan.lock() = Some(items.clone());
+    let planned = plan(&job, &f.remote).await.unwrap();
+    assert_eq!(job.snapshot.lock().total, 10);
+    assert_eq!(job.snapshot.lock().total_files, 2);
+    copy_files(&job, &f.remote, planned).await.unwrap();
+    assert_eq!(std::fs::read(f.root.join("first")).unwrap(), b"abc");
+    assert_eq!(std::fs::read(f.root.join("second")).unwrap(), b"1234567");
+}
+
+fn paced_copy_options() -> super::super::Options {
+    super::super::Options {
+        requests: 4,
+        chunk_kib: 128,
+        files: 16,
+        durable: false,
+        tar: false,
+        rate_limit_bps: 0,
+    }
+}
+
+#[tokio::test]
+async fn rate_limited_upload_paces_payload_within_burst_and_rate() {
+    let rate = 256 * 1024u64;
+    let bytes = payload(512 * 1024);
+    let f = Fixture::new(Server {
+        rate_limit_bps: Some(rate),
+        ..Server::default()
+    })
+    .await;
+    let item = f.upload(&bytes);
+    let job = f.job();
+    let started = std::time::Instant::now();
+    copy(&job, &f.remote, item.clone(), 1, &Semaphore::new(2))
+        .await
+        .unwrap();
+    let elapsed = started.elapsed();
+    assert_eq!(f.state.lock().files["/target"], bytes);
+    // 512 KiB at 256 KiB/s minus the 256 KiB burst is one second of true
+    // waiting on the data path, and the window check below holds at every
+    // arrival, not just on the total.
+    assert!(
+        elapsed >= Duration::from_millis(950),
+        "upload finished in {elapsed:?} despite the {rate} B/s limit"
+    );
+    assert!(elapsed < Duration::from_secs(6), "upload took {elapsed:?}");
+    let arrivals = f.state.lock().arrivals.clone();
+    arrivals_within_budget(&arrivals, rate, rate)
+        .inspect_err(|e| eprintln!("window violation: {e}"))
+        .unwrap();
+}
+
+#[tokio::test]
+async fn rate_limited_download_paces_payload_within_burst_and_rate() {
+    let rate = 256 * 1024u64;
+    let bytes = payload(512 * 1024);
+    let f = Fixture::new(Server {
+        rate_limit_bps: Some(rate),
+        files: HashMap::from([("/source".into(), bytes.clone())]),
+        ..Server::default()
+    })
+    .await;
+    let target = f.root.join("target");
+    let item = Item {
+        local: target.to_string_lossy().into(),
+        remote: "/source".into(),
+        upload: false,
+        directory: false,
+    };
+    let job = f.job();
+    let started = std::time::Instant::now();
+    copy(&job, &f.remote, item, 1, &Semaphore::new(2))
+        .await
+        .unwrap();
+    let elapsed = started.elapsed();
+    assert_eq!(std::fs::read(&target).unwrap(), bytes);
+    // The source sample (head and tail) rides the same budget, so the
+    // budgeted payload is ~640 KiB: at least (640−256)/256 = 1.5 s.
+    assert!(
+        elapsed >= Duration::from_millis(1400),
+        "download finished in {elapsed:?} despite the {rate} B/s limit"
+    );
+    assert!(
+        elapsed < Duration::from_secs(7),
+        "download took {elapsed:?}"
+    );
+    let arrivals = f.state.lock().arrivals.clone();
+    arrivals_within_budget(&arrivals, rate, rate)
+        .inspect_err(|e| eprintln!("window violation: {e}"))
+        .unwrap();
+}
+
+/// A paced job's long-run throughput sits at its limit, not merely under
+/// it: a clean upload charges exactly its wire payload once, so the wall
+/// time matches the budget's own arithmetic — and would roughly double if
+/// the same bytes were charged on a second path as well.
+#[tokio::test]
+async fn a_paced_upload_reaches_its_configured_limit() {
+    let rate = 256 * 1024u64;
+    let bytes = payload(1024 * 1024);
+    let f = Fixture::new(Server {
+        rate_limit_bps: Some(rate),
+        ..Server::default()
+    })
+    .await;
+    let item = f.upload(&bytes);
+    let job = f.job();
+    let started = std::time::Instant::now();
+    copy(&job, &f.remote, item, 1, &Semaphore::new(2))
+        .await
+        .unwrap();
+    let elapsed = started.elapsed().as_secs_f64();
+    assert_eq!(f.state.lock().files["/target"], bytes);
+    // Wire payload: the 1 MiB of data writes. The source signature reads
+    // local disk only, and the commit is protocol messages, so the theory
+    // is (1 MiB − the 256 KiB burst) at 256 KiB/s = 3 s.
+    let theory = (1024 * 1024 - 256 * 1024) as f64 / rate as f64;
+    assert!(
+        elapsed >= theory * 0.85 && elapsed <= theory * 1.5,
+        "1 MiB at {rate} B/s took {elapsed:.3}s; theory {theory:.2}s — the payload is not being charged exactly once"
+    );
+    let arrivals = f.state.lock().arrivals.clone();
+    arrivals_within_budget(&arrivals, rate, rate)
+        .inspect_err(|e| eprintln!("window violation: {e}"))
+        .unwrap();
+}
+
+/// The download twin: the wire payload is the data plus the head/tail
+/// signature samples the remote read-back moves, charged once each.
+#[tokio::test]
+async fn a_paced_download_reaches_its_configured_limit() {
+    let rate = 256 * 1024u64;
+    let bytes = payload(512 * 1024);
+    let f = Fixture::new(Server {
+        rate_limit_bps: Some(rate),
+        files: HashMap::from([("/source".into(), bytes.clone())]),
+        ..Server::default()
+    })
+    .await;
+    let target = f.root.join("target");
+    let item = Item {
+        local: target.to_string_lossy().into(),
+        remote: "/source".into(),
+        upload: false,
+        directory: false,
+    };
+    let job = f.job();
+    let started = std::time::Instant::now();
+    copy(&job, &f.remote, item, 1, &Semaphore::new(2))
+        .await
+        .unwrap();
+    let elapsed = started.elapsed().as_secs_f64();
+    assert_eq!(std::fs::read(&target).unwrap(), bytes);
+    // Wire payload: 512 KiB of data + 128 KiB of remote signature samples
+    // = 640 KiB; (640 − 256 burst) at 256 KiB/s = 1.5 s.
+    let theory = (640 * 1024 - 256 * 1024) as f64 / rate as f64;
+    assert!(
+        elapsed >= theory * 0.85 && elapsed <= theory * 1.6,
+        "512 KiB + samples at {rate} B/s took {elapsed:.3}s; theory {theory:.2}s — the payload is not being charged exactly once"
+    );
+    let arrivals = f.state.lock().arrivals.clone();
+    arrivals_within_budget(&arrivals, rate, rate)
+        .inspect_err(|e| eprintln!("window violation: {e}"))
+        .unwrap();
+}
+
+#[tokio::test]
+async fn pause_and_resume_of_a_paced_job_resumes_progress_at_once() {
+    let rate = 64 * 1024u64;
+    let f = Fixture::new(Server {
+        rate_limit_bps: Some(rate),
+        ..Server::default()
+    })
+    .await;
+    // Four files over four lanes (requests=4 → one request each): several
+    // workers have charged slices and are waiting when the pause lands.
+    let items: Vec<_> = (0..4)
+        .map(|n| {
+            let path = f.root.join(format!("source{n}"));
+            std::fs::write(&path, payload(256 * 1024)).unwrap();
+            Item {
+                local: path.to_string_lossy().into(),
+                remote: format!("/target{n}"),
+                upload: true,
+                directory: false,
+            }
+        })
+        .collect();
+    let mut job = f.job();
+    Arc::get_mut(&mut job).unwrap().options = paced_copy_options();
+    let running = {
+        let job = job.clone();
+        let remote = f.remote.clone();
+        let items = items.clone();
+        tokio::spawn(async move { copy_files(&job, &remote, items).await })
+    };
+    let moved = wait_for(Duration::from_secs(5), "first progress", || {
+        let transferred = job.snapshot.lock().transferred;
+        (transferred > 0).then_some(transferred)
+    })
+    .await;
+    job.control.set(1);
+    let stopped = tokio::time::timeout(Duration::from_secs(3), running)
+        .await
+        .expect("pause stops the workers")
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(stopped.code, "paused");
+    // The pause interrupted rate settles mid-wait; a resumed job must move
+    // again immediately — inherited debt would stall it for tens of
+    // seconds (4 lanes × 256 KiB at 64 KiB/s).
+    job.control.set(0);
+    let resumed = {
+        let job = job.clone();
+        let remote = f.remote.clone();
+        let items = items.clone();
+        tokio::spawn(async move { copy_files(&job, &remote, items).await })
+    };
+    let grew = wait_for(Duration::from_millis(2500), "progress after resume", || {
+        let transferred = job.snapshot.lock().transferred;
+        (transferred > moved).then_some(transferred)
+    })
+    .await;
+    assert!(grew > moved);
+    job.control.set(2);
+    let _ = tokio::time::timeout(Duration::from_secs(3), resumed).await;
+}
+
+#[tokio::test]
+async fn cancel_during_a_rate_settle_returns_promptly() {
+    let f = Fixture::new(Server {
+        rate_limit_bps: Some(1024),
+        ..Server::default()
+    })
+    .await;
+    let item = f.upload(&payload(128 * 1024));
+    let job = f.job();
+    let running = {
+        let job = job.clone();
+        let remote = f.remote.clone();
+        let item = item.clone();
+        tokio::spawn(async move { copy(&job, &remote, item, 1, &Semaphore::new(2)).await })
+    };
+    wait_for(Duration::from_secs(5), "first progress", || {
+        let transferred = job.snapshot.lock().transferred;
+        (transferred > 0).then_some(transferred)
+    })
+    .await;
+    job.control.set(2);
+    let error = tokio::time::timeout(Duration::from_secs(2), running)
+        .await
+        .expect("cancel leaves the rate wait promptly")
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(error.code, "cancelled");
+}
+
+/// A resume whose prefix read-back moves 4 MiB shares the rate budget: at
+/// 1 MiB/s the verify alone costs ~3 s, while an unlimited fixture does the
+/// same job in a fraction of a second.
+#[tokio::test]
+async fn resume_prefix_readback_shares_the_rate_budget() {
+    let bytes = payload(5 * 1024 * 1024 + 91);
+    let journal_root =
+        std::env::temp_dir().join(format!("edgeterm-restart-{}", uuid::Uuid::new_v4()));
+    // The source lives beside the journal, not inside either fixture: the
+    // interrupted run and the resumed run must name the very same local
+    // path, or the checkpoint's key would not match and nothing would
+    // resume.
+    let source_dir = journal_root.with_extension("src");
+    std::fs::create_dir_all(&source_dir).unwrap();
+    std::fs::write(source_dir.join("source"), &bytes).unwrap();
+    let make_item = || Item {
+        local: source_dir.join("source").to_string_lossy().into(),
+        remote: "/target".into(),
+        upload: true,
+        directory: false,
+    };
+    // 1. An unlimited run interrupted at 4 MiB journals a real checkpoint.
+    let plain = Fixture::new(Server {
+        fail_write_at: Some(4 * 1024 * 1024),
+        ..Server::default()
+    })
+    .await;
+    let id = "readback-paced";
+    let job = named_job(&journal_root, id, vec![make_item()]);
+    std::fs::create_dir_all(journal_root.join(id)).unwrap();
+    local::save_json(
+        &journal_root.join(id).join("job.json"),
+        &super::super::journal_json(
+            id,
+            &job.profile,
+            &[make_item()],
+            &super::super::Options::default(),
+        ),
+    )
+    .unwrap();
+    // The production sequence plans (freezing plan.json beside job.json)
+    // before the first byte moves; a checkpoint without that plan is not
+    // claimable after the restart. The planned row — its local path
+    // normalized — is exactly what copy_files hands to copy.
+    let planned = plan(&job, &plain.remote).await.unwrap();
+    assert!(copy(
+        &job,
+        &plain.remote,
+        planned[0].clone(),
+        4,
+        &Semaphore::new(2)
+    )
+    .await
+    .is_err());
+    let cp = job.checkpoint(&job.key(&planned[0])).unwrap();
+    assert_eq!(cp.offset, 4 * 1024 * 1024);
+    let partial = cp.temporary.clone();
+    let partial_bytes = plain.state.lock().files[&partial].clone();
+    drop(job);
+    drop(plain);
+
+    // 2. The same journal, resumed on a paced fixture: the 4 MiB prefix
+    //    read-back rides the budget.
+    let rate = 1024 * 1024u64;
+    let paced = Fixture::new(Server {
+        rate_limit_bps: Some(rate),
+        files: HashMap::from([(partial.clone(), partial_bytes)]),
+        ..Server::default()
+    })
+    .await;
+    let manager = super::super::Transfers::with_root(journal_root.clone());
+    let journal = manager.read_persisted(id).unwrap();
+    // The resumed run transfers the frozen plan's own (normalized) row.
+    let resumed_item = journal.plan.as_ref().unwrap()[0].clone();
+    let resumed = manager
+        .rebuild(
+            journal.id,
+            "session".into(),
+            journal.items.clone(),
+            // The resumed job runs the journal's own frozen plan, exactly
+            // as the production `adopt` path hands it over.
+            journal.plan.clone(),
+            journal.options,
+            job_profile(),
+            Vec::new(),
+            None,
+            journal_root.join(id),
+            "target".into(),
+            journal.checkpoints,
+            tauri::ipc::Channel::new(|_| Ok(())),
+            None,
+        )
+        .unwrap();
+    let started = std::time::Instant::now();
+    copy(&resumed, &paced.remote, resumed_item, 4, &Semaphore::new(2))
+        .await
+        .unwrap();
+    let elapsed = started.elapsed();
+    assert_eq!(paced.state.lock().files["/target"], bytes);
+    // 4 MiB read-back + ~1 MiB remaining at 1 MiB/s minus the 1 MiB burst.
+    assert!(
+        elapsed >= Duration::from_millis(3800),
+        "the prefix read-back was not paced: {elapsed:?}"
+    );
+    assert!(elapsed < Duration::from_secs(12), "resume took {elapsed:?}");
+    let arrivals = paced.state.lock().arrivals.clone();
+    arrivals_within_budget(&arrivals, rate, rate)
+        .inspect_err(|e| eprintln!("window violation: {e}"))
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&journal_root);
+    let _ = std::fs::remove_dir_all(&source_dir);
+}
+
+/// The `requests` option is the job-wide ceiling on data requests in
+/// flight: files=16/requests=1 never runs more than one, and the default
+/// configuration runs its pipelined width without exceeding 32.
+#[tokio::test]
+async fn data_request_peak_respects_the_requests_ceiling() {
+    let f = Fixture::new(Server {
+        delay_ms: 1,
+        ..Server::default()
+    })
+    .await;
+    let items: Vec<_> = (0..6)
+        .map(|n| {
+            let path = f.root.join(format!("source{n}"));
+            std::fs::write(&path, payload(4 * 1024)).unwrap();
+            Item {
+                local: path.to_string_lossy().into(),
+                remote: format!("/narrow{n}"),
+                upload: true,
+                directory: false,
+            }
+        })
+        .collect();
+    let mut narrow = f.job();
+    {
+        let options = &mut Arc::get_mut(&mut narrow).unwrap().options;
+        options.files = 16;
+        options.requests = 1;
+    }
+    copy_files(&narrow, &f.remote, items).await.unwrap();
+    assert_eq!(
+        f.state.lock().peak_data,
+        1,
+        "requests=1 must cap the whole job at one data request in flight"
+    );
+    assert_eq!(f.state.lock().files.len(), 6);
+
+    let wide_items: Vec<_> = (0..6)
+        .map(|n| {
+            let path = f.root.join(format!("wide{n}"));
+            std::fs::write(&path, payload(64 * 1024)).unwrap();
+            Item {
+                local: path.to_string_lossy().into(),
+                remote: format!("/wide{n}"),
+                upload: true,
+                directory: false,
+            }
+        })
+        .collect();
+    let mut wide = f.job();
+    {
+        let options = &mut Arc::get_mut(&mut wide).unwrap().options;
+        options.files = 16;
+        options.requests = 32;
+    }
+    copy_files(&wide, &f.remote, wide_items).await.unwrap();
+    let peak = f.state.lock().peak_data;
+    assert!(peak >= 2, "the default width must still pipeline: {peak}");
+    assert!(peak <= 32, "requests=32 exceeded: {peak}");
+}
+
+fn job_profile() -> crate::model::SessionProfile {
+    serde_json::from_value(
+        serde_json::json!({"name":"t", "kind":"sftp", "host":"fixture", "username":"u"}),
+    )
+    .unwrap()
+}
+
+/// A directory upload interrupted mid-file leaves a journal a fresh
+/// manager can rebuild and finish: planned children are attributed, the
+/// confirmed prefix is resumed, and every file lands byte for byte.
+#[tokio::test]
+async fn restart_recovery_finishes_an_interrupted_directory_upload() {
+    let source =
+        std::env::temp_dir().join(format!("edgeterm-restart-dir-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(source.join("pkg")).unwrap();
+    let a = payload(5 * 1024 * 1024 + 91);
+    let b = payload(4096);
+    std::fs::write(source.join("pkg/a"), &a).unwrap();
+    std::fs::write(source.join("b"), &b).unwrap();
+    let item = Item {
+        local: source.to_string_lossy().into(),
+        remote: "/site".into(),
+        upload: true,
+        directory: true,
+    };
+
+    let root =
+        std::env::temp_dir().join(format!("edgeterm-restart-journal-{}", uuid::Uuid::new_v4()));
+    let id = "restart-dir-upload";
+    let mut first = named_job(&root, id, vec![item.clone()]);
+    {
+        let job = Arc::get_mut(&mut first).unwrap();
+        job.options = paced_copy_options();
+    }
+    std::fs::create_dir_all(root.join(id)).unwrap();
+    local::save_json(
+        &root.join(id).join("job.json"),
+        &super::super::journal_json(id, &first.profile, &[item.clone()], &first.options),
+    )
+    .unwrap();
+    let f = Fixture::new(Server {
+        fail_write_at: Some(4 * 1024 * 1024),
+        ..Server::default()
+    })
+    .await;
+    let planned = plan(&first, &f.remote).await.unwrap();
+    assert!(copy_files(&first, &f.remote, planned).await.is_err());
+    let checkpointed: Vec<_> = first.checkpoints.lock().keys().cloned().collect();
+    assert!(!checkpointed.is_empty(), "the interruption must journal");
+    drop(first);
+
+    // A "restart": a fresh manager over the same journal root.
+    f.state.lock().fail_write_at = None;
+    let manager = super::super::Transfers::with_root(root.clone());
+    let listed = manager.discover();
+    assert!(
+        listed
+            .iter()
+            .any(|found| found.id == id && !found.unrecognized),
+        "the interrupted job must be listed: {listed:?}"
+    );
+    let journal = manager.read_persisted(id).unwrap();
+    let resumed = manager
+        .rebuild(
+            journal.id,
+            "session".into(),
+            journal.items.clone(),
+            // The resumed job runs the journal's own frozen plan, exactly
+            // as the production `adopt` path hands it over.
+            journal.plan.clone(),
+            journal.options,
+            job_profile(),
+            Vec::new(),
+            None,
+            root.join(id),
+            "site".into(),
+            journal.checkpoints,
+            tauri::ipc::Channel::new(|_| Ok(())),
+            None,
+        )
+        .unwrap();
+    let files = plan(&resumed, &f.remote).await.unwrap();
+    copy_files(&resumed, &f.remote, files).await.unwrap();
+    let server = f.state.lock();
+    assert_eq!(server.files["/site/pkg/a"], a);
+    assert_eq!(server.files["/site/b"], b);
+    drop(server);
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&source);
+}
+
+/// The download twin: a directory interrupted mid-file resumes from its
+/// confirmed prefix, and the final local tree matches byte for byte.
+#[tokio::test]
+async fn restart_recovery_finishes_an_interrupted_directory_download() {
+    let a = payload(5 * 1024 * 1024 + 91);
+    let b = payload(4096);
+    let f = Fixture::new(Server {
+        files: HashMap::from([
+            ("/srv/pkg/a".into(), a.clone()),
+            ("/srv/b".into(), b.clone()),
+        ]),
+        dirs: ["/srv".to_string(), "/srv/pkg".to_string()]
+            .into_iter()
+            .collect(),
+        fail_read_at: Some(4 * 1024 * 1024),
+        ..Server::default()
+    })
+    .await;
+    let target = std::env::temp_dir().join(format!("edgeterm-restart-dl-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&target).unwrap();
+    let item = Item {
+        local: target.to_string_lossy().into(),
+        remote: "/srv".into(),
+        upload: false,
+        directory: true,
+    };
+    let root =
+        std::env::temp_dir().join(format!("edgeterm-restart-journal-{}", uuid::Uuid::new_v4()));
+    let id = "restart-dir-download";
+    let mut first = named_job(&root, id, vec![item.clone()]);
+    {
+        let job = Arc::get_mut(&mut first).unwrap();
+        job.options = paced_copy_options();
+    }
+    std::fs::create_dir_all(root.join(id)).unwrap();
+    local::save_json(
+        &root.join(id).join("job.json"),
+        &super::super::journal_json(id, &first.profile, &[item.clone()], &first.options),
+    )
+    .unwrap();
+    let planned = plan(&first, &f.remote).await.unwrap();
+    assert!(copy_files(&first, &f.remote, planned).await.is_err());
+    let checkpointed: Vec<_> = first.checkpoints.lock().keys().cloned().collect();
+    assert!(!checkpointed.is_empty());
+    drop(first);
+
+    f.state.lock().fail_read_at = None;
+    let manager = super::super::Transfers::with_root(root.clone());
+    let journal = manager.read_persisted(id).unwrap();
+    let resumed = manager
+        .rebuild(
+            journal.id,
+            "session".into(),
+            journal.items.clone(),
+            // The resumed job runs the journal's own frozen plan, exactly
+            // as the production `adopt` path hands it over.
+            journal.plan.clone(),
+            journal.options,
+            job_profile(),
+            Vec::new(),
+            None,
+            root.join(id),
+            "srv".into(),
+            journal.checkpoints,
+            tauri::ipc::Channel::new(|_| Ok(())),
+            None,
+        )
+        .unwrap();
+    let files = plan(&resumed, &f.remote).await.unwrap();
+    copy_files(&resumed, &f.remote, files).await.unwrap();
+    assert_eq!(std::fs::read(target.join("pkg/a")).unwrap(), a);
+    assert_eq!(std::fs::read(target.join("b")).unwrap(), b);
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&target);
+}
+
+/// A same-length change to the source after the restart is refused, and
+/// the interrupted run's own checkpoint state is left in place.
+#[tokio::test]
+async fn restart_recovery_refuses_a_same_length_source_change() {
+    let bytes = payload(5 * 1024 * 1024 + 91);
+    let make_item = |root: &Path| Item {
+        local: root.join("source").to_string_lossy().into(),
+        remote: "/target".into(),
+        upload: true,
+        directory: false,
+    };
+    let f = Fixture::new(Server {
+        fail_write_at: Some(4 * 1024 * 1024),
+        ..Server::default()
+    })
+    .await;
+    std::fs::write(f.root.join("source"), &bytes).unwrap();
+    let root =
+        std::env::temp_dir().join(format!("edgeterm-restart-tamper-{}", uuid::Uuid::new_v4()));
+    let id = "restart-tamper";
+    let first = named_job(&root, id, vec![make_item(&f.root)]);
+    std::fs::create_dir_all(root.join(id)).unwrap();
+    local::save_json(
+        &root.join(id).join("job.json"),
+        &super::super::journal_json(id, &first.profile, &[make_item(&f.root)], &first.options),
+    )
+    .unwrap();
+    // Freeze the plan first, exactly as run_job does; a checkpoint without
+    // a saved plan must not be claimed by the restart below. copy_files
+    // transfers the plan's own normalized row, so the checkpoint journals
+    // exactly that row.
+    let planned = plan(&first, &f.remote).await.unwrap();
+    assert!(
+        copy(&first, &f.remote, planned[0].clone(), 4, &Semaphore::new(2))
+            .await
+            .is_err()
+    );
+    drop(first);
+    // Same length, different bytes.
+    let mut tampered = bytes.clone();
+    tampered[..8].copy_from_slice(&b"tampered"[..8]);
+    std::fs::write(f.root.join("source"), &tampered).unwrap();
+    f.state.lock().fail_write_at = None;
+    let manager = super::super::Transfers::with_root(root.clone());
+    let journal = manager.read_persisted(id).unwrap();
+    let resumed_item = journal.plan.as_ref().unwrap()[0].clone();
+    let resumed = manager
+        .rebuild(
+            journal.id,
+            "session".into(),
+            journal.items.clone(),
+            // The resumed job runs the journal's own frozen plan, exactly
+            // as the production `adopt` path hands it over.
+            journal.plan.clone(),
+            journal.options,
+            job_profile(),
+            Vec::new(),
+            None,
+            root.join(id),
+            "target".into(),
+            journal.checkpoints,
+            tauri::ipc::Channel::new(|_| Ok(())),
+            None,
+        )
+        .unwrap();
+    let error = copy(&resumed, &f.remote, resumed_item, 4, &Semaphore::new(2))
+        .await
+        .unwrap_err();
+    assert!(error.message.contains("source changed"), "{error:?}");
+    // Nothing was committed over the original state.
+    assert!(!f.state.lock().files.contains_key("/target"));
+    let _ = std::fs::remove_dir_all(&root);
 }
