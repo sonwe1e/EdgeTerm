@@ -15,6 +15,25 @@ git diff --check
 
 若 Rust 未在 PATH，使用已安装 cargo 的绝对路径。对格式/编译告警先与审查基线比较；记录继承的问题，不靠改动无关文件隐藏差异。构建通过不等于完成 Tauri 安装包或所有平台运行验证。
 
+## SSH 工作流与传输扩展
+
+普通检查包括 `src/fileTransfers.test.ts`、`src/transferSettings.test.ts`、`src/components/FileDiffDialog.test.ts`、`src/components/ForwardCenter.test.ts`、`src/components/ResourceMonitorBar.test.ts`、`src/components/SshReuseSetting.test.ts`、`src/terminalFlow.test.ts` 及 Rust 的 `file_transfer`、`file_diff`、`port_forward`、`resource_monitor`、`session::reuse` 模块。检查真实入口、取消后的旧响应、偏好导入/重置、字节和文本结果以及资源归属。
+
+实际服务器测试位于 `file_transfer/real_tests.rs` 和各功能模块的 `real_*` 用例中，默认 ignored。它们仅供专用可清理服务使用：SSH 环境为 `EDGETERM_REAL_SSH_ADDR/USER/KEY/ROOT`，FTP 为 `EDGETERM_REAL_FTP_ADDR/USER/PASS/ROOT`。SSH ROOT 是测试服务器自己的目录，包含其 `sshd.log`，供实际认证次数核对；host key 使用每个测试自己的临时文件。FTP ROOT 必须在测试 jail 内。真实 GPU 用例需要 Linux 主机及 NVIDIA 查询能力。不要使用生产账号或目录；环境未配置、用例被过滤或 ignored 都不算通过。
+
+```powershell
+# 配置以上专用服务环境后运行，选择本轮真实功能用例。
+cargo test --manifest-path src-tauri/Cargo.toml --lib real_ -- --ignored --nocapture --test-threads=1 --skip benchmark_real_server_folder_upload
+```
+
+上面的 skip 对应旧手动性能 benchmark；它需要单独的 `EDGETERM_BENCH_*` 源目录与远端目标配置，应单独运行并记录，不能混进验收后当作已有通过。
+
+真实用例核对 SFTP/FTP 内容、冻结计划重建、源变化拒绝、恢复读回限速、两个运行任务与队列取消；diff 两侧只读内容；L/R TCP 双向传输、拒绝、owner停止、共享兄弟和真实断线后的监听释放；复用的认证次数、密钥在认证期间变化、失效重建；Linux/NVIDIA指标、首样未知、换传输重置、超时及输出上限后兄弟exec健康。Tauri `feature_ipc_tests` 使用 MockRuntime 分派实际生产命令到真实SSH引擎及隔离Store，验证参数/返回/取消/closed-owner边界；它不能替代桌面WebView端到端测试。
+
+浏览器验收使用生产 React/CSS 和真实 xterm，但模拟 IPC 数据。应在实际状态栏容器检查新控件，覆盖应用最小宽度900px、长错误、弹层切换/Escape、明暗主题；大队列/恢复/失败文件及diff首尾可达、DOM有界；字节碎片保序与EOF尾批；隐藏/恢复的实际render帧。记录浏览器、源快照和工作负载，不把单次浏览器时延或合成多GPU当真实部署性能/多GPU硬件验证。
+
+按R10在一次性worktree中破坏相关保护：限速扣费、journal归属、字节相等判断、认证身份、guest计数、迟到资源释放、owner停止、输出合批、隐藏采样、快照revision、转发入口owner、传输身份及虚拟化阈值。先运行同快照正常控制，再确认对应行为用例实际失败；编译失败不算检出。保留日志与源码哈希，清理worktree，禁止链接node_modules。
+
 ## 2. PR #91：排序、布局与设置
 
 | 测试 | 步骤 | 通过标准 |
