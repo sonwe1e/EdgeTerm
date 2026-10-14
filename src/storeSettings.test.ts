@@ -7,7 +7,7 @@ vi.mock("./platform", () => ({
   IS_WINDOWS: false,
 }));
 
-import { useStore } from "./store";
+import { scrollbackMegabytes, TERMINAL_SCROLLBACK, useStore } from "./store";
 
 const initialState = useStore.getState();
 
@@ -57,6 +57,24 @@ describe("cursor settings", () => {
     useStore.getState().applySettings({ cursorStyle: "beam", cursorBlink: "yes" });
     expect(useStore.getState().cursorStyle).toBe("underline");
     expect(useStore.getState().cursorBlink).toBe(false);
+  });
+});
+
+describe("terminal scrollback", () => {
+  it("defaults to 10,000 lines and clamps what is stored or imported", () => {
+    expect(useStore.getState().terminalScrollback).toBe(10_000);
+
+    useStore.getState().setTerminalScrollback(5_000_000);
+    expect(useStore.getState().terminalScrollback).toBe(TERMINAL_SCROLLBACK.max);
+    useStore.getState().setTerminalScrollback(Number.NaN);
+    expect(useStore.getState().terminalScrollback).toBe(TERMINAL_SCROLLBACK.default);
+  });
+
+  it("estimates the floor of the memory a session holds", () => {
+    // Three 32-bit words per cell, every column of every line.
+    expect(scrollbackMegabytes(10_000, 200)).toBeCloseTo(22.89, 1);
+    expect(scrollbackMegabytes(0)).toBe(0);
+    expect(scrollbackMegabytes(-5)).toBe(0);
   });
 });
 

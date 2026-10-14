@@ -10,6 +10,7 @@ import {
 import {
   BUFFER_FONT_SIZE,
   PANEL_FONT_SIZE,
+  scrollbackMegabytes,
   TERMINAL_SCROLLBACK,
   useStore,
 } from "../store";
@@ -258,7 +259,11 @@ export function FontSizeDialog({
           <label className="font-size-setting scrollback-setting">
             <span>
               <strong>Scrollback</strong>
-              <small>Terminal history retained per session</small>
+              <small>
+                Terminal history retained per session (at least{" "}
+                {Math.max(1, Math.round(scrollbackMegabytes(scrollback)))} MB
+                for 200 columns)
+              </small>
             </span>
             <input
               aria-label="Terminal scrollback lines"

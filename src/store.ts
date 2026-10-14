@@ -154,8 +154,17 @@ export const BUFFER_FONT_SIZE = { min: 8, max: 32, default: 14 } as const;
 export const TERMINAL_SCROLLBACK = {
   min: 0,
   max: 1_000_000,
-  default: 20_000,
+  default: 10_000,
 } as const;
+
+/**
+ * Rough memory a session holds for `lines` of history: xterm keeps three
+ * 32-bit words per cell (CELL_SIZE in its BufferLine.ts) for every column of
+ * every line. Per-line objects for wide or styled text come on top, so this
+ * is a floor, shown to help choosing a number, not a measured figure.
+ */
+export const scrollbackMegabytes = (lines: number, cols = 200): number =>
+  (Math.max(0, lines) * cols * 12) / (1024 * 1024);
 // A fresh install shows only the session list; the Filer and Sender stay
 // hidden until the user opens them from the View menu.
 const DEFAULT_PANELS: Record<PanelName, boolean> = {
