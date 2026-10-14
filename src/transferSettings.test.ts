@@ -12,7 +12,7 @@ describe("transfer option preferences", () => {
     expect(readTransferOptions()).toEqual({
       requests: 32,
       chunkKib: 128,
-      files: 8,
+      files: 16,
       durable: false,
     });
   });
@@ -36,12 +36,17 @@ describe("transfer option preferences", () => {
   });
 
   it("falls back to the defaults when a value is out of bounds", () => {
-    for (const override of [{ files: 0 }, { files: 17 }, { requests: 33 }, { chunkKib: 8 }]) {
+    for (const override of [{ files: 0 }, { files: 33 }, { requests: 33 }, { chunkKib: 8 }]) {
       localStorage.setItem(
         "edgeterm.transfer-options",
         JSON.stringify({ ...DEFAULT_TRANSFER_OPTIONS, ...override }),
       );
       expect(readTransferOptions()).toEqual(DEFAULT_TRANSFER_OPTIONS);
     }
+  });
+
+  it("keeps a saved concurrency at the new upper bound", () => {
+    saveTransferOptions({ requests: 32, chunkKib: 128, files: 32, durable: false });
+    expect(readTransferOptions().files).toBe(32);
   });
 });

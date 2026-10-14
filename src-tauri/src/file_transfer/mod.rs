@@ -215,7 +215,7 @@ impl Default for Options {
         Self {
             requests: 32,
             chunk_kib: 128,
-            files: 8,
+            files: 16,
             durable: false,
         }
     }
@@ -224,7 +224,7 @@ impl Options {
     pub fn validate(&self) -> Result<()> {
         if !(1..=32).contains(&self.requests)
             || !(16..=256).contains(&self.chunk_kib)
-            || !(1..=16).contains(&self.files)
+            || !(1..=32).contains(&self.files)
         {
             return Err(AppError::new("invalid transfer concurrency or chunk size"));
         }
@@ -858,5 +858,17 @@ mod tests {
         }
         .validate()
         .is_err());
+        assert!(Options {
+            files: 33,
+            ..Options::default()
+        }
+        .validate()
+        .is_err());
+        assert!(Options {
+            files: 32,
+            ..Options::default()
+        }
+        .validate()
+        .is_ok());
     }
 }

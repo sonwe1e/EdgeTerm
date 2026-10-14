@@ -47,8 +47,8 @@ export function TransferCenter() {
             const chunkKib = Number(e.target.value); if (!Number.isInteger(chunkKib) || chunkKib < 16 || chunkKib > 256) return;
             const next = { ...options, chunkKib }; setOptions(next); saveTransferOptions(next);
           }} /></label>
-          <label>Files <input aria-label="Concurrent files" type="number" min={1} max={16} value={options.files} onChange={(e) => {
-            const files = Number(e.target.value); if (!Number.isInteger(files) || files < 1 || files > 16) return;
+          <label>Files <input aria-label="Concurrent files" type="number" min={1} max={32} value={options.files} onChange={(e) => {
+            const files = Number(e.target.value); if (!Number.isInteger(files) || files < 1 || files > 32) return;
             const next = { ...options, files }; setOptions(next); saveTransferOptions(next);
           }} /></label>
           <label className="transfer-durable"><input aria-label="Flush each file on the server before committing" type="checkbox" checked={options.durable} onChange={(e) => {

@@ -45,7 +45,7 @@ describe("background transfer state", () => {
       const files = () => container.querySelector<HTMLInputElement>('[aria-label="Concurrent files"]')!.value;
       expect(files()).toBe("2");
       await act(async () => useStore.getState().resetSettings());
-      expect(files()).toBe("8");
+      expect(files()).toBe("16");
       await act(async () => useStore.getState().applySettings({ preferences: {
         "edgeterm.transfer-options": { requests: 4, chunkKib: 32, files: 3, durable: false },
       } }));
@@ -79,7 +79,7 @@ describe("background transfer state", () => {
     saveTransferOptions({ requests: 8, chunkKib: 32, files: 2, durable: true });
     expect(readTransferOptions()).toEqual({ requests: 8, chunkKib: 32, files: 2, durable: true });
     localStorage.setItem("edgeterm.transfer-options", '{"requests":1000,"chunkKib":32,"files":2}');
-    expect(readTransferOptions()).toEqual({ requests: 32, chunkKib: 128, files: 8, durable: false });
+    expect(readTransferOptions()).toEqual({ requests: 32, chunkKib: 128, files: 16, durable: false });
   });
   it("controls a backend job across pause/resume and terminal states", async () => {
     api.listFileTransfers.mockResolvedValue([job("controls")]);
