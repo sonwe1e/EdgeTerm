@@ -7,7 +7,7 @@ export default defineConfig({
     // ThemeMode has a palette block; without this vitest stubs CSS
     // imports, `?raw` included, with an empty string.
     css: { include: [/styles\.css/] },
-    include: ["src/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "scripts/**/*.test.mjs"],
     setupFiles: ["src/test/setup.ts"],
   },
 });

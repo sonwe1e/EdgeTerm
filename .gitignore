@@ -5,6 +5,7 @@
 /dist/
 /dist-ssr/
 /coverage/
+/.tmp/
 /artifacts/performance/
 /src-tauri/target/
 /src-tauri/gen/schemas/
