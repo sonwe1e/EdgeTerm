@@ -25,6 +25,8 @@ function createController(scrollback = 1000) {
     scrollback,
   );
   controllers.push(controller);
+  // A terminal paints only while it is on screen (see terminalHidden.test.ts).
+  controller.setVisible(true);
   return controller;
 }
 

@@ -677,9 +677,15 @@ export class TerminalController {
       // compares. Two slices in one frame cost one extra viewport of regex
       // work (~0.5 ms); a throttle would bring back a half-viewport flash
       // when a listing arrives split across slices, so there is none.
-      this.refreshSemanticColors();
+      //
+      // A hidden terminal paints nothing: its viewport is not on screen, and
+      // `setVisible(true)` colors it before the first frame. Command tracking
+      // still runs, since a background tab's busy / done state depends on it.
+      if (this.visible) {
+        this.refreshSemanticColors();
+        this.scheduleBacklog();
+      }
       this.gutterContentDirty = true;
-      this.scheduleBacklog();
       this.detectReturnedPrompt();
       // The shell's echo of a keystroke lands here; recompute the suggestions
       // from the buffer only while the user is composing a command.
@@ -705,6 +711,7 @@ export class TerminalController {
 
     this.term.onLineFeed(() => this.recordLine());
     this.term.onRender(() => {
+      if (!this.visible) return;
       // Catch-all for rows the write and scroll hooks did not see (resize
       // rebuilds, the cursor leaving a line, a second parse slice in the
       // same frame). Runs after the paint, so anything it colors shows up a
@@ -988,6 +995,10 @@ export class TerminalController {
     this.visible = visible;
     if (visible) {
       this.loadWebgl();
+      // Output that arrived while hidden was not painted; do the viewport now,
+      // ahead of the first frame, and the rest in the backlog.
+      this.refreshSemanticColors();
+      this.syncGutter();
       this.scheduleBacklog();
     } else {
       this.cancelFit();
@@ -2595,7 +2606,8 @@ export class TerminalController {
    */
   private recolorAll() {
     this.paintRecords = new WeakMap();
-    this.refreshSemanticColors();
+    // A hidden terminal repaints when it is shown (see setVisible).
+    if (this.visible) this.refreshSemanticColors();
     this.scheduleBacklog();
   }
 

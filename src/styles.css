@@ -1725,10 +1725,12 @@ textarea:focus {
   overflow: hidden;
 }
 
+/* display, not visibility: xterm pauses its renderer only when its
+   IntersectionObserver reports the screen as not intersecting, and that
+   observer ignores visibility (and content-visibility), so a hidden tab kept
+   repainting every frame while a program wrote to it. */
 .pane-slot.is-hidden {
-  visibility: hidden;
-  pointer-events: none;
-  z-index: -1;
+  display: none;
 }
 
 .term-pane {
