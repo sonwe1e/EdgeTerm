@@ -8,6 +8,38 @@ The review harness mocks Tauri IPC and file listings; it does not validate a
 real remote server. The performance harness measures DOM virtualization and
 ordinary-byte ZMODEM input handling, not complete terminal rendering throughput.
 
+`check-file-performance.mjs` additionally gates two timings, each the median of
+5 samples, and exits 1 when one is breached (it prints
+`FAIL <name>: <measured> ms (gate <limit> ms)` and writes every sample, median
+and limit to `artifacts/performance/results.json`):
+
+- first paint of a 10,000-row listing: the root is unmounted, then one
+  `FileBrowser` with 10,000 synthetic entries is mounted inside `flushSync` and
+  the script waits two animation frames. It covers React commit, the row window
+  calculation, layout and paint of the mounted list.
+- tab switch between two mounted 10,000-row listings: both panes stay mounted
+  and visibility moves between them through the app's own `.pane-slot` /
+  `.is-hidden` classes and percentage geometry. It covers React reconciliation
+  plus layout/paint of showing the other pane.
+
+Thresholds chosen from measured headroom on one developer machine (Edge
+155.0.4283.45 headless, 10,000 synthetic rows, 1100x720 viewport): first paint
+median 27.0 ms, samples 25.8-27.1 ms, gate 200 ms; tab switch median 13.0 ms,
+samples 7.3-13.3 ms, gate 100 ms. Re-record the raw numbers whenever a
+threshold or the workload changes, and treat them as this machine's numbers
+only.
+
+The tab-switch gate does not cover terminal tabs: a real tab switch needs a PTY
+session and xterm, so the harness switches two file listings instead. TabStrip
+rendering, terminal fit and repaint, and the store's `activeId` churn are not
+measured by it.
+
+Boundary for everything above (R1): headless Edge, synthetic listings and
+component props in place of IPC prove this harness's DOM and component
+behaviour only. They do not prove WebView2 frame times, GPU cost, or anything
+about a real server; those need the disposable CDP app instance described
+below.
+
 `check-hidden-render.mjs` mounts a real xterm and the real `styles.css` in
 headless Edge, keeps writing one line per frame, and counts the frames it
 renders while its `.pane-slot` is hidden. It exits 1 if the hidden slot still

@@ -17,22 +17,37 @@ import {VirtualFileRows} from '/src/components/VirtualFileRows.tsx';
 import {ZmodemInput} from '/src/zmodemInput.ts';
 import Zmodem from 'zmodem.js';
 const root = createRoot(document.getElementById('root'));
-const entries = Array.from({length:10000}, (_,i) => ({name:'file'+i+'.dat',path:'/test/file'+i+'.dat',
+const entries = Array.from({length:10000},(_,i) => ({name:'file'+i+'.dat',path:'/test/file'+i+'.dat',
   isDir:i%10===0,isSymlink:false,size:i*1000,modified:1700000000+i,permissions:null,owner:null,group:null}));
 const noop=()=>{};
-window.showFiles=(count=10000)=>flushSync(()=>root.render(React.createElement(FileBrowser, {
-  title:'Remote',subtitle:'SFTP',path:'/test',draft:'/test',entries:entries.slice(0,count),
+const browserProps=(title)=>({title,subtitle:'SFTP',path:'/test',draft:'/test',
   selected:null,loading:false,error:null,side:'remote',draggingPath:null,dropHover:null,
   onItemPointerDown:(side,entry,event)=>event.currentTarget.setPointerCapture(event.pointerId),
   onItemPointerMove:noop,onItemPointerUp:noop,onDragCancel:noop,onDraftChange:noop,onOpenPath:noop,
-  onHome:noop,onParent:noop,onRefresh:noop,onSelect:noop,onActivate:noop
-})));
+  onHome:noop,onParent:noop,onRefresh:noop,onSelect:noop,onActivate:noop});
+window.showFiles=(count=10000)=>flushSync(()=>root.render(React.createElement(FileBrowser,
+  {...browserProps('Remote'),entries:entries.slice(0,count)})));
 window.showFiler=(font)=>{
  document.documentElement.style.setProperty('--panel-font-size',font+'px');
  flushSync(()=>root.render(React.createElement('div',{className:'panel-body filer-list'},
    React.createElement(VirtualFileRows,{entries,rowHeight:Math.max(24,font+10)+2,resetKey:'font'+font,
     children:e=>React.createElement('div',{className:'row filer-entry'},e.name)}))));
 };
+// Two mounted listings in the app's own pane slots; only the visible one is
+// laid out, exactly as Workspace renders a hidden tab: the same class, the same
+// percentage geometry against a positioned container.
+const tabSlots=(hidden)=>[0,1].map(i=>React.createElement('div',{key:'slot'+i,
+  className:'pane-slot'+(i===hidden?' is-hidden':''),
+  style:{left:'0%',top:'0%',width:'100%',height:'100%'}},
+  React.createElement(FileBrowser,{...browserProps('Tab '+(i+1)),entries})));
+const paneStack=(slots)=>React.createElement('div',{className:'pane-stack',
+  style:{position:'relative',width:'100%',height:'100%'}},slots);
+window.mountTabs=()=>flushSync(()=>root.render(paneStack(tabSlots(1))));
+window.switchTab=()=>flushSync(()=>root.render(paneStack(tabSlots(0))));
+window.clear=()=>flushSync(()=>root.render(null));
+const frames=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+window.measureFirstPaint=async(count)=>{const start=performance.now();window.showFiles(count);await frames();return performance.now()-start;};
+window.measureTabSwitch=async()=>{const start=performance.now();window.switchTab();await frames();return performance.now()-start;};
 window.benchInput=()=>{
  const results={};
  for(const [name,Ctor] of [['previous',Zmodem.Sentry],['optimized',ZmodemInput]]) {
@@ -46,6 +61,26 @@ window.benchInput=()=>{
 };
 window.showFiles(); window.ready=true;
 </script></body></html>`;
+
+// Thresholds are budgets for this harness only: headless Edge, synthetic
+// listings, no Tauri IPC and no real terminal session. They are chosen from the
+// measured headroom of one developer machine (raw numbers in
+// scripts/README.md); they do not describe WebView2 frame times. Raise or lower
+// them deliberately when the harness workload changes, and re-record the raw
+// numbers with them.
+const GATES = {
+  firstPaint10kMs: 200,
+  tabSwitchMs: 100,
+};
+const SAMPLES = 5;
+const failures = [];
+const median = (values) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
+/** Records one measurement against its gate; a breach fails the whole run. */
+const gate = (name, measured, limit) => {
+  const pass = measured <= limit;
+  console.log(`${pass ? "PASS" : "FAIL"} ${name}: ${measured.toFixed(1)} ms (gate ${limit} ms)`);
+  if (!pass) failures.push(`${name}: measured ${measured.toFixed(1)} ms over ${limit} ms`);
+};
 
 const server = await createServer({
   server: { port: 0, strictPort: false, host: "127.0.0.1" },
@@ -97,6 +132,28 @@ try {
     const actual=await layout(); assert.equal(actual.pitch, Math.max(24,font+10)+2);
     assert(actual.count < 50); filer.push({font,...actual});
   }
+  // Gate 1: mounting a 10,000-row listing and painting it. Every sample starts
+  // from an unmounted root, so each one is a first mount, not a re-render.
+  const firstPaint = [];
+  for (let sample = 0; sample < SAMPLES; sample++) {
+    await page.evaluate(() => window.clear()); await waitFrames();
+    firstPaint.push(await page.evaluate(count => window.measureFirstPaint(count), 10000));
+  }
+  await waitFrames();
+  const painted = await layout(); assert(painted.count < 50);
+  gate("first paint of a 10,000-row listing (median of " + SAMPLES + ")", median(firstPaint), GATES.firstPaint10kMs);
+  // Gate 2: switching between two mounted 10,000-row listings through the app's
+  // own .pane-slot/.is-hidden classes. Terminal tabs need real sessions, so they
+  // are not covered here; see scripts/README.md.
+  await page.evaluate(() => window.mountTabs()); await waitFrames();
+  const switches = [];
+  for (let sample = 0; sample < SAMPLES; sample++) {
+    switches.push(await page.evaluate(() => window.measureTabSwitch()));
+  }
+  await waitFrames();
+  const shown = await page.locator('.pane-slot:not(.is-hidden) .ftp-file-row').count();
+  assert(shown > 0 && shown < 50);
+  gate("tab switch between two 10,000-row listings (median of " + SAMPLES + ")", median(switches), GATES.tabSwitchMs);
   const input = {};
   const cdp = await page.context().newCDPSession(page);
   for (const rate of [1,4]) {
@@ -104,7 +161,10 @@ try {
     input[rate+'xCPU']=await page.evaluate(()=>window.benchInput());
   }
   assert.deepEqual(errors, []);
-  const report={browser:await browser.version(),initial,bottom,filer,input};
+  assert.deepEqual(failures, []);
+  const report={browser:await browser.version(),initial,bottom,filer,
+    gates:{firstPaint10k:{samples:firstPaint,medianMs:median(firstPaint),limitMs:GATES.firstPaint10kMs},
+      tabSwitch:{samples:switches,medianMs:median(switches),limitMs:GATES.tabSwitchMs}},input};
   await writeFile('artifacts/performance/results.json',JSON.stringify(report,null,2));
   console.log(JSON.stringify(report,null,2));
 } finally { if(browser)await browser.close();await server.close(); }
