@@ -57,7 +57,7 @@ export function TransferCenter() {
           <label className="transfer-durable"><input aria-label="Stream folder uploads as a tar archive" type="checkbox" checked={options.tar} onChange={(e) => {
             const next = { ...options, tar: e.target.checked }; setOptions(next); saveTransferOptions(next);
           }} /> Tar stream for folder uploads</label>
-        </div><p>Server limits may lower these values. FTP uses up to two file connections. Durable writes require SFTP server support; uploads fail if the server cannot confirm a flush. This option does not apply to downloads.</p>
+        </div><p>Server limits may lower these values. FTP uses up to four file connections. Durable writes require SFTP server support; uploads fail if the server cannot confirm a flush. This option does not apply to downloads.</p>
         <p>Tar stream packs a folder upload into one archive and pipes it into <code>tar -xf -</code> on the server. It needs a remote tar with <code>-k</code> and a POSIX shell, and only works for a folder upload into a target directory that does not exist or is empty. There is no per-file resume, no per-file conflict detection and no atomic commit: progress counts the bytes packed on this machine, cancelling leaves whatever tar had already extracted, and a retry starts the whole folder again. Folder names are sent as UTF-8, so a server whose locale is not UTF-8 stores them mangled.</p>
       </details>
       {error && <div role="alert" className="transfer-job-error">{error}</div>}
