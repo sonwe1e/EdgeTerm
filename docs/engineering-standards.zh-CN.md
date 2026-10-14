@@ -66,6 +66,51 @@
 - 独立 PR 从目标基线构建；确需堆叠则明示依赖，不能把被打回的改动夹带到另一 PR。
 - 提交/PR 描述写最终行为和验证边界。无法运行的测试注明缺什么条件；不要用更多 mock 来掩盖真实环境缺口。
 
+## R8：提交范围与拆分
+
+- 一个提交只做一件事。标题之外的改动（偏好开关、迁移、无关处理器）单独提交；body 里写“Also carries …”说明它应该被拆出去，而不是被披露就算合规。例：bd1c4e2 的 resize/输出额度里夹带了 WebGL 渲染器开关和 Enter 重连处理；e15dab9 的双栏浏览器里夹带了 Sender 偏好重读和 persistKeys 迁移。
+- 每个提交单独成立：自身就能通过 `npm run typecheck` 和它触及区域的测试（前端改动跑相关 `*.test.ts`，后端改动跑 `cargo test --lib` 中对应模块）。bisect 和 cherry-pick 依赖这一点。
+- 删除或移动文件时，所有 importer 在同一提交内修改。例：ca310db 删除了 `src/terminalTransfer.ts`，`terminal.ts`/`xmodem.ts`/`zmodem.ts` 仍在导入，直到 5a09ad8 才加回；中间三个提交各有 4 个 TS 错误（3×TS2307 + 1 个连带的 TS7006）。用 `npm run check:commits -- <base>..HEAD --typecheck` 逐个提交验证。
+- 不夹带顺手功能。审查中发现的新问题另起提交，并在 PR 描述中列出。
+- 大提交（默认：除锁文件外 >1500 行改动或 >40 个文件，或同时改 `src/`、`src-tauri/` 和文档）要么拆分，要么在 body 写 `Scope: <为何不能拆>`，例如生成代码、单一协议的原子替换。ca310db（约 5000 增 / 1300 删）应按“后端引擎 / IPC / UI / 测试夹具”拆分。
+- 依赖顺序：被依赖的提交在前，并且自身可编译。堆叠的工作在 PR 描述里写明基线和依赖链；重排或拆分后，对整个范围重跑 `--typecheck`。
+
+## R9：提交说明必须能由 diff 证明
+
+- 标题描述这个提交的 diff 实际做了什么，不描述整个功能链。若关键逻辑已在之前的提交里，标题写本提交补的那一环。例：1085a2e 标题为 “reconnect a dead session with Enter”，但按键处理已在 bd1c4e2，本提交只是接上回调，应写 “feat: wire Enter-reconnect callback into session actions”。
+- 措辞对应 R1 的证据级别：
+  - 只有代码机制：用动作动词（add、wire、remove、replace），不写结果。
+  - 夹具/jsdom 测试通过：可写行为，body 注明 `Tests:` 和环境边界。
+  - 真实环境测量：才可写 faster、fixes hang、no longer re-renders 等结果性措辞。
+- `perf:` 必须带 `Measured: baseline <sha/数值> / candidate <sha/数值> / env <OS、构建模式、渲染器、负载>`；没有测量就写 `Unmeasured: <原因>`，标题不得出现数值或倍率。例：f8a7318 “stop tab churn from re-rendering the whole app” 无测量，且 App 仍订阅 `activeId` 和当前标签对象，切换标签仍会重渲染；应写 Unmeasured 并把标题收窄到实际减少的订阅。
+- `fix:` 必须带 `Tests: <回归用例，已在旧实现上失败>`，或 `Tests: none — <原因>`。若没有复现旧缺陷，不用 `fix:`。例：5a09ad8 “keep XMODEM and ZMODEM payloads binary” 没有旧实现损坏数据的证据，实质是去掉一次 base64 往返，更适合 `perf:`/`chore:` 加 Unmeasured。
+- 标题中的绝对化词语视为待证：全部、所有、彻底、完全、已解决、根治、all、every、whole、fully、completely、always、never、reliable、guarantee。没有对应证据就删掉。`check:commits` 会对这些词给出 WARN。
+- “address review”/“修复评审”类提交按 R7 逐条重新审查，PR 描述列出每条评审项对应的提交和测试。
+- 必填行格式固定为 `Key: value`，放在 body 中独立一行：`Measured:`、`Unmeasured:`、`Tests:`、`Scope:`。
+
+## R10：测试必须能失败
+
+- 行为声明需要在真实调用点有测试，而不只是纯函数。例：`paneDrop.test.ts` 只测了 `source.side !== target.side` 这一个比较，FtpPane 里同侧 drop 的接线被改掉也不会失败；隐藏面板仍 fit 没有组件级测试。
+- 预期值不能从被测的生产常量推导。例：`output.rs` 的测试用 `SESSION_WINDOW` 计算预期，改常量预期同步变化，等于没测。写字面值，或单独断言常量本身。
+- 不 mock 正在被证明的东西。例：`apiBinary.test.ts` mock 了 `invoke`，只能证明前端发出的形状，不能证明 Rust 端能解码；跨边界的声明需要另一侧的测试（Rust 单元测试解同一份字节）。`reconnect.test.ts` 直接调用私有 `handleData` 并传入 mock 回调，证明不了 `actions.ts` 的接线。
+- 变异抽查：对每条行为声明，写出“改哪一行生产代码，哪个测试必须失败”。上次抽查 15 个有效变异中 4 个存活：`actions.ts` 的 Enter 重连接线、host-key 守卫、FtpPane 同侧 drop 接线、隐藏面板 fit。存活的变异要么补测试，要么在 PR 中写明未覆盖。
+- 变异要在一次性 worktree 中做，不改主工作区：
+  1. `git worktree add --detach .tmp/mutate/<name> HEAD`（`.tmp/` 已被忽略，位于仓库内，Node 和 TypeScript 会向上找到主仓库的 `node_modules`）。
+  2. 在 worktree 中改一行，从 worktree 目录运行 `node ../../../node_modules/vitest/vitest.mjs run <测试文件>`；Rust 用 `cargo test --manifest-path .tmp/mutate/<name>/src-tauri/Cargo.toml --lib <过滤>`。
+  3. 记录结果后 `git worktree remove --force .tmp/mutate/<name>` 再 `git worktree prune`，确认 `git worktree list` 只剩主工作区。
+  - 禁止对 `node_modules` 做 symlink/junction 或复制到 worktree。曾有一次 junction 后删除 worktree，把主仓库的 `node_modules` 一并清空。删除前若看到 worktree 里有 `node_modules` 链接，先单独移除链接本身。
+  - 不在主工作区用 `git stash`/手改再还原的方式做变异，避免把变异留在提交里。
+
+## PR 自查清单
+
+- [ ] `npm run check:commits -- <base>..HEAD --typecheck` 无 ERROR；每条 WARN 已处理或在 PR 中说明。
+- [ ] 每个提交只有一个关注点；移动/删除文件与 importer 在同一提交。
+- [ ] 每个标题都能由该提交的 diff 证明；无未证明的绝对化词语。
+- [ ] `perf:` 有 `Measured:` 或 `Unmeasured:`；`fix:` 有 `Tests:`，且回归用例在旧实现上失败过。
+- [ ] 每条行为声明列出了变异抽查结果（见测试方案“提交与拆分验收”）；存活的变异已写明。
+- [ ] 测试预期不依赖被测常量；没有 mock 被证明的对象；跨 IPC 的声明两侧都有测试。
+- [ ] `git worktree list` 只有主工作区；`.tmp/` 无残留；`git status` 只有预期改动。
+
 ## 固定参照
 
 - [xterm 6.0.0 Buffer.ts](https://github.com/xtermjs/xterm.js/blob/6.0.0/src/common/buffer/Buffer.ts)：reflow 的列数判断。
