@@ -5,6 +5,9 @@ mod local;
 mod sftp;
 mod tar;
 
+#[cfg(test)]
+#[path = "real_tests.rs"]
+mod real_tests;
 
 use std::collections::HashMap;
 use std::future::Future;
