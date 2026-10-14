@@ -127,6 +127,41 @@ const LOCAL_SOURCE = "";
  */
 const lastPaths = new Map<string, string>();
 
+/**
+ * The last listing of each remote directory, shown while a fresh one is on its
+ * way (stale-while-revalidate). Switching back to an SSH tab used to leave the
+ * panel on the previous session's rows until a full SFTP round trip and a JSON
+ * parse of the directory finished. Local listings are not cached: they are
+ * cheap and the disk is the source of truth. Bounded, oldest dropped first.
+ */
+const LISTING_CACHE_LIMIT = 24;
+const listingCache = new Map<string, FileEntry[]>();
+const listingKey = (source: string, path: string) => `${source}\u0000${path}`;
+
+const rememberListing = (source: string, requested: string, path: string, entries: FileEntry[]) => {
+  for (const key of new Set([listingKey(source, requested), listingKey(source, path)])) {
+    listingCache.delete(key);
+    listingCache.set(key, entries);
+  }
+  while (listingCache.size > LISTING_CACHE_LIMIT) {
+    listingCache.delete(listingCache.keys().next().value as string);
+  }
+};
+
+/** Whether a fresh listing shows the same rows as the one on screen. */
+export const sameListing = (a: readonly FileEntry[], b: readonly FileEntry[]) =>
+  a.length === b.length &&
+  a.every((entry, i) => {
+    const other = b[i];
+    return (
+      entry.path === other.path &&
+      entry.size === other.size &&
+      entry.modified === other.modified &&
+      entry.isDir === other.isDir &&
+      entry.permissions === other.permissions
+    );
+  });
+
 const rememberPath = (source: string, path: string) => {
   const open = new Set(useStore.getState().tabs.map((tab) => tab.info.id));
   for (const key of lastPaths.keys()) {
@@ -359,11 +394,22 @@ function FilerPanelBase() {
    * error is shown unless `quiet`, for a caller that has a fallback.
    */
   const load = useCallback(
-    async (target: string, quiet = false): Promise<boolean> => {
+    async (target: string, quiet = false, resume = false): Promise<boolean> => {
       if (offline || remoteIdRef.current !== remoteId) return false;
       const request = ++listRequest.current;
       setBusy(true);
       setError(null);
+      // Only when coming back to a session: a refresh after a rename, delete
+      // or upload must not flash the rows as they were before it. `busy`
+      // stays set meanwhile, so the cached rows read as loading.
+      const cached =
+        resume && remoteId ? listingCache.get(listingKey(remoteId, target)) : undefined;
+      if (cached) {
+        setPath(target);
+        setDraft(target);
+        setEntries(cached);
+        setSelected(null);
+      }
       try {
         const listing = remoteId
           ? await api.sftpList(remoteId, target)
@@ -373,8 +419,11 @@ function FilerPanelBase() {
         if (remoteIdRef.current !== remoteId || request !== listRequest.current) return false;
         setPath(listing.path);
         setDraft(listing.path);
-        setEntries(listing.entries);
+        // Same rows as the cached ones already on screen: keep that array, so
+        // nothing re-sorts or re-renders for an unchanged directory.
+        setEntries(cached && sameListing(cached, listing.entries) ? cached : listing.entries);
         setSelected(null);
+        if (remoteId) rememberListing(remoteId, target, listing.path, listing.entries);
         rememberPath(remoteId ?? LOCAL_SOURCE, listing.path);
         return true;
       } catch (e) {
@@ -423,7 +472,7 @@ function FilerPanelBase() {
         // Coming back to a session resumes where it was browsed; home only
         // the first time, or when that directory no longer lists.
         const last = lastPaths.get(remoteId ?? LOCAL_SOURCE);
-        if (last !== undefined && (await load(last, true))) return;
+        if (last !== undefined && (await load(last, true, true))) return;
         if (cancelled) return;
         const home = remoteId
           ? await api.sftpHome(remoteId)
