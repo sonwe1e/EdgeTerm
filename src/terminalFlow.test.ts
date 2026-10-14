@@ -17,6 +17,16 @@ afterEach(() => {
 });
 
 describe("terminal output and resize scheduling", () => {
+  it("parses UTF-8 one byte at a time in order and consumes a final partial chunk", async () => {
+    const c = createController();
+    const bytes = new TextEncoder().encode("你好 🙂\r\nfinal tail");
+    const consumed: number[] = [];
+    for (let i = 0; i < bytes.length; i++) c.write(bytes.subarray(i, i + 1), () => consumed.push(i));
+    await new Promise<void>((resolve) => c.term.write("", resolve));
+    expect(consumed).toEqual(Array.from({ length: bytes.length }, (_, i) => i));
+    expect(c.term.buffer.active.getLine(0)?.translateToString(true)).toBe("你好 🙂");
+    expect(c.term.buffer.active.getLine(1)?.translateToString(true)).toBe("final tail");
+  });
   it("acknowledges actual parsing even while the terminal is hidden", async () => {
     const c = createController();
     const done = vi.fn();

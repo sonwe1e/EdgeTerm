@@ -570,6 +570,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn one_byte_fragments_are_batched_and_eof_preserves_every_byte() {
+        use super::output::OutputStreams;
+        use tauri::ipc::InvokeResponseBody;
+        let streams = OutputStreams::default();
+        let delivered = Arc::new(Mutex::new(Vec::<Vec<u8>>::new()));
+        let capture = delivered.clone();
+        let channel = Channel::new(move |body| {
+            if let InvokeResponseBody::Raw(bytes) = body {
+                capture.lock().push(bytes);
+            }
+            Ok(())
+        });
+        let mut pump = OutputPump::new(
+            streams
+                .open("fragments", "fragments".into(), channel)
+                .unwrap(),
+            None,
+        );
+        let input: Vec<u8> = (0..20000).map(|n| (n % 256) as u8).collect();
+        for byte in &input {
+            pump.push(&[*byte]);
+        }
+        assert!(
+            delivered.lock().is_empty(),
+            "small packets must not flush per byte"
+        );
+        pump.finish().await;
+        let batches = delivered.lock();
+        assert_eq!(batches.len(), 1);
+        assert_eq!(batches.concat(), input);
+        assert_eq!(OutputPump::MAX, 65536);
+    }
+    #[tokio::test]
     async fn small_packets_keep_the_first_flush_deadline() {
         use super::output::OutputStreams;
         let streams = OutputStreams::default();
