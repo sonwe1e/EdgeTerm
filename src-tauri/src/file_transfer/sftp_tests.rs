@@ -16,6 +16,12 @@ struct Server {
     writes: Vec<u64>,
     pending: usize,
     peak: usize,
+    /// Write replies this server has scheduled but not yet delivered.
+    pending_writes: usize,
+    /// Whether a close request arrived while a write reply was still
+    /// undelivered — the signal that the close was pipelined behind the
+    /// final writes instead of waiting for their acknowledgements.
+    close_with_pending_write: bool,
     delay_ms: u64,
     lose_rename_reply: bool,
     /// Rejects the first mkdir of this path once, the way a server that has
@@ -61,7 +67,16 @@ impl Fixture {
                     break;
                 }
                 let packet = Packet::try_from(&mut Bytes::from(data)).unwrap();
+                let is_write = matches!(packet, Packet::Write(_));
                 let (reply, delay) = response(&mut shared.lock(), packet);
+                if delay > 0 {
+                    let mut server = shared.lock();
+                    server.pending += 1;
+                    server.peak = server.peak.max(server.pending);
+                    if is_write {
+                        server.pending_writes += 1;
+                    }
+                }
                 let Some(reply) = reply else {
                     continue;
                 };
@@ -70,12 +85,18 @@ impl Fixture {
                 tokio::spawn(async move {
                     if delay > 0 {
                         tokio::time::sleep(Duration::from_millis(delay)).await;
+                        // Account for a reply before its bytes are written: a
+                        // reply the client has received is one this task has
+                        // already counted as delivered, so a close that finds
+                        // a nonzero count really did overtake it.
+                        let mut server = state.lock();
+                        server.pending -= 1;
+                        if is_write {
+                            server.pending_writes -= 1;
+                        }
                     }
                     let bytes = Bytes::try_from(reply).unwrap();
                     let _ = writer.lock().await.write_all(&bytes).await;
-                    if delay > 0 {
-                        state.lock().pending -= 1;
-                    }
                 });
             }
         });
@@ -260,7 +281,11 @@ fn response(server: &mut Server, packet: Packet) -> (Option<Packet>, u64) {
             }
             Packet::error(id, StatusCode::Ok)
         }
-        Packet::SetStat(_) | Packet::Close(_) => Packet::error(id, StatusCode::Ok),
+        Packet::SetStat(_) => Packet::error(id, StatusCode::Ok),
+        Packet::Close(_) => {
+            server.close_with_pending_write = server.pending_writes > 0;
+            Packet::error(id, StatusCode::Ok)
+        }
         Packet::OpenDir(p) => {
             if p.path == "/" || server.dirs.contains(&p.path) {
                 Packet::Handle(Handle {
@@ -399,10 +424,6 @@ fn response(server: &mut Server, packet: Packet) -> (Option<Packet>, u64) {
         }
         other => panic!("unimplemented fixture packet: {other:?}"),
     };
-    if delay > 0 {
-        server.pending += 1;
-        server.peak = server.peak.max(server.pending);
-    }
     (Some(reply), delay)
 }
 
@@ -801,6 +822,31 @@ async fn fresh_upload_takes_the_small_file_fast_path() {
     assert_eq!(f.count("posix-rename@openssh.com"), 0);
     assert_eq!(f.count("fsetstat"), 0);
     assert_eq!(f.count("fsync@openssh.com"), 0);
+}
+
+/// The close is queued behind the final writes instead of waiting for
+/// their acknowledgements. The fixture reports whether the close request
+/// reached the server while a write reply was still undelivered; the
+/// previous implementation awaited every acknowledgement first, so it
+/// never did.
+#[tokio::test]
+async fn the_close_is_sent_behind_the_final_writes() {
+    let f = Fixture::new(Server {
+        delay_ms: 2,
+        ..Server::default()
+    })
+    .await;
+    let bytes = payload(300_007);
+    let item = f.upload(&bytes);
+    let job = f.job();
+    copy(&job, &f.remote, item.clone(), 4, &Semaphore::new(2))
+        .await
+        .unwrap();
+    assert_eq!(f.state.lock().files["/target"], bytes);
+    assert!(
+        f.state.lock().close_with_pending_write,
+        "the close waited for the write acknowledgements"
+    );
 }
 
 /// A journal save is a blocking disk write. Run inside an async fn it holds

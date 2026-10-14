@@ -4,8 +4,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures_util::{
+    future::Either,
     stream::{FuturesOrdered, FuturesUnordered},
-    StreamExt,
+    FutureExt, StreamExt, TryFutureExt,
 };
 use parking_lot::Mutex;
 use ring::digest::{Context, SHA256};
@@ -921,6 +922,13 @@ async fn download(
     result
 }
 
+/// One finished step of the pipelined write sequence: an acknowledged
+/// chunk, or the close that was queued behind the final ones.
+enum Step {
+    Written(Vec<u8>),
+    Closed,
+}
+
 async fn upload(
     job: &Job,
     remote: &Remote,
@@ -980,9 +988,16 @@ async fn upload(
                 .await?;
         }
         source.seek(std::io::SeekFrom::Start(cp.offset)).await?;
-        let mut writes = FuturesOrdered::new();
+        // The close is queued behind the final writes instead of waiting
+        // for their acknowledgements: a server processes one session's
+        // requests in order, so the handle stays valid until the pending
+        // writes are done (draft-ietf-secsh-filexfer-02 §6.1). Every write
+        // acknowledgement is still checked before the file is committed,
+        // and a durable upload still flushes before its close.
+        let mut writes: FuturesOrdered<Either<_, _>> = FuturesOrdered::new();
         let mut next = cp.offset;
         let mut saved = cp.offset;
+        let mut closing = false;
         loop {
             while writes.len() < depth && next < cp.source.size {
                 let length = (cp.source.size - next).min(remote.write_len as u64) as usize;
@@ -996,22 +1011,46 @@ async fn upload(
                             .map_err(Failure::from)
                     })
                     .await?;
-                writes.push_back(remote.write(&handle, next, bytes, &job.control));
+                writes.push_back(Either::Left(
+                    remote
+                        .write(&handle, next, bytes, &job.control)
+                        .map_ok(Step::Written),
+                ));
                 next += length as u64;
             }
-            let Some(bytes) = writes.next().await else {
+            if next >= cp.source.size && !closing && !job.options.durable {
+                closing = true;
+                writes.push_back(Either::Right(
+                    job.control
+                        .run(async {
+                            remote
+                                .raw
+                                .close(&handle)
+                                .await
+                                .map(|_| ())
+                                .map_err(Failure::from)
+                        })
+                        .map(|result| result.map(|()| Step::Closed)),
+                ));
+            }
+            let Some(step) = writes.next().await else {
                 break;
             };
-            let bytes = bytes?;
-            // FuturesOrdered only advances after all preceding ACKs, even if
-            // the server acknowledged later offsets first.
-            hash.update(&bytes);
-            cp.offset += bytes.len() as u64;
-            job.progress(&cp.key, cp.offset, cp.source.size, false);
-            if cp.offset - saved >= 4 * 1024 * 1024 || cp.offset == cp.source.size {
-                cp.prefix_hash = local::hex(hash.clone().finish().as_ref());
-                job.save_async(cp).await?;
-                saved = cp.offset;
+            match step? {
+                Step::Written(bytes) => {
+                    // FuturesOrdered only advances after all preceding
+                    // ACKs, even if the server acknowledged later offsets
+                    // first.
+                    hash.update(&bytes);
+                    cp.offset += bytes.len() as u64;
+                    job.progress(&cp.key, cp.offset, cp.source.size, false);
+                    if cp.offset - saved >= 4 * 1024 * 1024 || cp.offset == cp.source.size {
+                        cp.prefix_hash = local::hex(hash.clone().finish().as_ref());
+                        job.save_async(cp).await?;
+                        saved = cp.offset;
+                    }
+                }
+                Step::Closed => {}
             }
         }
         // fsync waits for the server's disk on every file; it is opt-in so
@@ -1029,18 +1068,20 @@ async fn upload(
                 })
                 .await?;
         }
+        if !closing {
+            job.control
+                .run(async {
+                    remote
+                        .raw
+                        .close(&handle)
+                        .await
+                        .map(|_| ())
+                        .map_err(Failure::from)
+                })
+                .await?;
+        }
         cp.prefix_hash = local::hex(hash.finish().as_ref());
         job.save_async(cp).await?;
-        job.control
-            .run(async {
-                remote
-                    .raw
-                    .close(&handle)
-                    .await
-                    .map(|_| ())
-                    .map_err(Failure::from)
-            })
-            .await?;
         Ok(())
     }
     .await;
