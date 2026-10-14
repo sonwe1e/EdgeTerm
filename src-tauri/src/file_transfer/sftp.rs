@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -7,6 +7,7 @@ use futures_util::{
     stream::{FuturesOrdered, FuturesUnordered},
     StreamExt,
 };
+use parking_lot::Mutex;
 use ring::digest::{Context, SHA256};
 use russh_sftp::client::{error::Error, rawsession::Limits, RawSftpSession};
 use russh_sftp::protocol::{FileAttributes, OpenFlags, Packet, StatusCode};
@@ -49,6 +50,12 @@ struct Remote {
     write_len: usize,
     files: usize,
     requests: Semaphore,
+    /// Target-directory listings captured during planning, keyed by
+    /// resolved parent path. A destination name its parent's listing does
+    /// not hold lets a fresh upload skip its per-file probe; a parent
+    /// without a listing (a download, a direct copy, an unlistable
+    /// directory) keeps the probe.
+    listings: Mutex<HashMap<String, HashSet<String>>>,
     _transport: Option<Arc<SharedTransport>>,
 }
 impl Drop for Remote {
@@ -135,6 +142,7 @@ impl Remote {
                 None => job.options.files.min(4),
             },
             requests: Semaphore::new(job.options.requests),
+            listings: Mutex::new(HashMap::new()),
             _transport: Some(transport),
         }))
     }
@@ -303,7 +311,10 @@ impl Remote {
         self.close(&handle).await;
         result
     }
-    async fn mkdir(&self, path: &str, control: &Control) -> TransferResult<()> {
+    /// Creates a directory, reporting whether this call created it. A
+    /// directory that already existed reports `false`: its contents are
+    /// unknown to the plan, unlike a directory created a moment ago.
+    async fn mkdir(&self, path: &str, control: &Control) -> TransferResult<bool> {
         // The mkdir is issued without a probing stat: creating a fresh
         // directory is the common case and costs one round trip. Servers
         // answer "failure" both for real errors and for an existing
@@ -311,10 +322,10 @@ impl Remote {
         control
             .run(async {
                 match self.raw.mkdir(path, FileAttributes::empty()).await {
-                    Ok(_) => Ok(()),
+                    Ok(_) => Ok(true),
                     Err(Error::Status(s)) if s.status_code == StatusCode::Failure => {
                         match self.raw.lstat(path).await {
-                            Ok(v) if v.attrs.is_dir() && !v.attrs.is_symlink() => Ok(()),
+                            Ok(v) if v.attrs.is_dir() && !v.attrs.is_symlink() => Ok(false),
                             Ok(_) => Err(Failure::conflict(format!(
                                 "target is not a real directory: {path}"
                             ))),
@@ -362,6 +373,20 @@ impl Remote {
         .await;
         self.close(&handle).await;
         result
+    }
+    /// Records the planning listings, keyed by resolved parent path.
+    fn set_listings(&self, listings: HashMap<String, HashSet<String>>) {
+        *self.listings.lock() = listings;
+    }
+    /// Whether planning's listing of the destination's parent proves the
+    /// destination does not exist yet. An unlisted parent keeps the
+    /// per-file probe.
+    fn listing_shows_absent(&self, path: &str) -> bool {
+        let Some((parent, name)) = path.rsplit_once('/') else {
+            return false;
+        };
+        let parent = if parent.is_empty() { "/" } else { parent };
+        matches!(self.listings.lock().get(parent), Some(names) if !names.contains(name))
     }
 }
 
@@ -418,12 +443,15 @@ const PLAN_WINDOW: usize = 8;
 /// mkdirs in flight. A child whose parent mkdir is still in flight fails
 /// on a server that processes requests out of order. Drain each batch while
 /// retaining every failure, then retry those directories in parent-first
-/// order before opening the next batch.
+/// order before opening the next batch. Returns the directories this call
+/// actually created; a directory that already existed is not returned,
+/// because its contents are unknown to the plan.
 async fn create_directories(
     job: &Job,
     remote: &Remote,
     directories: &[String],
-) -> TransferResult<()> {
+) -> TransferResult<HashSet<String>> {
+    let mut created = HashSet::new();
     for batch in directories.chunks(PLAN_WINDOW) {
         job.control.check()?;
         let mut creates = FuturesOrdered::new();
@@ -432,25 +460,36 @@ async fn create_directories(
                 remote
                     .mkdir(path, &job.control)
                     .await
+                    .map(|made| (path.clone(), made))
                     .map_err(|e| (path, e))
             });
         }
         let mut failed = Vec::new();
         while let Some(result) = creates.next().await {
-            if let Err((path, e)) = result {
-                if e.stopped() {
-                    return Err(e);
+            match result {
+                Ok((path, true)) => {
+                    created.insert(path);
                 }
-                failed.push(path);
+                // A directory that already existed: its contents are
+                // unknown, so its files keep their destination probe.
+                Ok((_, false)) => {}
+                Err((path, e)) => {
+                    if e.stopped() {
+                        return Err(e);
+                    }
+                    failed.push(path);
+                }
             }
         }
         // Draining must retain ALL failures. Retry in the plan's parent-first
         // order, including children that failed while their parent was absent.
         for path in failed {
-            remote.mkdir(path, &job.control).await?;
+            if remote.mkdir(path, &job.control).await? {
+                created.insert(path.to_string());
+            }
         }
     }
-    Ok(())
+    Ok(created)
 }
 
 async fn plan(job: &Job, remote: &Remote) -> TransferResult<Vec<Item>> {
@@ -459,6 +498,9 @@ async fn plan(job: &Job, remote: &Remote) -> TransferResult<Vec<Item>> {
     }
     let mut files = Vec::new();
     let mut sizes = Vec::new();
+    // Directories this plan creates. They are empty by construction, so
+    // their files need no destination listing.
+    let mut created = HashSet::new();
     for item in &job.items {
         job.control.check()?;
         let directory = item.directory || (item.upload && std::fs::metadata(&item.local)?.is_dir());
@@ -485,7 +527,12 @@ async fn plan(job: &Job, remote: &Remote) -> TransferResult<Vec<Item>> {
             .await
             .map_err(Failure::local)?
             .map_err(Failure::local)?;
-            create_directories(job, remote, &plan.directories).await?;
+            create_directories(job, remote, &plan.directories)
+                .await?
+                .into_iter()
+                .for_each(|path| {
+                    created.insert(path);
+                });
             for file in plan.files {
                 sizes.push(file.size);
                 files.push(Item {
@@ -606,6 +653,62 @@ async fn plan(job: &Job, remote: &Remote) -> TransferResult<Vec<Item>> {
             return Err(Failure::conflict("batch contains duplicate destinations"));
         }
     }
+    // Read every distinct target parent this plan did not just create,
+    // once, in a window. The listing answers each file's destination
+    // probe: a name the listing does not hold is a fresh upload target.
+    let mut wanted = Vec::new();
+    {
+        let mut seen = HashSet::new();
+        for item in &files {
+            if !item.upload {
+                continue;
+            }
+            let (parent, _) = item
+                .remote
+                .rsplit_once('/')
+                .unwrap_or((".", item.remote.as_str()));
+            let parent = if parent.is_empty() { "/" } else { parent };
+            if !created.contains(parent) && seen.insert(parent.to_string()) {
+                wanted.push(parent.to_string());
+            }
+        }
+    }
+    if !wanted.is_empty() || !created.is_empty() {
+        let mut listings: HashMap<String, HashSet<String>> = HashMap::new();
+        let mut queue = wanted.into_iter();
+        let mut lists = FuturesOrdered::new();
+        loop {
+            job.control.check()?;
+            while lists.len() < PLAN_WINDOW {
+                let Some(parent) = queue.next() else { break };
+                lists.push_back(async move {
+                    let entries = remote.list(&parent, &job.control).await;
+                    (parent, entries)
+                });
+            }
+            let Some((parent, entries)) = lists.next().await else {
+                break;
+            };
+            match entries {
+                Ok(entries) => {
+                    listings.insert(
+                        parent,
+                        entries.into_iter().map(|entry| entry.filename).collect(),
+                    );
+                }
+                // A parent that cannot be listed keeps the per-file probe
+                // for its files instead of failing the whole plan.
+                Err(e) if e.stopped() => return Err(e),
+                Err(_) => {}
+            }
+        }
+        // A directory this plan created is empty by construction, so its
+        // files need no listing of their own.
+        for path in created {
+            listings.entry(path).or_default();
+        }
+        remote.set_listings(listings);
+    }
     for (item, size) in files.iter().zip(sizes) {
         job.progress(&job.key(item), 0, size, false);
     }
@@ -654,7 +757,13 @@ async fn copy(
             cp
         } else {
             let original = if item.upload {
-                remote.signature(&item.remote, &job.control).await?
+                // Planning listed the destination's parent; a name the
+                // listing does not hold needs no probe of its own.
+                if remote.listing_shows_absent(&item.remote) {
+                    None
+                } else {
+                    remote.signature(&item.remote, &job.control).await?
+                }
             } else {
                 local::target_signature(Path::new(&item.local))?
             };
@@ -1175,6 +1284,7 @@ pub async fn cleanup(job: &Job) -> TransferResult<()> {
             write_len: 31 * 1024,
             files: 1,
             requests: Semaphore::new(8),
+            listings: Mutex::new(HashMap::new()),
             _transport: Some(transport),
         };
         cleanup_remote(&remote, remote_paths, Some(job)).await

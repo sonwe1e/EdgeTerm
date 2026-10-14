@@ -25,6 +25,10 @@ struct Server {
     /// way another writer can between a client's check and its rename.
     appear_before_rename: Option<(String, Vec<u8>)>,
     counts: HashMap<String, usize>,
+    /// Directory handles that already delivered their one page of entries;
+    /// the next readdir on them answers EOF, the way a server that sent the
+    /// whole listing in one page does.
+    read_dirs: std::collections::HashSet<String>,
 }
 
 struct Fixture {
@@ -85,6 +89,7 @@ impl Fixture {
             write_len: 128 * 1024,
             files: 4,
             requests: Semaphore::new(32),
+            listings: Mutex::new(HashMap::new()),
             _transport: None,
         });
         Self {
@@ -256,6 +261,71 @@ fn response(server: &mut Server, packet: Packet) -> (Option<Packet>, u64) {
             Packet::error(id, StatusCode::Ok)
         }
         Packet::SetStat(_) | Packet::Close(_) => Packet::error(id, StatusCode::Ok),
+        Packet::OpenDir(p) => {
+            if p.path == "/" || server.dirs.contains(&p.path) {
+                Packet::Handle(Handle {
+                    id,
+                    handle: p.path,
+                })
+            } else {
+                Packet::error(id, StatusCode::NoSuchFile)
+            }
+        }
+        Packet::ReadDir(p) => {
+            if !server.read_dirs.insert(p.handle.clone()) {
+                return (Some(Packet::error(id, StatusCode::Eof)), 0);
+            }
+            let dir = p.handle.trim_end_matches('/');
+            let mut entries = Vec::new();
+            let mut push = |name: &str, attrs: FileAttributes| {
+                entries.push(russh_sftp::protocol::File {
+                    filename: name.to_string(),
+                    longname: String::new(),
+                    attrs,
+                });
+            };
+            for (path, data) in &server.files {
+                if parent_of(path) == dir {
+                    push(
+                        path.rsplit('/').next().unwrap(),
+                        FileAttributes {
+                            size: Some(data.len() as u64),
+                            permissions: Some(0o100644),
+                            mtime: Some(1),
+                            ..FileAttributes::empty()
+                        },
+                    );
+                }
+            }
+            for path in &server.dirs {
+                if parent_of(path) == dir {
+                    push(
+                        path.rsplit('/').next().unwrap(),
+                        FileAttributes {
+                            permissions: Some(0o040755),
+                            mtime: Some(1),
+                            ..FileAttributes::empty()
+                        },
+                    );
+                }
+            }
+            for path in server.links.keys() {
+                if parent_of(path) == dir {
+                    push(
+                        path.rsplit('/').next().unwrap(),
+                        FileAttributes {
+                            permissions: Some(0o120777),
+                            ..FileAttributes::empty()
+                        },
+                    );
+                }
+            }
+            if entries.is_empty() {
+                Packet::error(id, StatusCode::Eof)
+            } else {
+                Packet::Name(russh_sftp::protocol::Name { id, files: entries })
+            }
+        }
         Packet::MkDir(p) => {
             if server.dirs.contains(&p.path) || server.files.contains_key(&p.path) {
                 Packet::error(id, StatusCode::Failure)
@@ -340,6 +410,15 @@ fn payload(size: usize) -> Vec<u8> {
     (0..size)
         .map(|n| (n.wrapping_mul(13) ^ (n >> 12)) as u8)
         .collect()
+}
+
+/// The directory that holds `path`, with the root kept as "/".
+fn parent_of(path: &str) -> &str {
+    match path.rsplit_once('/') {
+        Some(("", _)) => "/",
+        Some((parent, _)) => parent,
+        None => "/",
+    }
 }
 
 #[tokio::test]
@@ -964,6 +1043,66 @@ async fn replanned_uploads_tolerate_directories_that_already_exist() {
     for dir in ["/site", "/site/pkg", "/site/pkg/deep"] {
         assert!(f.state.lock().dirs.contains(dir), "{dir} must exist");
     }
+}
+
+/// Planning reads each target directory once, and a directory this plan
+/// just created is empty by construction. A fresh upload therefore pays
+/// no destination probe per file; only the commit-time check remains.
+#[tokio::test]
+async fn a_fresh_tree_upload_skips_the_per_file_destination_probe() {
+    let f = Fixture::new(Server::default()).await;
+    let root = f.root.join("project");
+    std::fs::create_dir_all(root.join("pkg/deep")).unwrap();
+    std::fs::write(root.join("pkg/deep/mod.py"), b"first").unwrap();
+    std::fs::write(root.join("top.txt"), b"second").unwrap();
+    let item = Item {
+        local: root.to_string_lossy().into(),
+        remote: "/site".into(),
+        upload: true,
+        directory: true,
+    };
+    let job = super::super::test_job_items(f.root.clone(), vec![item]);
+    let files = plan(&job, &f.remote).await.unwrap();
+    copy_files(&job, &f.remote, files).await.unwrap();
+    assert_eq!(f.state.lock().files["/site/pkg/deep/mod.py"], b"first");
+    assert_eq!(f.state.lock().files["/site/top.txt"], b"second");
+    // Two files: the previous implementation stat'ed each destination
+    // twice (the probe plus the commit check). The plan's listings answer
+    // the probe, so one commit-time stat per file is all that is left.
+    assert_eq!(f.count("lstat"), 2);
+}
+
+/// A target directory that already exists is read once during planning;
+/// that listing then answers the destination probe for every file in it.
+#[tokio::test]
+async fn an_existing_target_directory_is_listed_once_instead_of_probed_per_file() {
+    let f = Fixture::new(Server::default()).await;
+    {
+        let mut state = f.state.lock();
+        state.dirs.insert("/site".into());
+        state.files.insert("/site/keep.bin".into(), b"keep".to_vec());
+    }
+    let root = f.root.join("project");
+    std::fs::create_dir_all(root.join("pkg")).unwrap();
+    for n in 0..3 {
+        std::fs::write(root.join(format!("mod-{n}.py")), payload(4096)).unwrap();
+        std::fs::write(root.join(format!("pkg/inner-{n}.py")), payload(4096)).unwrap();
+    }
+    let item = Item {
+        local: root.to_string_lossy().into(),
+        remote: "/site".into(),
+        upload: true,
+        directory: true,
+    };
+    let job = super::super::test_job_items(f.root.clone(), vec![item]);
+    let files = plan(&job, &f.remote).await.unwrap();
+    copy_files(&job, &f.remote, files).await.unwrap();
+    assert_eq!(f.state.lock().files.len(), 7);
+    // /site already existed, so its mkdir fails and one lstat confirms it
+    // is a directory; /site/pkg was created by this plan and counts as
+    // empty. One listing of /site replaces six destination probes.
+    assert_eq!(f.count("opendir"), 1);
+    assert_eq!(f.count("lstat"), 7);
 }
 
 #[tokio::test]
