@@ -39,6 +39,7 @@ pub struct AppState {
     pub auth_prompts: AuthPrompts,
     pub file_transfers: crate::file_transfer::Transfers,
     pub file_diffs: crate::file_diff::FileDiffs,
+    pub resource_monitor: crate::resource_monitor::ResourceMonitor,
     pub port_forwards: crate::port_forward::Forwards,
     /// The authenticated SSH transports open sessions run on, so another
     /// session can be opened on one instead of authenticating again; see
@@ -490,6 +491,7 @@ pub fn answer_auth_prompt(
 pub fn close_session(state: State<'_, AppState>, id: String) -> Result<()> {
     state.file_transfers.forget(&id);
     state.file_diffs.close_session(&id);
+    state.resource_monitor.close_session(&id);
     state.port_forwards.close_session(&id);
     state.outputs.close_session(&id);
     // Nothing new may be opened on this session's connection once it is
@@ -1306,7 +1308,38 @@ pub fn cancel_file_diff(state: State<'_, AppState>, request_id: String) {
     state.file_diffs.cancel(&request_id);
 }
 
+#[tauri::command]
+pub async fn sample_resources(
+    state: State<'_, AppState>,
+    id: String,
+    request_id: String,
+) -> Result<crate::resource_monitor::Metrics> {
+    let profile = state
+        .file_transfers
+        .profile_of(&id)
+        .ok_or_else(|| AppError::new("connect to SSH before monitoring"))?;
+    if !profile.is_ssh_transport() {
+        return Err(AppError::new("resource monitoring requires SSH"));
+    }
+    let request = state.resource_monitor.begin(
+        &id,
+        &request_id,
+        crate::file_transfer::endpoint_of(&profile),
+    )?;
+    if state.file_transfers.profile_of(&id).is_none() {
+        return Err(AppError::new("SSH session closed"));
+    }
+    let transport = state
+        .ssh_transports
+        .get(&id)
+        .ok_or_else(|| AppError::new("SSH connection is unavailable"))?;
+    state.resource_monitor.sample(request, transport).await
+}
 
+#[tauri::command]
+pub fn cancel_resource_sample(state: State<'_, AppState>, request_id: String) {
+    state.resource_monitor.cancel(&request_id);
+}
 
 #[tauri::command]
 pub fn local_home() -> String {

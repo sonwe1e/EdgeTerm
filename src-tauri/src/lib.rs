@@ -12,6 +12,7 @@ mod port_forward;
 #[cfg(any(target_os = "linux", all(test, unix)))]
 mod nvidia_quirk;
 mod remote_edit;
+mod resource_monitor;
 mod session;
 mod ssh_config;
 mod store;
@@ -359,6 +360,7 @@ pub fn run() {
             auth_prompts: Default::default(),
             file_transfers: Default::default(),
             file_diffs: Default::default(),
+            resource_monitor: Default::default(),
             port_forwards: Default::default(),
             ssh_transports: Default::default(),
         })
@@ -421,12 +423,14 @@ pub fn run() {
             commands::zmodem_finish_file,
             commands::sftp_home,
             commands::compare_files,
+            commands::sample_resources,
             commands::start_port_forward,
             commands::list_port_forwards,
             commands::stop_port_forward,
             commands::remove_port_forward,
             commands::discover_listening_ports,
             commands::cancel_port_discovery,
+            commands::cancel_resource_sample,
             commands::cancel_file_diff,
             commands::sftp_list,
             commands::sftp_canonicalize,
