@@ -243,6 +243,7 @@ fn handshake_failure(e: &russh::Error) -> String {
 /// `StrictHostKeyChecking=accept-new`). A host whose key no longer matches the
 /// recorded one is refused outright.
 struct Client {
+    forwards: Arc<crate::port_forward::ForwardRoutes>,
     host: String,
     port: u16,
     legacy: LegacyRecord,
@@ -275,6 +276,29 @@ impl From<russh::Error> for HandshakeError {
 
 impl client::Handler for Client {
     type Error = HandshakeError;
+
+    async fn server_channel_open_forwarded_tcpip(
+        &mut self,
+        channel: Channel<Msg>,
+        connected_address: &str,
+        connected_port: u32,
+        _originator_address: &str,
+        _originator_port: u32,
+        reply: client::ChannelOpenHandle,
+        _session: &mut client::Session,
+    ) -> std::result::Result<(), Self::Error> {
+        match self
+            .forwards
+            .dispatch(connected_address, connected_port, channel)
+        {
+            Ok(()) => reply.accept().await,
+            Err(channel) => {
+                drop(reply);
+                drop(channel);
+            }
+        }
+        Ok(())
+    }
 
     async fn check_server_key(
         &mut self,
@@ -424,6 +448,7 @@ fn describe_host_key_change(
 /// `Drop`), not when the session that opened it ends: a duplicate outlives
 /// the tab it was duplicated from.
 pub struct SharedTransport {
+    forwards: Arc<crate::port_forward::ForwardRoutes>,
     handle: Arc<Handle<Client>>,
     /// Taken by `Drop`, which needs to own the hops to tear them down.
     hops: Option<Hops>,
@@ -460,8 +485,64 @@ impl Endpoint {
 }
 
 impl SharedTransport {
+    pub fn forward_routes(&self) -> &crate::port_forward::ForwardRoutes {
+        &self.forwards
+    }
+    pub async fn direct_tcpip(
+        &self,
+        host: &str,
+        port: u16,
+        origin: &str,
+        origin_port: u16,
+    ) -> Result<russh::ChannelStream<Msg>> {
+        let handle = self.handle.clone();
+        let host = host.to_owned();
+        let origin = origin.to_owned();
+        let (send, receive) = tokio::sync::oneshot::channel();
+        tauri::async_runtime::spawn(async move {
+            let channel = handle
+                .channel_open_direct_tcpip(host, u32::from(port), origin, u32::from(origin_port))
+                .await
+                .map(|channel| channel.into_stream())
+                .map_err(AppError::from);
+            // A late channel response after cancellation is still closed:
+            // ChannelStream owns the close-on-drop guard, unlike Channel.
+            let _ = send.send(channel);
+        });
+        receive
+            .await
+            .map_err(|_| AppError::new("SSH tunnel channel request ended"))?
+    }
+    pub async fn request_forward(&self, host: &str, port: u16) -> Result<RemoteListener> {
+        let handle = self.handle.clone();
+        let host = host.to_owned();
+        let (send, receive) = tokio::sync::oneshot::channel();
+        tauri::async_runtime::spawn(async move {
+            let result = match handle.tcpip_forward(host.clone(), u32::from(port)).await {
+                Ok(allocated) => match if port == 0 {
+                    u16::try_from(allocated)
+                } else {
+                    Ok(port)
+                } {
+                    Ok(port) if port != 0 => Ok(RemoteListener {
+                        handle: Some(handle),
+                        host,
+                        port,
+                    }),
+                    _ => Err(AppError::new("server allocated an invalid TCP port")),
+                },
+                Err(error) => Err(error.into()),
+            };
+            // If the caller has timed out or closed, the delivered lease is
+            // dropped and cancels the server's late port allocation.
+            let _ = send.send(result);
+        });
+        receive
+            .await
+            .map_err(|_| AppError::new("remote listener request ended"))?
+    }
     pub async fn transfer_channel(&self) -> Result<russh::ChannelStream<Msg>> {
-        let mut channel = self.handle.channel_open_session().await?;
+        let mut channel = self.owned_command_channel().await?;
         channel.request_subsystem(true, "sftp").await?;
         let answer = tokio::time::timeout(SFTP_SUBSYSTEM_TIMEOUT, async {
             loop {
@@ -490,6 +571,24 @@ impl SharedTransport {
     pub async fn command_channel(&self) -> Result<russh::Channel<Msg>> {
         Ok(self.handle.channel_open_session().await?)
     }
+    pub async fn owned_command_channel(&self) -> Result<OwnedSessionChannel> {
+        let handle = self.handle.clone();
+        let (send, receive) = tokio::sync::oneshot::channel();
+        tauri::async_runtime::spawn(async move {
+            let result = handle
+                .channel_open_session()
+                .await
+                .map(|channel| OwnedSessionChannel {
+                    channel: Some(channel),
+                    terminate: false,
+                })
+                .map_err(AppError::from);
+            let _ = send.send(result);
+        });
+        receive
+            .await
+            .map_err(|_| AppError::new("SSH command channel request ended"))?
+    }
 
     /// The transports that could only connect on legacy algorithms — this
     /// one and the jump hosts it runs over.
@@ -515,8 +614,80 @@ impl SharedTransport {
 
     /// Whether the transport has gone down, so a session that asked to run
     /// on it is told rather than left with a channel that will never open.
-    fn is_closed(&self) -> bool {
+    pub(crate) fn is_closed(&self) -> bool {
         self.handle.is_closed()
+    }
+}
+
+pub struct RemoteListener {
+    handle: Option<Arc<Handle<Client>>>,
+    host: String,
+    pub port: u16,
+}
+pub struct OwnedSessionChannel {
+    channel: Option<Channel<Msg>>,
+    terminate: bool,
+}
+impl OwnedSessionChannel {
+    pub fn terminate_on_drop(&mut self) {
+        self.terminate = true;
+    }
+    pub fn into_stream(mut self) -> russh::ChannelStream<Msg> {
+        self.channel.take().unwrap().into_stream()
+    }
+}
+impl std::ops::Deref for OwnedSessionChannel {
+    type Target = Channel<Msg>;
+    fn deref(&self) -> &Self::Target {
+        self.channel.as_ref().unwrap()
+    }
+}
+impl std::ops::DerefMut for OwnedSessionChannel {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.channel.as_mut().unwrap()
+    }
+}
+impl Drop for OwnedSessionChannel {
+    fn drop(&mut self) {
+        if let Some(channel) = self.channel.take() {
+            let terminate = self.terminate;
+            tauri::async_runtime::spawn(async move {
+                let _ = tokio::time::timeout(Duration::from_secs(1), async {
+                    if terminate {
+                        let _ = channel.signal(russh::Sig::TERM).await;
+                    }
+                    let _ = channel.close().await;
+                })
+                .await;
+            });
+        }
+    }
+}
+impl RemoteListener {
+    pub async fn close(mut self) -> Result<()> {
+        let handle = self.handle.take().unwrap();
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            handle.cancel_tcpip_forward(self.host.clone(), u32::from(self.port)),
+        )
+        .await
+        .map_err(|_| AppError::new("remote listener cancellation was not acknowledged"))??;
+        Ok(())
+    }
+}
+impl Drop for RemoteListener {
+    fn drop(&mut self) {
+        if let Some(handle) = self.handle.take() {
+            let host = self.host.clone();
+            let port = self.port;
+            tauri::async_runtime::spawn(async move {
+                let _ = tokio::time::timeout(
+                    Duration::from_secs(5),
+                    handle.cancel_tcpip_forward(host, u32::from(port)),
+                )
+                .await;
+            });
+        }
     }
 }
 
@@ -640,6 +811,7 @@ pub enum SftpConnectOutcome {
 /// An authenticated transport together with the jump-host transports it
 /// runs over, and every one of them that only connected on legacy algorithms.
 struct Transport {
+    forwards: Arc<crate::port_forward::ForwardRoutes>,
     handle: Handle<Client>,
     hops: Hops,
     legacy: Vec<LegacyAlgorithms>,
@@ -656,7 +828,11 @@ enum HandleOutcome {
 /// connected on, if any, or the host-key decision that stopped the chain
 /// there.
 enum HopOutcome {
-    Ready(Handle<Client>, Option<LegacyAlgorithms>),
+    Ready(
+        Handle<Client>,
+        Option<LegacyAlgorithms>,
+        Arc<crate::port_forward::ForwardRoutes>,
+    ),
     HostKeyChanged(HostKeyChange),
 }
 
@@ -682,7 +858,7 @@ async fn connect_handle(
             label: jumps[previous].address(),
         });
         match connect_hop(jump, via.as_ref(), prompter).await? {
-            HopOutcome::Ready(handle, weak) => {
+            HopOutcome::Ready(handle, weak, _) => {
                 hops.push(handle);
                 legacy.extend(weak);
             }
@@ -696,9 +872,10 @@ async fn connect_handle(
         label: jump.address(),
     });
     match connect_hop(profile, via.as_ref(), prompter).await? {
-        HopOutcome::Ready(handle, weak) => {
+        HopOutcome::Ready(handle, weak, forwards) => {
             legacy.extend(weak);
             Ok(HandleOutcome::Ready(Transport {
+                forwards,
                 handle,
                 hops: Hops(hops),
                 legacy,
@@ -739,7 +916,9 @@ async fn connect_hop(
 
     let config = Arc::new(client_config());
     let legacy = LegacyRecord::default();
+    let forwards = Arc::new(crate::port_forward::ForwardRoutes::default());
     let handler = Client {
+        forwards: forwards.clone(),
         host: host.clone(),
         port,
         legacy: legacy.clone(),
@@ -803,7 +982,7 @@ async fn connect_hop(
         address: format!("{host}:{port}"),
         algorithms,
     });
-    Ok(HopOutcome::Ready(handle, weak))
+    Ok(HopOutcome::Ready(handle, weak, forwards))
 }
 
 pub async fn connect(
@@ -812,6 +991,7 @@ pub async fn connect(
     prompter: &AuthPrompter<'_>,
 ) -> Result<ConnectOutcome> {
     let Transport {
+        forwards,
         handle,
         hops,
         legacy,
@@ -822,6 +1002,7 @@ pub async fn connect(
         }
     };
     let transport = Arc::new(SharedTransport {
+        forwards,
         handle: Arc::new(handle),
         hops: Some(hops),
         legacy,
@@ -880,11 +1061,13 @@ pub async fn connect_sftp(
 ) -> Result<SftpConnectOutcome> {
     match connect_handle(profile, jumps, prompter).await? {
         HandleOutcome::Ready(Transport {
+            forwards,
             handle,
             hops,
             legacy,
         }) => Ok(SftpConnectOutcome::Ready(SftpConnection {
             transport: Arc::new(SharedTransport {
+                forwards,
                 handle: Arc::new(handle),
                 hops: Some(hops),
                 legacy,
@@ -918,10 +1101,12 @@ pub(crate) async fn test_transport(
     key_path: &str,
     known_hosts: &Path,
 ) -> Arc<SharedTransport> {
+    let forwards = Arc::new(crate::port_forward::ForwardRoutes::default());
     let mut handle = client::connect(
         Arc::new(client_config()),
         (host, port),
         Client {
+            forwards: forwards.clone(),
             host: host.to_string(),
             port,
             legacy: LegacyRecord::default(),
@@ -947,6 +1132,7 @@ pub(crate) async fn test_transport(
     .await
     .expect("key login");
     Arc::new(SharedTransport {
+        forwards,
         handle: Arc::new(handle),
         hops: Some(Hops(Vec::new())),
         legacy: Vec::new(),
@@ -2015,10 +2201,52 @@ mod tests {
     struct ShellServer {
         logins: Arc<Mutex<usize>>,
         sessions: Arc<Mutex<usize>>,
+        forward: Option<Arc<DelayedForward>>,
+        channel_delay: Option<Arc<DelayedChannel>>,
+    }
+    #[derive(Default)]
+    struct DelayedChannel {
+        opened: std::sync::atomic::AtomicUsize,
+        closed: std::sync::atomic::AtomicUsize,
+    }
+    #[derive(Default)]
+    struct DelayedForward {
+        requested: std::sync::atomic::AtomicUsize,
+        cancelled: Mutex<Vec<u32>>,
     }
 
     impl russh::server::Handler for ShellServer {
         type Error = russh::Error;
+
+        async fn tcpip_forward(
+            &mut self,
+            _address: &str,
+            port: &mut u32,
+            _session: &mut russh::server::Session,
+        ) -> std::result::Result<bool, Self::Error> {
+            let Some(forward) = &self.forward else {
+                return Ok(false);
+            };
+            forward
+                .requested
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            *port = 45678;
+            Ok(true)
+        }
+        async fn cancel_tcpip_forward(
+            &mut self,
+            _address: &str,
+            port: u32,
+            _session: &mut russh::server::Session,
+        ) -> std::result::Result<bool, Self::Error> {
+            if let Some(forward) = &self.forward {
+                forward.cancelled.lock().push(port);
+                Ok(true)
+            } else {
+                Ok(false)
+            }
+        }
 
         async fn auth_none(&mut self, _user: &str) -> std::result::Result<Auth, Self::Error> {
             *self.logins.lock() += 1;
@@ -2032,7 +2260,25 @@ mod tests {
             _session: &mut russh::server::Session,
         ) -> std::result::Result<(), Self::Error> {
             *self.sessions.lock() += 1;
+            if let Some(delay) = &self.channel_delay {
+                delay
+                    .opened
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                tokio::time::sleep(Duration::from_millis(300)).await;
+            }
             reply.accept().await;
+            Ok(())
+        }
+        async fn channel_close(
+            &mut self,
+            _channel: russh::ChannelId,
+            _session: &mut russh::server::Session,
+        ) -> std::result::Result<(), Self::Error> {
+            if let Some(delay) = &self.channel_delay {
+                delay
+                    .closed
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            }
             Ok(())
         }
 
@@ -2072,10 +2318,12 @@ mod tests {
     /// Logs in to `address` the way a session does, and hands back the
     /// transport its sessions would share.
     async fn transport_to(address: SocketAddr, known_hosts: &Path) -> Arc<SharedTransport> {
+        let forwards = Arc::new(crate::port_forward::ForwardRoutes::default());
         let mut handle = client::connect(
             Arc::new(client_config()),
             address,
             Client {
+                forwards: forwards.clone(),
                 host: "127.0.0.1".into(),
                 port: address.port(),
                 legacy: LegacyRecord::default(),
@@ -2095,6 +2343,7 @@ mod tests {
         .await
         .expect("the server lets the session in");
         Arc::new(SharedTransport {
+            forwards,
             handle: Arc::new(handle),
             hops: Some(Hops(Vec::new())),
             legacy: Vec::new(),
@@ -2105,6 +2354,93 @@ mod tests {
     /// What Duplicate SSH Channel is for (issues #63, #73): the second
     /// terminal is another channel of the connection the first one logged in
     /// on, so a server behind MFA asks once however many tabs are opened on it.
+    #[tokio::test]
+    async fn a_cancelled_channel_open_closes_its_late_reply_without_disconnect() {
+        let file = KnownHosts::new();
+        let delayed = Arc::new(DelayedChannel::default());
+        let server = ShellServer {
+            channel_delay: Some(delayed.clone()),
+            ..Default::default()
+        };
+        let address = serve_once(server, Preferred::default()).await;
+        let transport = transport_to(address, file.path()).await;
+        let request = tokio::spawn({
+            let transport = transport.clone();
+            async move { transport.owned_command_channel().await }
+        });
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while delayed.opened.load(std::sync::atomic::Ordering::SeqCst) == 0 {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+        })
+        .await
+        .unwrap();
+        request.abort();
+        assert!(request.await.is_err());
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while delayed.closed.load(std::sync::atomic::Ordering::SeqCst) == 0 {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("late accepted session channel must be closed");
+        assert!(!transport.is_closed());
+        assert_eq!(Arc::strong_count(&transport), 1);
+        let sibling = transport.owned_command_channel().await.unwrap();
+        sibling.close().await.unwrap();
+    }
+    #[tokio::test]
+    async fn closing_a_pending_remote_forward_cancels_its_late_allocation() {
+        let file = KnownHosts::new();
+        let delayed = Arc::new(DelayedForward::default());
+        let server = ShellServer {
+            forward: Some(delayed.clone()),
+            ..Default::default()
+        };
+        let address = serve_once(server, Preferred::default()).await;
+        let transport = transport_to(address, file.path()).await;
+        let manager = crate::port_forward::Forwards::default();
+        let row = manager
+            .start(
+                "owner",
+                "fixture".into(),
+                transport.clone(),
+                crate::port_forward::Spec {
+                    direction: crate::port_forward::Direction::Remote,
+                    listen_host: "127.0.0.1".into(),
+                    listen_port: 0,
+                    target_host: "127.0.0.1".into(),
+                    target_port: 80,
+                },
+            )
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while delayed.requested.load(std::sync::atomic::Ordering::SeqCst) == 0 {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+        })
+        .await
+        .unwrap();
+        manager.close_session("owner");
+        tokio::time::timeout(Duration::from_millis(100), manager.stop(&row.id))
+            .await
+            .expect("owner stop must not wait for the delayed server reply")
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if delayed.cancelled.lock().contains(&45678) {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("late allocation must be cancelled");
+        assert_eq!(manager.list()[0].status, "stopped");
+        let sibling = transport.owned_command_channel().await.unwrap();
+        sibling.close().await.unwrap();
+        assert!(!transport.is_closed());
+    }
     #[tokio::test]
     async fn a_duplicated_session_is_another_channel_of_the_same_connection() {
         let file = KnownHosts::new();

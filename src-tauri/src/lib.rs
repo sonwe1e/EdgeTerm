@@ -5,6 +5,7 @@ mod file_transfer;
 mod fonts;
 mod fs_local;
 mod model;
+mod port_forward;
 // Unix test builds compile it too: the detection is pure, and no CI job
 // runs the Rust tests on Linux.
 #[cfg(any(target_os = "linux", all(test, unix)))]
@@ -356,6 +357,7 @@ pub fn run() {
             remote_edits: Default::default(),
             auth_prompts: Default::default(),
             file_transfers: Default::default(),
+            port_forwards: Default::default(),
             ssh_transports: Default::default(),
         })
         .on_window_event(|window, event| {
@@ -416,6 +418,12 @@ pub fn run() {
             commands::zmodem_write_bytes,
             commands::zmodem_finish_file,
             commands::sftp_home,
+            commands::start_port_forward,
+            commands::list_port_forwards,
+            commands::stop_port_forward,
+            commands::remove_port_forward,
+            commands::discover_listening_ports,
+            commands::cancel_port_discovery,
             commands::sftp_list,
             commands::sftp_canonicalize,
             commands::sftp_mkdir,

@@ -38,6 +38,7 @@ pub struct AppState {
     /// `answer_auth_prompt`.
     pub auth_prompts: AuthPrompts,
     pub file_transfers: crate::file_transfer::Transfers,
+    pub port_forwards: crate::port_forward::Forwards,
     /// The authenticated SSH transports open sessions run on, so another
     /// session can be opened on one instead of authenticating again; see
     /// `open_session`'s `reuse_session_id`.
@@ -451,6 +452,7 @@ pub fn answer_auth_prompt(
 #[tauri::command]
 pub fn close_session(state: State<'_, AppState>, id: String) -> Result<()> {
     state.file_transfers.forget(&id);
+    state.port_forwards.close_session(&id);
     state.outputs.close_session(&id);
     // Nothing new may be opened on this session's connection once it is
     // closing; whether the connection itself goes down depends on the other
@@ -1173,6 +1175,68 @@ pub fn discard_recoverable_transfer(state: State<'_, AppState>, transfer: String
 
 // --- local filesystem -------------------------------------------------------
 
+#[tauri::command]
+pub fn start_port_forward(
+    state: State<'_, AppState>,
+    id: String,
+    spec: crate::port_forward::Spec,
+) -> Result<crate::port_forward::Snapshot> {
+    let profile = state
+        .file_transfers
+        .profile_of(&id)
+        .ok_or_else(|| AppError::new("connect to SSH before forwarding"))?;
+    if !profile.is_ssh_transport() {
+        return Err(AppError::new("port forwarding requires SSH"));
+    }
+    let transport = state
+        .ssh_transports
+        .get(&id)
+        .ok_or_else(|| AppError::new("SSH connection is unavailable"))?;
+    let row = state
+        .port_forwards
+        .start(&id, profile.address(), transport, spec)?;
+    // If the owner closed between validation and registration, cancel its new job.
+    if state.file_transfers.profile_of(&id).is_none() {
+        state.port_forwards.close_session(&id);
+    }
+    Ok(row)
+}
+#[tauri::command]
+pub fn list_port_forwards(state: State<'_, AppState>) -> Vec<crate::port_forward::Snapshot> {
+    state.port_forwards.list()
+}
+#[tauri::command]
+pub async fn stop_port_forward(state: State<'_, AppState>, id: String) -> Result<()> {
+    state.port_forwards.stop(&id).await
+}
+#[tauri::command]
+pub fn remove_port_forward(state: State<'_, AppState>, id: String) -> Result<()> {
+    state.port_forwards.remove(&id)
+}
+#[tauri::command]
+pub async fn discover_listening_ports(
+    state: State<'_, AppState>,
+    id: String,
+    request_id: String,
+) -> Result<crate::port_forward::Discovery> {
+    let request = state.port_forwards.begin_scan(&id, &request_id)?;
+    let profile = state
+        .file_transfers
+        .profile_of(&id)
+        .ok_or_else(|| AppError::new("connect to SSH before discovering ports"))?;
+    if !profile.is_ssh_transport() {
+        return Err(AppError::new("port discovery requires SSH"));
+    }
+    let transport = state
+        .ssh_transports
+        .get(&id)
+        .ok_or_else(|| AppError::new("SSH connection is unavailable"))?;
+    crate::port_forward::discover(request, transport).await
+}
+#[tauri::command]
+pub fn cancel_port_discovery(state: State<'_, AppState>, request_id: String) {
+    state.port_forwards.cancel_scan(&request_id);
+}
 
 
 

@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod cwd;
 pub mod encoding;
+pub mod exec;
 pub mod ftp;
 pub mod local;
 pub mod locale;
@@ -18,7 +19,7 @@ use parking_lot::Mutex;
 use serde::Serialize;
 #[cfg(test)]
 use tauri::ipc::Channel;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{mpsc, oneshot};
 
 use self::output::{OutputChannel, OUTPUT_CHUNK};
@@ -193,8 +194,18 @@ struct StateEvent {
     message: Option<String>,
 }
 
-
+/// Reports a change the session went through on its own: it came up, or the
+/// peer / device / shell ended it. A close the frontend requested through
+/// `close_session` is deliberately *not* reported: the frontend records that
+/// state itself when the command returns, and it may reconnect under the
+/// same session id right away, so a late "closed" from the old session would
+/// otherwise be taken for the new one going down.
 pub fn emit_state(app: &AppHandle, id: &str, state: &str, message: Option<String>) {
+    if matches!(state, "closed" | "error") {
+        if let Some(managed) = app.try_state::<crate::commands::AppState>() {
+            managed.port_forwards.close_session(id);
+        }
+    }
     let _ = app.emit(
         EVENT_STATE,
         StateEvent {
