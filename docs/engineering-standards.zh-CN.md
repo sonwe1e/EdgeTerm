@@ -1,6 +1,6 @@
 # 工程规范：上游评审后的开发与验收规则
 
-适用范围：所有新修改，以及已有 agent 生成代码的复核。来源是上游 PR [#91](https://github.com/miskin-lee/EdgeTerm/pull/91)、[#92](https://github.com/miskin-lee/EdgeTerm/pull/92)、[#93](https://github.com/miskin-lee/EdgeTerm/pull/93) 的 Changes Requested，和 [2026-10-14 的逐提交复审](audit-2026-10-14.zh-CN.md)。历史评审、历史提交说明和本文件都不能替代当前代码的验证。
+适用范围：所有新修改，以及已有 agent 生成代码的复核。来源是上游 PR [#91](https://github.com/miskin-lee/EdgeTerm/pull/91)、[#92](https://github.com/miskin-lee/EdgeTerm/pull/92)、[#93](https://github.com/miskin-lee/EdgeTerm/pull/93) 的 Changes Requested，和 2026-10-14 对 PR #91 之后提交的逐个复审（那份笔记没有入库；其中的结论只有被当前代码或测试复核过才能引用）。历史评审、历史提交说明和本文件都不能替代当前代码的验证。
 
 ## R1：先证明问题，再声明修复
 
