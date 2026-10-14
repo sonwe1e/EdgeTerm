@@ -188,6 +188,7 @@ const SHORTCUTS_KEY = "edgeterm.shortcuts";
 const CURSOR_STYLE_KEY = "edgeterm.cursorStyle";
 const CURSOR_BLINK_KEY = "edgeterm.cursorBlink";
 const GPU_RENDERER_KEY = "edgeterm.gpuRenderer";
+const SSH_AUTO_REUSE_KEY = "edgeterm.sshAutoReuse";
 const PASTE_WARNING_KEY = "edgeterm.pasteWarning";
 const COPY_ON_SELECT_KEY = "edgeterm.copyOnSelect";
 const PROGRAM_CLIPBOARD_KEY = "edgeterm.programClipboard";
@@ -478,6 +479,10 @@ const loadGpuRenderer = (): boolean => {
     return true;
   }
 };
+const loadSshAutoReuse = (): boolean => {
+  try { return localStorage.getItem(SSH_AUTO_REUSE_KEY) !== "off"; }
+  catch { return true; }
+};
 
 const saveSetting = (key: string, value: string) => {
   try {
@@ -540,6 +545,7 @@ export interface AppSettings {
   cursorBlink: boolean;
   /** Whether the terminal renders on the GPU (WebGL) or the DOM. */
   gpuRenderer: boolean;
+  sshAutoReuse: boolean;
   suggestionsEnabled: boolean;
   /** Confirm a paste that would submit more than one command. */
   pasteWarning: boolean;
@@ -610,6 +616,7 @@ interface AppStore {
   cursorBlink: boolean;
   /** Whether the terminal renders on the GPU (WebGL) or the DOM. */
   gpuRenderer: boolean;
+  sshAutoReuse: boolean;
   /** Command history recording + fish-style inline suggestions. */
   suggestionsEnabled: boolean;
   /** Whether a multi-line paste is confirmed first; see `pastePrompt`. */
@@ -767,6 +774,7 @@ interface AppStore {
   setCursorStyle: (style: CursorStyle) => void;
   setCursorBlink: (blink: boolean) => void;
   setGpuRenderer: (enabled: boolean) => void;
+  setSshAutoReuse: (enabled: boolean) => void;
   setSuggestionsEnabled: (enabled: boolean) => void;
   setPasteWarning: (enabled: boolean) => void;
   setPastePrompt: (prompt: PastePrompt | null) => void;
@@ -932,6 +940,7 @@ export const useStore = create<AppStore>((set, get) => ({
   cursorStyle: loadCursorStyle(),
   cursorBlink: loadCursorBlink(),
   gpuRenderer: loadGpuRenderer(),
+  sshAutoReuse: loadSshAutoReuse(),
   suggestionsEnabled: loadSuggestionsEnabled(),
   pasteWarning: loadPasteWarning(),
   copyOnSelect: loadCopyOnSelect(),
@@ -1416,6 +1425,10 @@ export const useStore = create<AppStore>((set, get) => ({
     set({ gpuRenderer: enabled });
     saveSetting(GPU_RENDERER_KEY, enabled ? "on" : "off");
   },
+  setSshAutoReuse(enabled) {
+    set({ sshAutoReuse: enabled });
+    saveSetting(SSH_AUTO_REUSE_KEY, enabled ? "on" : "off");
+  },
 
   setPasteWarning(enabled) {
     set({ pasteWarning: enabled });
@@ -1488,6 +1501,7 @@ export const useStore = create<AppStore>((set, get) => ({
       cursorStyle: "block",
       cursorBlink: true,
       gpuRenderer: true,
+      sshAutoReuse: true,
       suggestionsEnabled: false,
       pasteWarning: true,
       copyOnSelect: defaultCopyOnSelect(),
@@ -1510,6 +1524,7 @@ export const useStore = create<AppStore>((set, get) => ({
       localStorage.removeItem(CURSOR_STYLE_KEY);
       localStorage.removeItem(CURSOR_BLINK_KEY);
       localStorage.removeItem(GPU_RENDERER_KEY);
+      localStorage.removeItem(SSH_AUTO_REUSE_KEY);
       localStorage.removeItem(SUGGESTIONS_KEY);
       localStorage.removeItem(PASTE_WARNING_KEY);
       localStorage.removeItem(COPY_ON_SELECT_KEY);
@@ -1556,6 +1571,7 @@ export const useStore = create<AppStore>((set, get) => ({
       cursorStyle: state.cursorStyle,
       cursorBlink: state.cursorBlink,
       gpuRenderer: state.gpuRenderer,
+      sshAutoReuse: state.sshAutoReuse,
       suggestionsEnabled: state.suggestionsEnabled,
       pasteWarning: state.pasteWarning,
       copyOnSelect: state.copyOnSelect,
@@ -1629,6 +1645,7 @@ export const useStore = create<AppStore>((set, get) => ({
     if (typeof values.gpuRenderer === "boolean") {
       state.setGpuRenderer(values.gpuRenderer);
     }
+    if (typeof values.sshAutoReuse === "boolean") state.setSshAutoReuse(values.sshAutoReuse);
     if (typeof values.suggestionsEnabled === "boolean") {
       state.setSuggestionsEnabled(values.suggestionsEnabled);
     }

@@ -75,6 +75,12 @@ afterEach(() => {
 });
 
 describe("Enter on an ended session, through the wiring in actions.ts", () => {
+  it("uses the current automatic reuse preference at the actual reconnect call", async () => {
+    useStore.getState().setSshAutoReuse(false);
+    const controller = await ended("reuse-off");
+    press(controller, "\r");
+    expect(vi.mocked(api.openSession).mock.calls[0][4]).toBe(false);
+  });
   it("opens the session again for a closed tab", async () => {
     const controller = await ended("wired-closed");
     press(controller, "\r");

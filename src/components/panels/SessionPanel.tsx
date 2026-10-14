@@ -26,6 +26,7 @@ import { ContextMenu, type MenuItem } from "../ContextMenu";
 import { DeleteProfileDialog } from "../DeleteProfileDialog";
 import { GroupNameDialog } from "../GroupNameDialog";
 import { Icon } from "../icons";
+import { SshReuseSetting } from "../SshReuseSetting";
 
 export const LOCAL_SHELL_PROFILE: SessionProfile = {
   id: "",
@@ -513,6 +514,7 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
         />
       </div>
 
+      <details className="ssh-connection-options"><summary>SSH connections</summary><SshReuseSetting /></details>
       <div className="panel-body">
         {sections.map((section) => (
           <div key={section.kind}>

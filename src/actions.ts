@@ -184,7 +184,7 @@ export async function openSession(
  * code or push was spent on the connection, not on the tab, so a server
  * behind MFA takes one code however many channels are opened (issues #63,
  * #73). The tabs sharing a connection go down together if it does. Only an
- * explicit choice: opening a saved session or splitting still logs in anew.
+ * explicit choice. Other new tabs use the automatic reuse preference.
  */
 export async function duplicateSshChannel(id: string): Promise<string | null> {
   const store = useStore.getState();
@@ -325,6 +325,7 @@ async function connectSession(
         else consumed();
       },
       reuseSessionId,
+      useStore.getState().sshAutoReuse,
     );
 
     // The user may close the optimistic tab while SSH is still negotiating.
