@@ -1,5 +1,6 @@
 mod commands;
 mod error;
+mod file_diff;
 mod file_promise;
 mod file_transfer;
 mod fonts;
@@ -357,6 +358,7 @@ pub fn run() {
             remote_edits: Default::default(),
             auth_prompts: Default::default(),
             file_transfers: Default::default(),
+            file_diffs: Default::default(),
             port_forwards: Default::default(),
             ssh_transports: Default::default(),
         })
@@ -418,12 +420,14 @@ pub fn run() {
             commands::zmodem_write_bytes,
             commands::zmodem_finish_file,
             commands::sftp_home,
+            commands::compare_files,
             commands::start_port_forward,
             commands::list_port_forwards,
             commands::stop_port_forward,
             commands::remove_port_forward,
             commands::discover_listening_ports,
             commands::cancel_port_discovery,
+            commands::cancel_file_diff,
             commands::sftp_list,
             commands::sftp_canonicalize,
             commands::sftp_mkdir,

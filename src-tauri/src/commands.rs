@@ -38,6 +38,7 @@ pub struct AppState {
     /// `answer_auth_prompt`.
     pub auth_prompts: AuthPrompts,
     pub file_transfers: crate::file_transfer::Transfers,
+    pub file_diffs: crate::file_diff::FileDiffs,
     pub port_forwards: crate::port_forward::Forwards,
     /// The authenticated SSH transports open sessions run on, so another
     /// session can be opened on one instead of authenticating again; see
@@ -488,6 +489,7 @@ pub fn answer_auth_prompt(
 #[tauri::command]
 pub fn close_session(state: State<'_, AppState>, id: String) -> Result<()> {
     state.file_transfers.forget(&id);
+    state.file_diffs.close_session(&id);
     state.port_forwards.close_session(&id);
     state.outputs.close_session(&id);
     // Nothing new may be opened on this session's connection once it is
@@ -1274,7 +1276,35 @@ pub fn cancel_port_discovery(state: State<'_, AppState>, request_id: String) {
     state.port_forwards.cancel_scan(&request_id);
 }
 
+#[tauri::command]
+pub async fn compare_files(
+    state: State<'_, AppState>,
+    id: String,
+    request_id: String,
+    local: String,
+    remote: String,
+) -> Result<crate::file_diff::Comparison> {
+    // Register before fetching the profile: close_session can then either
+    // cancel this request or remove the profile before any reader starts.
+    let request = state.file_diffs.begin(&id, &request_id)?;
+    let profile = state
+        .file_transfers
+        .profile_of(&id)
+        .ok_or_else(|| AppError::new("connect to the file server before comparing"))?;
+    if !matches!(
+        profile.kind,
+        SessionKind::Ssh | SessionKind::Sftp | SessionKind::Ftp
+    ) {
+        return Err(AppError::new("file comparison requires SSH, SFTP or FTP"));
+    }
+    let transport = state.ssh_transports.get(&id);
+    crate::file_diff::compare(request, profile, transport, local, remote).await
+}
 
+#[tauri::command]
+pub fn cancel_file_diff(state: State<'_, AppState>, request_id: String) {
+    state.file_diffs.cancel(&request_id);
+}
 
 
 
