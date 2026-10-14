@@ -13,6 +13,7 @@ struct Server {
     reject_rest: bool,
     reject_append: bool,
     received: Vec<usize>,
+    counts: HashMap<String, usize>,
 }
 
 #[test]
@@ -85,6 +86,9 @@ impl Fixture {
         profile.port = Some(self.address.port());
         job
     }
+    fn count(&self, label: &str) -> usize {
+        self.state.lock().counts.get(label).copied().unwrap_or(0)
+    }
 }
 
 fn serve(mut stream: TcpStream, state: Arc<Mutex<Server>>) -> std::io::Result<()> {
@@ -103,6 +107,7 @@ fn serve(mut stream: TcpStream, state: Arc<Mutex<Server>>) -> std::io::Result<()
             .trim_end()
             .split_once(' ')
             .unwrap_or((line.trim_end(), ""));
+        *state.lock().counts.entry(command.to_string()).or_default() += 1;
         let response = match command {
             "USER" => "331 Password".to_string(),
             "PASS" => "230 Logged in".into(),
@@ -322,4 +327,42 @@ fn ftp_upload_restarts_safely_when_append_is_unsupported() {
     copy(&job, &mut conn.stream, &item).unwrap();
     assert_eq!(f.state.lock().files["/target"], bytes);
     assert_eq!(f.state.lock().received, [1024 * 1024, 2 * 1024 * 1024 + 17]);
+}
+
+/// A fresh small upload is the bulk-transfer case B10 streamlines. Each round
+/// trip is one control command, so the per-file command count is its cost.
+/// The empty placeholder STOR (and its SIZE probe of the partial), the SIZE
+/// probe of a partial this run is about to create, and the SIZE probe of a
+/// backup that cannot exist are all removed. What remains per file: the
+/// destination probe before transfer, one STOR on one passive connection, the
+/// post-upload size verification, the commit's destination re-check and the
+/// RNFR/RNTO pair. These are fixture (local TCP server) counts, not a real
+/// FTP server.
+#[test]
+fn fresh_ftp_upload_command_count_per_file() {
+    let f = Fixture::new(Server::default());
+    let job = f.job();
+    let path = f.root.join("source");
+    std::fs::write(&path, b"small file contents").unwrap();
+    let item = Item {
+        local: path.to_string_lossy().into(),
+        remote: "/target".into(),
+        upload: true,
+        directory: false,
+    };
+    let mut conn = connect(&job.profile).unwrap();
+    copy(&job, &mut conn.stream, &item).unwrap();
+    assert_eq!(f.state.lock().files["/target"], b"small file contents");
+    // Destination probe before the transfer, post-upload size check, and the
+    // commit's destination re-check. The partial probe and the backup probe
+    // are gone.
+    assert_eq!(f.count("SIZE"), 3);
+    // The partial is created by this run's STOR; its mtime is never read back.
+    assert_eq!(f.count("MDTM"), 0);
+    // One data connection: the real STOR, no empty placeholder.
+    assert_eq!(f.count("STOR"), 1);
+    assert_eq!(f.count("PASV"), 1);
+    // RNFR/RNTO commit the partial into place.
+    assert_eq!(f.count("RNFR"), 1);
+    assert_eq!(f.count("RNTO"), 1);
 }

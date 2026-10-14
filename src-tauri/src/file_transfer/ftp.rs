@@ -50,11 +50,13 @@ fn run_blocking(job: &Job) -> TransferResult<()> {
     drop(conn);
     let next = AtomicUsize::new(0);
     job.phase("transferring");
-    // FTP needs independent control/data pairs for simultaneous files. Keep
-    // this pool small to respect common per-user connection limits.
+    // FTP needs independent control/data pairs for simultaneous files. Each
+    // worker holds one control connection and opens one data connection at a
+    // time, so keep the pool small to respect common per-user connection
+    // limits while still overlapping a small-file batch's round trips.
     let results = std::thread::scope(|scope| {
         let mut workers = Vec::new();
-        for _ in 0..job.options.files.min(2).min(files.len()) {
+        for _ in 0..job.options.files.min(4).min(files.len()) {
             workers.push(scope.spawn(|| worker(job, &files, &next)));
         }
         workers
@@ -320,18 +322,22 @@ fn copy(job: &Job, ftp: &mut FtpStream, item: &Item) -> TransferResult<()> {
         job.save(&cp)?;
         cp
     };
+    let mut fresh = false;
     if !cp.owns_temporary {
         if item.upload {
-            if signature(ftp, &cp.temporary, &job.control)?.is_some() {
-                return Err(Failure::conflict("FTP partial already exists"));
-            }
-            let stream = ftp.put_with_stream(&cp.temporary)?;
-            ftp.finalize_put_stream(stream)?;
+            // Claim the partial in the journal before the STOR that creates
+            // it, so a crash can never leave a `.part` this job owns but never
+            // recorded. The old placeholder — a SIZE probe of the `.part`
+            // followed by an empty STOR on its own data connection — only
+            // proved ownership the journal now records first, so it is gone.
+            cp.owns_temporary = true;
+            job.save(&cp)?;
+            fresh = true;
         } else {
             local::create_partial(Path::new(&cp.temporary))?;
+            cp.owns_temporary = true;
+            job.save(&cp)?;
         }
-        cp.owns_temporary = true;
-        job.save(&cp)?;
     }
     job.progress(&key, cp.offset, source.size, cp.complete);
     if cp.complete {
@@ -367,7 +373,7 @@ fn copy(job: &Job, ftp: &mut FtpStream, item: &Item) -> TransferResult<()> {
         }
     }
     if item.upload {
-        upload(job, ftp, &mut cp)?;
+        upload(job, ftp, &mut cp, fresh)?;
     } else {
         download(job, ftp, &mut cp)?;
     }
@@ -383,7 +389,13 @@ fn copy(job: &Job, ftp: &mut FtpStream, item: &Item) -> TransferResult<()> {
     job.phase("committing");
     if item.upload {
         let current = signature(ftp, &item.remote, &job.control)?;
-        let backup = signature(ftp, &cp.backup, &job.control)?;
+        // When nothing was ever moved out of the way, no backup can exist and
+        // the lookup would only cost a round trip per file.
+        let backup = if cp.original.is_none() && !cp.owns_backup {
+            None
+        } else {
+            signature(ftp, &cp.backup, &job.control)?
+        };
         let recovering = cp.committing
             && cp.owns_backup
             && current.is_none()
@@ -493,21 +505,31 @@ fn download(job: &Job, ftp: &mut FtpStream, cp: &mut Checkpoint) -> TransferResu
     job.save(cp)
 }
 
-fn upload(job: &Job, ftp: &mut FtpStream, cp: &mut Checkpoint) -> TransferResult<()> {
-    let partial = signature(ftp, &cp.temporary, &job.control)?
-        .ok_or_else(|| Failure::conflict("FTP partial disappeared"))?;
-    if partial.size > cp.source.size {
-        return Err(Failure::conflict("FTP partial is larger than the source"));
-    }
-    let mut hash = local::prefix(Path::new(&cp.item.local), partial.size, &job.control)?;
-    if partial.size > 0 {
+fn upload(job: &Job, ftp: &mut FtpStream, cp: &mut Checkpoint, fresh: bool) -> TransferResult<()> {
+    // A partial this run just claimed in the journal does not exist yet: the
+    // STOR below creates it. Probing it with SIZE first would only pay a round
+    // trip to confirm a file we know is absent and read back an mtime this run
+    // does not need. The resume path still probes, because that SIZE feeds the
+    // prefix verification below.
+    let partial_size = if fresh {
+        0
+    } else {
+        let partial = signature(ftp, &cp.temporary, &job.control)?
+            .ok_or_else(|| Failure::conflict("FTP partial disappeared"))?;
+        if partial.size > cp.source.size {
+            return Err(Failure::conflict("FTP partial is larger than the source"));
+        }
+        partial.size
+    };
+    let mut hash = local::prefix(Path::new(&cp.item.local), partial_size, &job.control)?;
+    if partial_size > 0 {
         job.phase("verifying resume prefix");
         let (size, checksum) = remote_hash(ftp, &cp.temporary, &job.control)?;
-        if size != partial.size || checksum != local::hex(hash.clone().finish().as_ref()) {
+        if size != partial_size || checksum != local::hex(hash.clone().finish().as_ref()) {
             return Err(Failure::conflict("FTP partial does not match the source"));
         }
     }
-    cp.offset = partial.size;
+    cp.offset = partial_size;
     let mut input = std::fs::File::open(&cp.item.local)?;
     input.seek(SeekFrom::Start(cp.offset))?;
     let mut output = if cp.offset == 0 {
