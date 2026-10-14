@@ -3,6 +3,7 @@
 mod ftp;
 mod local;
 mod sftp;
+mod tar;
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -209,6 +210,15 @@ pub struct Options {
     /// replacement atomicity: the two-rename fallback has a visibility gap.
     #[serde(default)]
     pub durable: bool,
+    /// Pack a folder upload into a tar archive and stream it into
+    /// `tar -xf -` on the server, instead of writing every file over SFTP.
+    /// Off by default, and nothing else in the engine looks at it. It covers
+    /// one folder upload into a target directory that is absent or empty,
+    /// needs a remote `tar` and a POSIX shell, and gives up the per-file
+    /// resume, atomic commit, conflict detection and progress the SFTP path
+    /// has — see `tar` for the full boundary list.
+    #[serde(default)]
+    pub tar: bool,
 }
 impl Default for Options {
     fn default() -> Self {
@@ -217,6 +227,7 @@ impl Default for Options {
             chunk_kib: 128,
             files: 16,
             durable: false,
+            tar: false,
         }
     }
 }
@@ -714,6 +725,11 @@ async fn run_job(job: &Arc<Job>, limit: Arc<Semaphore>) -> TransferResult<()> {
             job.control.resumed().await;
         }
         if job.control.value() == 2 {
+            // A tar-streaming job records no per-file checkpoints, so there is
+            // nothing remote to remove beyond what the remote tar had already
+            // written when the channel was closed: no partials, no backups,
+            // and no ownership to claim. The SFTP cleanup walks the journal
+            // and finds nothing for such a job.
             let cleanup = if job.profile.kind == SessionKind::Ftp {
                 ftp::cleanup(job.clone()).await
             } else {
@@ -735,6 +751,8 @@ async fn run_job(job: &Arc<Job>, limit: Arc<Semaphore>) -> TransferResult<()> {
         job.status("running", None);
         let result = if job.profile.kind == SessionKind::Ftp {
             ftp::run(job.clone()).await
+        } else if tar::wants_tar(job) {
+            tar::run(job).await
         } else {
             sftp::run(job).await
         };

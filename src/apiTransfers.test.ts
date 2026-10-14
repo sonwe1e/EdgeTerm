@@ -6,11 +6,11 @@ import { saveTransferOptions } from "./transferSettings";
 beforeEach(() => { ipc.invoke.mockClear(); localStorage.clear(); });
 
 it("routes both panes and batches through the same job API with selected limits", async () => {
-  saveTransferOptions({ requests: 8, chunkKib: 32, files: 2, durable: false });
+  saveTransferOptions({ requests: 8, chunkKib: 32, files: 2, durable: false, tar: false });
   await sftpDownload("ssh", "/remote", "C:\\local", () => {}, "download-task");
   expect(ipc.invoke).toHaveBeenLastCalledWith("transfer_files", expect.objectContaining({
     transfer: "download-task", items: [{ remote: "/remote", local: "C:\\local", upload: false, directory: false }],
-    options: { requests: 8, chunkKib: 32, files: 2, durable: false },
+    options: { requests: 8, chunkKib: 32, files: 2, durable: false, tar: false },
   }));
   await sftpUploadDirectory("ftp", "C:\\tree", "/tree", () => {}, "folder-task");
   expect(ipc.invoke.mock.lastCall![1].items[0].directory).toBe(true);

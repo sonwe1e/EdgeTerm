@@ -484,6 +484,13 @@ impl SharedTransport {
         Ok(channel.into_stream())
     }
 
+    /// A plain session channel of this transport, for a remote command.
+    /// No subsystem is requested: the caller owns the request it puts on
+    /// the channel and the replies it reads from it (see `remote_cwd`).
+    pub async fn command_channel(&self) -> Result<russh::Channel<Msg>> {
+        Ok(self.handle.channel_open_session().await?)
+    }
+
     /// The transports that could only connect on legacy algorithms — this
     /// one and the jump hosts it runs over.
     pub fn legacy_algorithms(&self) -> &[LegacyAlgorithms] {

@@ -37,7 +37,7 @@ export interface TransferItem {
   upload: boolean;
   directory?: boolean;
 }
-export interface TransferOptions { requests: number; chunkKib: number; files: number; durable: boolean }
+export interface TransferOptions { requests: number; chunkKib: number; files: number; durable: boolean; tar: boolean }
 export interface FileTransfer {
   revision: number;
   id: string;

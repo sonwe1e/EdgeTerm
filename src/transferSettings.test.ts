@@ -14,10 +14,11 @@ describe("transfer option preferences", () => {
       chunkKib: 128,
       files: 16,
       durable: false,
+      tar: false,
     });
   });
 
-  it("keeps concurrency saved before durable existed and defaults it off", () => {
+  it("keeps concurrency saved before durable and tar existed and defaults them off", () => {
     localStorage.setItem(
       "edgeterm.transfer-options",
       JSON.stringify({ requests: 8, chunkKib: 64, files: 2 }),
@@ -27,12 +28,30 @@ describe("transfer option preferences", () => {
       chunkKib: 64,
       files: 2,
       durable: false,
+      tar: false,
     });
   });
 
   it("preserves an explicit durable preference", () => {
     saveTransferOptions({ ...DEFAULT_TRANSFER_OPTIONS, durable: true });
     expect(readTransferOptions().durable).toBe(true);
+  });
+
+  it("preserves an explicit tar preference", () => {
+    saveTransferOptions({ ...DEFAULT_TRANSFER_OPTIONS, tar: true });
+    expect(readTransferOptions().tar).toBe(true);
+    saveTransferOptions({ ...DEFAULT_TRANSFER_OPTIONS, tar: false });
+    expect(readTransferOptions().tar).toBe(false);
+  });
+
+  it("rejects a non-boolean tar value and falls back to the default", () => {
+    for (const value of ["yes", 1, null, {}]) {
+      localStorage.setItem(
+        "edgeterm.transfer-options",
+        JSON.stringify({ ...DEFAULT_TRANSFER_OPTIONS, tar: value }),
+      );
+      expect(readTransferOptions().tar).toBe(false);
+    }
   });
 
   it("falls back to the defaults when a value is out of bounds", () => {
@@ -46,7 +65,7 @@ describe("transfer option preferences", () => {
   });
 
   it("keeps a saved concurrency at the new upper bound", () => {
-    saveTransferOptions({ requests: 32, chunkKib: 128, files: 32, durable: false });
+    saveTransferOptions({ requests: 32, chunkKib: 128, files: 32, durable: false, tar: false });
     expect(readTransferOptions().files).toBe(32);
   });
 });
