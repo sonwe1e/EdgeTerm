@@ -214,6 +214,12 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
 
+    // The limits the tests expect, written out on purpose. Deriving them from
+    // the production constants would let a changed limit change the expected
+    // value with it, and the tests would still pass.
+    const EXPECTED_SESSION_WINDOW: usize = 512 * 1024;
+    const EXPECTED_GLOBAL_WINDOW: usize = 4 * 1024 * 1024;
+
     fn stream(streams: &OutputStreams, id: &str) -> (OutputChannel, Arc<AtomicUsize>) {
         let received = Arc::new(AtomicUsize::new(0));
         let count = received.clone();
@@ -234,8 +240,8 @@ mod tests {
         for _ in 0..100 {
             output.send(&mut bytes.clone());
         }
-        assert_eq!(received.load(Ordering::SeqCst), SESSION_WINDOW);
-        streams.acknowledge("one", SESSION_WINDOW as u64 + 1);
+        assert_eq!(received.load(Ordering::SeqCst), EXPECTED_SESSION_WINDOW);
+        streams.acknowledge("one", EXPECTED_SESSION_WINDOW as u64 + 1);
         assert_eq!(output.send(&mut bytes.clone()), 0);
         streams.acknowledge("one", OUTPUT_CHUNK as u64);
         assert_eq!(output.send(&mut bytes.clone()), OUTPUT_CHUNK);
@@ -263,11 +269,11 @@ mod tests {
         let outputs: Vec<_> = (0..9).map(|i| stream(&streams, &i.to_string()).0).collect();
         let bytes = vec![1; OUTPUT_CHUNK];
         for output in &outputs {
-            for _ in 0..SESSION_WINDOW / OUTPUT_CHUNK {
+            for _ in 0..EXPECTED_SESSION_WINDOW / OUTPUT_CHUNK {
                 output.send(&mut bytes.clone());
             }
         }
-        assert_eq!(streams.0.ledger.lock().outstanding, GLOBAL_WINDOW);
+        assert_eq!(streams.0.ledger.lock().outstanding, EXPECTED_GLOBAL_WINDOW);
         assert!(
             tokio::time::timeout(Duration::from_millis(10), outputs[8].writable())
                 .await
@@ -304,7 +310,7 @@ mod tests {
     fn close_releases_a_blocking_reader_without_frontend_ack() {
         let streams = OutputStreams::default();
         let (output, _) = stream(&streams, "blocked");
-        for _ in 0..SESSION_WINDOW / OUTPUT_CHUNK {
+        for _ in 0..EXPECTED_SESSION_WINDOW / OUTPUT_CHUNK {
             output.send(&mut vec![0; OUTPUT_CHUNK]);
         }
         let (done, completion) = std::sync::mpsc::channel();
