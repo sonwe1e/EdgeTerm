@@ -79,6 +79,35 @@ async function settle(controller: TerminalController) {
 }
 
 /** How the dark theme colors an IPv4 address. */
+const IP_COLOR_REF = "#5fd7c0";
+
+describe("resize and the semantic colors", () => {
+  const backlogPending = (controller: TerminalController) =>
+    (controller as unknown as { backlogTimer: number | null }).backlogTimer !== null;
+
+  it("does not recolor the history when only the height changes", async () => {
+    const controller = createController();
+    await write(controller, "host 10.0.0.1 up\r\n");
+    await settle(controller);
+    expect(backlogPending(controller)).toBe(false);
+
+    controller.term.resize(controller.term.cols, controller.term.rows + 5);
+    expect(backlogPending(controller)).toBe(false);
+    expect(fg(controller, rowOf(controller, "host"), 5)).toBe(IP_COLOR_REF);
+  });
+
+  it("recolors the history when the width changes and reflow regroups rows", async () => {
+    const controller = createController();
+    await write(controller, "host 10.0.0.1 up\r\n");
+    await settle(controller);
+    expect(backlogPending(controller)).toBe(false);
+
+    controller.term.resize(controller.term.cols - 10, controller.term.rows);
+    expect(backlogPending(controller)).toBe(true);
+    await settle(controller);
+    expect(fg(controller, rowOf(controller, "host"), 5)).toBe(IP_COLOR_REF);
+  });
+});
 const IP_COLOR = "#5fd7c0";
 
 describe("semantic colors painted into the cells (issue #80)", () => {

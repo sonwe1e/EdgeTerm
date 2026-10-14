@@ -501,6 +501,8 @@ export class TerminalController {
   private paintRecords = new WeakMap<PaintLine, PaintRecord>();
   /** Whether xterm's buffer layout allows painting; null until checked. */
   private paintSupported: boolean | null = null;
+  /** Width at the last resize, to tell a reflow from a height-only change. */
+  private lastCols = 0;
   /** The backlog pass's next slice or its quiet wait; see scheduleBacklog. */
   private backlogTimer: number | null = null;
   /** Where the backlog walk resumes, walking up; null starts at the bottom. */
@@ -695,11 +697,16 @@ export class TerminalController {
       this.shellClearing = false;
     });
 
+    this.lastCols = this.term.cols;
     this.term.onResize(({ cols, rows }) => {
       this.callbacks.onResize(cols, rows);
       // Reflow regroups rows, and a band ends at the width it was painted
-      // at; everything is colored again.
-      this.recolorAll();
+      // at; everything is colored again. A change of rows alone (the height
+      // of a splitter drag, a diagonal drag's immediate half) reflows nothing,
+      // so the painted rows stay as they are.
+      const widthChanged = cols !== this.lastCols;
+      this.lastCols = cols;
+      if (widthChanged) this.recolorAll();
       // Reflow moves lines between rows; the parked marker's count means
       // nothing across it, so the next pass starts from a fresh one.
       this.resetTrimMarker();
