@@ -5,6 +5,7 @@ import { useActiveTab, useStore } from "../store";
 import { isFileSession, type LegacyAlgorithms } from "../types";
 import { Icon } from "./icons";
 import { TransferCenter } from "./TransferCenter";
+import { ResourceMonitorBar } from "./ResourceMonitorBar";
 import { ForwardCenter } from "./ForwardCenter";
 
 /** The folder half of a recording's path, for the Reveal click. */
@@ -43,6 +44,7 @@ function StatusBarBase() {
         {error ?? status}
       </span>
       <div className="status-spacer" />
+      <ResourceMonitorBar tab={tab} />
       <ForwardCenter />
       <TransferCenter />
       {tab && (

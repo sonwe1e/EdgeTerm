@@ -25,6 +25,7 @@ export const FILER_OPEN_WITH_KEY = "edgeterm.filerOpenWith";
 
 /** Concurrency and durability of file transfers; see transferSettings.ts. */
 export const TRANSFER_OPTIONS_KEY = "edgeterm.transfer-options";
+export const RESOURCE_MONITOR_KEY = "edgeterm.resource-monitor";
 
 /**
  * Panel preferences kept outside the app store. Their modules validate and
@@ -37,4 +38,5 @@ export const PANEL_PREFERENCE_KEYS: readonly string[] = [
   SENDER_SAVE_LEVEL_KEY,
   FILER_OPEN_WITH_KEY,
   TRANSFER_OPTIONS_KEY,
+  RESOURCE_MONITOR_KEY,
 ];
