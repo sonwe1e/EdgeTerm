@@ -268,7 +268,7 @@ fn ftp_download_restarts_safely_when_the_server_rejects_rest() {
     job.save(&Checkpoint {
         key,
         item: item.clone(),
-        source: signature(&mut conn.stream, "/source", &job.control)
+        source: signature(None, &job.control, &mut conn.stream, "/source")
             .unwrap()
             .unwrap(),
         original: local::target_signature(&target).unwrap(),

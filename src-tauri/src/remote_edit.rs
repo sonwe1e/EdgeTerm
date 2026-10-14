@@ -328,7 +328,7 @@ async fn watch_loop(
             }
         } else {
             match state.file_transfers.start(
-                app.clone(),
+                Some(app.clone()),
                 session_id.clone(),
                 vec![crate::file_transfer::Item {
                     local: local.to_string_lossy().into_owned(),

@@ -10,7 +10,9 @@ use std::time::Duration;
 use ring::digest::{Context, SHA256};
 use suppaftp::{FtpError, FtpStream};
 
-use super::{local, Checkpoint, Control, Failure, Item, Job, TransferResult};
+use super::{
+    local, paced_blocking, Checkpoint, Control, Failure, Item, Job, Pacer, TransferResult,
+};
 use crate::session::{
     ftp::{connect, connect_controlled, ensure_remote_directory, list_directory, FtpConnection},
     transfer::{ensure_local_directory, plan_local_upload_checked, safe_local_child},
@@ -19,6 +21,13 @@ use crate::session::{
 #[cfg(test)]
 #[path = "ftp_tests.rs"]
 mod tests;
+
+/// The granularity FTP data moves at under a rate limit. The workers are
+/// blocking threads, so a small slice keeps `paced_blocking`'s waits short
+/// and its control polling responsive; the download loop reserves a slice
+/// before pulling it, letting the kernel's receive window — not a sleep
+/// after the fact — hold the server back.
+const FTP_PACE_SLICE: usize = 64 * 1024;
 
 impl From<FtpError> for Failure {
     fn from(e: FtpError) -> Self {
@@ -114,7 +123,18 @@ fn worker(job: &Job, files: &[Item], next: &AtomicUsize) -> TransferResult<()> {
 }
 
 fn plan(job: &Job, conn: &mut FtpConnection) -> TransferResult<Vec<Item>> {
-    if let Some(plan) = job.plan.lock().clone() {
+    let frozen = job.plan.lock().clone();
+    if let Some(plan) = frozen {
+        let mut sizes = Vec::with_capacity(plan.len());
+        for item in &plan {
+            job.control.check()?;
+            sizes.push(match job.checkpoint(&job.key(item)) {
+                Some(checkpoint) => checkpoint.source.size,
+                None if item.upload => std::fs::metadata(&item.local)?.len(),
+                None => conn.stream.size(&item.remote)? as u64,
+            });
+        }
+        job.prime_resumed_progress(&plan, &sizes);
         return Ok(plan);
     }
     let mut files = Vec::new();
@@ -207,14 +227,18 @@ fn plan(job: &Job, conn: &mut FtpConnection) -> TransferResult<Vec<Item>> {
     for (item, size) in files.iter().zip(sizes) {
         job.progress(&job.key(item), 0, size, false);
     }
+    // Freeze the expanded plan before the first byte moves, so restart
+    // recovery replays exactly this list.
+    job.save_plan(&files)?;
     *job.plan.lock() = Some(files.clone());
     Ok(files)
 }
 
 fn signature(
+    pacer: Option<&Arc<super::Pacer>>,
+    control: &Control,
     ftp: &mut FtpStream,
     path: &str,
-    control: &Control,
 ) -> TransferResult<Option<local::Signature>> {
     control.check()?;
     let size = match ftp.size(path) {
@@ -229,7 +253,7 @@ fn signature(
     // SIZE + MDTM identify an FTP source; read-back below verifies a resumed
     // upload prefix in full, including servers without checksum extensions.
     let sample = if modified.is_none() {
-        remote_hash(ftp, path, control)?.1
+        remote_hash(pacer, control, ftp, path)?.1
     } else {
         String::new()
     };
@@ -241,20 +265,39 @@ fn signature(
 }
 
 fn remote_hash(
+    pacer: Option<&Arc<super::Pacer>>,
+    control: &Control,
     ftp: &mut FtpStream,
     path: &str,
-    control: &Control,
 ) -> TransferResult<(u64, String)> {
     let mut stream = ftp.retr_as_stream(path)?;
     let socket = control.socket(stream.get_ref())?;
     let mut context = Context::new(&SHA256);
-    let mut bytes = vec![0; 1024 * 1024];
+    // The read-back of a resume prefix (or of a source a server cannot
+    // date) is payload this job moves: it draws on the same budget as the
+    // transfer itself, in the same small slices. An EOF probe or short
+    // read gives its unused slice back.
+    let slice = match pacer {
+        Some(p) => p.slice(1024 * 1024),
+        None => 1024 * 1024,
+    };
+    let mut bytes = vec![0; slice];
     let mut size = 0;
     loop {
         control.check()?;
+        if let Some(p) = pacer {
+            paced_blocking(p, control, slice as u64)?;
+        }
         let count = stream.read(&mut bytes)?;
+        let unused = slice - count;
         if count == 0 {
+            if let Some(p) = pacer {
+                p.refund(slice as u64);
+            }
             break;
+        }
+        if let Some(p) = pacer {
+            p.refund(unused as u64);
         }
         size += count as u64;
         context.update(&bytes[..count]);
@@ -277,7 +320,7 @@ fn copy(job: &Job, ftp: &mut FtpStream, item: &Item) -> TransferResult<()> {
     let source = if item.upload {
         local::signature(Path::new(&item.local))?
     } else {
-        signature(ftp, &item.remote, &job.control)?
+        signature(job.pacer.as_ref(), &job.control, ftp, &item.remote)?
             .ok_or_else(|| Failure::conflict("FTP source disappeared"))?
     };
     let mut cp = if let Some(cp) = job.checkpoint(&key) {
@@ -287,7 +330,7 @@ fn copy(job: &Job, ftp: &mut FtpStream, item: &Item) -> TransferResult<()> {
         cp
     } else {
         let original = if item.upload {
-            signature(ftp, &item.remote, &job.control)?
+            signature(job.pacer.as_ref(), &job.control, ftp, &item.remote)?
         } else {
             local::target_signature(Path::new(&item.local))?
         };
@@ -345,13 +388,13 @@ fn copy(job: &Job, ftp: &mut FtpStream, item: &Item) -> TransferResult<()> {
     }
     if cp.committing {
         let missing = if item.upload {
-            signature(ftp, &cp.temporary, &job.control)?.is_none()
+            signature(job.pacer.as_ref(), &job.control, ftp, &cp.temporary)?.is_none()
         } else {
             !Path::new(&cp.temporary).exists()
         };
         if missing {
             let (size, hash) = if item.upload {
-                remote_hash(ftp, &item.remote, &job.control)?
+                remote_hash(job.pacer.as_ref(), &job.control, ftp, &item.remote)?
             } else {
                 (
                     std::fs::metadata(&item.local)?.len(),
@@ -365,7 +408,7 @@ fn copy(job: &Job, ftp: &mut FtpStream, item: &Item) -> TransferResult<()> {
             if size != source.size || hash != cp.prefix_hash {
                 return Err(Failure::conflict("cannot verify interrupted FTP commit"));
             }
-            remove_backup(ftp, &mut cp, &job.control)?;
+            remove_backup(job.pacer.as_ref(), ftp, &mut cp, &job.control)?;
             cp.complete = true;
             job.save(&cp)?;
             job.progress(&key, source.size, source.size, true);
@@ -380,7 +423,7 @@ fn copy(job: &Job, ftp: &mut FtpStream, item: &Item) -> TransferResult<()> {
     let current_source = if item.upload {
         Some(local::signature(Path::new(&item.local))?)
     } else {
-        signature(ftp, &item.remote, &job.control)?
+        signature(job.pacer.as_ref(), &job.control, ftp, &item.remote)?
     };
     if current_source.as_ref() != Some(&source) {
         return Err(Failure::conflict("source changed during FTP transfer"));
@@ -388,13 +431,13 @@ fn copy(job: &Job, ftp: &mut FtpStream, item: &Item) -> TransferResult<()> {
     job.control.check()?;
     job.phase("committing");
     if item.upload {
-        let current = signature(ftp, &item.remote, &job.control)?;
+        let current = signature(job.pacer.as_ref(), &job.control, ftp, &item.remote)?;
         // When nothing was ever moved out of the way, no backup can exist and
         // the lookup would only cost a round trip per file.
         let backup = if cp.original.is_none() && !cp.owns_backup {
             None
         } else {
-            signature(ftp, &cp.backup, &job.control)?
+            signature(job.pacer.as_ref(), &job.control, ftp, &cp.backup)?
         };
         let recovering = cp.committing
             && cp.owns_backup
@@ -416,13 +459,16 @@ fn copy(job: &Job, ftp: &mut FtpStream, item: &Item) -> TransferResult<()> {
         }
         if let Err(e) = ftp.rename(&cp.temporary, &item.remote) {
             if (current.is_some() || recovering)
-                && matches!(signature(ftp, &item.remote, &job.control), Ok(None))
+                && matches!(
+                    signature(job.pacer.as_ref(), &job.control, ftp, &item.remote),
+                    Ok(None)
+                )
             {
                 let _ = ftp.rename(&cp.backup, &item.remote);
             }
             return Err(e.into());
         }
-        remove_backup(ftp, &mut cp, &job.control)?;
+        remove_backup(job.pacer.as_ref(), ftp, &mut cp, &job.control)?;
         cp.complete = true;
         job.save(&cp)?;
     } else {
@@ -471,10 +517,17 @@ fn download(job: &Job, ftp: &mut FtpStream, cp: &mut Checkpoint) -> TransferResu
         .open(&cp.temporary)?;
     output.set_len(cp.offset)?;
     output.seek(SeekFrom::Start(cp.offset))?;
-    let mut buffer = vec![0; 1024 * 1024];
+    // The socket is read in rate-limit slices. Each slice is charged just
+    // before it is pulled — so under a limit the kernel's receive window,
+    // not a sleep after the fact, holds the server back — and an EOF probe
+    // (a read that returns nothing) or a short read refunds the part of
+    // the slice that never arrived.
+    let mut buffer = vec![0; job.pace_slice(FTP_PACE_SLICE)];
     let mut saved = cp.offset;
     loop {
         job.control.check()?;
+        let slice = buffer.len() as u64;
+        job.pace_blocking(slice)?;
         let n = input.read(&mut buffer)?;
         if n == 0 {
             break;
@@ -482,6 +535,7 @@ fn download(job: &Job, ftp: &mut FtpStream, cp: &mut Checkpoint) -> TransferResu
         if cp.offset + n as u64 > cp.source.size {
             return Err(Failure::conflict("FTP source grew or REST was ignored"));
         }
+        job.pace_refund(slice - n as u64);
         output.write_all(&buffer[..n])?;
         hash.update(&buffer[..n]);
         cp.offset += n as u64;
@@ -514,7 +568,7 @@ fn upload(job: &Job, ftp: &mut FtpStream, cp: &mut Checkpoint, fresh: bool) -> T
     let partial_size = if fresh {
         0
     } else {
-        let partial = signature(ftp, &cp.temporary, &job.control)?
+        let partial = signature(job.pacer.as_ref(), &job.control, ftp, &cp.temporary)?
             .ok_or_else(|| Failure::conflict("FTP partial disappeared"))?;
         if partial.size > cp.source.size {
             return Err(Failure::conflict("FTP partial is larger than the source"));
@@ -524,7 +578,7 @@ fn upload(job: &Job, ftp: &mut FtpStream, cp: &mut Checkpoint, fresh: bool) -> T
     let mut hash = local::prefix(Path::new(&cp.item.local), partial_size, &job.control)?;
     if partial_size > 0 {
         job.phase("verifying resume prefix");
-        let (size, checksum) = remote_hash(ftp, &cp.temporary, &job.control)?;
+        let (size, checksum) = remote_hash(job.pacer.as_ref(), &job.control, ftp, &cp.temporary)?;
         if size != partial_size || checksum != local::hex(hash.clone().finish().as_ref()) {
             return Err(Failure::conflict("FTP partial does not match the source"));
         }
@@ -569,11 +623,14 @@ fn upload(job: &Job, ftp: &mut FtpStream, cp: &mut Checkpoint, fresh: bool) -> T
         }
     };
     let socket = job.control.socket(output.get_ref())?;
-    let mut buffer = vec![0; 1024 * 1024];
+    let mut buffer = vec![0; job.pace_slice(FTP_PACE_SLICE)];
     while cp.offset < cp.source.size {
         job.control.check()?;
         let length = (cp.source.size - cp.offset).min(buffer.len() as u64) as usize;
         input.read_exact(&mut buffer[..length])?;
+        // The slice goes on the data connection now; the charge is taken
+        // immediately before it moves.
+        job.pace_blocking(length as u64)?;
         output.write_all(&buffer[..length])?;
         hash.update(&buffer[..length]);
         cp.offset += length as u64;
@@ -612,9 +669,9 @@ pub async fn cleanup(job: Arc<Job>) -> TransferResult<()> {
                     .set_write_timeout(Some(Duration::from_secs(3)))?;
                 let cleanup = Control::default();
                 if cp.committing && cp.owns_backup {
-                    let current = signature(ftp, &cp.item.remote, &cleanup)?;
+                    let current = signature(job.pacer.as_ref(), &cleanup, ftp, &cp.item.remote)?;
                     if current.is_none() {
-                        if signature(ftp, &cp.backup, &cleanup)? != cp.original
+                        if signature(job.pacer.as_ref(), &cleanup, ftp, &cp.backup)? != cp.original
                             || cp.original.is_none()
                         {
                             return Err(Failure::conflict(
@@ -624,16 +681,17 @@ pub async fn cleanup(job: Arc<Job>) -> TransferResult<()> {
                         ftp.rename(&cp.backup, &cp.item.remote)?;
                         cp.owns_backup = false;
                     } else if current != cp.original {
-                        let (size, hash) = remote_hash(ftp, &cp.item.remote, &cleanup)?;
+                        let (size, hash) =
+                            remote_hash(job.pacer.as_ref(), &cleanup, ftp, &cp.item.remote)?;
                         if size != cp.source.size || hash != cp.prefix_hash {
                             return Err(Failure::conflict(
                                 "FTP destination changed; backup and partial retained",
                             ));
                         }
                     }
-                    remove_backup(ftp, &mut cp, &cleanup)?;
+                    remove_backup(job.pacer.as_ref(), ftp, &mut cp, &cleanup)?;
                 }
-                if signature(ftp, &cp.temporary, &cleanup)?.is_some() {
+                if signature(job.pacer.as_ref(), &cleanup, ftp, &cp.temporary)?.is_some() {
                     ftp.rm(&cp.temporary)?;
                 }
             } else if Path::new(&cp.temporary).exists() {
@@ -649,12 +707,13 @@ pub async fn cleanup(job: Arc<Job>) -> TransferResult<()> {
 }
 
 fn remove_backup(
+    pacer: Option<&Arc<Pacer>>,
     ftp: &mut FtpStream,
     cp: &mut Checkpoint,
     control: &Control,
 ) -> TransferResult<()> {
     if cp.owns_backup {
-        if let Some(backup) = signature(ftp, &cp.backup, control)? {
+        if let Some(backup) = signature(pacer, control, ftp, &cp.backup)? {
             if Some(backup) != cp.original {
                 return Err(Failure::conflict(
                     "FTP backup changed; retained for manual recovery",

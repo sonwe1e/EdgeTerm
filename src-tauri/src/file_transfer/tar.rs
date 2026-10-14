@@ -97,6 +97,11 @@ struct UstarWriter<W> {
     pending: u64,
     /// Every byte written so far, headers and padding included.
     total: u64,
+    /// The job's rate budget and stop signal; `None` in the unit tests.
+    /// Every byte of the archive — headers, PAX records, bodies, padding
+    /// and the trailing blocks — goes through it, so a tree of empty files
+    /// is paced as much as one large file.
+    gate: Option<(Arc<super::Pacer>, Arc<Control>)>,
 }
 
 impl<W: AsyncWrite + Unpin> UstarWriter<W> {
@@ -106,7 +111,27 @@ impl<W: AsyncWrite + Unpin> UstarWriter<W> {
             body: 0,
             pending: 0,
             total: 0,
+            gate: None,
         }
+    }
+
+    fn paced(sink: W, job: &Job) -> Self {
+        Self {
+            gate: job.pacer.clone().map(|pacer| (pacer, job.control.clone())),
+            ..Self::new(sink)
+        }
+    }
+
+    /// Charges `bytes` against the rate budget immediately before they go
+    /// on the wire. Every byte of the archive — headers, PAX records,
+    /// bodies, padding and the trailing blocks — goes through here, so a
+    /// tree of empty files is paced as much as one large file. An
+    /// interrupted charge takes nothing; bytes already written stay paid.
+    async fn send(&mut self, bytes: &[u8]) -> TransferResult<()> {
+        if let Some((pacer, control)) = &self.gate {
+            super::paced(pacer, control, bytes.len() as u64).await?;
+        }
+        self.sink.write_all(bytes).await.map_err(Failure::from)
     }
 
     /// Writes a directory entry. Its mode and mtime are the local
@@ -136,7 +161,7 @@ impl<W: AsyncWrite + Unpin> UstarWriter<W> {
             ));
         }
         let header = header_bytes(name, kind, size, mode, mtime)?;
-        self.sink.write_all(&header).await.map_err(Failure::from)?;
+        self.send(&header).await?;
         self.total += header.len() as u64;
         self.body = 0;
         self.pending = if kind == EntryKind::File { size } else { 0 };
@@ -153,7 +178,7 @@ impl<W: AsyncWrite + Unpin> UstarWriter<W> {
                 "archive entry is longer than its header declares",
             ));
         }
-        self.sink.write_all(bytes).await.map_err(Failure::from)?;
+        self.send(bytes).await?;
         self.total += bytes.len() as u64;
         self.body += bytes.len() as u64;
         self.pending -= bytes.len() as u64;
@@ -167,10 +192,7 @@ impl<W: AsyncWrite + Unpin> UstarWriter<W> {
     async fn pad(&mut self) -> TransferResult<()> {
         let slack = (BLOCK - (self.body as usize % BLOCK)) % BLOCK;
         if slack > 0 {
-            self.sink
-                .write_all(&ZERO[..slack])
-                .await
-                .map_err(Failure::from)?;
+            self.send(&ZERO[..slack]).await?;
             self.total += slack as u64;
         }
         self.body = 0;
@@ -183,17 +205,11 @@ impl<W: AsyncWrite + Unpin> UstarWriter<W> {
         if self.pending != 0 {
             return Err(Failure::local("the last archive entry was never finished"));
         }
-        self.sink
-            .write_all(&ZERO[..2 * BLOCK])
-            .await
-            .map_err(Failure::from)?;
+        self.send(&ZERO[..2 * BLOCK]).await?;
         self.total += 2 * BLOCK as u64;
         let slack = (RECORD - (self.total as usize % RECORD)) % RECORD;
         if slack > 0 {
-            self.sink
-                .write_all(&ZERO[..slack])
-                .await
-                .map_err(Failure::from)?;
+            self.send(&ZERO[..slack]).await?;
         }
         self.sink.flush().await.map_err(Failure::from)?;
         Ok(())
@@ -823,7 +839,7 @@ async fn pack<W: AsyncWrite + Unpin>(
     for (key, size) in &keys {
         job.progress(key, 0, *size, false);
     }
-    let mut writer = UstarWriter::new(&mut sink);
+    let mut writer = UstarWriter::paced(&mut sink, job);
     // The destination directory itself is `tar -C`'s target, not an entry;
     // every other directory is written so an empty folder and its mode
     // survive. Parents come before their children in the plan.

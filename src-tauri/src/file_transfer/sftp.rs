@@ -4,9 +4,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures_util::{
-    future::Either,
     stream::{FuturesOrdered, FuturesUnordered},
-    FutureExt, StreamExt, TryFutureExt,
+    StreamExt,
 };
 use parking_lot::Mutex;
 use ring::digest::{Context, SHA256};
@@ -44,13 +43,19 @@ impl From<Error> for Failure {
     }
 }
 
-struct Remote {
+/// One job's SFTP session over a shared transport. Private to the engine
+/// and its tests.
+pub(super) struct Remote {
     raw: RawSftpSession,
     extensions: HashMap<String, String>,
     read_len: usize,
     write_len: usize,
     files: usize,
     requests: Semaphore,
+    /// The job's rate budget. Every content byte this Remote moves — the
+    /// copy pipelines and the signature/hash read-backs alike — draws from
+    /// it here, exactly once, at the point the data moves.
+    pacer: Option<Arc<super::Pacer>>,
     /// Target-directory listings captured during planning, keyed by
     /// resolved parent path. A destination name its parent's listing does
     /// not hold lets a fresh upload skip its per-file probe; a parent
@@ -65,7 +70,9 @@ impl Drop for Remote {
     }
 }
 impl Remote {
-    async fn connect(job: &Job) -> TransferResult<Arc<Self>> {
+    /// Production dial/handshake for one job's SFTP session; also the
+    /// bridge the real-server acceptance tests use to reach the engine.
+    pub(super) async fn connect(job: &Job) -> TransferResult<Arc<Self>> {
         job.control.check()?;
         job.phase("connecting");
         let existing = job.transport.lock().clone();
@@ -133,8 +140,8 @@ impl Remote {
         Ok(Arc::new(Self {
             raw,
             extensions: version.extensions,
-            read_len,
-            write_len,
+            read_len: job.pace_slice(read_len),
+            write_len: job.pace_slice(write_len),
             files: match limits.open_handles {
                 Some(n) => job.options.files.min((n / 2).max(1) as usize),
                 // A server that does not advertise limits may be a
@@ -143,6 +150,7 @@ impl Remote {
                 None => job.options.files.min(4),
             },
             requests: Semaphore::new(job.options.requests),
+            pacer: job.pacer.clone(),
             listings: Mutex::new(HashMap::new()),
             _transport: Some(transport),
         }))
@@ -191,6 +199,14 @@ impl Remote {
                 // A short DATA packet is legal; only explicit EOF terminates a read.
                 while result.len() < count {
                     let size = (count - result.len()).min(self.read_len);
+                    // The charge is taken here, where this future is first
+                    // polled and the request actually goes out — creating a
+                    // pipeline of futures charges nothing until each one
+                    // runs, so the burst the server ever sees is bounded by
+                    // the bucket, not by the pipeline's depth.
+                    if let Some(pacer) = &self.pacer {
+                        super::paced(pacer, control, size as u64).await?;
+                    }
                     let bytes = self
                         .raw
                         .read(handle, offset + result.len() as u64, size as u32)
@@ -199,6 +215,9 @@ impl Remote {
                         return Err(Failure::conflict(
                             "unexpected short or oversized remote file",
                         ));
+                    }
+                    if let Some(pacer) = &self.pacer {
+                        pacer.refund((size - bytes.data.len()) as u64);
                     }
                     result.extend_from_slice(&bytes.data);
                 }
@@ -216,6 +235,11 @@ impl Remote {
         control
             .run(async {
                 let _permit = self.requests.acquire().await.map_err(Failure::network)?;
+                // Charged as the write request — carrying its whole payload —
+                // is about to go out.
+                if let Some(pacer) = &self.pacer {
+                    super::paced(pacer, control, bytes.len() as u64).await?;
+                }
                 self.raw.write(handle, offset, bytes.clone()).await?;
                 Ok(bytes)
             })
@@ -398,8 +422,18 @@ pub async fn run(job: &Arc<Job>) -> TransferResult<()> {
     copy_files(job, &remote, files).await
 }
 
-async fn copy_files(job: &Job, remote: &Remote, files: Vec<Item>) -> TransferResult<()> {
-    let parallel = remote.files.min(files.len()).max(1);
+/// Moves the planned files; the real-server acceptance tests share this
+/// entry point with `run`.
+pub(super) async fn copy_files(job: &Job, remote: &Remote, files: Vec<Item>) -> TransferResult<()> {
+    // `requests` is the job-wide ceiling on SFTP data requests in flight,
+    // so the file lanes can never multiply past it: with files=16 and
+    // requests=1 the job runs one file at one request, exactly like the
+    // option says.
+    let parallel = remote
+        .files
+        .min(files.len())
+        .min(job.options.requests.max(1))
+        .max(1);
     let depth = (job.options.requests / parallel).max(1);
     let large = Semaphore::new(2);
     let mut pending = files.into_iter();
@@ -493,8 +527,28 @@ async fn create_directories(
     Ok(created)
 }
 
-async fn plan(job: &Job, remote: &Remote) -> TransferResult<Vec<Item>> {
-    if let Some(plan) = job.plan.lock().clone() {
+/// Expands the job's items into the list of files to move, freezing it in
+/// the journal before the first byte; the real-server acceptance tests
+/// share this entry point with `run`.
+pub(super) async fn plan(job: &Job, remote: &Remote) -> TransferResult<Vec<Item>> {
+    let frozen = job.plan.lock().clone();
+    if let Some(plan) = frozen {
+        let mut sizes = Vec::with_capacity(plan.len());
+        for item in &plan {
+            job.control.check()?;
+            sizes.push(match job.checkpoint(&job.key(item)) {
+                Some(checkpoint) => checkpoint.source.size,
+                None if item.upload => std::fs::metadata(&item.local)?.len(),
+                None => remote
+                    .attrs(&item.remote, &job.control)
+                    .await?
+                    .and_then(|attrs| attrs.size)
+                    .ok_or_else(|| {
+                        Failure::conflict(format!("source size unavailable: {}", item.remote))
+                    })?,
+            });
+        }
+        job.prime_resumed_progress(&plan, &sizes);
         return Ok(plan);
     }
     let mut files = Vec::new();
@@ -713,6 +767,9 @@ async fn plan(job: &Job, remote: &Remote) -> TransferResult<Vec<Item>> {
     for (item, size) in files.iter().zip(sizes) {
         job.progress(&job.key(item), 0, size, false);
     }
+    // Freeze the expanded plan before the first byte moves, so restart
+    // recovery replays exactly this list.
+    job.save_plan(&files)?;
     *job.plan.lock() = Some(files.clone());
     Ok(files)
 }
@@ -932,10 +989,10 @@ async fn download(
                 reads.push_back(remote.read(&handle, next, length, &job.control));
                 next += length as u64;
             }
-            let Some(bytes) = reads.next().await else {
+            let Some(answer) = reads.next().await else {
                 break;
             };
-            let bytes = bytes?;
+            let bytes = answer?;
             job.control
                 .run(async { target.write_all(&bytes).await.map_err(Failure::from) })
                 .await?;
@@ -967,13 +1024,6 @@ async fn download(
     .await;
     remote.close(&handle).await;
     result
-}
-
-/// One finished step of the pipelined write sequence: an acknowledged
-/// chunk, or the close that was queued behind the final ones.
-enum Step {
-    Written(Vec<u8>),
-    Closed,
 }
 
 async fn upload(
@@ -1044,16 +1094,16 @@ async fn upload(
                 .await?;
         }
         source.seek(std::io::SeekFrom::Start(cp.offset)).await?;
-        // The close is queued behind the final writes instead of waiting
-        // for their acknowledgements: a server processes one session's
-        // requests in order, so the handle stays valid until the pending
-        // writes are done (draft-ietf-secsh-filexfer-02 §6.1). Every write
-        // acknowledgement is still checked before the file is committed,
-        // and a durable upload still flushes before its close.
-        let mut writes: FuturesOrdered<Either<_, _>> = FuturesOrdered::new();
+        // Only writes ride this pipeline. Each write future is lazy — it
+        // charges the pacer and takes its request permit when first polled
+        // — so a close queued beside them could be polled and sent while
+        // earlier writes were still waiting for budget or a permit, and a
+        // real sftp-server then fails the late writes against a closed
+        // handle. The close (and the durable fsync) therefore run only
+        // after every write above has been acknowledged.
+        let mut writes: FuturesOrdered<_> = FuturesOrdered::new();
         let mut next = cp.offset;
         let mut saved = cp.offset;
-        let mut closing = false;
         loop {
             while writes.len() < depth && next < cp.source.size {
                 let length = (cp.source.size - next).min(remote.write_len as u64) as usize;
@@ -1067,48 +1117,24 @@ async fn upload(
                             .map_err(Failure::from)
                     })
                     .await?;
-                writes.push_back(Either::Left(
-                    remote
-                        .write(&handle, next, bytes, &job.control)
-                        .map_ok(Step::Written),
-                ));
+                writes.push_back(remote.write(&handle, next, bytes, &job.control));
                 next += length as u64;
-            }
-            if next >= cp.source.size && !closing && !job.options.durable {
-                closing = true;
-                writes.push_back(Either::Right(
-                    job.control
-                        .run(async {
-                            remote
-                                .raw
-                                .close(&handle)
-                                .await
-                                .map(|_| ())
-                                .map_err(Failure::from)
-                        })
-                        .map(|result| result.map(|()| Step::Closed)),
-                ));
             }
             let Some(step) = writes.next().await else {
                 break;
             };
-            match step? {
-                Step::Written(bytes) => {
-                    // FuturesOrdered only advances after all preceding
-                    // ACKs, even if the server acknowledged later offsets
-                    // first.
-                    hash.update(&bytes);
-                    cp.offset += bytes.len() as u64;
-                    job.progress(&cp.key, cp.offset, cp.source.size, false);
-                    if cp.offset - saved >= 4 * 1024 * 1024 || cp.offset == cp.source.size {
-                        cp.prefix_hash = local::hex(hash.clone().finish().as_ref());
-                        if !coalesced {
-                            job.save_async(cp).await?;
-                        }
-                        saved = cp.offset;
-                    }
+            let bytes = step?;
+            // FuturesOrdered only advances after all preceding ACKs, even
+            // if the server acknowledged later offsets first.
+            hash.update(&bytes);
+            cp.offset += bytes.len() as u64;
+            job.progress(&cp.key, cp.offset, cp.source.size, false);
+            if cp.offset - saved >= 4 * 1024 * 1024 || cp.offset == cp.source.size {
+                cp.prefix_hash = local::hex(hash.clone().finish().as_ref());
+                if !coalesced {
+                    job.save_async(cp).await?;
                 }
-                Step::Closed => {}
+                saved = cp.offset;
             }
         }
         // fsync waits for the server's disk on every file; it is opt-in so
@@ -1126,18 +1152,16 @@ async fn upload(
                 })
                 .await?;
         }
-        if !closing {
-            job.control
-                .run(async {
-                    remote
-                        .raw
-                        .close(&handle)
-                        .await
-                        .map(|_| ())
-                        .map_err(Failure::from)
-                })
-                .await?;
-        }
+        job.control
+            .run(async {
+                remote
+                    .raw
+                    .close(&handle)
+                    .await
+                    .map(|_| ())
+                    .map_err(Failure::from)
+            })
+            .await?;
         cp.prefix_hash = local::hex(hash.finish().as_ref());
         if !coalesced {
             job.save_async(cp).await?;
@@ -1463,6 +1487,9 @@ pub async fn cleanup(job: &Job) -> TransferResult<()> {
             write_len: 31 * 1024,
             files: 1,
             requests: Semaphore::new(8),
+            // Cleanup only removes partials; it reads no file content, and
+            // a stopped job's control would interrupt any paced wait anyway.
+            pacer: None,
             listings: Mutex::new(HashMap::new()),
             _transport: Some(transport),
         };

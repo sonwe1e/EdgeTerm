@@ -193,12 +193,7 @@ struct StateEvent {
     message: Option<String>,
 }
 
-/// Reports a change the session went through on its own: it came up, or the
-/// peer / device / shell ended it. A close the frontend requested through
-/// `close_session` is deliberately *not* reported: the frontend records that
-/// state itself when the command returns, and it may reconnect under the
-/// same session id right away, so a late "closed" from the old session would
-/// otherwise be taken for the new one going down.
+
 pub fn emit_state(app: &AppHandle, id: &str, state: &str, message: Option<String>) {
     let _ = app.emit(
         EVENT_STATE,
@@ -572,6 +567,12 @@ mod tests {
         let mut pump = OutputPump::new(output, None);
         pump.push(b"one");
         let deadline = pump.deadline;
+        assert!(
+            deadline
+                .unwrap()
+                .saturating_duration_since(tokio::time::Instant::now())
+                <= std::time::Duration::from_millis(8)
+        );
         for _ in 0..100 {
             pump.push(b"two");
         }

@@ -104,6 +104,7 @@ impl Fixture {
         raw.set_timeout(1);
         raw.init().await.unwrap();
         let remote = Arc::new(Remote {
+            pacer: None,
             raw,
             extensions: HashMap::new(),
             read_len: 128 * 1024,
@@ -827,7 +828,7 @@ async fn fresh_upload_takes_the_small_file_fast_path() {
 /// previous implementation awaited every acknowledgement first, so it
 /// never did.
 #[tokio::test]
-async fn the_close_is_sent_behind_the_final_writes() {
+async fn the_close_waits_for_every_write_acknowledgement() {
     let f = Fixture::new(Server {
         delay_ms: 2,
         ..Server::default()
@@ -841,8 +842,8 @@ async fn the_close_is_sent_behind_the_final_writes() {
         .unwrap();
     assert_eq!(f.state.lock().files["/target"], bytes);
     assert!(
-        f.state.lock().close_with_pending_write,
-        "the close waited for the write acknowledgements"
+        !f.state.lock().close_with_pending_write,
+        "the close overlapped write replies still in flight"
     );
 }
 

@@ -23,6 +23,9 @@ pub fn digest(bytes: &[u8]) -> String {
     hex(ring::digest::digest(&SHA256, bytes).as_ref())
 }
 
+/// Reads the local sample windows. Purely local disk I/O: it draws on no
+/// rate budget, because the budget limits what a job moves over the
+/// network — the payload itself is charged where it crosses the wire.
 pub fn signature(path: &Path) -> TransferResult<Signature> {
     let mut file = std::fs::File::open(path)?;
     let meta = file.metadata()?;
@@ -56,7 +59,9 @@ pub fn target_signature(path: &Path) -> TransferResult<Option<Signature>> {
     }
 }
 
-/// Rebuild the digest only from the confirmed prefix, never from file length.
+/// Rebuild the digest only from the confirmed prefix, never from file
+/// length. Purely local disk I/O — see `signature` — so it draws on no
+/// rate budget; it stays cancellable through `control`.
 pub fn prefix(path: &Path, length: u64, control: &Control) -> TransferResult<Context> {
     let mut file = std::fs::File::open(path)?;
     let mut context = Context::new(&SHA256);
