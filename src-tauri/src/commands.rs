@@ -522,12 +522,12 @@ pub async fn write_session_binary(
     state.sessions.write_confirmed(&id, bytes).await
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 struct BinarySessionTarget {
     id: String,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 struct BinaryFileTarget {
     path: String,
     offset: u64,
@@ -538,20 +538,32 @@ fn binary_metadata<T: serde::de::DeserializeOwned>(encoded: &str) -> Result<T> {
     serde_json::from_slice(&bytes).map_err(err)
 }
 
-fn binary_request<T: serde::de::DeserializeOwned>(
-    request: &tauri::ipc::Request<'_>,
+/// The metadata header and the raw body of a binary invoke, split out so
+/// the decoding can be tested on its own: `tauri::ipc::Request` has no
+/// public constructor, so a test cannot build one. `binary_request` stays
+/// a thin adapter over this.
+fn binary_request_parts<T: serde::de::DeserializeOwned>(
+    metadata: Option<&tauri::http::HeaderValue>,
+    body: &tauri::ipc::InvokeBody,
 ) -> Result<(T, Vec<u8>)> {
-    let encoded = request
-        .headers()
-        .get("x-edgeterm-metadata")
+    let encoded = metadata
         .ok_or_else(|| AppError::new("missing binary metadata"))?
         .to_str()
         .map_err(err)?;
-    let metadata = binary_metadata(encoded)?;
-    match request.body() {
-        tauri::ipc::InvokeBody::Raw(bytes) => Ok((metadata, bytes.clone())),
+    let target = binary_metadata(encoded)?;
+    match body {
+        tauri::ipc::InvokeBody::Raw(bytes) => Ok((target, bytes.clone())),
         _ => Err(AppError::new("expected a raw binary body")),
     }
+}
+
+fn binary_request<T: serde::de::DeserializeOwned>(
+    request: &tauri::ipc::Request<'_>,
+) -> Result<(T, Vec<u8>)> {
+    binary_request_parts(
+        request.headers().get("x-edgeterm-metadata"),
+        request.body(),
+    )
 }
 
 /// Preserve write confirmation/backpressure while avoiding base64 payloads.
@@ -719,6 +731,65 @@ mod binary_transfer_tests {
         ] {
             assert!(binary_metadata::<BinaryFileTarget>(&bad).is_err());
         }
+    }
+
+    fn metadata_header(value: &serde_json::Value) -> tauri::http::HeaderValue {
+        tauri::http::HeaderValue::from_str(&B64.encode(serde_json::to_vec(value).unwrap())).unwrap()
+    }
+
+    /// The frontend test mocks `invoke`, so it can only prove the shape the
+    /// webview sends; these cases are the Rust side of the same boundary.
+    #[test]
+    fn binary_request_parts_decodes_the_metadata_and_keeps_the_body_bytes() {
+        let header = metadata_header(&serde_json::json!({
+            "path": "C:\\测试\\é #%.bin", "offset": 1048576
+        }));
+        let body = tauri::ipc::InvokeBody::Raw(vec![0, 128, 255, 0, 159]);
+        let (target, bytes) =
+            binary_request_parts::<BinaryFileTarget>(Some(&header), &body).unwrap();
+        assert_eq!(target.path, "C:\\测试\\é #%.bin");
+        assert_eq!(target.offset, 1048576);
+        assert_eq!(bytes, vec![0, 128, 255, 0, 159]);
+    }
+
+    #[test]
+    fn binary_request_parts_rejects_a_missing_or_unreadable_header() {
+        let body = tauri::ipc::InvokeBody::Raw(vec![1]);
+        let missing = binary_request_parts::<BinaryFileTarget>(None, &body).unwrap_err();
+        assert!(missing.to_string().contains("missing binary metadata"));
+        // Bytes 0x80 and 0x81 are legal in a header value but are not
+        // visible ASCII, which is what `to_str` refuses.
+        let opaque = tauri::http::HeaderValue::from_bytes(&[0x80, 0x81]).unwrap();
+        let unreadable = binary_request_parts::<BinaryFileTarget>(Some(&opaque), &body).unwrap_err();
+        assert!(!unreadable.to_string().is_empty());
+    }
+
+    #[test]
+    fn binary_request_parts_rejects_metadata_that_is_not_the_target_shape() {
+        let body = tauri::ipc::InvokeBody::Raw(vec![1]);
+        for bad in [
+            B64.encode(b"!"),
+            B64.encode(br#"{"path":"a","offset":-1}"#),
+            B64.encode(br#"{"path":"a","offset":1.5}"#),
+            B64.encode(b"{}"),
+            B64.encode(br#"{"path":7,"offset":1}"#),
+            B64.encode(br#"{"path":"a"}"#),
+        ] {
+            let header = tauri::http::HeaderValue::from_str(&bad).unwrap();
+            assert!(
+                binary_request_parts::<BinaryFileTarget>(Some(&header), &body).is_err(),
+                "{bad} must not decode"
+            );
+        }
+    }
+
+    #[test]
+    fn binary_request_parts_rejects_a_body_that_is_not_raw() {
+        let header = metadata_header(&serde_json::json!({"path": "a", "offset": 0}));
+        // A JSON body is what a command without the binary fast path gets.
+        let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"path": "a"}));
+        let error = binary_request_parts::<BinaryFileTarget>(Some(&header), &body).unwrap_err();
+        assert!(error.to_string().contains("expected a raw binary body"));
     }
 
     #[tokio::test]
