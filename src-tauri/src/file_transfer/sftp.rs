@@ -258,8 +258,16 @@ impl Remote {
         let result = async {
             let mut context = Context::new(&SHA256);
             let length = size.min(64 * 1024) as usize;
-            for offset in [0, size.saturating_sub(length as u64)] {
-                context.update(&self.read(&handle, offset, length, control).await?);
+            let tail = size.saturating_sub(length as u64);
+            let head = self.read(&handle, 0, length, control).await?;
+            context.update(&head);
+            // A file that fits in one sample has the same bytes at both ends.
+            // They are still hashed twice, so the signature a checkpoint holds
+            // is unchanged, but the second read would only fetch them again.
+            if tail == 0 {
+                context.update(&head);
+            } else {
+                context.update(&self.read(&handle, tail, length, control).await?);
             }
             Ok(Some(local::Signature {
                 size,

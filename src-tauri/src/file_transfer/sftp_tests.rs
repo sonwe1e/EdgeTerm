@@ -790,6 +790,44 @@ async fn a_target_created_during_commit_is_not_overwritten_by_a_fresh_upload() {
     assert_eq!(f.state.lock().files["/target"], b"someone else");
 }
 
+/// A source signature samples the first and the last 64 KiB. For a file that
+/// fits in one sample those are the same bytes, so reading them twice costs a
+/// round trip for nothing, and a download takes the signature twice (before
+/// and after the copy). The signature itself must not change: a checkpoint
+/// stores it and a resumed transfer compares against it.
+#[tokio::test]
+async fn a_small_download_reads_each_byte_range_once_per_signature() {
+    let f = Fixture::new(Server {
+        files: HashMap::from([("/source".into(), b"download me".to_vec())]),
+        ..Server::default()
+    })
+    .await;
+    let job = f.job();
+    let target = f.root.join("download");
+    let item = Item {
+        local: target.to_string_lossy().into(),
+        remote: "/source".into(),
+        upload: false,
+        directory: false,
+    };
+    copy(&job, &f.remote, item.clone(), 4, &Semaphore::new(2))
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read(&target).unwrap(), b"download me");
+    // One read for each of the two signatures and one for the data.
+    assert_eq!(f.count("read"), 3);
+    assert_eq!(f.count("lstat"), 2);
+    assert_eq!(f.count("open"), 3);
+
+    // The stored signature is the one the sampled bytes have always produced:
+    // SHA-256 over the sample taken twice.
+    let stored = job.checkpoint(&job.key(&item)).unwrap().source;
+    let mut context = Context::new(&SHA256);
+    context.update(b"download me");
+    context.update(b"download me");
+    assert_eq!(stored.sample, local::hex(context.finish().as_ref()));
+}
+
 #[tokio::test]
 async fn durable_option_restores_the_per_file_fsync() {
     let mut f = Fixture::new(Server::default()).await;
