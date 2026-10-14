@@ -1168,7 +1168,8 @@ async fn recover_renamed_partial(
     if meta.is_symlink() || meta.is_dir() || meta.size != Some(cp.source.size) {
         return Ok(false);
     }
-    let mut context = local::prefix_async(Path::new(&cp.item.local), cp.source.size, &job.control).await?;
+    let mut context =
+        local::prefix_async(Path::new(&cp.item.local), cp.source.size, &job.control).await?;
     if remote
         .hash(&cp.item.remote, cp.source.size, &job.control)
         .await?
@@ -1196,7 +1197,8 @@ async fn recover_renamed_download(
     if !meta.is_file() || meta.len() != cp.source.size {
         return Ok(false);
     }
-    let mut context = local::prefix_async(Path::new(&cp.item.local), cp.source.size, &job.control).await?;
+    let mut context =
+        local::prefix_async(Path::new(&cp.item.local), cp.source.size, &job.control).await?;
     if remote
         .hash(&cp.item.remote, cp.source.size, &job.control)
         .await?
@@ -1253,7 +1255,12 @@ async fn recover_commit(job: &Job, remote: &Remote, cp: &mut Checkpoint) -> Tran
     Ok(true)
 }
 
-async fn commit(job: &Job, remote: &Remote, cp: &mut Checkpoint, coalesced: bool) -> TransferResult<()> {
+async fn commit(
+    job: &Job,
+    remote: &Remote,
+    cp: &mut Checkpoint,
+    coalesced: bool,
+) -> TransferResult<()> {
     job.control.check()?;
     // A recovery path can mark the file complete inside the transfer itself.
     if cp.complete {

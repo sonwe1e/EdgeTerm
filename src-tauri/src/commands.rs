@@ -560,10 +560,7 @@ fn binary_request_parts<T: serde::de::DeserializeOwned>(
 fn binary_request<T: serde::de::DeserializeOwned>(
     request: &tauri::ipc::Request<'_>,
 ) -> Result<(T, Vec<u8>)> {
-    binary_request_parts(
-        request.headers().get("x-edgeterm-metadata"),
-        request.body(),
-    )
+    binary_request_parts(request.headers().get("x-edgeterm-metadata"), request.body())
 }
 
 /// Preserve write confirmation/backpressure while avoiding base64 payloads.
@@ -760,7 +757,8 @@ mod binary_transfer_tests {
         // Bytes 0x80 and 0x81 are legal in a header value but are not
         // visible ASCII, which is what `to_str` refuses.
         let opaque = tauri::http::HeaderValue::from_bytes(&[0x80, 0x81]).unwrap();
-        let unreadable = binary_request_parts::<BinaryFileTarget>(Some(&opaque), &body).unwrap_err();
+        let unreadable =
+            binary_request_parts::<BinaryFileTarget>(Some(&opaque), &body).unwrap_err();
         assert!(!unreadable.to_string().is_empty());
     }
 

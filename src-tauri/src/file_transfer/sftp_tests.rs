@@ -288,10 +288,7 @@ fn response(server: &mut Server, packet: Packet) -> (Option<Packet>, u64) {
         }
         Packet::OpenDir(p) => {
             if p.path == "/" || server.dirs.contains(&p.path) {
-                Packet::Handle(Handle {
-                    id,
-                    handle: p.path,
-                })
+                Packet::Handle(Handle { id, handle: p.path })
             } else {
                 Packet::error(id, StatusCode::NoSuchFile)
             }
@@ -1295,7 +1292,9 @@ async fn an_existing_target_directory_is_listed_once_instead_of_probed_per_file(
     {
         let mut state = f.state.lock();
         state.dirs.insert("/site".into());
-        state.files.insert("/site/keep.bin".into(), b"keep".to_vec());
+        state
+            .files
+            .insert("/site/keep.bin".into(), b"keep".to_vec());
     }
     let root = f.root.join("project");
     std::fs::create_dir_all(root.join("pkg")).unwrap();
@@ -1402,6 +1401,55 @@ async fn benchmark_pipeline_at_20ms_rtt() {
         eprintln!(
             "upload 24 x 4KiB, file_concurrency={files}, elapsed={:?}",
             started.elapsed()
+        );
+    }
+}
+
+/// The bulk-small-file shape at the concurrency the setting now allows:
+/// 500 files in a nested tree at a 20 ms round trip, swept over the file
+/// widths the bound permits. Fixture evidence only — a simulated server
+/// that answers out of order and never processes serially, not a real one.
+#[tokio::test]
+#[ignore = "repeatable simulated-latency benchmark; run with --ignored --nocapture"]
+async fn benchmark_500_files_at_20ms_rtt() {
+    for files in [4, 8, 16, 32] {
+        let mut f = Fixture::new(Server {
+            delay_ms: 20,
+            ..Server::default()
+        })
+        .await;
+        {
+            let remote = Arc::get_mut(&mut f.remote).unwrap();
+            remote.files = files;
+        }
+        let root = f.root.join("project");
+        for d in 0..50 {
+            let dir = root.join(format!("pkg-{d}"));
+            std::fs::create_dir_all(&dir).unwrap();
+            for n in 0..10 {
+                std::fs::write(dir.join(format!("mod-{n}.py")), payload(4096)).unwrap();
+            }
+        }
+        let job = super::super::test_job_items(
+            f.root.clone(),
+            vec![Item {
+                local: root.to_string_lossy().into(),
+                remote: "/site".into(),
+                upload: true,
+                directory: true,
+            }],
+        );
+        let started = std::time::Instant::now();
+        let items = plan(&job, &f.remote).await.unwrap();
+        let planned = started.elapsed();
+        let started = std::time::Instant::now();
+        copy_files(&job, &f.remote, items).await.unwrap();
+        let copied = started.elapsed();
+        assert_eq!(f.state.lock().files.len(), 500);
+        assert_eq!(f.state.lock().dirs.len(), 51);
+        eprintln!(
+            "upload 500 x 4KiB in 51 dirs, file_concurrency={files}: plan={planned:?}, copy={copied:?}, total={:?}",
+            planned + copied
         );
     }
 }
