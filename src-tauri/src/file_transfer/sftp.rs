@@ -680,7 +680,7 @@ async fn copy(
             };
             // Persist ownership before creating the partial; unknown partials
             // are never adopted based on their filename or size alone.
-            job.save(&cp)?;
+            job.save_async(&cp).await?;
             cp
         };
         let mut handle: Option<String> = None;
@@ -694,14 +694,14 @@ async fn copy(
                     )
                     .await?;
                 cp.owns_temporary = true;
-                job.save(&cp)?;
+                job.save_async(&cp).await?;
                 // The write path keeps this handle: closing the placeholder
                 // only to reopen it costs two round trips per file.
                 handle = Some(h);
             } else {
                 local::create_partial(Path::new(&cp.temporary))?;
                 cp.owns_temporary = true;
-                job.save(&cp)?;
+                job.save_async(&cp).await?;
             }
         }
         job.progress(&key, cp.offset, source.size, cp.complete);
@@ -788,7 +788,7 @@ async fn download(
                     .run(async { target.sync_data().await.map_err(Failure::from) })
                     .await?;
                 cp.prefix_hash = local::hex(hash.clone().finish().as_ref());
-                job.save(cp)?;
+                job.save_async(cp).await?;
                 saved = cp.offset;
             }
         }
@@ -797,7 +797,7 @@ async fn download(
             .run(async { target.sync_all().await.map_err(Failure::from) })
             .await?;
         cp.prefix_hash = local::hex(hash.finish().as_ref());
-        job.save(cp)
+        job.save_async(cp).await
     }
     .await;
     remote.close(&handle).await;
@@ -893,7 +893,7 @@ async fn upload(
             job.progress(&cp.key, cp.offset, cp.source.size, false);
             if cp.offset - saved >= 4 * 1024 * 1024 || cp.offset == cp.source.size {
                 cp.prefix_hash = local::hex(hash.clone().finish().as_ref());
-                job.save(cp)?;
+                job.save_async(cp).await?;
                 saved = cp.offset;
             }
         }
@@ -913,7 +913,7 @@ async fn upload(
                 .await?;
         }
         cp.prefix_hash = local::hex(hash.finish().as_ref());
-        job.save(cp)?;
+        job.save_async(cp).await?;
         job.control
             .run(async {
                 remote
@@ -971,7 +971,7 @@ async fn recover_commit(job: &Job, remote: &Remote, cp: &mut Checkpoint) -> Tran
     }
     remove_backup(remote, cp, &job.control).await?;
     cp.complete = true;
-    job.save(cp)?;
+    job.save_async(cp).await?;
     job.progress(&cp.key, cp.source.size, cp.source.size, true);
     Ok(true)
 }
@@ -1034,7 +1034,7 @@ async fn commit(job: &Job, remote: &Remote, cp: &mut Checkpoint) -> TransferResu
             }
         }
         cp.committing = true;
-        job.save(cp)?;
+        job.save_async(cp).await?;
         if remote.extensions.contains_key("posix-rename@openssh.com") {
             let mut data = Vec::new();
             for path in [&cp.temporary, &cp.item.remote] {
@@ -1060,7 +1060,7 @@ async fn commit(job: &Job, remote: &Remote, cp: &mut Checkpoint) -> TransferResu
                     return Err(Failure::conflict("remote backup already exists"));
                 }
                 cp.owns_backup = true;
-                job.save(cp)?;
+                job.save_async(cp).await?;
                 job.control
                     .run(async {
                         remote
@@ -1085,7 +1085,7 @@ async fn commit(job: &Job, remote: &Remote, cp: &mut Checkpoint) -> TransferResu
         }
         remove_backup(remote, cp, &job.control).await?;
         cp.complete = true;
-        job.save(cp)?;
+        job.save_async(cp).await?;
     } else {
         if local::target_signature(Path::new(&cp.item.local))? != cp.original {
             return Err(Failure::conflict(
@@ -1099,10 +1099,10 @@ async fn commit(job: &Job, remote: &Remote, cp: &mut Checkpoint) -> TransferResu
             )?;
         }
         cp.committing = true;
-        job.save(cp)?;
+        job.save_async(cp).await?;
         local::replace(Path::new(&cp.temporary), Path::new(&cp.item.local))?;
         cp.complete = true;
-        job.save(cp)?;
+        job.save_async(cp).await?;
     }
     job.progress(&cp.key, cp.source.size, cp.source.size, true);
     Ok(())
@@ -1122,7 +1122,7 @@ pub async fn cleanup(job: &Job) -> TransferResult<()> {
                 std::fs::remove_file(&cp.temporary)?;
             }
             cp.owns_temporary = false;
-            job.save(&cp)?;
+            job.save_async(&cp).await?;
         }
     }
     if remote_paths.is_empty() {
@@ -1233,7 +1233,7 @@ async fn cleanup_remote(
         }
         cp.owns_temporary = false;
         if let Some(job) = job {
-            job.save(&cp)?;
+            job.save_async(&cp).await?;
         }
     }
     Ok(())

@@ -147,7 +147,40 @@ pub fn replace(from: &Path, to: &Path) -> TransferResult<()> {
     Ok(())
 }
 
+/// Test-only: makes `save_json` slow for paths under a registered directory,
+/// so a test can tell whether a save blocks the async runtime. Scoped by
+/// directory so tests running in parallel do not slow each other down.
+#[cfg(test)]
+pub(crate) mod slow_saves {
+    use std::path::{Path, PathBuf};
+    use std::sync::Mutex;
+    use std::time::Duration;
+
+    static DELAYS: Mutex<Vec<(PathBuf, Duration)>> = Mutex::new(Vec::new());
+
+    pub fn register(dir: &Path, delay: Duration) {
+        DELAYS.lock().unwrap().push((dir.to_path_buf(), delay));
+    }
+    pub fn clear(dir: &Path) {
+        DELAYS.lock().unwrap().retain(|(d, _)| d != dir);
+    }
+    pub fn delay_for(path: &Path) -> Option<Duration> {
+        DELAYS
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(dir, _)| path.starts_with(dir))
+            .map(|(_, delay)| *delay)
+    }
+}
+
 pub fn save_json(path: &Path, value: &impl Serialize) -> TransferResult<()> {
+    #[cfg(test)]
+    {
+        if let Some(delay) = slow_saves::delay_for(path) {
+            std::thread::sleep(delay);
+        }
+    }
     let bytes = serde_json::to_vec(value).map_err(|e| Failure::local(e.to_string()))?;
     let staging = path.with_extension("json.new");
     let mut options = std::fs::OpenOptions::new();
@@ -180,6 +213,39 @@ mod tests {
         std::fs::write(&part, b"complete").unwrap();
         replace(&part, &target).unwrap();
         assert_eq!(std::fs::read(&target).unwrap(), b"complete");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// Cost of one journal save on this machine's disk. A fresh small file
+    /// saves its checkpoint about six times, so this is the per-file local
+    /// price of the journal. Run with `--ignored --nocapture`; it prints
+    /// numbers and asserts nothing, since the figure depends on the disk,
+    /// the file system and any real-time scanner.
+    #[test]
+    #[ignore = "disk-dependent measurement; run with --ignored --nocapture"]
+    fn benchmark_journal_save_cost() {
+        let dir = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        std::fs::create_dir(&dir).unwrap();
+        let value = serde_json::json!({
+            "key": "0123456789abcdef01234567",
+            "offset": 4096,
+            "temporary": "/remote/dir/.edgeterm-0123456789abcdef01234567.part",
+            "prefix_hash": "f".repeat(64),
+            "complete": false,
+        });
+        let path = dir.join("checkpoint.json");
+        save_json(&path, &value).unwrap();
+        let rounds = 200;
+        let started = std::time::Instant::now();
+        for _ in 0..rounds {
+            save_json(&path, &value).unwrap();
+        }
+        let elapsed = started.elapsed();
+        eprintln!(
+            "journal save: {rounds} saves in {elapsed:?}, {:?} each, {:?} per fresh file (6 saves)",
+            elapsed / rounds,
+            elapsed / rounds * 6
+        );
         std::fs::remove_dir_all(dir).unwrap();
     }
 

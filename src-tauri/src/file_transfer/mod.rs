@@ -330,6 +330,22 @@ impl Job {
             .insert(checkpoint.key.clone(), checkpoint.clone());
         Ok(())
     }
+    /// `save` for async code: the write, its fsync and the write-through
+    /// rename are blocking disk calls, so they run on the blocking pool
+    /// instead of holding a runtime thread. The in-memory checkpoint is
+    /// updated only after the file is on disk, as in `save`.
+    pub async fn save_async(&self, checkpoint: &Checkpoint) -> TransferResult<()> {
+        let path = self.directory.join(format!("{}.json", checkpoint.key));
+        let snapshot = checkpoint.clone();
+        let written = snapshot.clone();
+        tokio::task::spawn_blocking(move || local::save_json(&path, &written))
+            .await
+            .map_err(|e| Failure::local(e.to_string()))??;
+        self.checkpoints
+            .lock()
+            .insert(snapshot.key.clone(), snapshot);
+        Ok(())
+    }
     pub fn progress(&self, key: &str, offset: u64, total: u64, complete: bool) {
         let mut progress = self.progress.lock();
         let old = progress

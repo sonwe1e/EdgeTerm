@@ -711,6 +711,48 @@ async fn fresh_upload_takes_the_small_file_fast_path() {
     assert_eq!(f.count("fsync@openssh.com"), 0);
 }
 
+/// A journal save is a blocking disk write. Run inside an async fn it holds
+/// the runtime thread, so every other task on that thread (other files of the
+/// batch, the session's own IO) waits for it. The saves are slowed to 100 ms
+/// here and a ticker task measures the longest time it was kept from running.
+#[tokio::test]
+async fn journal_saves_do_not_block_the_async_runtime() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::{Duration, Instant};
+
+    let f = Fixture::new(Server::default()).await;
+    let item = f.upload(b"small file");
+    let job = f.job();
+    local::slow_saves::register(&job.directory, Duration::from_millis(100));
+
+    let stop = Arc::new(AtomicBool::new(false));
+    let ticker = {
+        let stop = stop.clone();
+        tokio::spawn(async move {
+            let mut worst = Duration::ZERO;
+            let mut last = Instant::now();
+            while !stop.load(Ordering::Relaxed) {
+                tokio::time::sleep(Duration::from_millis(2)).await;
+                let now = Instant::now();
+                worst = worst.max(now - last);
+                last = now;
+            }
+            worst
+        })
+    };
+    let result = copy(&job, &f.remote, item, 4, &Semaphore::new(2)).await;
+    stop.store(true, Ordering::Relaxed);
+    let worst = ticker.await.unwrap();
+    local::slow_saves::clear(&job.directory);
+
+    result.unwrap();
+    assert_eq!(f.state.lock().files["/target"], b"small file");
+    assert!(
+        worst < Duration::from_millis(50),
+        "a journal save held the runtime for {worst:?}"
+    );
+}
+
 #[tokio::test]
 async fn durable_option_restores_the_per_file_fsync() {
     let mut f = Fixture::new(Server::default()).await;
