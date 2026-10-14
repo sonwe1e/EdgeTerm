@@ -21,6 +21,9 @@ struct Server {
     /// Rejects the first mkdir of this path once, the way a server that has
     /// not finished an in-flight parent mkdir would.
     fail_mkdir_once: Option<String>,
+    /// Creates this file just before the next rename request is handled, the
+    /// way another writer can between a client's check and its rename.
+    appear_before_rename: Option<(String, Vec<u8>)>,
     counts: HashMap<String, usize>,
 }
 
@@ -285,6 +288,9 @@ fn response(server: &mut Server, packet: Packet) -> (Option<Packet>, u64) {
             }],
         }),
         Packet::Rename(p) => {
+            if let Some((path, data)) = server.appear_before_rename.take() {
+                server.files.insert(path, data);
+            }
             if server.files.contains_key(&p.newpath) {
                 Packet::error(id, StatusCode::Failure)
             } else if let Some(data) = server.files.remove(&p.oldpath) {
@@ -307,6 +313,9 @@ fn response(server: &mut Server, packet: Packet) -> (Option<Packet>, u64) {
             let from = String::from_utf8(bytes.copy_to_bytes(n).to_vec()).unwrap();
             let n = bytes.get_u32() as usize;
             let to = String::from_utf8(bytes.copy_to_bytes(n).to_vec()).unwrap();
+            if let Some((path, data)) = server.appear_before_rename.take() {
+                server.files.insert(path, data);
+            }
             let data = server.files.remove(&from).unwrap();
             server.files.insert(to, data);
             Packet::error(id, StatusCode::Ok)
@@ -706,7 +715,11 @@ async fn fresh_upload_takes_the_small_file_fast_path() {
     assert_eq!(f.count("open"), 1);
     assert_eq!(f.count("write"), 1);
     assert_eq!(f.count("close"), 1);
-    assert_eq!(f.count("posix-rename@openssh.com"), 1);
+    // A fresh file is committed with the plain rename, which refuses an
+    // existing target; posix-rename is kept for replacing a file that was
+    // there when the transfer started.
+    assert_eq!(f.count("rename"), 1);
+    assert_eq!(f.count("posix-rename@openssh.com"), 0);
     assert_eq!(f.count("fsetstat"), 0);
     assert_eq!(f.count("fsync@openssh.com"), 0);
 }
@@ -751,6 +764,30 @@ async fn journal_saves_do_not_block_the_async_runtime() {
         worst < Duration::from_millis(50),
         "a journal save held the runtime for {worst:?}"
     );
+}
+
+/// The commit checks that the destination is still absent, then renames. A
+/// file another writer creates in between must not be replaced: with
+/// posix-rename (which overwrites) that check-then-rename left a window, so a
+/// fresh upload now uses the plain rename, which refuses an existing target.
+#[tokio::test]
+async fn a_target_created_during_commit_is_not_overwritten_by_a_fresh_upload() {
+    let mut f = Fixture::new(Server {
+        appear_before_rename: Some(("/target".into(), b"someone else".to_vec())),
+        ..Server::default()
+    })
+    .await;
+    Arc::get_mut(&mut f.remote)
+        .unwrap()
+        .extensions
+        .insert("posix-rename@openssh.com".into(), "1".into());
+    let item = f.upload(b"mine");
+    let job = f.job();
+    let error = copy(&job, &f.remote, item, 4, &Semaphore::new(2))
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, "conflict");
+    assert_eq!(f.state.lock().files["/target"], b"someone else");
 }
 
 #[tokio::test]

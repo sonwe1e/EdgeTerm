@@ -1035,7 +1035,13 @@ async fn commit(job: &Job, remote: &Remote, cp: &mut Checkpoint) -> TransferResu
         }
         cp.committing = true;
         job.save_async(cp).await?;
-        if remote.extensions.contains_key("posix-rename@openssh.com") {
+        // A destination that did not exist when the transfer started must not
+        // be replaced by anything that appears before the rename. posix-rename
+        // overwrites, so the check above would leave a window; the plain
+        // rename refuses an existing target. Replacing a file this transfer
+        // saw (or recovering its backup) still uses posix-rename.
+        let fresh = cp.original.is_none() && !recovering_backup;
+        if !fresh && remote.extensions.contains_key("posix-rename@openssh.com") {
             let mut data = Vec::new();
             for path in [&cp.temporary, &cp.item.remote] {
                 data.extend_from_slice(&(path.len() as u32).to_be_bytes());
@@ -1079,6 +1085,13 @@ async fn commit(job: &Job, remote: &Remote, cp: &mut Checkpoint) -> TransferResu
                     && matches!(remote.raw.lstat(&cp.item.remote).await, Err(Error::Status(s)) if s.status_code == StatusCode::NoSuchFile)
                 {
                     let _ = remote.raw.rename(&cp.backup, &cp.item.remote).await;
+                }
+                // A refused rename of a fresh upload usually means the target
+                // appeared meanwhile; say so instead of a bare server error.
+                if fresh && remote.attrs(&cp.item.remote, &job.control).await?.is_some() {
+                    return Err(Failure::conflict(
+                        "remote destination changed during transfer",
+                    ));
                 }
                 return Err(e.into());
             }
