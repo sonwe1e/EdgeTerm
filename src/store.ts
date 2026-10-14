@@ -800,7 +800,10 @@ const patchTab = (tabs: Tab[], id: string, patch: Partial<Tab>): Tab[] =>
 
 /** Selecting a tab acknowledges only its unread completion notification. */
 const acknowledgeTab = (tabs: Tab[], id: string | null): Tab[] =>
-  id === null
+  // The same array when there is nothing to acknowledge, so selecting a tab
+  // does not hand every subscriber of `tabs` a new list to re-render from.
+  id === null ||
+  !tabs.some((tab) => tab.info.id === id && tab.commandActivity === "complete")
     ? tabs
     : tabs.map((tab) =>
         tab.info.id === id && tab.commandActivity === "complete"

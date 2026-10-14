@@ -46,7 +46,7 @@ import { commandHistory } from "./history";
 import type { PanelDock } from "./panelDock";
 import { IS_WINDOWS } from "./platform";
 import { matchAppShortcut } from "./shortcuts";
-import { type PanelName, tabTitle, useActiveTab, useStore, type Tab } from "./store";
+import { type PanelName, tabTitle, useStore, type Tab } from "./store";
 import { allControllers, getController, setWebglEnabled } from "./terminalRegistry";
 import { isFileSession, type SessionProfile, type SessionState } from "./types";
 import { useUpdater } from "./updater";
@@ -115,8 +115,12 @@ export default function App() {
   const addAuthPrompt = useStore((s) => s.addAuthPrompt);
   const clearAuthPrompt = useStore((s) => s.clearAuthPrompt);
   const theme = useStore((s) => s.theme);
-  const activeTab = useActiveTab();
-  const fileMode = activeTab ? isFileSession(activeTab.info.kind) : false;
+  // A boolean, not the tab: the tab object changes with every resize and
+  // every command state, and none of that is the App's business.
+  const fileMode = useStore((s) => {
+    const tab = s.tabs.find((item) => item.info.id === s.activeId);
+    return tab ? isFileSession(tab.info.kind) : false;
+  });
   const pastePrompt = useStore((s) => s.pastePrompt);
   const setPastePrompt = useStore((s) => s.setPastePrompt);
   const setPasteWarning = useStore((s) => s.setPasteWarning);

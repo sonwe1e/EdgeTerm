@@ -25,13 +25,24 @@ const paneStyle = (rect: Rect): CSSProperties => ({
   height: percent(rect.h),
 });
 
-/** A session's box: the pane's, minus the strip. */
-const slotStyle = (rect: Rect): CSSProperties => ({
-  left: percent(rect.x),
-  top: `calc(${percent(rect.y)} + var(--tabstrip-height))`,
-  width: percent(rect.w),
-  height: `calc(${percent(rect.h)} - var(--tabstrip-height))`,
-});
+/**
+ * A session's box: the pane's, minus the strip. One style object per rect, so
+ * a session pane that is memoized sees the same prop until the layout moves.
+ */
+const slotStyles = new WeakMap<Rect, CSSProperties>();
+const slotStyle = (rect: Rect): CSSProperties => {
+  let style = slotStyles.get(rect);
+  if (!style) {
+    style = {
+      left: percent(rect.x),
+      top: `calc(${percent(rect.y)} + var(--tabstrip-height))`,
+      width: percent(rect.w),
+      height: `calc(${percent(rect.h)} - var(--tabstrip-height))`,
+    };
+    slotStyles.set(rect, style);
+  }
+  return style;
+};
 
 /** The line a splitter sits on; its thickness comes from the stylesheet. */
 const splitterStyle = (splitter: SplitterRect): CSSProperties =>

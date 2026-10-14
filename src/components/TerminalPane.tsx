@@ -1,5 +1,6 @@
 import {
   lazy,
+  memo,
   Suspense,
   useCallback,
   useEffect,
@@ -39,7 +40,15 @@ interface Props {
 export const useAccelerator = (command: ShortcutCommand): string =>
   useStore((s) => chordLabel(s.shortcuts[command]));
 
-export function SessionPane({ tab, visible, focused, style }: Props) {
+// Memoized: a tab switch or another tab's command state changes the tab list,
+// and every pane used to re-render with it. Only a pane whose own tab,
+// visibility, focus or box changed has anything new to show.
+export const SessionPane = memo(function SessionPane({
+  tab,
+  visible,
+  focused,
+  style,
+}: Props) {
   const setActive = useStore((s) => s.setActive);
   const id = tab.info.id;
 
@@ -67,7 +76,7 @@ export function SessionPane({ tab, visible, focused, style }: Props) {
       )}
     </div>
   );
-}
+});
 
 /** The terminal's right-click menu, with the entries' state when it opened. */
 interface TerminalMenu {

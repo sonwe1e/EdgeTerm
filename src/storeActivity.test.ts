@@ -67,6 +67,16 @@ describe("tab command activity", () => {
     expect(useStore.getState().tabs[0].commandActivity).toBe("idle");
   });
 
+  it("keeps the same tab list when selecting a tab with nothing to acknowledge", () => {
+    const before = useStore.getState().tabs;
+    useStore.getState().setActive("two");
+
+    // Every subscriber of `tabs` re-renders on a new array; selecting an idle
+    // tab changes no tab, so it must not hand out one.
+    expect(useStore.getState().activeId).toBe("two");
+    expect(useStore.getState().tabs).toBe(before);
+  });
+
   it("preserves running state when visited and clears it when the session ends", () => {
     const store = useStore.getState();
     store.markCommandStarted("two");
