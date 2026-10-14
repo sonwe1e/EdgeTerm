@@ -617,6 +617,17 @@ impl SharedTransport {
     pub(crate) fn is_closed(&self) -> bool {
         self.handle.is_closed()
     }
+    #[cfg(test)]
+    pub(crate) async fn test_disconnect(&self) {
+        self.handle
+            .disconnect(
+                russh::Disconnect::ByApplication,
+                "dedicated fixture disconnect",
+                "",
+            )
+            .await
+            .unwrap();
+    }
 }
 
 pub struct RemoteListener {
@@ -737,6 +748,7 @@ impl SshConnection {
 #[derive(Default)]
 pub struct SshTransports {
     open: Mutex<std::collections::HashMap<String, std::sync::Weak<SharedTransport>>>,
+    pub automatic: super::reuse::ConnectionPool,
 }
 
 impl SshTransports {

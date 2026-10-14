@@ -7,6 +7,7 @@ pub mod local;
 pub mod locale;
 pub mod output;
 pub mod recording;
+pub mod reuse;
 pub mod serial;
 pub mod ssh;
 pub mod telnet;

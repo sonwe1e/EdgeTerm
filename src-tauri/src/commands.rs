@@ -255,6 +255,7 @@ pub async fn open_session(
     // once per tab. A connection that has gone down in
     // the meantime is simply dialled again.
     reuse_session_id: Option<String>,
+    auto_reuse: Option<bool>,
     // The raw channel this session's terminal bytes stream out on, opened by
     // the same invoke that opens the session; see OutputPump. File sessions
     // (FTP, SFTP) never write to it.
@@ -362,19 +363,37 @@ pub async fn open_session(
                 Some(conn) => conn,
                 None => {
                     let prompter = AuthPrompter::ui(&app, &state.auth_prompts, &id);
-                    match session::ssh::connect(
-                        &profile,
-                        &state.store.jump_chain(&profile)?,
-                        &prompter,
-                    )
-                    .await?
-                    {
-                        ConnectOutcome::Ready(conn) => conn,
-                        // Nothing was opened; the user decides whether to trust
-                        // the new key and the frontend retries with the same
-                        // session id.
-                        ConnectOutcome::HostKeyChanged(change) => {
-                            return Ok(OpenSessionOutcome::HostKeyChanged { change });
+                    if auto_reuse.unwrap_or(true) {
+                        let jumps = state.store.jump_chain(&profile)?;
+                        match state
+                            .ssh_transports
+                            .automatic
+                            .connect(&profile, &jumps, &prompter)
+                            .await?
+                        {
+                            session::reuse::TransportOutcome::Ready(transport, reused) => {
+                                info.shared_connection = reused;
+                                session::ssh::connect_on(transport, &profile).await?
+                            }
+                            session::reuse::TransportOutcome::HostKeyChanged(change) => {
+                                return Ok(OpenSessionOutcome::HostKeyChanged { change })
+                            }
+                        }
+                    } else {
+                        match session::ssh::connect(
+                            &profile,
+                            &state.store.jump_chain(&profile)?,
+                            &prompter,
+                        )
+                        .await?
+                        {
+                            ConnectOutcome::Ready(conn) => conn,
+                            // Nothing was opened; the user decides whether to trust
+                            // the new key and the frontend retries with the same
+                            // session id.
+                            ConnectOutcome::HostKeyChanged(change) => {
+                                return Ok(OpenSessionOutcome::HostKeyChanged { change });
+                            }
                         }
                     }
                 }
@@ -386,25 +405,45 @@ pub async fn open_session(
             None
         }
         SessionKind::Sftp => {
-            let shared = reuse(&state, &reuse_session_id)
-                .and_then(|transport| session::ssh::connect_sftp_on(transport, &profile).ok());
+            let shared = match reuse(&state, &reuse_session_id) {
+                Some(transport) => Some(session::ssh::connect_sftp_on(transport, &profile)?),
+                None => None,
+            };
             info.shared_connection = shared.is_some();
             let conn = match shared {
                 Some(conn) => conn,
                 None => {
                     let prompter = AuthPrompter::ui(&app, &state.auth_prompts, &id);
-                    match session::ssh::connect_sftp(
-                        &profile,
-                        &state.store.jump_chain(&profile)?,
-                        &prompter,
-                    )
-                    .await?
-                    {
-                        SftpConnectOutcome::Ready(conn) => conn,
-                        // Same host-key decision as a shell session on the
-                        // same transport.
-                        SftpConnectOutcome::HostKeyChanged(change) => {
-                            return Ok(OpenSessionOutcome::HostKeyChanged { change });
+                    if auto_reuse.unwrap_or(true) {
+                        let jumps = state.store.jump_chain(&profile)?;
+                        match state
+                            .ssh_transports
+                            .automatic
+                            .connect(&profile, &jumps, &prompter)
+                            .await?
+                        {
+                            session::reuse::TransportOutcome::Ready(transport, reused) => {
+                                info.shared_connection = reused;
+                                session::ssh::connect_sftp_on(transport, &profile)?
+                            }
+                            session::reuse::TransportOutcome::HostKeyChanged(change) => {
+                                return Ok(OpenSessionOutcome::HostKeyChanged { change })
+                            }
+                        }
+                    } else {
+                        match session::ssh::connect_sftp(
+                            &profile,
+                            &state.store.jump_chain(&profile)?,
+                            &prompter,
+                        )
+                        .await?
+                        {
+                            SftpConnectOutcome::Ready(conn) => conn,
+                            // Same host-key decision as a shell session on the
+                            // same transport.
+                            SftpConnectOutcome::HostKeyChanged(change) => {
+                                return Ok(OpenSessionOutcome::HostKeyChanged { change });
+                            }
                         }
                     }
                 }
@@ -425,9 +464,6 @@ pub async fn open_session(
     });
     Ok(OpenSessionOutcome::Connected { info })
 }
-
-/// Record the key a host now presents, replacing every `known_hosts` entry
-/// the file held for it, after the user accepted a reported `HostKeyChange`.
 
 /// Record the key a host now presents, replacing every `known_hosts` entry
 /// the file held for it, after the user accepted a reported `HostKeyChange`.
