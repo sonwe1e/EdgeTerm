@@ -22,6 +22,8 @@ let host: HTMLDivElement;
 let root: Root;
 let height = 290;
 let prefix = 0;
+/** Height of whatever the parent renders above the rows, in the mocked layout. */
+let above = 0;
 let observers: (() => void)[];
 const entries: FileEntry[] = Array.from({ length: 10_000 }, (_, i) => ({
   path: `/test/file${i}`, name: `file${i}`, isDir: i % 10 === 0, isSymlink: false,
@@ -30,17 +32,19 @@ const entries: FileEntry[] = Array.from({ length: 10_000 }, (_, i) => ({
 
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-  vi.useFakeTimers(); height = 290; prefix = 0; observers = [];
+  vi.useFakeTimers(); height = 290; prefix = 0; above = 0; observers = [];
   localStorage.clear();
   vi.stubGlobal("ResizeObserver", class {
     constructor(callback: () => void) { observers.push(callback); }
-    observe() {} disconnect() {}
+    observe() {} unobserve() {} disconnect() {}
   });
   vi.stubGlobal("requestAnimationFrame", (fn: FrameRequestCallback) => setTimeout(() => fn(0), 16));
   vi.stubGlobal("cancelAnimationFrame", clearTimeout);
   vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(() => height);
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-    const top = this.classList.contains("virtual-file-rows") ? prefix - this.parentElement!.scrollTop : 0;
+    const top = this.classList.contains("virtual-file-rows")
+      ? above + prefix - this.parentElement!.scrollTop
+      : 0;
     return { x: 0, y: top, top, bottom: top + height, height, width: 600, left: 0, right: 600, toJSON() {} };
   });
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
@@ -54,12 +58,17 @@ function scroll(scroller: HTMLElement, top: number) {
   act(() => { scroller.scrollTop = top; scroller.dispatchEvent(new Event("scroll")); });
   advance();
 }
-function renderRows(list = entries, resetKey = "same", pitch = 29) {
+function renderRows(list = entries, resetKey = "same", pitch = 29, message = false) {
   act(() => root.render(h("div", { className: "test-scroll" },
+    message ? h("div", { className: "test-message" }, "Creating...") : null,
     h(VirtualFileRows<FileEntry>, { entries: list, rowHeight: pitch, resetKey,
       children: (e) => h("button", { "data-row": e.path }, e.name),
     }))));
 }
+/** The same render, awaited so MutationObserver records are delivered. */
+const renderRowsAsync = async (
+  list = entries, resetKey = "same", pitch = 29, message = false,
+) => { await act(async () => { renderRows(list, resetKey, pitch, message); }); };
 
 describe("virtual file rows", () => {
   it("bounds DOM at 10,000 entries, reaches the last row, and handles refresh shrink", () => {
@@ -100,6 +109,39 @@ describe("virtual file rows", () => {
     renderRows(entries, "new-directory", 40);
     expect(scroller.scrollTop).toBe(0);
     expect(host.textContent).toContain("file0");
+  });
+
+  it("skips the remeasure on a parent re-render, and keeps every real trigger", () => {
+    const rect = vi.mocked(HTMLElement.prototype.getBoundingClientRect);
+    renderRows();
+    const mounted = rect.mock.calls.length;
+    expect(mounted).toBeGreaterThan(0);
+    renderRows();
+    expect(rect.mock.calls.length).toBe(mounted);
+    renderRows(entries.slice(0, 500));
+    const counted = rect.mock.calls.length;
+    expect(counted).toBeGreaterThan(mounted);
+    renderRows(entries.slice(0, 500), "same", 40);
+    const pitched = rect.mock.calls.length;
+    expect(pitched).toBeGreaterThan(counted);
+    renderRows(entries.slice(0, 500), "next-directory", 40);
+    expect(rect.mock.calls.length).toBeGreaterThan(pitched);
+  });
+
+  it("remeasures when content rendered above the rows appears and disappears", async () => {
+    renderRows();
+    const scroller = host.firstElementChild as HTMLElement;
+    const firstRow = () => host.querySelector("[data-row]")!.getAttribute("data-row");
+    scroll(scroller, 2900);
+    expect(firstRow()).toBe("/test/file94");
+    above = 40;
+    await renderRowsAsync(entries, "same", 29, true);
+    advance();
+    expect(firstRow()).toBe("/test/file92");
+    above = 0;
+    await renderRowsAsync(entries, "same", 29, false);
+    advance();
+    expect(firstRow()).toBe("/test/file94");
   });
 
   it.each([8, 16, 40, 80])("coalesces scrolling at %i ms without losing the final range", (interval) => {

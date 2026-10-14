@@ -62,7 +62,7 @@ beforeEach(() => {
   localStorage.clear();
   // jsdom has no ResizeObserver; the virtual list observes its scroller.
   vi.stubGlobal("ResizeObserver", class {
-    observe() {} disconnect() {}
+    observe() {} unobserve() {} disconnect() {}
   });
   vi.mocked(api.sftpHome).mockImplementation(async (id: string) => `/home/${id}`);
   useStore.setState(

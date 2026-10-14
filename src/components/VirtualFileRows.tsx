@@ -64,14 +64,41 @@ export function VirtualFileRows<T extends { path: string }>({
         measure();
       });
     };
-    const observer = new ResizeObserver(schedule);
-    observer.observe(scroller);
-    observer.observe(element);
+    // The rows are not the scroller's only child: Filer renders an inline
+    // create row above them, FtpPane renders its error/loading/empty message
+    // there. Those siblings move the row container without resizing it, so
+    // observing the container alone never reports the shift. Watch the
+    // scroller and every one of its children, and refresh that set when the
+    // parent adds or removes a sibling.
+    const resize = new ResizeObserver(schedule);
+    const watched = new Set<Element>();
+    const watch = () => {
+      const present = new Set<Element>([scroller, ...Array.from(scroller.children)]);
+      for (const child of Array.from(watched)) {
+        if (!present.has(child)) {
+          resize.unobserve(child);
+          watched.delete(child);
+        }
+      }
+      for (const child of present) {
+        if (!watched.has(child)) {
+          resize.observe(child);
+          watched.add(child);
+        }
+      }
+    };
+    watch();
+    const siblings = new MutationObserver(() => {
+      watch();
+      schedule();
+    });
+    siblings.observe(scroller, { childList: true });
     scroller.addEventListener("scroll", schedule, { passive: true });
     measure();
     return () => {
       if (frame !== null) cancelAnimationFrame(frame);
-      observer.disconnect();
+      resize.disconnect();
+      siblings.disconnect();
       scroller.removeEventListener("scroll", schedule);
     };
   }, []);
@@ -80,8 +107,15 @@ export function VirtualFileRows<T extends { path: string }>({
     root.current!.parentElement!.scrollTop = 0;
     setCaptured(null);
   }, [resetKey]);
-  // Also remeasure inline create/error messages above the rows and font changes.
-  useLayoutEffect(() => { measureRef.current(); });
+  // Remeasure only when an input that can move the rows actually changes: the
+  // entry count (the spacer height), the row pitch (a font-size change) and a
+  // reset. Content above the rows arrives through the sibling observer above.
+  // A parent re-render with unchanged inputs — a tab switch, a transfer tick —
+  // must not force a synchronous layout of every mounted list.
+  useLayoutEffect(
+    () => { measureRef.current(); },
+    [entries.length, rowHeight, resetKey],
+  );
 
   const { start, end } = virtual
     ? fileRowRange(entries.length, viewport.top, viewport.height, rowHeight)

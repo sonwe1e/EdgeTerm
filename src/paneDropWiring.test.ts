@@ -62,7 +62,7 @@ beforeEach(async () => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   localStorage.clear();
   vi.stubGlobal("ResizeObserver", class {
-    observe() {} disconnect() {}
+    observe() {} unobserve() {} disconnect() {}
   });
   // jsdom has no layout, so what sits under the pointer is stated by the test.
   Object.defineProperty(document, "elementFromPoint", {

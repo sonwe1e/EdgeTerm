@@ -50,7 +50,7 @@ beforeEach(() => {
   observers = [];
   vi.stubGlobal("ResizeObserver", class {
     constructor(callback: () => void) { observers.push(callback); }
-    observe() {} disconnect() {}
+    observe() {} unobserve() {} disconnect() {}
   });
   host = document.createElement("div");
   document.body.append(host);
