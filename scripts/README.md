@@ -58,6 +58,26 @@ renders (the old `visibility: hidden` rendered 120 of 120 frames; `display:
 none` renders 0). It proves the renderer pauses in Chromium only; it says
 nothing about WebView2, WebKitGTK or old GPUs.
 
+`check-gutter-alignment.mjs` and `check-app-font-chain.mjs` build the real
+production bundle (the repo's `vite.config.ts`, platform defines included) and
+drive it in headless Chromium; the gutter check also runs under
+`PERF_ENGINE=webkit` (Playwright's WebKit, not WKWebView or WebKitGTK), and
+both honour `PERF_BROWSER` for a system Chromium/Edge channel. The gutter gate
+measures the line-number gutter against the real xterm row rectangles through
+the component hide → resize → show chain and a hidden store font change —
+the dev-mode Vitest contracts do not reproduce the production build's
+timing there. The font gate drives the real App over the production
+`ensureController`/store chain and asserts the audited 12/18px literals
+(App variable, inner row height, date-column font, consecutive-row pitch)
+at 1100px and 760px with 10,000 windowed entries. Both record unexpected
+IPC commands and page/resource errors and exit non-zero on any of them;
+result files go under `.tmp/records/` and are never overwritten. A
+mutant source tree can be checked with `EDGE_APP_FONT_ROOT` (gutter:
+equivalent) pointing at a disposable registered worktree. Boundaries:
+synthetic entries and stubbed IPC prove the front-end measurement and
+chain behaviour in a real browser engine; they say nothing about PTY
+round-trips, WebView2 packaging or real servers.
+
 The older `cdp-*.cjs` and Win32 `.ps1` files are exploratory diagnostics. Use a
 disposable app instance with synthetic local sessions. They can change window
 geometry, renderer settings, instrumentation and CPU throttling; synthetic DOM

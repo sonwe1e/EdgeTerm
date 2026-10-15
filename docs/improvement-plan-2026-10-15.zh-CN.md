@@ -215,6 +215,53 @@ trap+恢复，作迁移范本。
 browser 项目只补 jsdom 无法证明的断言（真实布局、指针捕获、隐藏渲染暂停），
 不重复已有逻辑断言；每个 browser 测试注明证明边界（沿用 scripts/README 措辞风格）。
 
+### 实施状态（2026-10-15，本轮完成）
+
+已按 4.x 配套落地（`@vitest/browser(-playwright) 4.1.11` + `playwright 1.64.1`，
+与仓库 vitest 同版本）。三类生产契约各成 `*.browser.test.ts`（browser 项目，
+不继承 jsdom setup）：
+
+- **VirtualFileRows**：真实滚动容器的顶/底/中覆盖与 runaway 滚动钳制、
+  rowHeight 重测、resetKey 复位、真实 CDP 指针捕获的 keep-alive（滚出窗口保留、
+  释放回收、捕获中 pointermove 投递）与合成事件负对照、≤200 非虚拟路径。
+- **TerminalController fit**：字体就绪后真实像素填充、199/200 行阈值精确边界
+  （小缓冲双轴立即；大缓冲行即列缓、斜向行先列后、最后一次宽度事件获胜且无迟到）、
+  隐藏取消挂起任务且不再 fit、显示立即重测、真实 SessionPane 隐藏/显示链、
+  dispose 无迟到 resize。
+- **ResponsiveLayout**（FtpPane + ResourceMonitorBar）：800px 断点两侧列可见性与
+  表头/行真实对齐、1100px 宽窄 rail 几何、真实 CDP 指针跨面板 drag 上传/下载参数、
+  同侧 drop 无动作、Escape/隐藏中止拖拽。
+
+发现并修复两处真实缺陷（独立 fix 提交，均有旧源失败证据）：
+
+1. `fix: re-measure the terminal cell at the resize boundary`（54cadf8）——
+   gutter 行距在 onResize 同步读取旧 screen 高 ÷ 新 rows（15.34px vs 21px），
+   隐藏首挂载后 fit 返回 null。修复：resize 完成边界的单次重测 + 空提案的
+   一帧重试。
+2. `fix: re-fit the terminal when its host geometry lands and stage hidden
+   font changes`（43dd85c）——WebKit 首显 607px screen > 476px host（gutter
+   宽度后置，pane 级观察器看不到内部收缩）与隐藏字体改动不落地。修复：
+   fit 父级（.term-host）ResizeObserver + 隐藏字体暂存至显示边界落地
+   （最后请求优先，14→26→14 渲染级证明）。
+
+新增两个生产构建门禁（dev 模式 Vitest 无法复现生产时序/完整 App 链）：
+
+- `scripts/check-gutter-alignment.mjs`：gutter 对齐经组件 hide/resize/show 与
+  隐藏字体链，Edge 与 `PERF_ENGINE=webkit`；`fix` 提交前后分别为 3 行为 fail /
+  5 全 pass（edge+webkit），两正常控制恒过。
+- `scripts/check-app-font-chain.mjs`：真实 App → store → FilerPanel → 行距链，
+  12/18px × 1100/760 审计字面矩阵、10k 窗口化、unexpected-IPC 门禁；
+  两个 worktree 变异（App CSS 硬编码 12px、FilerPanel rowHeight 硬编码 26）
+  均使门禁以非零退出。
+
+行为变异（一次性 worktree，已全部清理）：VirtualFileRows keep-alive 删除、
+paneDrop 同侧放行、FIT_BUFFER_THRESHOLD 201、staged-font 早退复原——
+各自对应套件以非零退出。
+
+边界（R1/R5）：以上全部是真实 Chromium/Edge（及 Playwright WebKit）里的
+组件 + 合成数据 + 受控 IPC 契约；不证明 WebView2 打包、GPU 渲染器、真实
+PTY/服务器吞吐或其他平台引擎。
+
 ## #10 终端仿真 —— 第一阶段实施；第二阶段降为探索 spike
 
 第一阶段：`semanticPaint.ts` 直接读写 xterm 6 私有 `_line._data`（3 word/格、
