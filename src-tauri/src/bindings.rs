@@ -2,11 +2,26 @@
 use crate::commands;
 #[test]
 fn export_bindings() {
-    assert_eq!(<crate::model::AuthPrompt as tauri_specta::Event>::NAME, crate::session::auth::EVENT_AUTH_PROMPT);
-    assert_eq!(<crate::session::StateEvent as tauri_specta::Event>::NAME, crate::session::EVENT_STATE);
-    assert_eq!(<crate::session::recording::RecordingErrorEvent as tauri_specta::Event>::NAME, crate::session::recording::EVENT_RECORDING_ERROR);
-    assert_eq!(<crate::remote_edit::RemoteEditEvent as tauri_specta::Event>::NAME, crate::remote_edit::EVENT_REMOTE_EDIT);
-    assert_eq!(<crate::file_transfer::Snapshot as tauri_specta::Event>::NAME, crate::file_transfer::EVENT);
+    assert_eq!(
+        <crate::model::AuthPrompt as tauri_specta::Event>::NAME,
+        crate::session::auth::EVENT_AUTH_PROMPT
+    );
+    assert_eq!(
+        <crate::session::StateEvent as tauri_specta::Event>::NAME,
+        crate::session::EVENT_STATE
+    );
+    assert_eq!(
+        <crate::session::recording::RecordingErrorEvent as tauri_specta::Event>::NAME,
+        crate::session::recording::EVENT_RECORDING_ERROR
+    );
+    assert_eq!(
+        <crate::remote_edit::RemoteEditEvent as tauri_specta::Event>::NAME,
+        crate::remote_edit::EVENT_REMOTE_EDIT
+    );
+    assert_eq!(
+        <crate::file_transfer::Snapshot as tauri_specta::Event>::NAME,
+        crate::file_transfer::EVENT
+    );
     let builder = tauri_specta::Builder::<tauri::Wry>::new()
         .commands(tauri_specta::collect_commands![
             commands::list_profiles,
@@ -102,9 +117,13 @@ fn export_bindings() {
             commands::list_serial_ports,
             crate::window_control
         ])
-        .events(tauri_specta::collect_events![crate::model::AuthPrompt, crate::session::StateEvent,
-            crate::session::recording::RecordingErrorEvent, crate::remote_edit::RemoteEditEvent,
-            crate::file_transfer::Snapshot])
+        .events(tauri_specta::collect_events![
+            crate::model::AuthPrompt,
+            crate::session::StateEvent,
+            crate::session::recording::RecordingErrorEvent,
+            crate::remote_edit::RemoteEditEvent,
+            crate::file_transfer::Snapshot
+        ])
         .typ::<crate::model::OpenSessionOutcome>()
         .typ::<crate::model::SessionProfile>()
         .typ::<crate::model::AppData>()
@@ -113,7 +132,9 @@ fn export_bindings() {
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)
         // Existing Tauri JSON wire uses numbers; retain its >2^53 precision boundary.
         .dangerously_cast_bigints_to_number();
-    let target = std::env::var("EDGETERM_BINDINGS_OUT")
-        .unwrap_or_else(|_| "../src/bindings.ts".into());
-    builder.export(specta_typescript::Typescript::default(), target).unwrap();
+    let target =
+        std::env::var("EDGETERM_BINDINGS_OUT").unwrap_or_else(|_| "../src/bindings.ts".into());
+    builder
+        .export(specta_typescript::Typescript::default(), target)
+        .unwrap();
 }
