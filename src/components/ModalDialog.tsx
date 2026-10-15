@@ -35,6 +35,8 @@ interface Props {
   labelledBy?: string;
   ariaLabel?: string;
   headerClassName?: string;
+  /** Explicit initial focus for security-sensitive choices. */
+  initialFocus?: string;
   /**
    * Extra class on the inner content box (confirm-dialog, ...). With
    * bare, the box carries ONLY this class — for dialogs with their own
@@ -80,6 +82,7 @@ export function ModalDialog({
   labelledBy,
   ariaLabel,
   headerClassName,
+  initialFocus,
   contentClassName,
   bare = false,
   onKeyDown,
@@ -105,6 +108,8 @@ export function ModalDialog({
   const openedNatively = useRef(false);
   const onKeyDownRef = useRef(onKeyDown);
   onKeyDownRef.current = onKeyDown;
+  const initialFocusRef = useRef(initialFocus);
+  initialFocusRef.current = initialFocus;
   const dismissableRef = useRef(dismissable);
   dismissableRef.current = dismissable;
   /**
@@ -200,6 +205,8 @@ export function ModalDialog({
       if (!fallbackStack.includes(dialog)) fallbackStack.push(dialog);
       focusContent();
     }
+    const focusSelector = initialFocusRef.current;
+    if (focusSelector) dialog.querySelector<HTMLElement>(focusSelector)?.focus();
     return () => {
       closeOpenedDialog(dialog);
       dialog.classList.remove("is-fallback");

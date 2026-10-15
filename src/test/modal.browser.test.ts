@@ -2,6 +2,7 @@ import { createElement as h, StrictMode, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 import { browserAfterEach, mount, twoFrames } from "./browserHarness";
+import { HostKeyDialog } from "../components/HostKeyDialog";
 import { ModalDialog } from "../components/ModalDialog";
 import "../styles.css";
 
@@ -65,4 +66,24 @@ for (const fallback of [false, true]) describe(fallback ? "fallback modal" : "na
     await userEvent.keyboard("{Escape}");
     expect(close).not.toHaveBeenCalled();
   });
+});
+
+it("host-key acceptance stays explicit and busy dismissal is blocked", async () => {
+  const cancel = vi.fn();
+  let finish!: () => void;
+  const accept = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
+  mount(h(HostKeyDialog, { prompt: { sessionId: "fixture", profile: { id: "fixture", name: "fixture", kind: "ssh" }, change: {
+    host: "fixture.invalid", port: 22, keyType: "ssh-ed25519", fingerprint: "SHA256:fixture",
+    publicKey: "fixture", message: "changed", knownHosts: "fixture/known_hosts", line: 1,
+  } }, onAccept: accept, onCancel: cancel }));
+  await twoFrames();
+  await userEvent.keyboard("{Enter}");
+  expect(accept).not.toHaveBeenCalled();
+  expect(cancel).toHaveBeenCalledTimes(1);
+  const buttons = document.querySelectorAll<HTMLButtonElement>("dialog button");
+  await userEvent.click(buttons[buttons.length - 1]);
+  expect(accept).toHaveBeenCalledTimes(1);
+  await userEvent.keyboard("{Escape}");
+  expect(cancel).toHaveBeenCalledTimes(1);
+  finish();
 });

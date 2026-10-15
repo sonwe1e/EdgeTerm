@@ -47,6 +47,7 @@ export function HostKeyDialog({ prompt, onAccept, onCancel }: Props) {
   return (
     <ModalDialog
       open
+      initialFocus=".btn:not(.is-danger)"
       role="alertdialog"
       labelledBy="host-key-title"
       contentClassName="confirm-dialog host-key-dialog"
