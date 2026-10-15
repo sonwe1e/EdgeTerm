@@ -4,10 +4,12 @@ import { readMonitorSettings, saveMonitorSettings } from "../monitorSettings";
 import { transferBytes } from "../fileTransfers";
 import { useStore, type Tab } from "../store";
 import { usePopoverDismiss } from "./usePopoverDismiss";
+import { useT } from "../useT";
 
 const percent = (value:number | null) => value === null ? "—" : `${value.toFixed(1)}%`;
 const rate = (value:number | null) => value === null ? "—" : `${transferBytes(Math.round(value))}/s`;
 export const ResourceMonitorBar = memo(function ResourceMonitorBar({tab}:{tab:Tab | undefined}) {
+  const t = useT();
   const revision = useStore((state) => state.panelPreferencesRevision);
   const [settings,setSettings] = useState(readMonitorSettings);
   const [visible,setVisible] = useState(() => !document.hidden);
@@ -46,31 +48,31 @@ export const ResourceMonitorBar = memo(function ResourceMonitorBar({tab}:{tab:Ta
   const update=(value:typeof settings)=>{setSettings(value);saveMonitorSettings(value);};
   const memory=sample?.memory;const capacity=sample?.capacity;
   const gpu=sample?.gpuStatus==="ok" ? sample.gpus.find((value)=>value.index===gpuIndex) ?? sample.gpus[0] : undefined;
-  const summary= !settings.enabled ? "Resources off" : sample?.status==="unsupported" ? "Resources unsupported" : sample ?
-    `CPU ${percent(sample.cpuPercent)} · RAM ${memory ? percent(memory.usedBytes/memory.totalBytes*100) : "—"} · Disk ${capacity ? percent(capacity.usedBytes/capacity.totalBytes*100) : "—"} · Net ↓${rate(sample.networkReceiveBps)} ↑${rate(sample.networkSendBps)} · GPU ${gpu ? percent(gpu.utilization) : sample.gpuStatus}` : error ? "Resources unavailable" : "Reading resources…";
+  const summary= !settings.enabled ? t("monitor.resourcesOff") : sample?.status==="unsupported" ? t("monitor.resourcesUnsupported") : sample ?
+    `CPU ${percent(sample.cpuPercent)} · RAM ${memory ? percent(memory.usedBytes/memory.totalBytes*100) : "—"} · Disk ${capacity ? percent(capacity.usedBytes/capacity.totalBytes*100) : "—"} · Net ↓${rate(sample.networkReceiveBps)} ↑${rate(sample.networkSendBps)} · GPU ${gpu ? percent(gpu.utilization) : sample.gpuStatus}` : error ? t("monitor.resourcesUnavailable") : t("monitor.readingResources");
   return <div className="resource-monitor" ref={container}>
-    <button type="button" className={`status-item resource-summary${error?" is-stale":""}`} title={`${tab?.info.address} · ${summary}${error ? ` · stale: ${error}` : ""}`} aria-expanded={open} onClick={()=>setOpen(!open)}>
-      <span className="resource-wide">{summary}</span><span className="resource-compact">Resources{sample?.cpuPercent != null ? ` · CPU ${percent(sample.cpuPercent)}` : ""}{error ? " · stale" : ""}</span>
+    <button type="button" className={`status-item resource-summary${error?" is-stale":""}`} title={`${tab?.info.address} · ${summary}${error ? t("monitor.stale", { error }) : ""}`} aria-expanded={open} onClick={()=>setOpen(!open)}>
+      <span className="resource-wide">{summary}</span><span className="resource-compact">{t("monitor.resources")}{sample?.cpuPercent != null ? t("monitor.cpuCompact", { value: percent(sample.cpuPercent) }) : ""}{error ? t("monitor.staleCompact") : ""}</span>
     </button>
-    {open && <section className="resource-popover" aria-label="SSH host resources">
-      <div className="resource-heading"><strong>{tab?.info.address}</strong><button type="button" aria-label="Close resources" onClick={()=>setOpen(false)}>×</button></div>
-      <label><input type="checkbox" aria-label="Monitor current SSH host" checked={settings.enabled} onChange={(event)=>update({...settings,enabled:event.target.checked})} /> Monitor current SSH host</label>
-      <label>Sample every <input type="number" aria-label="Resource sample interval in seconds" min={1} max={30} value={settings.intervalSeconds} onChange={(event)=>{const value=Number(event.target.value);if(Number.isInteger(value)&&value>=1&&value<=30)update({...settings,intervalSeconds:value});}} /> s</label>
-      <button type="button" disabled={!settings.enabled} onClick={()=>setAttempt((value)=>value+1)}>Refresh resources</button>
-      {error && <div role="alert">Stale / unavailable: {error}</div>}
-      {sample?.status==="unsupported" && <p>Resource sampling currently supports Linux SSH hosts.</p>}
+    {open && <section className="resource-popover" aria-label={t("monitor.sshHostResources")}>
+      <div className="resource-heading"><strong>{tab?.info.address}</strong><button type="button" aria-label={t("monitor.closeResources")} onClick={()=>setOpen(false)}>×</button></div>
+      <label><input type="checkbox" aria-label={t("monitor.monitorCurrentHost")} checked={settings.enabled} onChange={(event)=>update({...settings,enabled:event.target.checked})} /> {t("monitor.monitorCurrentHost")}</label>
+      <label>{t("monitor.sampleEvery")} <input type="number" aria-label={t("monitor.sampleIntervalAria")} min={1} max={30} value={settings.intervalSeconds} onChange={(event)=>{const value=Number(event.target.value);if(Number.isInteger(value)&&value>=1&&value<=30)update({...settings,intervalSeconds:value});}} /> s</label>
+      <button type="button" disabled={!settings.enabled} onClick={()=>setAttempt((value)=>value+1)}>{t("monitor.refreshResources")}</button>
+      {error && <div role="alert">{t("monitor.staleUnavailable", { error })}</div>}
+      {sample?.status==="unsupported" && <p>{t("monitor.samplingLinux")}</p>}
       {sample && <dl>
-        <dt>CPU</dt><dd>{percent(sample.cpuPercent)} · {sample.cpuStatus}{sample.cpuPercent===null && sample.cpuStatus==="ok" ? " · waiting for another sample" : ""}</dd>
-        <dt>Memory</dt><dd>{memory ? `${transferBytes(memory.usedBytes)} / ${transferBytes(memory.totalBytes)}` : sample.memoryStatus}</dd>
-        <dt>Disk capacity {capacity?.mount}</dt><dd>{capacity ? `${transferBytes(capacity.usedBytes)} / ${transferBytes(capacity.totalBytes)}` : sample.capacityStatus}</dd>
-        <dt>Disk I/O</dt><dd>Read {rate(sample.diskReadBps)} · Write {rate(sample.diskWriteBps)} · {sample.diskStatus}</dd>
-        <dt>Network</dt><dd>Receive {rate(sample.networkReceiveBps)} · Send {rate(sample.networkSendBps)} · {sample.networkStatus}</dd>
+        <dt>CPU</dt><dd>{percent(sample.cpuPercent)} · {sample.cpuStatus}{sample.cpuPercent===null && sample.cpuStatus==="ok" ? t("monitor.waitingSample") : ""}</dd>
+        <dt>{t("monitor.memory")}</dt><dd>{memory ? `${transferBytes(memory.usedBytes)} / ${transferBytes(memory.totalBytes)}` : sample.memoryStatus}</dd>
+        <dt>{t("monitor.diskCapacity")} {capacity?.mount}</dt><dd>{capacity ? `${transferBytes(capacity.usedBytes)} / ${transferBytes(capacity.totalBytes)}` : sample.capacityStatus}</dd>
+        <dt>{t("monitor.diskIo")}</dt><dd>{t("monitor.read")} {rate(sample.diskReadBps)} · {t("monitor.write")} {rate(sample.diskWriteBps)} · {sample.diskStatus}</dd>
+        <dt>{t("monitor.network")}</dt><dd>{t("monitor.receive")} {rate(sample.networkReceiveBps)} · {t("monitor.send")} {rate(sample.networkSendBps)} · {sample.networkStatus}</dd>
         <dt>GPU</dt><dd>{sample.gpuStatus}
-          {sample.gpus.length>1 && <select aria-label="GPU device" value={gpu?.index ?? ""} onChange={(event)=>setGpuIndex(Number(event.target.value))}>{sample.gpus.map((value)=><option key={value.index} value={value.index}>{value.index}: {value.name}</option>)}</select>}
-          {gpu && <><div>{gpu.name} · {percent(gpu.utilization)}</div><div>{gpu.usedBytes===null||gpu.totalBytes===null ? "VRAM unavailable" : `${transferBytes(gpu.usedBytes)} / ${transferBytes(gpu.totalBytes)}`}{gpu.temperature!==null && ` · ${gpu.temperature}°C`}</div></>}
+          {sample.gpus.length>1 && <select aria-label={t("monitor.gpuDevice")} value={gpu?.index ?? ""} onChange={(event)=>setGpuIndex(Number(event.target.value))}>{sample.gpus.map((value)=><option key={value.index} value={value.index}>{value.index}: {value.name}</option>)}</select>}
+          {gpu && <><div>{gpu.name} · {percent(gpu.utilization)}</div><div>{gpu.usedBytes===null||gpu.totalBytes===null ? t("monitor.vramUnavailable") : `${transferBytes(gpu.usedBytes)} / ${transferBytes(gpu.totalBytes)}`}{gpu.temperature!==null && ` · ${gpu.temperature}°C`}</div></>}
         </dd>
       </dl>}
-      <p>Rates need two samples. Disk capacity is for the root filesystem; disk I/O covers whole devices without partitions or device-mapper duplicates. Network uses physical interfaces when exposed, otherwise non-loopback interfaces. GPU queries currently cover NVIDIA.</p>
+      <p>{t("monitor.detailNote")}</p>
     </section>}
   </div>;
 });

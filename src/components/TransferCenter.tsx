@@ -6,6 +6,7 @@ import { readTransferOptions, saveTransferOptions, validRateLimitBps } from "../
 import { useStore } from "../store";
 import { VirtualFileRows } from "./VirtualFileRows";
 import { usePopoverDismiss } from "./usePopoverDismiss";
+import { useT } from "../useT";
 
 /** KiB/s the user typed, or 0 for unlimited; the backend stores bytes per second. */
 function rateKib(options: api.TransferOptions): number {
@@ -13,6 +14,7 @@ function rateKib(options: api.TransferOptions): number {
 }
 
 export function TransferCenter() {
+  const t = useT();
   const records = useFileTransfers((s) => s.jobs);
   const [open, setOpen] = useState(false);
   const container=useRef<HTMLDivElement>(null);
@@ -87,89 +89,89 @@ export function TransferCenter() {
     } catch (e) { setError(String(e)); }
   };
   return <div className="transfer-center" ref={container}>
-    <button className="status-item" type="button" aria-expanded={open} onClick={() => setOpen(!open)} title="Background transfers">
-      <Icon name="cloud-download" /> Transfers{active > 0 ? ` (${active})` : failed > 0 ? ` (${failed} failed)` : ""}
+    <button className="status-item" type="button" aria-expanded={open} onClick={() => setOpen(!open)} title={t("transfer.backgroundTitle")}>
+      <Icon name="cloud-download" /> {t("transfer.transfers")}{active > 0 ? ` (${active})` : failed > 0 ? t("transfer.failedCountParen", { count: failed }) : ""}
     </button>
-    {open && <section className="transfer-center-popover" aria-label="Background transfers">
-      <div className="transfer-center-heading"><strong>Transfers</strong><button type="button" onClick={() => setOpen(false)} aria-label="Close transfers">×</button></div>
-      <p>Transfers continue while this app is open, including when you switch tabs. Pause keeps partial files; Cancel cleans them up when the server is reachable. Up to 2 transfers run at once per server endpoint; the rest wait in the queue and can be paused or cancelled there.</p>
-      <details className="transfer-settings"><summary>Settings for new transfers</summary>
+    {open && <section className="transfer-center-popover" aria-label={t("transfer.backgroundTitle")}>
+      <div className="transfer-center-heading"><strong>{t("transfer.transfers")}</strong><button type="button" onClick={() => setOpen(false)} aria-label={t("transfer.closeTransfers")}>×</button></div>
+      <p>{t("transfer.intro")}</p>
+      <details className="transfer-settings"><summary>{t("transfer.settingsSummary")}</summary>
         <div className="transfer-job-actions">
-          <label>SFTP requests <input aria-label="SFTP requests" type="number" min={1} max={32} value={options.requests} onChange={(e) => {
+          <label>{t("transfer.requestsLabel")} <input aria-label={t("transfer.requestsLabel")} type="number" min={1} max={32} value={options.requests} onChange={(e) => {
             const requests = Number(e.target.value); if (!Number.isInteger(requests) || requests < 1 || requests > 32) return;
             const next = { ...options, requests }; setOptions(next); saveTransferOptions(next);
           }} /></label>
-          <label>Chunk (KiB) <input aria-label="Chunk size in KiB" type="number" min={16} max={256} value={options.chunkKib} onChange={(e) => {
+          <label>{t("transfer.chunkLabel")} <input aria-label={t("transfer.chunkAria")} type="number" min={16} max={256} value={options.chunkKib} onChange={(e) => {
             const chunkKib = Number(e.target.value); if (!Number.isInteger(chunkKib) || chunkKib < 16 || chunkKib > 256) return;
             const next = { ...options, chunkKib }; setOptions(next); saveTransferOptions(next);
           }} /></label>
-          <label>Files <input aria-label="Concurrent files" type="number" min={1} max={32} value={options.files} onChange={(e) => {
+          <label>{t("transfer.filesLabel")} <input aria-label={t("transfer.concurrentFilesAria")} type="number" min={1} max={32} value={options.files} onChange={(e) => {
             const files = Number(e.target.value); if (!Number.isInteger(files) || files < 1 || files > 32) return;
             const next = { ...options, files }; setOptions(next); saveTransferOptions(next);
           }} /></label>
-          <label>Rate limit (KiB/s) <input aria-label="Rate limit in KiB per second, 0 for unlimited" type="number" min={0} max={1048576} value={rateKib(options)} onChange={(e) => {
+          <label>{t("transfer.rateLimitLabel")} <input aria-label={t("transfer.rateLimitAria")} type="number" min={0} max={1048576} value={rateKib(options)} onChange={(e) => {
             const kib = Number(e.target.value); if (!Number.isInteger(kib) || kib < 0 || kib > 1048576) return;
             const rateLimitBps = kib * 1024; if (!validRateLimitBps(rateLimitBps)) return;
             const next = { ...options, rateLimitBps }; setOptions(next); saveTransferOptions(next);
           }} /></label>
-          <label className="transfer-durable"><input aria-label="Flush each file on the server before committing" type="checkbox" checked={options.durable} onChange={(e) => {
+          <label className="transfer-durable"><input aria-label={t("transfer.durableAria")} type="checkbox" checked={options.durable} onChange={(e) => {
             const next = { ...options, durable: e.target.checked }; setOptions(next); saveTransferOptions(next);
-          }} /> Durable writes (fsync)</label>
-          <label className="transfer-durable"><input aria-label="Stream folder uploads as a tar archive" type="checkbox" checked={options.tar} onChange={(e) => {
+          }} /> {t("transfer.durableLabel")}</label>
+          <label className="transfer-durable"><input aria-label={t("transfer.tarAria")} type="checkbox" checked={options.tar} onChange={(e) => {
             const next = { ...options, tar: e.target.checked }; setOptions(next); saveTransferOptions(next);
-          }} /> Tar stream for folder uploads</label>
-        </div><p>SFTP requests, Chunk, Files and the rate limit apply within each transfer task. Requests is the ceiling on data requests one task keeps in flight and Files the ceiling on files it moves at once — they are not the number of parallel tasks. Server limits may lower these values. FTP uses up to four file connections. Durable writes require SFTP server support; uploads fail if the server cannot confirm a flush. This option does not apply to downloads.</p>
-        <p>Rate limit is the whole-task network payload budget in KiB per second, shared by every file, request and data connection that task moves over the wire — uploads, downloads and the remote read-back a resume verifies. Protocol control messages and purely local disk work are not counted; 0 means unlimited. It applies to new tasks only — a running task keeps the limit it started with.</p>
-        <p>Tar stream packs a folder upload into one archive and pipes it into <code>tar -xf -</code> on the server. It needs a remote tar with <code>-k</code> and a POSIX shell, and only works for a folder upload into a target directory that does not exist or is empty. There is no per-file resume, no per-file conflict detection and no atomic commit: progress counts the bytes packed on this machine, cancelling leaves whatever tar had already extracted, and a retry starts the whole folder again. Folder names are sent as UTF-8, so a server whose locale is not UTF-8 stores them mangled.</p>
+          }} /> {t("transfer.tarLabel")}</label>
+        </div><p>{t("transfer.settingsNote")}</p>
+        <p>{t("transfer.rateLimitNote")}</p>
+        <p>{t("transfer.tarNote1")}<code>tar -xf -</code>{t("transfer.tarNote2")}<code>-k</code>{t("transfer.tarNote3")}</p>
       </details>
       {error && <div role="alert" className="transfer-job-error">{error}</div>}
       {(recoveryError || recoverable.length > 0) && <details className="transfer-recovery" open>
-        <summary>Interrupted transfers{recoverable.length > 0 ? ` (${recoverable.length})` : ""}</summary>
-        <p>Resume needs an open session to the same server. SFTP reuses its authenticated SSH connection; FTP opens transfer connections with that session's credentials. Forget removes only the local recovery record; partial files remain for manual cleanup.</p>
+        <summary>{t("transfer.interrupted")}{recoverable.length > 0 ? ` (${recoverable.length})` : ""}</summary>
+        <p>{t("transfer.recoveryNote")}</p>
         {recoveryError && <div role="alert" className="transfer-job-error">{recoveryError}</div>}
         <div className="transfer-recovery-rows"><VirtualFileRows entries={recoveryRows} rowHeight={112} resetKey="recovery">{(entry) => {
           const whom = [entry.username, entry.host].filter(Boolean).join("@") + (entry.port ? `:${entry.port}` : "");
           return <article className="transfer-job" key={entry.id}>
-          <div className="transfer-job-title"><strong title={entry.name}>{entry.name}</strong><span>{entry.unrecognized ? "unrecognized" : entry.kind}</span></div>
+          <div className="transfer-job-title"><strong title={entry.name}>{entry.name}</strong><span>{entry.unrecognized ? t("transfer.unrecognized") : entry.kind}</span></div>
           <div className="transfer-job-details">{entry.unrecognized
-            ? "This journal cannot be attributed safely; it can only be forgotten."
-            : `${whom || "unknown endpoint"} · ${entry.items} item(s) · ${entry.checkpoints} checkpoint(s)`}</div>
+            ? t("transfer.unrecognizedNote")
+            : `${whom || t("transfer.unknownEndpoint")} · ${t("transfer.itemsCount", { count: entry.items })} · ${t("transfer.checkpointsCount", { count: entry.checkpoints })}`}</div>
           {!entry.unrecognized && <div className="transfer-job-actions">
-            <button type="button" onClick={() => void recover(entry.id)}>Resume</button>
-            <button type="button" onClick={() => void forget(entry.id)}>Forget</button>
+            <button type="button" onClick={() => void recover(entry.id)}>{t("transfer.resume")}</button>
+            <button type="button" onClick={() => void forget(entry.id)}>{t("transfer.forget")}</button>
           </div>}
           {entry.unrecognized && <div className="transfer-job-actions">
-            <button type="button" onClick={() => void forget(entry.id)}>Forget</button>
+            <button type="button" onClick={() => void forget(entry.id)}>{t("transfer.forget")}</button>
           </div>}
         </article>; }}</VirtualFileRows></div>
       </details>}
-      {jobs.length === 0 && recoverable.length === 0 && <p>No transfers yet.</p>}
+      {jobs.length === 0 && recoverable.length === 0 && <p>{t("transfer.noTransfers")}</p>}
       <div className="transfer-center-jobs">
         <VirtualFileRows entries={jobRows} rowHeight={192} resetKey="transfer-jobs">{(job) => {
           const percent = job.total > 0 ? Math.min(100, job.transferred / job.total * 100) : 0;
           const eta = job.bytesPerSecond > 0 && job.total > job.transferred ? Math.ceil((job.total - job.transferred) / job.bytesPerSecond) : null;
-          const limit = job.options.rateLimitBps > 0 ? `${transferBytes(job.options.rateLimitBps)}/s limit` : "no limit";
+          const limit = job.options.rateLimitBps > 0 ? t("transfer.rateLimit", { value: transferBytes(job.options.rateLimitBps) }) : t("transfer.noLimit");
           return <article className="transfer-job" key={job.id}>
             <div className="transfer-job-title"><strong title={job.name}>{job.name}</strong><span>{job.status}</span></div>
-            <div className="transfer-job-details">{job.phase} · {job.completedFiles}/{job.totalFiles} files · {transferBytes(job.transferred)} / {transferBytes(job.total)}</div>
-            <progress max={100} value={percent} aria-label={`${job.name} progress`} />
-            {job.status === "running" && <div className="transfer-job-details">{transferBytes(job.bytesPerSecond)}/s · {limit}{eta !== null ? ` · about ${eta}s remaining` : ""}</div>}
-            {job.status !== "running" && job.options.rateLimitBps > 0 && <div className="transfer-job-details">{limit} (kept from start)</div>}
+            <div className="transfer-job-details">{job.phase} · {t("transfer.filesCount", { done: job.completedFiles, total: job.totalFiles })} · {transferBytes(job.transferred)} / {transferBytes(job.total)}</div>
+            <progress max={100} value={percent} aria-label={t("transfer.jobProgress", { name: job.name })} />
+            {job.status === "running" && <div className="transfer-job-details">{transferBytes(job.bytesPerSecond)}/s · {limit}{eta !== null ? t("transfer.etaRemaining", { seconds: eta }) : ""}</div>}
+            {job.status !== "running" && job.options.rateLimitBps > 0 && <div className="transfer-job-details">{limit}{t("transfer.limitKept")}</div>}
             {job.error && <div className="transfer-job-error transfer-job-message" title={job.error.message}>{job.error.message}</div>}
-            {job.failedFiles.length > 0 && <button type="button" className="transfer-failure-button" onClick={() => setFailureJob(failureJob === job.id ? null : job.id)}>View {job.failedFiles.length} failed file(s)</button>}
+            {job.failedFiles.length > 0 && <button type="button" className="transfer-failure-button" onClick={() => setFailureJob(failureJob === job.id ? null : job.id)}>{t("transfer.viewFailedFiles", { count: job.failedFiles.length })}</button>}
             <div className="transfer-job-actions">
-              {["queued", "running", "retrying"].includes(job.status) && <button type="button" onClick={() => void control(job.id, "pause")}>Pause</button>}
-              {job.status === "paused" && <button type="button" onClick={() => void control(job.id, "resume")}>Resume</button>}
-              {job.status === "error" && <button type="button" onClick={() => void control(job.id, "retry")}>Retry unfinished files</button>}
-              {!["complete", "cancelled", "cancelling"].includes(job.status) && <button type="button" onClick={() => void control(job.id, "cancel")}>Cancel</button>}
-              {job.status === "cancelled" && job.error && <button type="button" onClick={() => void control(job.id, "cancel")}>Retry cleanup</button>}
-              {["complete", "cancelled"].includes(job.status) && !job.error && <button type="button" onClick={() => void control(job.id, "dismiss")}>Dismiss</button>}
+              {["queued", "running", "retrying"].includes(job.status) && <button type="button" onClick={() => void control(job.id, "pause")}>{t("transfer.pause")}</button>}
+              {job.status === "paused" && <button type="button" onClick={() => void control(job.id, "resume")}>{t("transfer.resume")}</button>}
+              {job.status === "error" && <button type="button" onClick={() => void control(job.id, "retry")}>{t("transfer.retryUnfinished")}</button>}
+              {!["complete", "cancelled", "cancelling"].includes(job.status) && <button type="button" onClick={() => void control(job.id, "cancel")}>{t("common.cancel")}</button>}
+              {job.status === "cancelled" && job.error && <button type="button" onClick={() => void control(job.id, "cancel")}>{t("transfer.retryCleanup")}</button>}
+              {["complete", "cancelled"].includes(job.status) && !job.error && <button type="button" onClick={() => void control(job.id, "dismiss")}>{t("transfer.dismiss")}</button>}
             </div>
           </article>;
         }}</VirtualFileRows>
       </div>
-      {failureJob && records[failureJob] && <section aria-label="Failed transfer files" className="transfer-failures">
-        <div className="transfer-center-heading"><strong title={records[failureJob].name}>{records[failureJob].name} · {failureRows.length} failed files</strong><button type="button" aria-label="Close failed files" onClick={() => setFailureJob(null)}>×</button></div>
+      {failureJob && records[failureJob] && <section aria-label={t("transfer.failedFilesSection")} className="transfer-failures">
+        <div className="transfer-center-heading"><strong title={records[failureJob].name}>{records[failureJob].name} · {t("transfer.failedFilesCount", { count: failureRows.length })}</strong><button type="button" aria-label={t("transfer.closeFailedFiles")} onClick={() => setFailureJob(null)}>×</button></div>
         <div className="transfer-failure-rows"><VirtualFileRows entries={failureRows} rowHeight={40} resetKey={failureJob}>{(file) => <div className="transfer-failure-row" title={file.message}>{file.message}</div>}</VirtualFileRows></div>
       </section>}
     </section>}

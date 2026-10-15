@@ -4,6 +4,7 @@ import { transferBytes } from "../fileTransfers";
 import { useActiveTab } from "../store";
 import { VirtualFileRows } from "./VirtualFileRows";
 import { usePopoverDismiss } from "./usePopoverDismiss";
+import { useT } from "../useT";
 
 const defaults: api.PortForwardSpec = { direction: "local", listenHost: "127.0.0.1", listenPort: 0, targetHost: "127.0.0.1", targetPort: 8080 };
 const endpoint = (host: string, port: number) => `${host.includes(":") ? `[${host}]` : host}:${port || "auto"}`;
@@ -11,6 +12,7 @@ const active = (row: api.PortForward) => ["starting", "listening", "stopping"].i
 const loopback = (host: string) => ["127.0.0.1", "::1", "localhost"].includes(host.toLowerCase());
 
 export const ForwardCenter = memo(function ForwardCenter() {
+  const t = useT();
   const tab = useActiveTab();
   const owner = tab?.info.id;
   const eligible = tab?.state === "connected" && (tab.info.kind === "ssh" || tab.info.kind === "sftp");
@@ -69,37 +71,37 @@ export const ForwardCenter = memo(function ForwardCenter() {
   const count = rows.filter(active).length;
   const valid = spec.listenHost.trim().length > 0 && spec.targetHost.trim().length > 0 && Number.isInteger(spec.listenPort) && spec.listenPort >= 0 && spec.listenPort <= 65535 && Number.isInteger(spec.targetPort) && spec.targetPort >= 1 && spec.targetPort <= 65535;
   return <div className="forward-center" ref={container}>
-    <button type="button" className="status-item" aria-expanded={open} onClick={() => setOpen(!open)}>Tunnels{count ? ` (${count})` : ""}</button>
-    {open && <section className="forward-popover" aria-label="SSH port forwarding">
-      <div className="resource-heading"><strong>SSH port forwarding</strong><button type="button" aria-label="Close tunnels" onClick={() => setOpen(false)}>×</button></div>
+    <button type="button" className="status-item" aria-expanded={open} onClick={() => setOpen(!open)}>{t("forward.tunnels")}{count ? ` (${count})` : ""}</button>
+    {open && <section className="forward-popover" aria-label={t("forward.sshPortForwarding")}>
+      <div className="resource-heading"><strong>{t("forward.sshPortForwarding")}</strong><button type="button" aria-label={t("forward.closeTunnels")} onClick={() => setOpen(false)}>×</button></div>
       {error && <div role="alert">{error}</div>}
       {eligible && owner ? <form onSubmit={(event) => { event.preventDefault(); if (valid && !busy) void perform(() => api.startPortForward(owner, { ...spec, listenHost: spec.listenHost.trim(), targetHost: spec.targetHost.trim() })); }}>
-        <p>New tunnel belongs to {tab.info.address}. Closing that tab stops its tunnels.</p>
-        <label>Direction <select aria-label="Tunnel direction" value={spec.direction} onChange={(event) => setSpec({ ...spec, direction: event.target.value as api.PortForwardSpec["direction"] })}><option value="local">Local → SSH host (L)</option><option value="remote">SSH host → local (R)</option></select></label>
-        <div className="forward-fields"><label>Listen on {spec.direction === "local" ? "this computer" : "SSH host"}<input aria-label="Tunnel listener host" value={spec.listenHost} onChange={(event) => setSpec({ ...spec, listenHost: event.target.value })} /></label><label>Port (0 = auto)<input aria-label="Tunnel listener port" type="number" min={0} max={65535} value={spec.listenPort} onChange={(event) => setSpec({ ...spec, listenPort: Number(event.target.value) })} /></label></div>
-        <div className="forward-fields"><label>Target on {spec.direction === "local" ? "SSH host" : "this computer"}<input aria-label="Tunnel target host" value={spec.targetHost} onChange={(event) => setSpec({ ...spec, targetHost: event.target.value })} /></label><label>Port<input aria-label="Tunnel target port" type="number" min={1} max={65535} value={spec.targetPort} onChange={(event) => setSpec({ ...spec, targetPort: Number(event.target.value) })} /></label></div>
-        {!loopback(spec.listenHost) && <p className="is-warning">This listener may accept connections from other computers. Remote binding also depends on the SSH server's GatewayPorts policy.</p>}
-        {spec.direction === "remote" && loopback(spec.listenHost) && <p>The SSH server controls the final bind address. Its GatewayPorts policy can override the requested loopback binding.</p>}
-        <button type="submit" disabled={!valid || busy}>Create tunnel</button>
-      </form> : <p>Connect an SSH or SFTP tab to create tunnels and discover its listening ports.</p>}
-      <h4>Remote listening ports</h4><button type="button" disabled={!eligible || scanning} onClick={() => setRefresh((value) => value + 1)}>Refresh ports</button>
-      {scanning && <p>Reading remote listeners…</p>}{scanError && <div role="alert">{scanError}</div>}
-      {discovery?.status === "unsupported" && <p>Listener discovery requires Linux with ss or netstat.</p>}
-      {discovery?.status === "ok" && <><p>{discovery.ports.length} listeners{discovery.truncated ? " (result limit reached)" : ""}. Process names may require server permissions. Choose a port to fill the draft.</p><div className="forward-list forward-discovery">
-        <VirtualFileRows entries={discovery.ports.map((port) => ({ ...port, path: `${port.host}:${port.port}` }))} rowHeight={38} resetKey={owner ?? ""}>{(port) => <div className="forward-listener" key={port.path}><span title={port.process ?? "Process unavailable"}>{endpoint(port.host, port.port)}{port.process && <small>{port.process}</small>}</span><button type="button" onClick={() => setSpec({ ...defaults, targetHost: port.host === "::" ? "::1" : ["*", "0.0.0.0"].includes(port.host) ? "127.0.0.1" : port.host, targetPort: port.port })}>Use port {port.port}</button></div>}</VirtualFileRows>
+        <p>{t("forward.newTunnelOwner", { address: tab.info.address })}</p>
+        <label>{t("forward.directionLabel")} <select aria-label={t("forward.directionAria")} value={spec.direction} onChange={(event) => setSpec({ ...spec, direction: event.target.value as api.PortForwardSpec["direction"] })}><option value="local">{t("forward.dirLocal")}</option><option value="remote">{t("forward.dirRemote")}</option></select></label>
+        <div className="forward-fields"><label>{t("forward.listenOnLabel")} {spec.direction === "local" ? t("forward.thisComputer") : t("forward.sshHost")}<input aria-label={t("forward.listenerHostAria")} value={spec.listenHost} onChange={(event) => setSpec({ ...spec, listenHost: event.target.value })} /></label><label>{t("forward.portAutoLabel")}<input aria-label={t("forward.listenerPortAria")} type="number" min={0} max={65535} value={spec.listenPort} onChange={(event) => setSpec({ ...spec, listenPort: Number(event.target.value) })} /></label></div>
+        <div className="forward-fields"><label>{t("forward.targetOnLabel")} {spec.direction === "local" ? t("forward.sshHost") : t("forward.thisComputer")}<input aria-label={t("forward.targetHostAria")} value={spec.targetHost} onChange={(event) => setSpec({ ...spec, targetHost: event.target.value })} /></label><label>{t("forward.portLabel")}<input aria-label={t("forward.targetPortAria")} type="number" min={1} max={65535} value={spec.targetPort} onChange={(event) => setSpec({ ...spec, targetPort: Number(event.target.value) })} /></label></div>
+        {!loopback(spec.listenHost) && <p className="is-warning">{t("forward.listenerWarning")}</p>}
+        {spec.direction === "remote" && loopback(spec.listenHost) && <p>{t("forward.gatewayNote")}</p>}
+        <button type="submit" disabled={!valid || busy}>{t("forward.createTunnel")}</button>
+      </form> : <p>{t("forward.connectHint")}</p>}
+      <h4>{t("forward.remotePorts")}</h4><button type="button" disabled={!eligible || scanning} onClick={() => setRefresh((value) => value + 1)}>{t("forward.refreshPorts")}</button>
+      {scanning && <p>{t("forward.readingListeners")}</p>}{scanError && <div role="alert">{scanError}</div>}
+      {discovery?.status === "unsupported" && <p>{t("forward.discoveryUnsupported")}</p>}
+      {discovery?.status === "ok" && <><p>{t("forward.listenersCount", { count: discovery.ports.length })}{discovery.truncated ? t("forward.resultLimitReached") : ""}{t("forward.listenersHint")}</p><div className="forward-list forward-discovery">
+        <VirtualFileRows entries={discovery.ports.map((port) => ({ ...port, path: `${port.host}:${port.port}` }))} rowHeight={38} resetKey={owner ?? ""}>{(port) => <div className="forward-listener" key={port.path}><span title={port.process ?? t("forward.processUnavailable")}>{endpoint(port.host, port.port)}{port.process && <small>{port.process}</small>}</span><button type="button" onClick={() => setSpec({ ...defaults, targetHost: port.host === "::" ? "::1" : ["*", "0.0.0.0"].includes(port.host) ? "127.0.0.1" : port.host, targetPort: port.port })}>{t("forward.usePort", { port: port.port })}</button></div>}</VirtualFileRows>
       </div></>}
-      <h4>Tunnels · {rows.length}</h4><div className="forward-list forward-jobs">
+      <h4>{t("forward.tunnels")} · {rows.length}</h4><div className="forward-list forward-jobs">
         <VirtualFileRows entries={rows.map((row) => ({ ...row, path: row.id }))} rowHeight={136} resetKey="tunnels">{(row) => <article className="forward-job" key={row.id}>
-          <strong>{row.spec.direction === "local" ? "L · Local → SSH host" : "R · SSH host → local"} · {row.status}</strong>
+          <strong>{row.spec.direction === "local" ? t("forward.jobLocal") : t("forward.jobRemote")} · {row.status}</strong>
           <div className="forward-route"><span>{endpoint(row.spec.listenHost, row.spec.listenPort)}</span><span aria-hidden="true">→</span><span>{endpoint(row.spec.targetHost, row.spec.targetPort)}</span></div>
-          <small title={row.owner}>{row.address} · tab {row.owner.slice(0, 8)} · {row.connections} connections</small>
-          <small>Local → remote {transferBytes(row.sentBytes)} · remote → local {transferBytes(row.receivedBytes)}</small>
+          <small title={row.owner}>{row.address} · {t("forward.tabWord")} {row.owner.slice(0, 8)} · {t("forward.connectionsCount", { count: row.connections })}</small>
+          <small>{t("forward.localToRemote")} {transferBytes(row.sentBytes)} · {t("forward.remoteToLocal")} {transferBytes(row.receivedBytes)}</small>
           {row.error && <div className="forward-error" title={row.error}>{row.error}</div>}
-          <button type="button" disabled={busy || row.status === "stopping"} onClick={() => void perform(() => active(row) ? api.stopPortForward(row.id) : api.removePortForward(row.id))}>{active(row) ? "Stop tunnel" : "Remove tunnel"}</button>
+          <button type="button" disabled={busy || row.status === "stopping"} onClick={() => void perform(() => active(row) ? api.stopPortForward(row.id) : api.removePortForward(row.id))}>{active(row) ? t("forward.stopTunnel") : t("forward.removeTunnel")}</button>
         </article>}</VirtualFileRows>
       </div>
-      <p>Listeners default to loopback. Active tunnels live only for this application session.</p>
-      <p>Traffic counters count payload accepted by the local TCP and SSH streams; pending writes may not reach the peer after a connection failure.</p>
+      <p>{t("forward.loopbackNote")}</p>
+      <p>{t("forward.trafficNote")}</p>
     </section>}
   </div>;
 });
