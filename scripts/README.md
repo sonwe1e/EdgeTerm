@@ -1,12 +1,20 @@
 # Validation and diagnostics
 
 `check-review-ui.mjs` and `check-file-performance.mjs` start an isolated Vite
-server and headless browser. Install/provide Playwright and an Edge/Chromium
-channel (`PERF_BROWSER`, default `msedge`). `NODE_PATH` can point to a bundled
-Playwright installation. Results and screenshots go to `artifacts/performance/`.
+server and headless browser. Playwright is a devDependency, so the scripts
+resolve it from `node_modules` (no `NODE_PATH` needed). They drive an
+Edge/Chromium channel (`PERF_BROWSER`, default `msedge`); on a clean machine
+install it once with `npx playwright install msedge`, or install Microsoft
+Edge. Results and screenshots go to `artifacts/performance/`.
 The review harness mocks Tauri IPC and file listings; it does not validate a
 real remote server. The performance harness measures DOM virtualization and
 ordinary-byte ZMODEM input handling, not complete terminal rendering throughput.
+
+`npm run test:browser` runs the `src/**/*.browser.test.ts` contracts in
+headless Edge through the same channel and provider; `npm test` stays the
+fast jsdom unit project and skips those files. The browser project does not
+load `src/test/setup.ts` — those are jsdom stubs, and stubbing canvas or
+layout there would defeat the point of the browser run.
 
 `check-file-performance.mjs` additionally gates two timings, each the median of
 5 samples, and exits 1 when one is breached (it prints
