@@ -21,6 +21,20 @@ import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+// A mutant source tree can be checked instead of the working tree: point
+// EDGE_GUTTER_ROOT at a disposable registered worktree (under .tmp/mutate,
+// like the app-font gate's EDGE_APP_FONT_ROOT). Everything — fixture html,
+// fixture module, sources — then comes from that tree.
+const repoBase = process.env.EDGE_GUTTER_ROOT
+  ? path.resolve(process.env.EDGE_GUTTER_ROOT)
+  : repoRoot;
+if (process.env.EDGE_GUTTER_ROOT) {
+  const relative = path.relative(path.resolve(repoRoot, ".tmp", "mutate"), repoBase);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    console.error("EDGE_GUTTER_ROOT must point inside .tmp/mutate (a disposable worktree)");
+    process.exit(2);
+  }
+}
 const resultsArg = process.argv[2] ?? "";
 if (!/^[a-z0-9-]+$/.test(resultsArg)) {
   console.error("usage: node scripts/check-gutter-alignment.mjs <results-name>");
@@ -39,12 +53,12 @@ try {
 const outDir = path.join(repoRoot, ".tmp", "gutter-check", `dist-${resultsArg}`);
 
 await build({
-  root: repoRoot,
+  root: repoBase,
   logLevel: "warn",
   build: {
     outDir,
     emptyOutDir: false,
-    rollupOptions: { input: path.join(repoRoot, "scripts", "gutter-check.html") },
+    rollupOptions: { input: path.join(repoBase, "scripts", "gutter-check.html") },
   },
 });
 // The html keeps its directory position relative to the root (scripts/…);
@@ -247,6 +261,8 @@ try {
     at: new Date().toISOString(),
     browser: browserVersion,
     channel,
+    engine,
+    subjectRoot: repoBase,
     scope: "Production build (vite build with the real vite.config defines). Real SessionPane/TerminalController via ensureController registered before the component borrows it, DOM renderer through the public preference, 300 real buffer lines written through the xterm parser (term.write), store font chain. Gutter/text pitch must agree within 0.1px and rows within 0.5px at every settled state; fits must actually apply (screen vs host geometry with the terminal's own scrollbar reservation); unexpected IPC is a recorded gate; no extra fit call participates.",
     alignedAll,
     results,

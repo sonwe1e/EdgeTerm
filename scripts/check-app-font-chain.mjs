@@ -157,7 +157,8 @@ try {
     .join("");
   await fs.writeFile(
     path.join(outDir, "index.html"),
-    `<!doctype html><html><head><meta charset="utf-8">${cssLinks}</head>` +
+    `<!doctype html><html><head><meta charset="utf-8"><link rel="icon" href="data:,">` +
+    `${cssLinks}</head>` +
     `<body><div id="root"></div><script type="module" src="/${entryChunk.split(path.sep).join("/")}"></script></body></html>`,
   );
 
