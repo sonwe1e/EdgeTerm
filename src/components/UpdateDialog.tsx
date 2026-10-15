@@ -1,4 +1,5 @@
 import type { UpdaterState } from "../updater";
+import { useT } from "../useT";
 
 interface Props {
   appVersion: string;
@@ -23,6 +24,7 @@ export function UpdateDialog({
   onInstall,
   onCheckAgain,
 }: Props) {
+  const t = useT();
   if (state.phase === "idle") return null;
 
   const busy = state.phase === "checking" || state.phase === "downloading";
@@ -32,10 +34,10 @@ export function UpdateDialog({
       ? Math.min(100, (state.downloaded / state.total) * 100)
       : undefined;
 
-  let title = "Software Update";
-  if (state.phase === "available") title = "Update Available";
-  if (state.phase === "up-to-date") title = "EdgeTerm Is Up to Date";
-  if (state.phase === "error") title = "Update Failed";
+  let title = t("update.titleDefault");
+  if (state.phase === "available") title = t("update.available");
+  if (state.phase === "up-to-date") title = t("update.upToDate");
+  if (state.phase === "error") title = t("update.failed");
 
   return (
     <div
@@ -51,13 +53,13 @@ export function UpdateDialog({
           {state.phase === "checking" && (
             <>
               <div className="update-spinner" aria-hidden="true" />
-              <span>Checking GitHub Releases for the latest version…</span>
+              <span>{t("update.checking")}</span>
             </>
           )}
 
           {state.phase === "up-to-date" && (
             <span>
-              You already have the latest version
+              {t("update.haveLatest")}
               {appVersion ? ` (${appVersion})` : ""}.
             </span>
           )}
@@ -65,29 +67,24 @@ export function UpdateDialog({
           {state.phase === "available" && (
             <>
               <div className="update-version-row">
-                <span>Installed: {state.currentVersion}</span>
+                <span>{t("update.installed", { version: state.currentVersion })}</span>
                 <span aria-hidden="true">→</span>
-                <strong>Latest: {state.version}</strong>
+                <strong>{t("update.latest", { version: state.version })}</strong>
               </div>
               {state.body && (
-                <div className="update-notes" aria-label="Release notes">
+                <div className="update-notes" aria-label={t("update.releaseNotes")}>
                   {state.body}
                 </div>
               )}
               <span className="update-hint">
-                {portable
-                  ? "This is a portable copy, so the update is not installed " +
-                    "in place. The download page opens in your browser; " +
-                    "replace this copy with the new portable archive."
-                  : "EdgeTerm will download the signed update, install it, " +
-                    "and restart. Active terminal connections will be closed."}
+                {portable ? t("update.portableHint") : t("update.hint")}
               </span>
             </>
           )}
 
           {state.phase === "downloading" && (
             <>
-              <strong>Downloading EdgeTerm {state.version}…</strong>
+              <strong>{t("update.downloading", { version: state.version })}</strong>
               <progress
                 className="update-progress"
                 value={progress}
@@ -95,7 +92,9 @@ export function UpdateDialog({
               />
               <span className="update-hint">
                 {formatBytes(state.downloaded)}
-                {state.total ? ` of ${formatBytes(state.total)}` : " downloaded"}
+                {state.total
+                  ? t("update.ofTotal", { total: formatBytes(state.total) })
+                  : t("update.downloadedSuffix")}
               </span>
             </>
           )}
@@ -103,9 +102,7 @@ export function UpdateDialog({
           {state.phase === "installing" && (
             <>
               <div className="update-spinner" aria-hidden="true" />
-              <span>
-                Installing EdgeTerm {state.version} and restarting…
-              </span>
+              <span>{t("update.installing", { version: state.version })}</span>
             </>
           )}
 
@@ -118,22 +115,22 @@ export function UpdateDialog({
           <div className="dialog-footer">
             {state.phase === "error" && (
               <button className="btn" onClick={onCheckAgain}>
-                Try Again
+                {t("update.tryAgain")}
               </button>
             )}
             {state.phase === "available" && (
               <button className="btn" onClick={onDismiss}>
-                Later
+                {t("update.later")}
               </button>
             )}
             {state.phase !== "available" && (
               <button className="btn" onClick={onDismiss}>
-                Close
+                {t("common.close")}
               </button>
             )}
             {state.phase === "available" && (
               <button className="btn is-primary" onClick={onInstall}>
-                {portable ? "Open Download Page" : "Download and Install"}
+                {portable ? t("update.openDownload") : t("update.downloadInstall")}
               </button>
             )}
           </div>

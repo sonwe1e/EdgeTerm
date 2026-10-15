@@ -3,6 +3,16 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const api = vi.hoisted(() => ({ compareFiles: vi.fn(), cancelFileDiff: vi.fn() }));
 vi.mock("../api", () => api);
+// The dialog translates its labels through the store-backed useT hook; this
+// test mocks the backend and does not set up the store, so bind useT to the
+// real English catalog directly (no store, no platform globals).
+vi.mock("../useT", async () => {
+  const i18n = await vi.importActual<typeof import("../i18n")>("../i18n");
+  return {
+    useT: () => (key: import("../i18n").MessageKey, params?: Record<string, string | number>) =>
+      i18n.translate("en", key, params),
+  };
+});
 import { FileDiffDialog } from "./FileDiffDialog";
 import type { FileComparison } from "../api";
 

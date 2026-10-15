@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
+import { useT } from "../useT";
+
 interface Props {
   title: string;
   /** Where the group lives, e.g. "SSH Sessions / prod". */
@@ -24,6 +26,7 @@ export function GroupNameDialog({
   const [name, setName] = useState(initialName);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const t = useT();
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -46,7 +49,7 @@ export function GroupNameDialog({
   const submit = async () => {
     const trimmed = name.trim();
     if (!trimmed) {
-      setError("Enter a group name.");
+      setError(t("groupName.error"));
       inputRef.current?.focus();
       return;
     }
@@ -78,27 +81,29 @@ export function GroupNameDialog({
         </div>
         <div className="dialog-body confirm-dialog-body">
           <label className="session-field is-wide">
-            <span className="session-field-label">Name</span>
+            <span className="session-field-label">{t("groupName.nameLabel")}</span>
             <input
               ref={inputRef}
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
               value={name}
-              placeholder="Group name"
+              placeholder={t("groupName.placeholder")}
               onChange={(event) => setName(event.target.value)}
             />
           </label>
-          <span className="confirm-dialog-hint">In {location}</span>
+          <span className="confirm-dialog-hint">
+            {t("groupName.in", { location })}
+          </span>
           {error && <div className="dialog-error">{error}</div>}
         </div>
         <div className="dialog-footer confirm-dialog-footer">
           <span className="confirm-dialog-keys">
             <kbd>Enter</kbd> {submitLabel.toLowerCase()} · <kbd>Esc</kbd>{" "}
-            cancel
+            {t("keys.cancel")}
           </span>
           <button type="button" className="btn" onClick={onCancel}>
-            Cancel
+            {t("common.cancel")}
           </button>
           <button type="submit" className="btn is-primary" disabled={busy}>
             {submitLabel}

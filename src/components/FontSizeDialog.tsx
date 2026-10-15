@@ -15,6 +15,7 @@ import {
   useStore,
 } from "../store";
 import type { CursorStyle } from "../terminal";
+import { useT } from "../useT";
 
 /** Everything the dialog hands back when Apply is pressed. */
 export interface DisplaySettings {
@@ -56,6 +57,7 @@ export function FontSizeDialog({
   const [cursor, setCursor] = useState<CursorStyle>(cursorStyle);
   const [blink, setBlink] = useState(cursorBlink);
   const [gpu, setGpu] = useState(gpuRenderer);
+  const t = useT();
 
   // Probing the machine for installed families measures text on a canvas, so
   // it happens once when the dialog opens rather than on every keystroke.
@@ -128,12 +130,12 @@ export function FontSizeDialog({
           });
         }}
       >
-        <div className="dialog-header">Display Settings</div>
+        <div className="dialog-header">{t("fontDialog.title")}</div>
         <div className="dialog-body font-size-dialog-body">
           <label className="font-size-setting">
             <span>
-              <strong>Panels</strong>
-              <small>Filer, Session, and Sender panels</small>
+              <strong>{t("fontDialog.panels")}</strong>
+              <small>{t("fontDialog.panelsHint")}</small>
             </span>
             <input
               type="range"
@@ -143,7 +145,7 @@ export function FontSizeDialog({
               onChange={(event) => setPanelSize(event.target.valueAsNumber)}
             />
             <input
-              aria-label="Panel font size"
+              aria-label={t("fontDialog.panelFontSize")}
               className="font-size-number"
               type="number"
               min={PANEL_FONT_SIZE.min}
@@ -163,8 +165,8 @@ export function FontSizeDialog({
 
           <FontFamilyField
             id="panel-font-family"
-            label="Interface font"
-            hint="Menus, tabs, panels and dialogs"
+            label={t("fontDialog.interfaceFont")}
+            hint={t("fontDialog.interfaceFontHint")}
             role="ui"
             value={panelFamily}
             fonts={uiFonts}
@@ -173,8 +175,8 @@ export function FontSizeDialog({
 
           <label className="font-size-setting">
             <span>
-              <strong>Buffer</strong>
-              <small>Terminal output and its gutter</small>
+              <strong>{t("fontDialog.buffer")}</strong>
+              <small>{t("fontDialog.bufferHint")}</small>
             </span>
             <input
               type="range"
@@ -184,7 +186,7 @@ export function FontSizeDialog({
               onChange={(event) => setBufferSize(event.target.valueAsNumber)}
             />
             <input
-              aria-label="Buffer font size"
+              aria-label={t("fontDialog.bufferFontSize")}
               className="font-size-number"
               type="number"
               min={BUFFER_FONT_SIZE.min}
@@ -204,8 +206,8 @@ export function FontSizeDialog({
 
           <FontFamilyField
             id="buffer-font-family"
-            label="Buffer font"
-            hint="Terminal typeface; pick a monospaced one"
+            label={t("fontDialog.bufferFont")}
+            hint={t("fontDialog.bufferFontHint")}
             role="mono"
             value={bufferFamily}
             fonts={monoFonts}
@@ -215,18 +217,20 @@ export function FontSizeDialog({
           {/* A div, not a label: the row holds two controls of its own. */}
           <div className="font-size-setting cursor-setting">
             <span>
-              <strong>Cursor</strong>
-              <small>Shape of the terminal cursor</small>
+              <strong>{t("fontDialog.cursor")}</strong>
+              <small>{t("fontDialog.cursorHint")}</small>
             </span>
             <select
-              aria-label="Cursor style"
+              aria-label={t("fontDialog.cursorStyle")}
               className="cursor-style-select"
               value={cursor}
               onChange={(event) => setCursor(event.target.value as CursorStyle)}
             >
-              <option value="block">Block</option>
-              <option value="underline">Underline</option>
-              <option value="bar">Bar</option>
+              <option value="block">{t("fontDialog.cursorBlock")}</option>
+              <option value="underline">
+                {t("fontDialog.cursorUnderline")}
+              </option>
+              <option value="bar">{t("fontDialog.cursorBar")}</option>
             </select>
             <label className="cursor-blink">
               <input
@@ -234,17 +238,14 @@ export function FontSizeDialog({
                 checked={blink}
                 onChange={(event) => setBlink(event.target.checked)}
               />
-              Blink
+              {t("fontDialog.blink")}
             </label>
           </div>
 
           <label className="font-size-setting gpu-setting">
             <span>
-              <strong>GPU rendering</strong>
-              <small>
-                Faster terminal drawing; turn off if resizing or dragging
-                freezes the window
-              </small>
+              <strong>{t("fontDialog.gpu")}</strong>
+              <small>{t("fontDialog.gpuHint")}</small>
             </span>
             <span className="cursor-blink">
               <input
@@ -252,21 +253,21 @@ export function FontSizeDialog({
                 checked={gpu}
                 onChange={(event) => setGpu(event.target.checked)}
               />
-              Enabled
+              {t("common.enabled")}
             </span>
           </label>
 
           <label className="font-size-setting scrollback-setting">
             <span>
-              <strong>Scrollback</strong>
+              <strong>{t("fontDialog.scrollback")}</strong>
               <small>
-                Terminal history retained per session (at least{" "}
-                {Math.max(1, Math.round(scrollbackMegabytes(scrollback)))} MB
-                for 200 columns)
+                {t("fontDialog.scrollbackHint", {
+                  mb: Math.max(1, Math.round(scrollbackMegabytes(scrollback))),
+                })}
               </small>
             </span>
             <input
-              aria-label="Terminal scrollback lines"
+              aria-label={t("fontDialog.scrollbackLines")}
               className="scrollback-number"
               type="number"
               min={TERMINAL_SCROLLBACK.min}
@@ -282,7 +283,7 @@ export function FontSizeDialog({
                 )
               }
             />
-            <span className="font-size-unit">lines</span>
+            <span className="font-size-unit">{t("fontDialog.lines")}</span>
           </label>
         </div>
         <div className="dialog-footer font-size-dialog-footer">
@@ -300,13 +301,13 @@ export function FontSizeDialog({
               setGpu(true);
             }}
           >
-            Reset Defaults
+            {t("fontDialog.resetDefaults")}
           </button>
           <button type="button" className="btn" onClick={onClose}>
-            Cancel
+            {t("common.cancel")}
           </button>
           <button type="submit" className="btn is-primary">
-            Apply
+            {t("common.apply")}
           </button>
         </div>
       </form>
@@ -340,6 +341,7 @@ function FontFamilyField({
 }) {
   const listId = `${id}-list`;
   const systemMonoFamily = useStore((s) => s.systemMonoFamily);
+  const t = useT();
   return (
     <label className="font-size-setting">
       <span>
@@ -353,7 +355,7 @@ function FontFamilyField({
         list={listId}
         spellCheck={false}
         autoComplete="off"
-        placeholder="System default"
+        placeholder={t("fontDialog.systemDefault")}
         value={value}
         style={{ fontFamily: fontStack(role, value, [], systemMonoFamily) }}
         onChange={(event) => onChange(event.target.value)}

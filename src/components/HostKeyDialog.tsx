@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { HostKeyPrompt } from "../store";
+import { useT } from "../useT";
 
 interface Props {
   prompt: HostKeyPrompt;
@@ -27,6 +28,7 @@ export function HostKeyDialog({ prompt, onAccept, onCancel }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const t = useT();
 
   useEffect(() => {
     // Pull focus out of whatever was active so keystrokes reach the dialog.
@@ -67,38 +69,38 @@ export function HostKeyDialog({ prompt, onAccept, onCancel }: Props) {
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="dialog-header" id="host-key-title">
-          Host Key Changed
+          {t("hostKey.title")}
         </div>
         <div className="dialog-body confirm-dialog-body">
           <span>
             <strong>
               {change.host}:{change.port}
-            </strong>{" "}
-            presented a key that does not match the one recorded for it.
+            </strong>
+            {t("hostKey.presented")}
           </span>
           <dl className="host-key-facts">
-            <dt>New key</dt>
+            <dt>{t("hostKey.newKey")}</dt>
             <dd>
               {change.keyType} {change.fingerprint}
             </dd>
-            <dt>Recorded in</dt>
+            <dt>{t("hostKey.recordedIn")}</dt>
             <dd>
-              {change.knownHosts}, line {change.line}
+              {t("hostKey.recordedInValue", {
+                file: change.knownHosts,
+                line: change.line,
+              })}
             </dd>
           </dl>
           <span className="confirm-dialog-hint">
-            Accept only if you expect this — the server was reinstalled, or the
-            address now belongs to a different machine. A changed key can also
-            mean the connection is being intercepted; when in doubt, cancel and
-            compare the fingerprint with{" "}
-            <code>ssh-keygen -lf {serverKeyFile(change.keyType)}</code> on the
-            server. Accepting replaces every key recorded for this host.
+            {t("hostKey.hintStart")}
+            <code>ssh-keygen -lf {serverKeyFile(change.keyType)}</code>
+            {t("hostKey.hintEnd")}
           </span>
           {error && <div className="dialog-error">{error}</div>}
         </div>
         <div className="dialog-footer confirm-dialog-footer">
           <span className="confirm-dialog-keys">
-            <kbd>Esc</kbd> cancel
+            <kbd>Esc</kbd> {t("keys.cancel")}
           </span>
           <button
             ref={cancelRef}
@@ -107,7 +109,7 @@ export function HostKeyDialog({ prompt, onAccept, onCancel }: Props) {
             onClick={onCancel}
             disabled={busy}
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             type="button"
@@ -115,7 +117,7 @@ export function HostKeyDialog({ prompt, onAccept, onCancel }: Props) {
             onClick={() => void accept()}
             disabled={busy}
           >
-            {busy ? "Accepting…" : "Accept New Key"}
+            {busy ? t("hostKey.accepting") : t("hostKey.accept")}
           </button>
         </div>
       </div>

@@ -2,11 +2,13 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import * as api from "../api";
 import { VirtualFileRows } from "./VirtualFileRows";
 import { useStableCallback } from "../useStableCallback";
+import { useT } from "../useT";
 
 const ROW_HEIGHT = 28;
 export function FileDiffDialog({ sessionId, local, remote, active, onClose }: {
   sessionId: string; local: string; remote: string; active: boolean; onClose: () => void;
 }) {
+  const t = useT();
   const [result, setResult] = useState<api.FileComparison | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -60,27 +62,27 @@ export function FileDiffDialog({ sessionId, local, remote, active, onClose }: {
   if (!active) return null;
   const cancel = () => {
     const id = pending.current;
-    pending.current = null; setLoading(false); setError("Comparison cancelled.");
-    if (id) void api.cancelFileDiff(id).catch((e) => setError(`Cancellation failed: ${String(e)}`));
+    pending.current = null; setLoading(false); setError(t("diff.cancelled"));
+    if (id) void api.cancelFileDiff(id).catch((e) => setError(t("diff.cancelFailed", { error: String(e) })));
   };
   const jump = (end: boolean) => scroller.current?.scrollTo({ top: end ? scroller.current.scrollHeight : 0 });
   return <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
-    <div className="file-diff-dialog" role="dialog" aria-modal="true" aria-label="Local and remote file comparison" ref={dialog}>
-      <div className="file-diff-heading"><strong>Compare files · Read only</strong><button type="button" onClick={close} aria-label="Close file comparison">×</button></div>
-      <div className="file-diff-paths"><div title={local}><strong>Local</strong> {local}</div><div title={remote}><strong>Remote</strong> {remote}</div></div>
+    <div className="file-diff-dialog" role="dialog" aria-modal="true" aria-label={t("diff.dialogAria")} ref={dialog}>
+      <div className="file-diff-heading"><strong>{t("diff.heading")}</strong><button type="button" onClick={close} aria-label={t("diff.closeAria")}>×</button></div>
+      <div className="file-diff-paths"><div title={local}><strong>{t("diff.localLabel")}</strong> {local}</div><div title={remote}><strong>{t("diff.remoteLabel")}</strong> {remote}</div></div>
       <div className="file-diff-toolbar">
-        <span role="status">{loading ? "Reading files…" : result?.status === "identical" ? "Identical bytes" : result?.status === "different" ? "Files differ" : result ? "Not completely compared" : "Comparison stopped"}</span>
-        {loading ? <button type="button" onClick={cancel}>Cancel comparison</button> : <button type="button" onClick={() => setAttempt((n) => n + 1)}>Compare again</button>}
-        <button type="button" disabled={!result?.rows.length} onClick={() => jump(false)}>First line</button>
-        <button type="button" disabled={!result?.rows.length} onClick={() => jump(true)}>Last line</button>
+        <span role="status">{loading ? t("diff.readingFiles") : result?.status === "identical" ? t("diff.identical") : result?.status === "different" ? t("diff.differ") : result ? t("diff.notComplete") : t("diff.stopped")}</span>
+        {loading ? <button type="button" onClick={cancel}>{t("diff.cancelComparison")}</button> : <button type="button" onClick={() => setAttempt((n) => n + 1)}>{t("diff.compareAgain")}</button>}
+        <button type="button" disabled={!result?.rows.length} onClick={() => jump(false)}>{t("diff.firstLine")}</button>
+        <button type="button" disabled={!result?.rows.length} onClick={() => jump(true)}>{t("diff.lastLine")}</button>
       </div>
       {error && <p role="alert">{error}</p>}
       {result && <>
         <div className="file-diff-metadata"><Metadata metadata={result.left} /><Metadata metadata={result.right} /></div>
         {result.reason && <p className="file-diff-notice">{result.reason}</p>}
-        {result.alignmentSimplified && <p className="file-diff-notice">Some distant changes are grouped together.</p>}
-        {result.rows.length === 0 ? <div className="file-diff-empty">{result.left.kind === "text" && result.right.kind === "text" ? "Empty files." : <><div>Local hex: {result.left.preview || "unavailable"}</div><div>Remote hex: {result.right.preview || "unavailable"}</div></>}</div> :
-          <div className="file-diff-rows" ref={scroller} tabIndex={0} aria-label="Comparison lines" style={{ "--diff-columns-width": `${columnWidth * 2}px` } as CSSProperties}>
+        {result.alignmentSimplified && <p className="file-diff-notice">{t("diff.alignmentNote")}</p>}
+        {result.rows.length === 0 ? <div className="file-diff-empty">{result.left.kind === "text" && result.right.kind === "text" ? t("diff.emptyFiles") : <><div>{t("diff.localHex")} {result.left.preview || t("diff.unavailable")}</div><div>{t("diff.remoteHex")} {result.right.preview || t("diff.unavailable")}</div></>}</div> :
+          <div className="file-diff-rows" ref={scroller} tabIndex={0} aria-label={t("diff.linesAria")} style={{ "--diff-columns-width": `${columnWidth * 2}px` } as CSSProperties}>
             <VirtualFileRows entries={result.rows} rowHeight={ROW_HEIGHT} resetKey={`${sessionId}:${local}:${remote}:${attempt}`}>
               {(row) => <div className={`file-diff-row is-${row.kind}`} data-diff-row={row.path}>
                 <div className="file-diff-cell"><span className="file-diff-number">{row.leftLine}</span><span className="file-diff-code">{row.left}</span><span className="file-diff-ending">{row.leftEnding}</span></div>
@@ -93,9 +95,10 @@ export function FileDiffDialog({ sessionId, local, remote, active, onClose }: {
   </div>;
 }
 function Metadata({ metadata }: { metadata: api.DiffMetadata }) {
+  const t = useT();
   return <div>{metadata.size.toLocaleString()} B · {metadata.encoding ?? metadata.kind} · {metadata.eol}
-    {metadata.bom && " · BOM"}{metadata.finalNewline === false && " · no final newline"}
-    {metadata.lines !== null && ` · ${metadata.lines.toLocaleString()} lines`}
-    {metadata.sha256 && <small title={metadata.sha256}>SHA-256 {metadata.sha256.slice(0, 16)}…</small>}
+    {metadata.bom && " · BOM"}{metadata.finalNewline === false && t("diff.noFinalNewline")}
+    {metadata.lines !== null && t("diff.linesCount", { count: metadata.lines.toLocaleString() })}
+    {metadata.sha256 && <small title={metadata.sha256}>{t("diff.sha256", { hash: metadata.sha256.slice(0, 16) })}</small>}
   </div>;
 }

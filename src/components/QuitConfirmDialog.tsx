@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import { tabTitle, useStore } from "../store";
+import { useT } from "../useT";
 
 interface Props {
   onConfirm: () => void;
@@ -17,6 +18,7 @@ const LISTED_SESSIONS = 4;
 export function QuitConfirmDialog({ onConfirm, onCancel }: Props) {
   const confirmRef = useRef<HTMLButtonElement>(null);
   const tabs = useStore((s) => s.tabs);
+  const t = useT();
   const live = tabs.filter(
     (tab) => tab.state === "connecting" || tab.state === "connected",
   );
@@ -56,15 +58,18 @@ export function QuitConfirmDialog({ onConfirm, onCancel }: Props) {
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="dialog-header" id="quit-app-title">
-          Quit EdgeTerm
+          {t("quit.title")}
         </div>
         <div className="dialog-body confirm-dialog-body">
           <span>
-            Quit with{" "}
+            {t("quit.with")}{" "}
             <strong>
-              {live.length} active session{live.length === 1 ? "" : "s"}
+              {live.length}
+              {live.length === 1
+                ? t("quit.sessionOne")
+                : t("quit.sessionMany")}
             </strong>
-            ?
+            {t("common.question")}
           </span>
           {shown.map((tab) => (
             <span key={tab.info.id} className="confirm-dialog-target">
@@ -72,19 +77,19 @@ export function QuitConfirmDialog({ onConfirm, onCancel }: Props) {
             </span>
           ))}
           {extra > 0 && (
-            <span className="confirm-dialog-target">…and {extra} more</span>
+            <span className="confirm-dialog-target">
+              {t("quit.andMore", { count: extra })}
+            </span>
           )}
-          <span className="confirm-dialog-hint">
-            All connections will be disconnected and their terminal output
-            discarded.
-          </span>
+          <span className="confirm-dialog-hint">{t("quit.hint")}</span>
         </div>
         <div className="dialog-footer confirm-dialog-footer">
           <span className="confirm-dialog-keys">
-            <kbd>Enter</kbd> quit · <kbd>Esc</kbd> cancel
+            <kbd>Enter</kbd> {t("keys.quit")} · <kbd>Esc</kbd>{" "}
+            {t("keys.cancel")}
           </span>
           <button type="button" className="btn" onClick={onCancel}>
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             ref={confirmRef}
@@ -92,7 +97,7 @@ export function QuitConfirmDialog({ onConfirm, onCancel }: Props) {
             className="btn is-danger"
             onClick={onConfirm}
           >
-            Quit
+            {t("common.quit")}
           </button>
         </div>
       </div>

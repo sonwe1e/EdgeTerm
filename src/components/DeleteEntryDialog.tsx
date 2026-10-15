@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import type { FileEntry } from "../types";
+import { useT } from "../useT";
 
 interface Props {
   entry: FileEntry;
@@ -23,6 +24,7 @@ export function DeleteEntryDialog({
   onCancel,
 }: Props) {
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const t = useT();
 
   useEffect(() => {
     // Pull focus out of whatever was active so keystrokes reach the dialog.
@@ -49,15 +51,25 @@ export function DeleteEntryDialog({
 
   const kind = entry.isSymlink ? "link" : entry.isDir ? "folder" : "file";
   const title =
-    kind === "folder" ? "Delete Folder" : kind === "link" ? "Delete Link" : "Delete File";
+    kind === "folder"
+      ? t("deleteEntry.titleFolder")
+      : kind === "link"
+        ? t("deleteEntry.titleLink")
+        : t("deleteEntry.titleFile");
   // Both the local and the SFTP backend refuse to remove a folder with
   // anything in it, so say so rather than let the error explain afterwards.
   const hint =
     kind === "folder"
-      ? "Only an empty folder can be deleted. This cannot be undone."
+      ? t("deleteEntry.hintFolder")
       : kind === "link"
-        ? "Only the link itself is removed; what it points to is left alone. This cannot be undone."
-        : "The file will be removed. This cannot be undone.";
+        ? t("deleteEntry.hintLink")
+        : t("deleteEntry.hintFile");
+  const kindWord =
+    kind === "folder"
+      ? t("deleteEntry.kindFolder")
+      : kind === "link"
+        ? t("deleteEntry.kindLink")
+        : t("deleteEntry.kindFile");
 
   return (
     <div className="dialog-backdrop" onMouseDown={onCancel}>
@@ -72,7 +84,8 @@ export function DeleteEntryDialog({
         </div>
         <div className="dialog-body confirm-dialog-body">
           <span>
-            Delete {kind} <strong>{entry.name}</strong>?
+            {t("deleteEntry.delete")} {kindWord} <strong>{entry.name}</strong>
+            {t("common.question")}
           </span>
           <span className="confirm-dialog-target">
             {location} · {entry.path}
@@ -81,10 +94,11 @@ export function DeleteEntryDialog({
         </div>
         <div className="dialog-footer confirm-dialog-footer">
           <span className="confirm-dialog-keys">
-            <kbd>Enter</kbd> delete · <kbd>Esc</kbd> cancel
+            <kbd>Enter</kbd> {t("keys.delete")} · <kbd>Esc</kbd>{" "}
+            {t("keys.cancel")}
           </span>
           <button type="button" className="btn" onClick={onCancel}>
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             ref={confirmRef}
@@ -92,7 +106,7 @@ export function DeleteEntryDialog({
             className="btn is-danger"
             onClick={onConfirm}
           >
-            Delete
+            {t("common.delete")}
           </button>
         </div>
       </div>

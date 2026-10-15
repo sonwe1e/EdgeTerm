@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import type { SessionProfile } from "../types";
+import { useT } from "../useT";
 
 interface Props {
   profile: SessionProfile;
@@ -26,6 +27,7 @@ export function DeleteProfileDialog({
   onCancel,
 }: Props) {
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const t = useT();
 
   useEffect(() => {
     // Pull focus out of whatever was active so keystrokes reach the dialog.
@@ -54,8 +56,8 @@ export function DeleteProfileDialog({
     scopedCommands === 0
       ? ""
       : scopedCommands === 1
-        ? " and its 1 saved Sender command"
-        : ` and its ${scopedCommands} saved Sender commands`;
+        ? t("deleteProfile.cmdOne")
+        : t("deleteProfile.cmdMany", { count: scopedCommands });
 
   return (
     <div className="dialog-backdrop" onMouseDown={onCancel}>
@@ -66,26 +68,29 @@ export function DeleteProfileDialog({
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="dialog-header" id="delete-profile-title">
-          Delete Session
+          {t("deleteProfile.title")}
         </div>
         <div className="dialog-body confirm-dialog-body">
           <span>
-            Delete <strong>{profile.name}</strong>?
+            {t("common.delete")} <strong>{profile.name}</strong>
+            {t("common.question")}
           </span>
           <span className="confirm-dialog-target">
             {profile.kind} · {target}
           </span>
           <span className="confirm-dialog-hint">
-            The saved session, any stored credentials for it{commands} will
-            be removed. This cannot be undone.
+            {t("deleteProfile.hintStart")}
+            {commands}
+            {t("deleteProfile.hintEnd")}
           </span>
         </div>
         <div className="dialog-footer confirm-dialog-footer">
           <span className="confirm-dialog-keys">
-            <kbd>Enter</kbd> delete · <kbd>Esc</kbd> cancel
+            <kbd>Enter</kbd> {t("keys.delete")} · <kbd>Esc</kbd>{" "}
+            {t("keys.cancel")}
           </span>
           <button type="button" className="btn" onClick={onCancel}>
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             ref={confirmRef}
@@ -93,7 +98,7 @@ export function DeleteProfileDialog({
             className="btn is-danger"
             onClick={onConfirm}
           >
-            Delete
+            {t("common.delete")}
           </button>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { pasteLineCount, pasteLines } from "../terminalPaste";
+import { useT } from "../useT";
 
 interface Props {
   /** The clipboard text waiting to go into the terminal. */
@@ -26,6 +27,7 @@ const PREVIEW_COLUMNS = 120;
 export function PasteWarningDialog({ text, onConfirm, onCancel }: Props) {
   const confirmRef = useRef<HTMLButtonElement>(null);
   const [remember, setRemember] = useState(false);
+  const t = useT();
   // Read once: the checkbox must not change what Enter does mid-keystroke.
   const rememberRef = useRef(remember);
   rememberRef.current = remember;
@@ -66,21 +68,29 @@ export function PasteWarningDialog({ text, onConfirm, onCancel }: Props) {
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="dialog-header" id="paste-warning-title">
-          Paste {lines > 1 ? `${lines} Lines` : "Long Text"}
+          {t("common.paste")}{" "}
+          {lines > 1
+            ? t("pasteWarning.linesTitle", { count: lines })
+            : t("pasteWarning.longText")}
         </div>
         <div className="dialog-body confirm-dialog-body">
           <span>
             {lines > 1 ? (
               <>
-                The clipboard holds <strong>{lines} lines</strong> (
-                {text.length.toLocaleString()} characters). Every line after
-                the first runs as its own command.
+                {t("pasteWarning.holds")}
+                <strong>{t("pasteWarning.linesCount", { count: lines })}</strong>
+                {t("pasteWarning.charsParen", {
+                  count: text.length.toLocaleString(),
+                })}
+                {t("pasteWarning.everyLine")}
               </>
             ) : (
               <>
-                The clipboard holds{" "}
-                <strong>{text.length.toLocaleString()} characters</strong> on
-                one line.
+                {t("pasteWarning.holds")}
+                <strong>
+                  {t("common.characters", { count: text.length.toLocaleString() })}
+                </strong>
+                {t("pasteWarning.onOneLine")}
               </>
             )}
           </span>
@@ -95,7 +105,9 @@ export function PasteWarningDialog({ text, onConfirm, onCancel }: Props) {
             ))}
             {preview.length > shown.length && (
               <span className="paste-warning-more">
-                … and {preview.length - shown.length} more lines
+                {t("pasteWarning.andMoreLines", {
+                  count: preview.length - shown.length,
+                })}
               </span>
             )}
           </pre>
@@ -105,15 +117,16 @@ export function PasteWarningDialog({ text, onConfirm, onCancel }: Props) {
               checked={remember}
               onChange={(event) => setRemember(event.target.checked)}
             />
-            <span>Don’t warn me again</span>
+            <span>{t("pasteWarning.dontWarn")}</span>
           </label>
         </div>
         <div className="dialog-footer confirm-dialog-footer">
           <span className="confirm-dialog-keys">
-            <kbd>Enter</kbd> paste · <kbd>Esc</kbd> cancel
+            <kbd>Enter</kbd> {t("keys.paste")} · <kbd>Esc</kbd>{" "}
+            {t("keys.cancel")}
           </span>
           <button type="button" className="btn" onClick={onCancel}>
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             ref={confirmRef}
@@ -121,7 +134,7 @@ export function PasteWarningDialog({ text, onConfirm, onCancel }: Props) {
             className="btn is-primary"
             onClick={() => onConfirm(remember)}
           >
-            Paste
+            {t("common.paste")}
           </button>
         </div>
       </div>

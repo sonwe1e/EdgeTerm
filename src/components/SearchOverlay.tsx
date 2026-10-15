@@ -16,6 +16,8 @@ import {
 } from "../terminalSearch";
 import { getController } from "../terminalRegistry";
 import { isFileSession } from "../types";
+import { t as translateMsg } from "../i18n";
+import { useT } from "../useT";
 import { Icon } from "./icons";
 
 interface Props {
@@ -52,7 +54,7 @@ const selectedText = (sessionId: string | null) => {
 
 /** "3/12", "1000+" past the highlight limit, or "No results". */
 const formatResults = ({ resultIndex, resultCount }: SearchResults) => {
-  if (resultCount === 0) return "No results";
+  if (resultCount === 0) return translateMsg("search.noResults");
   const total =
     resultCount >= SEARCH_HIGHLIGHT_LIMIT
       ? `${SEARCH_HIGHLIGHT_LIMIT}+`
@@ -69,6 +71,7 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
   function SearchOverlay({ onClose }, ref) {
     const tab = useActiveTab();
     const activeId = useStore((s) => s.activeId);
+    const t = useT();
     const [query, setQuery] = useState(() => selectedText(activeId));
     const [results, setResults] = useState<SearchResults | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
@@ -168,7 +171,7 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
         <input
           ref={inputRef}
           value={query}
-          placeholder="Find in buffer"
+          placeholder={t("search.placeholder")}
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
@@ -202,24 +205,24 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
         <button
           className="panel-action"
           onClick={() => runSearch(false)}
-          title="Previous match"
-          aria-label="Previous match"
+          title={t("search.previous")}
+          aria-label={t("search.previous")}
         >
           <Icon name="arrow-up" />
         </button>
         <button
           className="panel-action"
           onClick={() => runSearch(true)}
-          title="Next match"
-          aria-label="Next match"
+          title={t("search.next")}
+          aria-label={t("search.next")}
         >
           <Icon name="arrow-down" />
         </button>
         <button
           className="panel-action"
           onClick={onClose}
-          title="Close search"
-          aria-label="Close search"
+          title={t("search.close")}
+          aria-label={t("search.close")}
         >
           <Icon name="close" />
         </button>
