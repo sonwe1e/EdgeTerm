@@ -422,6 +422,10 @@ export class TerminalController {
   private transferNoticeTimer: number | null = null;
   /** Only large-buffer column changes wait for the width to settle. */
   private fitTimer: number | null = null;
+  /** A post-resize re-measure awaiting xterm's settled screen; see scheduleCellMeasure. */
+  private pendingCellMeasure: number | null = null;
+  /** One deferred proposal for a renderer that has not measured yet; see fit. */
+  private pendingProposeRetry: number | null = null;
 
   private root: HTMLElement | null = null;
   private host: HTMLElement | null = null;
@@ -714,6 +718,10 @@ export class TerminalController {
       this.measureCell();
       this.invalidateGutter();
       this.syncGutter();
+      // onResize runs before xterm has laid the resized screen out; the
+      // read above can be stale and the re-measure at the boundary corrects
+      // it.
+      this.scheduleCellMeasure();
     });
 
     this.term.onLineFeed(() => this.recordLine());
@@ -1132,13 +1140,35 @@ export class TerminalController {
 
   fit(immediate = false): { cols: number; rows: number } | null {
     if (this.disposed || !this.visible || !this.host || this.host.clientWidth === 0) return null;
-    let proposal: { cols: number; rows: number } | null = null;
-    try {
-      proposal = this.fitAddon.proposeDimensions() ?? null;
-    } catch {
-      proposal = null;
+    const proposal = this.tryPropose();
+    if (!proposal) {
+      // A pane mounted while hidden opened xterm before any pixel existed,
+      // and the renderer measures on its first post-visibility render. One
+      // retry at that boundary keeps the show-fits contract; giving up here
+      // left the terminal at its open-time size (observed as 80x24 with a
+      // screen taller than the host).
+      this.scheduleProposeRetry(immediate);
+      return null;
     }
-    if (!proposal || !Number.isFinite(proposal.cols) || !Number.isFinite(proposal.rows)) return null;
+    return this.applyProposal(proposal, immediate);
+  }
+
+  private tryPropose(): { cols: number; rows: number } | null {
+    try {
+      const proposal = this.fitAddon.proposeDimensions() ?? null;
+      if (proposal && Number.isFinite(proposal.cols) && Number.isFinite(proposal.rows)) {
+        return { cols: proposal.cols, rows: proposal.rows };
+      }
+    } catch {
+      // The renderer has nothing measured yet; the retry handles it.
+    }
+    return null;
+  }
+
+  private applyProposal(
+    proposal: { cols: number; rows: number },
+    immediate: boolean,
+  ): { cols: number; rows: number } | null {
     this.cancelFit();
     if (immediate || this.term.buffer.normal.length < FIT_BUFFER_THRESHOLD || proposal.cols === this.term.cols) {
       return this.applyFit();
@@ -1154,6 +1184,38 @@ export class TerminalController {
       this.applyFit();
     }, FIT_SETTLE_MS);
     return { cols: this.term.cols, rows: this.term.rows };
+  }
+
+  private scheduleProposeRetry(immediate: boolean): void {
+    if (this.disposed || !this.visible || this.pendingProposeRetry !== null) return;
+    this.pendingProposeRetry = window.requestAnimationFrame(() => {
+      this.pendingProposeRetry = null;
+      if (this.disposed || !this.visible || !this.host || this.host.clientWidth === 0) return;
+      const proposal = this.tryPropose();
+      if (proposal) this.applyProposal(proposal, immediate);
+    });
+  }
+
+  /**
+   * One layout read per resize, at its completion boundary: xterm lays the
+   * resized screen out on the animation frame after onResize, and reading
+   * earlier divides the old screen height by the new row count. That stale
+   * ratio poisoned the gutter pitch until something else refitted (a
+   * hidden-resize-show measured 400px/26 rows = 15.34px against 21px text
+   * and stayed wrong). Never runs per output render.
+   */
+  private scheduleCellMeasure(): void {
+    if (this.disposed || this.pendingCellMeasure !== null) return;
+    this.pendingCellMeasure = window.requestAnimationFrame(() => {
+      this.pendingCellMeasure = null;
+      if (this.disposed) return;
+      const previous = this.cellHeight;
+      this.measureCell();
+      if (this.cellHeight !== previous) {
+        this.invalidateGutter();
+        this.syncGutter();
+      }
+    });
   }
 
   private cancelFit() {
@@ -1175,6 +1237,7 @@ export class TerminalController {
   private syncFitMetrics() {
     this.measureCell();
     this.syncGutter();
+    this.scheduleCellMeasure();
     if (this.inputAnchor || this.candidates.length) this.schedulePopupSync();
   }
 
@@ -1760,6 +1823,14 @@ export class TerminalController {
       this.transferNoticeTimer = null;
     }
     this.cancelFit();
+    if (this.pendingCellMeasure !== null) {
+      window.cancelAnimationFrame(this.pendingCellMeasure);
+      this.pendingCellMeasure = null;
+    }
+    if (this.pendingProposeRetry !== null) {
+      window.cancelAnimationFrame(this.pendingProposeRetry);
+      this.pendingProposeRetry = null;
+    }
     if (this.webglTimer !== null) {
       window.clearTimeout(this.webglTimer);
       this.webglTimer = null;
