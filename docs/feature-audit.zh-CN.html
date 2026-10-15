@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EdgeTerm 能力核实报告（19 项逐条审计）</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#ffffff; --ink:#1b1f24; --muted:#5b6672; --line:#e3e6ea;
+    --full:#0f7b3f; --fullbg:#e6f4ea; --part:#8a5a00; --partbg:#fdf3dc;
+    --none:#a4262c; --nonebg:#fdeaea; --accent:#0b5cad;
+    --code:#f2f4f7; --codeink:#2b3440;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#14171a; --card:#1b1f23; --ink:#e6e9ed; --muted:#9aa6b2; --line:#2b3138;
+      --full:#5fd08a; --fullbg:#12301f; --part:#e8bf6a; --partbg:#33280f;
+      --none:#f08a90; --nonebg:#331a1c; --accent:#6fb3f2; --code:#22272c; --codeink:#cfd6de;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.65 -apple-system,"Segoe UI","Microsoft YaHei",Roboto,Helvetica,Arial,sans-serif;}
+  .wrap{max-width:1180px;margin:0 auto;padding:32px 20px 72px}
+  header{border-bottom:2px solid var(--line);padding-bottom:18px;margin-bottom:26px}
+  h1{font-size:26px;line-height:1.3;margin:0 0 8px}
+  h2{font-size:19px;margin:38px 0 12px;padding-left:10px;border-left:4px solid var(--accent)}
+  h3{font-size:16px;margin:26px 0 8px}
+  p{margin:10px 0}
+  .meta{color:var(--muted);font-size:13.5px}
+  .meta code{font-size:12.5px}
+  .lede{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:0 0 24px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:20px 0 8px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  .card .n{font-size:26px;font-weight:700;line-height:1.2}
+  .card .t{font-size:13px;color:var(--muted);margin-top:2px}
+  .card.full .n{color:var(--full)} .card.part .n{color:var(--part)} .card.none .n{color:var(--none)}
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);
+    border-radius:10px;overflow:hidden;font-size:14px}
+  caption{caption-side:top;text-align:left;color:var(--muted);font-size:13px;padding:0 0 8px}
+  th,td{text-align:left;vertical-align:top;padding:11px 13px;border-bottom:1px solid var(--line)}
+  thead th{background:var(--code);font-size:13px;letter-spacing:.02em;color:var(--muted);font-weight:600}
+  tbody tr.sec td{background:var(--code);font-weight:600;font-size:13.5px}
+  tbody tr:last-child td{border-bottom:none}
+  td.item{width:20%;font-weight:600}
+  td.verdict{width:9%;white-space:nowrap}
+  td.gap{width:31%;color:var(--muted)}
+  .badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12.5px;font-weight:600;white-space:nowrap}
+  .badge.full{background:var(--fullbg);color:var(--full)}
+  .badge.part{background:var(--partbg);color:var(--part)}
+  .badge.none{background:var(--nonebg);color:var(--none)}
+  code{background:var(--code);color:var(--codeink);border-radius:5px;
+    padding:1px 5px;font:12.5px/1.5 ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace}
+  a{color:var(--accent);text-decoration:none;border-bottom:1px solid transparent}
+  a:hover{border-bottom-color:currentColor}
+  a code{color:var(--accent)}
+  ul{margin:10px 0;padding-left:22px} li{margin:5px 0}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+  .chip{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:5px 13px;font-size:13.5px}
+  .note{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--accent);
+    border-radius:8px;padding:14px 18px;margin:16px 0}
+  .warn{border-left-color:var(--part)}
+  details{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin:12px 0}
+  summary{cursor:pointer;font-weight:600}
+  pre{background:var(--code);color:var(--codeink);border-radius:8px;padding:12px 14px;overflow-x:auto;
+    font:12.5px/1.6 ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;margin:10px 0}
+  footer{margin-top:44px;padding-top:16px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}
+  .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>EdgeTerm 能力核实报告</h1>
+  <p class="meta">
+    审计对象：G:\Workspaces\TestStudio\EdgeTerm &nbsp;·&nbsp;
+    基线提交：<code>58a4420</code>（2026-10-14）&nbsp;·&nbsp;
+    核实范围：19 项能力清单 + 周边功能 &nbsp;·&nbsp;
+    方法：源码与命令注册表静态核实 + 后端测试实跑
+  </p>
+</header>
+
+<div class="lede">
+  <p><strong>总体结论：完整具备 4 项，部分具备 8 项，完全没有 7 项。</strong></p>
+  <p>“部分具备”指底层机制存在，但缺少清单描述的那一步交互；“完全没有”指命令注册表、UI 入口与实现代码均不存在，而不是“没找到”。所有负面结论都由<strong>命令注册表全表核对</strong>（<a href="../src-tauri/src/lib.rs#L379"><code>lib.rs:379-464</code></a>，前端可达性的唯一事实源）加全仓关键词检索双重确认。</p>
+</div>
+
+<div class="cards">
+  <div class="card full"><div class="n">4</div><div class="t">完整具备</div></div>
+  <div class="card part"><div class="n">8</div><div class="t">部分具备</div></div>
+  <div class="card none"><div class="n">7</div><div class="t">完全没有</div></div>
+  <div class="card"><div class="n">207</div><div class="t">后端测试通过（1 失败为计时抖动，7 忽略）</div></div>
+</div>
+
+<h2>逐条核实</h2>
+<div class="scroll">
+<table>
+  <caption>结论仅代表本基线提交的代码状态；<code>文件:行</code> 可点击跳转。</caption>
+  <thead>
+    <tr><th>清单条目</th><th>结论</th><th>证据</th><th>缺口与限制</th></tr>
+  </thead>
+  <tbody>
+    <tr class="sec"><td colspan="4">连接与凭据层</td></tr>
+    <tr>
+      <td class="item">兼容 ~/.ssh/config，不造私有格式</td>
+      <td class="verdict"><span class="badge part">部分</span></td>
+      <td>Host 通配与 <code>!</code> 否决 <a href="../src-tauri/src/ssh_config.rs#L380"><code>ssh_config.rs:380</code></a>；Include（深度上限 16）<a href="../src-tauri/src/ssh_config.rs#L245"><code>:245</code></a>；ProxyJump <a href="../src-tauri/src/ssh_config.rs#L454"><code>:454</code></a>；IdentityFile 与 <code>%d/%u/%h/%r/~</code> 展开 <a href="../src-tauri/src/ssh_config.rs#L129"><code>:129</code></a>；测试 <a href="../src-tauri/src/tests.rs#L1880"><code>tests.rs:1880</code></a>、<a href="../src-tauri/src/tests.rs#L1966"><code>:1966</code></a></td>
+      <td class="gap"><strong>多跳 ProxyJump 被丢弃</strong>（<a href="../src-tauri/src/ssh_config.rs#L627"><code>:627-632</code></a>，有 warning 非静默）；<code>Match host …</code> 条件被静默忽略，仅 <code>Match all</code> 生效（<a href="../src-tauri/src/ssh_config.rs#L219"><code>:219-226</code></a>）；<strong>ProxyCommand 不识别</strong>（全仓零命中）；<code>%p/%i</code> 等 token 保留原样</td>
+    </tr>
+    <tr>
+      <td class="item">树/分组/标签管理 + 全局搜索</td>
+      <td class="verdict"><span class="badge part">部分</span></td>
+      <td>分组树四分区 <a href="../src/sessionGroups.ts#L44"><code>sessionGroups.ts:44-48</code></a>；树渲染与筛选框 <a href="../src/components/panels/SessionPanel.tsx#L153"><code>SessionPanel.tsx:153-207</code></a>、<a href="../src/components/panels/SessionPanel.tsx#L504"><code>:504-512</code></a>；后端分组 CRUD <a href="../src-tauri/src/lib.rs#L384"><code>lib.rs:384-386</code></a></td>
+      <td class="gap"><strong>没有标签（tag）</strong>：<a href="../src-tauri/src/model.rs#L52"><code>model.rs:52-139</code></a> 只有 <code>group_id</code> 与 <code>color</code>（仓内 <code>tags</code> 指 Sender 命令标签）；<strong>搜索非全局</strong>：只匹配会话名 <code>name.includes()</code>（<a href="../src/components/panels/SessionPanel.tsx#L154"><code>:154-157</code></a>），不搜 host/user/port/分组名，也无独立搜索面板或快捷键</td>
+    </tr>
+    <tr>
+      <td class="item">内建密钥生成 + ssh-copy-id + ppk/OpenSSH 互转</td>
+      <td class="verdict"><span class="badge none">无</span></td>
+      <td>命令注册表全表 <a href="../src-tauri/src/lib.rs#L379"><code>lib.rs:379-464</code></a> 无任何 keygen / copy-id / 转换命令；全仓 <code>ssh-keygen|copy-id|puttygen|ppk|authorized_keys</code> 仅命中注释 <a href="../src-tauri/src/session/ssh.rs#L349"><code>ssh.rs:349</code></a></td>
+      <td class="gap">三项全部缺失。应用只消费 OpenSSH 私钥路径（<a href="../src/components/SessionDialog.tsx#L542"><code>SessionDialog.tsx:542-563</code></a> 仅路径与口令输入），生成与部署必须用外部工具</td>
+    </tr>
+    <tr>
+      <td class="item">SSH agent 集成，passphrase 只输一次</td>
+      <td class="verdict"><span class="badge full">有</span></td>
+      <td>逐个尝试 agent 身份 <a href="../src-tauri/src/session/ssh.rs#L1295"><code>ssh.rs:1295-1369</code></a>（Unix <code>connect_env</code>、Windows 命名管道与 Pageant）；UI 选项 <a href="../src/components/SessionDialog.tsx#L522"><code>SessionDialog.tsx:522</code></a>；口令落盘与重连回填 <a href="../src-tauri/src/store.rs#L1130"><code>store.rs:1130-1173</code></a>、<a href="../src-tauri/src/store.rs#L288"><code>:288-295</code></a>；测试 <a href="../src-tauri/src/tests.rs#L1058"><code>tests.rs:1058</code></a>、<a href="../src-tauri/src/tests.rs#L1666"><code>:1666</code></a></td>
+      <td class="gap">没有 agent 密钥选择/预览界面，只有 “SSH agent” 一档；口令由应用自己的 <code>credentials.json</code> 加密保存（同账户其他程序仍可能读取，<a href="../src-tauri/src/store.rs#L180"><code>store.rs:180-186</code></a> 已说明），不是 agent 代签；后台自动重连不弹认证框（<a href="../src-tauri/src/session/auth.rs#L99"><code>auth.rs:99-104</code></a>）</td>
+    </tr>
+    <tr>
+      <td class="item">连接复用（ControlMaster）</td>
+      <td class="verdict"><span class="badge part">部分</span></td>
+      <td>共享连接机制真实：<a href="../src-tauri/src/commands.rs#L233"><code>commands.rs:233-254</code></a>（<code>reuse</code>/<code>reuse_session_id</code>）、<a href="../src-tauri/src/commands.rs#L341"><code>:341-359</code></a>；入口为显式菜单 “Duplicate SSH Channel” <a href="../src/components/TabStrip.tsx#L246"><code>TabStrip.tsx:246-255</code></a>；测试断言同一连接两个通道 <a href="../src-tauri/src/session/ssh.rs#L2108"><code>ssh.rs:2108-2141</code></a>（<code>logins==1, sessions==2</code>）</td>
+      <td class="gap"><strong>没有 ControlMaster/ControlPath/mux</strong>（全仓零命中）；<strong>复用不是自动的</strong>——开新标签或分屏仍重新登录，源码注释明确 “opening a saved session or splitting still logs in anew”（<a href="../src/actions.ts#L186"><code>actions.ts:186-187</code></a>）。因此“开第二个标签不用重新握手”未满足</td>
+    </tr>
+
+    <tr class="sec"><td colspan="4">会话层</td></tr>
+    <tr>
+      <td class="item">多标签 + 分屏</td>
+      <td class="verdict"><span class="badge full">有</span></td>
+      <td>标签 <a href="../src/store.ts#L568"><code>store.ts:568-576</code></a>、分栏 <a href="../src/store.ts#L1207"><code>:1207-1246</code></a>、布局 <a href="../src/layout.ts#L91"><code>layout.ts:91-163</code></a>；菜单与标签右键 <a href="../src/components/MenuBar.tsx#L599"><code>MenuBar.tsx:599-608</code></a>、<a href="../src/components/TabStrip.tsx#L256"><code>TabStrip.tsx:256-270</code></a></td>
+      <td class="gap">分屏是“同一 profile 再开一个会话”（<a href="../src/actions.ts#L203"><code>actions.ts:203-220</code></a>），不是同一会话的多视图</td>
+    </tr>
+    <tr>
+      <td class="item">广播输入（一条命令发多台）</td>
+      <td class="verdict"><span class="badge part">部分</span></td>
+      <td>Sender 的 <code>target === "all"</code> 发送到所有非文件会话 <a href="../src/components/panels/SenderPanel.tsx#L279"><code>SenderPanel.tsx:279-290</code></a>、<a href="../src/components/panels/SenderPanel.tsx#L640"><code>:640-651</code></a>；多会话 <code>Promise.all</code> 并行 <a href="../src/senderSend.ts#L68"><code>senderSend.ts:68-85</code></a></td>
+      <td class="gap"><strong>没有终端级同步输入</strong>：无 per-pane 广播开关，自由打字/vim/Tab 补全无法广播，只能发预置或临时命令文本；忙会话被跳过而非排队（<a href="../src/senderSend.ts#L74"><code>:74-77</code></a>）</td>
+    </tr>
+    <tr>
+      <td class="item">上万行滚动缓冲 + 正则搜索 + 关键字高亮</td>
+      <td class="verdict"><span class="badge part">部分</span></td>
+      <td>缓冲上限 0–1,000,000 行、默认 10000，可持久化 <a href="../src/store.ts#L154"><code>store.ts:154-158</code></a>、<a href="../src/components/TerminalPane.tsx#L281"><code>TerminalPane.tsx:281</code></a>；高亮 <a href="../src/terminal.ts#L406"><code>terminal.ts:406-410</code></a>（<code>highlightLimit:1000</code>）、<a href="../src/terminal.ts#L1712"><code>:1712-1744</code></a></td>
+      <td class="gap"><strong>正则搜索未实现</strong>：搜索只传 <code>incremental</code> 与 <code>decorations</code>，未传 <code>regex/caseSensitive/wholeWord</code>（<a href="../src/terminal.ts#L1718"><code>terminal.ts:1718-1723</code></a>），而 <code>@xterm/addon-search</code> 0.16.0 本身支持这三项 —— 是上层漏接；UI 无相应开关；高亮命中数上限 1000</td>
+    </tr>
+    <tr>
+      <td class="item">断线自动重连并恢复现场（cd / tmux）</td>
+      <td class="verdict"><span class="badge none">无</span></td>
+      <td>只有手动重连：<a href="../src/actions.ts#L228"><code>actions.ts:228-285</code></a>，断线后按 Enter 触发 <a href="../src/terminal.ts#L1317"><code>terminal.ts:1317-1325</code></a>，提示文案 <a href="../src/actions.ts#L16"><code>actions.ts:16</code></a>；<code>cwd.rs</code> 是查询当前目录 <a href="../src-tauri/src/session/cwd.rs#L139"><code>cwd.rs:139-175</code></a>，与恢复无关</td>
+      <td class="gap"><code>autoReconnect|backoff|retryDelay</code> 全仓零命中；<strong>不恢复 cd</strong>，源码注释直言 “A reconnected shell starts over in its home directory”（<a href="../src/terminal.ts#L1302"><code>terminal.ts:1302-1304</code></a>）；<strong>无 tmux attach</strong>，全仓 <code>tmux</code> 命中均为 OSC 52/鼠标/备用屏注释</td>
+    </tr>
+    <tr>
+      <td class="item">bracketed paste</td>
+      <td class="verdict"><span class="badge full">有</span></td>
+      <td>所有粘贴路径统一经 <a href="../src/terminal.ts#L1448"><code>terminal.ts:1448-1449</code></a> 调 <code>term.paste()</code>，由 xterm.js 施加 <code>[200~…[201~</code> 包裹且未设 <code>ignoreBracketedPasteMode</code>（全仓零命中）；应用额外加多行粘贴确认 <a href="../src/terminalPaste.ts#L20"><code>terminalPaste.ts:20-39</code></a>、<a href="../src/terminal.ts#L1436"><code>terminal.ts:1436-1454</code></a></td>
+      <td class="gap">依赖远端程序自己开启 <code>?2004</code>（bash 4.4+/zsh/tmux 会自动开），应用不强制包裹；确认框是前置对话框，关掉 <code>pasteWarning</code> 即失效；该结论来自库源码阅读，<strong>未做真机端到端验证</strong></td>
+    </tr>
+
+    <tr class="sec"><td colspan="4">文件层</td></tr>
+    <tr>
+      <td class="item">SFTP 侧栏与终端 pwd 双向联动</td>
+      <td class="verdict"><span class="badge part">部分</span></td>
+      <td>只有<strong>手动一次性定位</strong>：<a href="../src/actions.ts#L469"><code>actions.ts:469-489</code></a>，触发点为快捷键/菜单/右键/定位按钮 <a href="../src/shortcuts.ts#L165"><code>shortcuts.ts:165-168</code></a>、<a href="../src/components/MenuBar.tsx#L611"><code>MenuBar.tsx:611-612</code></a>；cwd 数据源真实（OSC 7 解析 <a href="../src/terminal.ts#L158"><code>terminal.ts:158-177</code></a>、远端查询 <a href="../src-tauri/src/session/cwd.rs#L156"><code>cwd.rs:156-167</code></a>）</td>
+      <td class="gap">源码注释否证自动跟随：<em>“One query per request; nothing follows the shell around.”</em>（<a href="../src/actions.ts#L467"><code>actions.ts:467</code></a>）；侧栏双击目录只刷新列表<strong>不向终端发 cd</strong>（<a href="../src/components/panels/FilerPanel.tsx#L1053"><code>FilerPanel.tsx:1053-1056</code></a>）；且该功能对 <code>kind==="sftp"</code> 会话直接拒绝（<a href="../src/actions.ts#L473"><code>:473-478</code></a>），SFTP/FTP 会话走双窗格，不参与联动</td>
+    </tr>
+    <tr>
+      <td class="item">断点续传 / 并发队列 / 传输限速</td>
+      <td class="verdict"><span class="badge part">部分</span></td>
+      <td>续传扎实：journal 检查点 + 已确认前缀哈希 <a href="../src-tauri/src/file_transfer/sftp.rs#L841"><code>sftp.rs:841-853</code></a>、<a href="../src-tauri/src/file_transfer/sftp.rs#L1098"><code>:1098-1108</code></a>，源文件变化或目标被篡改会阻止续传；下载丢弃未确认尾巴 <a href="../src-tauri/src/file_transfer/sftp.rs#L1027"><code>:1027-1044</code></a>；并发 <a href="../src-tauri/src/file_transfer/mod.rs#L545"><code>mod.rs:545-551</code></a>（每端点 2 个任务）、<a href="../src-tauri/src/file_transfer/sftp.rs#L402"><code>sftp.rs:402-404</code></a>；测试 <code>sftp_tests.rs:480/560/652/740</code>、<code>mod.rs:845/865</code></td>
+      <td class="gap"><strong>传输限速完全没有</strong>：全仓无 throttle/令牌桶实现，<a href="../src/fileTransfers.ts#L20"><code>fileTransfers.ts:20-24</code></a> 的 <code>bytesPerSecond</code> 是 EMA <em>实测</em>速率，只用于 ETA 显示 —— 最易误读的一处；并发上限 2 硬编码、用户不可配，无排队/优先级 UI；tar 整目录上传无逐文件续传</td>
+    </tr>
+    <tr>
+      <td class="item">双击远程文件用本地编辑器打开并自动回传</td>
+      <td class="verdict"><span class="badge full">有</span></td>
+      <td>双击下载临时副本并打开 <a href="../src/components/panels/FilerPanel.tsx#L1012"><code>FilerPanel.tsx:1012-1047</code></a>；后端 notify 监视目录（应对编辑器 rename 落盘）<a href="../src-tauri/src/remote_edit.rs#L167"><code>remote_edit.rs:167-179</code></a>、300ms 去抖、失败退避 3s→60s（<a href="../src-tauri/src/remote_edit.rs#L35"><code>:35-39</code></a>）、复用传输引擎上传 <a href="../src-tauri/src/remote_edit.rs#L330"><code>:330-348</code></a>、脏副本打 <code>.unsynced</code> 保留 <a href="../src-tauri/src/remote_edit.rs#L93"><code>:93-115</code></a>；命令注册 <a href="../src-tauri/src/lib.rs#L452"><code>lib.rs:452-454</code></a></td>
+      <td class="gap">机制是 <strong>OS 文件通知</strong>而不是拦截 Ctrl+S：对任意编辑器生效，但要求编辑器真正落盘；上传走 SFTP 通道；该模块<strong>无任何测试</strong>（无 <code>#[test]</code>，全仓无引用其内部的测试）</td>
+    </tr>
+    <tr>
+      <td class="item">本地/远程文件 diff</td>
+      <td class="verdict"><span class="badge none">无</span></td>
+      <td>命令注册表无 diff/compare 命令（<a href="../src-tauri/src/lib.rs#L379"><code>lib.rs:379-464</code></a>）；<code>src</code> 中 <code>diff</code> 仅命中注释（<a href="../src/imePatch.ts#L8"><code>imePatch.ts:8</code></a>、<a href="../src/semanticColors.ts#L56"><code>semanticColors.ts:56-73</code></a>），Rust 侧只有 SSH 算法名 <code>diffie-hellman</code></td>
+      <td class="gap">完全缺失：无本地↔远程，也无远程↔远程对比；无组件、无测试</td>
+    </tr>
+
+    <tr class="sec"><td colspan="4">开发运行层</td></tr>
+    <tr>
+      <td class="item">端口转发可视化 + 监听端口自动嗅探</td>
+      <td class="verdict"><span class="badge none">无</span></td>
+      <td>会话类型只有 local/ssh/telnet/ftp/sftp/serial（<a href="../src-tauri/src/model.rs#L5"><code>model.rs:5-17</code></a>），profile 唯一隧道字段是 <code>jump_profile_id</code>（<a href="../src-tauri/src/model.rs#L116"><code>:116-123</code></a>）；注册表无转发命令；唯一 <code>direct-tcpip</code> 用途是 ProxyJump 跳板链路 <a href="../src-tauri/src/session/ssh.rs#L711"><code>ssh.rs:711-765</code></a></td>
+      <td class="gap">无 <code>-L/-R/-D</code> 配置与 UI；无 <code>ss -tlnp</code>/<code>netstat</code>/<code>lsof</code>/<code>/proc/net</code> 探测与提示交互（唯一 netstat 命中是输出高亮 <a href="../src/semanticColors.ts#L323"><code>semanticColors.ts:323</code></a>）。易混淆点：ProxyJump 是会话级跳板，不等于端口转发</td>
+    </tr>
+    <tr>
+      <td class="item">资源监控条（CPU/内存/磁盘/网络/GPU）</td>
+      <td class="verdict"><span class="badge none">无</span></td>
+      <td>状态栏只有状态文本、Transfers、Legacy SSH 徽标、REC 徽标、窗口尺寸、协议、时钟 <a href="../src/components/StatusBar.tsx#L39"><code>StatusBar.tsx:39-78</code></a>；注册表无 stats/监控命令；前端 cpu/mem/monitor 检索只命中 WebGL 渲染开关（<a href="../src/store.ts#L541"><code>store.ts:541-542</code></a>）</td>
+      <td class="gap">五项指标全部缺失。<strong>两处易误判</strong>：<a href="../src-tauri/src/nvidia_quirk.rs#L1"><code>nvidia_quirk.rs:1-11</code></a> 是 Linux+NVIDIA Wayland 的启动环境变量 workaround（<a href="../src-tauri/src/nvidia_quirk.rs#L190"><code>:190-201</code></a> 的 <code>apply()</code>），前端 “GPU” 是 WebGL 渲染开关 —— 二者都不采样、不展示使用率</td>
+    </tr>
+    <tr>
+      <td class="item">命令片段库 snippets</td>
+      <td class="verdict"><span class="badge part">部分</span></td>
+      <td>功能等价物是 Sender 标签库：<code>SavedCommand{id,name,text,ending,scope}</code> <a href="../src-tauri/src/model.rs#L368"><code>model.rs:368-380</code></a>，作用域 Global/Kind/Group/Profile <a href="../src-tauri/src/model.rs#L353"><code>:353-360</code></a>；持久化 <a href="../src-tauri/src/store.rs#L823"><code>store.rs:823-831</code></a>；CRUD 注册 <a href="../src-tauri/src/commands.rs#L94"><code>commands.rs:94-108</code></a>；一键发送到多目标 <a href="../src/components/panels/SenderPanel.tsx#L1047"><code>SenderPanel.tsx:1047-1050</code></a>；测试 <a href="../src-tauri/src/tests.rs#L494"><code>tests.rs:494</code></a>、<a href="../src-tauri/src/tests.rs#L609"><code>:609</code></a></td>
+      <td class="gap">无变量/占位符替换（<code>SavedCommand</code> 无相应字段），因此固定长命令可直接复用，带参数的模板不行；无 “snippet” 命名。易混淆点：<a href="../src-tauri/src/model.rs#L335"><code>model.rs:335-346</code></a> 的 <code>CommandHistoryEntry</code> 是终端内联建议的历史，不是片段库</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2>清单未列但已具备的能力</h2>
+<div class="chips">
+  <span class="chip">Telnet（含 NAWS 与自动登录）</span>
+  <span class="chip">串口</span>
+  <span class="chip">本地 Shell</span>
+  <span class="chip">FTP 会话</span>
+  <span class="chip">会话录制（原始输出流 + PuTTY 风格头尾）</span>
+  <span class="chip">自定义编码（WHATWG label）</span>
+  <span class="chip">locale 注入（LANG / set_env）</span>
+  <span class="chip">XMODEM / XMODEM-1K</span>
+  <span class="chip">ZMODEM（sentry 自动嗅探）</span>
+  <span class="chip">语义着色（IP/URL/日志级别/HTTP 方法/容量）</span>
+  <span class="chip">选中即复制</span>
+  <span class="chip">OSC 52 剪贴板</span>
+  <span class="chip">快捷键全可改</span>
+  <span class="chip">设置导出/导入</span>
+  <span class="chip">系统投放上传与拖出窗口</span>
+  <span class="chip">传输中心跨标签续跑</span>
+  <span class="chip">键盘交互认证（MFA）</span>
+  <span class="chip">跳板机链路（单跳）</span>
+</div>
+<ul>
+  <li><strong>ZMODEM</strong>：<a href="../src/zmodem.ts#L33"><code>zmodem.ts:33-346</code></a> + 嗅探 <a href="../src/zmodemInput.ts#L12"><code>zmodemInput.ts:12-53</code></a>，测试含双控制器真跑两文件往返（<code>zmodem.test.ts:19-82</code>）。不支持部分上传续传。</li>
+  <li><strong>XMODEM</strong>：手动菜单入口（<a href="../src/components/MenuBar.tsx#L414"><code>MenuBar.tsx:414-428</code></a>）+ <a href="../src/xmodem.ts"><code>xmodem.ts</code></a>。因无握手，无法自动嗅探。</li>
+  <li><strong>无 YMODEM</strong>：全仓零命中，<a href="../src/xmodem.ts#L473"><code>xmodem.ts:473</code></a>、<a href="../src/xmodem.ts#L512"><code>:512</code></a> 明确报错拒绝。</li>
+  <li><strong>拖拽三路径</strong>：系统→Filer 上传（<a href="../src/components/panels/FilerPanel.tsx#L928"><code>FilerPanel.tsx:928-970</code></a>）、双窗格跨面板拖拽（<a href="../src/paneDrop.ts#L31"><code>paneDrop.ts:31-38</code></a>）、拖出到系统（<a href="../src/api.ts#L481"><code>api.ts:481-548</code></a>，macOS 用 promise 拖拽）。缺口：系统投放只挂在 Filer 侧栏，双窗格 FtpPane 无该入口。</li>
+  <li><strong>无 chmod</strong>：仅显示 Mode（<a href="../src/components/panels/FilerPanel.tsx#L1788"><code>FilerPanel.tsx:1788-1790</code></a>）；<a href="../src-tauri/src/file_transfer/sftp.rs#L1304"><code>sftp.rs:1304-1320</code></a> 的 <code>setstat</code> 是替换文件时保留目标权限位，不是用户改权限。无文件搜索/过滤。</li>
+  <li><strong>录制限制</strong>：<a href="../src-tauri/src/session/recording.rs#L1"><code>recording.rs:1-120</code></a> 只有输出流（按键靠远端回显），无播放器，SFTP 会话不录制。</li>
+</ul>
+
+<h2>验证方式与边界</h2>
+<div class="note">
+  <p><strong>已执行</strong>：<code>cargo test --manifest-path src-tauri/Cargo.toml --lib</code> → <strong>207 passed / 1 failed / 7 ignored</strong>（30.02s）。唯一失败是 FTP 取消测试的 wall-clock 断言（<code>ftp_tests.rs:302</code>，要求 &lt;500ms，16 路并行下抖动），<strong>单独重跑通过</strong>，属 FTP 传输层，与本报告结论无关。与连接/凭据/会话相关的测试全部通过。</p>
+</div>
+<div class="note warn">
+  <p><strong>未执行 / 未验证</strong>：未跑前端 <code>npm test</code>；未做真实 Tauri 桌面运行与真实服务器端到端验证；未运行 <code>cargo build</code> 验证 <code>nvidia_quirk</code> 的平台条件编译。因此 bracketed paste 的真机行为、ControlMaster 式复用在新标签中的体感、agent 实机表现属<strong>源码级结论</strong>。</p>
+  <p><strong>本次审计为只读</strong>：未修改、未新增、未删除任何仓库文件（本 HTML 报告是唯一产出）。</p>
+</div>
+
+<h2>附录：两位审计员的原始摘要</h2>
+<details>
+  <summary>审计 A（连接与凭据层 + 会话层）6 行摘要</summary>
+  <pre>1) A1 ~/.ssh/config 导入 = 部分实现：Host 通配/否定、Include、HostName/User/Port、
+   IdentityFile(%d/%u/%h/%r/~) 真实（ssh_config.rs:380-393, 245-259, 429-453；
+   测试 tests.rs:1880/1966）；缺口：多跳 ProxyJump 被丢弃（ssh_config.rs:627-632,
+   709-718）、条件 Match 静默失配（:219-226）、无 ProxyCommand。
+2) A2 部分实现 / A3 未实现：分组树+过滤真实（SessionPanel.tsx:153-207, 504-512；
+   sessionGroups.ts:44-48），但 SessionProfile 无 tags（model.rs:52-139）、过滤只匹配
+   name（SessionPanel.tsx:154-157）；密钥生成/ssh-copy-id/ppk 互转零实现。
+3) A4 已实现：agent 支持（ssh.rs:1295-1369；UI SessionDialog.tsx:522），passphrase
+   落盘并重连回填（store.rs:1130-1173, 288-295；测试 tests.rs:1058/1666）。
+4) A5 部分实现：无 ControlMaster/ControlPath/multiplex（全仓零命中）；复用仅经显式
+   "Duplicate SSH Channel"（TabStrip.tsx:246-255 → commands.rs:233-254, 341-359；
+   测试 ssh.rs:2108-2141 logins==1/sessions==2），开新标签与分屏仍重新登录。
+5) A6 部分实现：多标签+分屏真实（store.ts:1207-1246；layout.ts:91-163），广播仅
+   Sender 面板 "All Sessions"（SenderPanel.tsx:279-290；senderSend.ts:68-85），无终端级
+   同步输入。A7 部分实现：滚动缓冲 0-1,000,000 行默认 10000（store.ts:154-158）与关键字
+   高亮可用，正则搜索未实现（terminal.ts:1718-1723 未传 regex/caseSensitive/wholeWord）。
+6) A8 未实现（无自动重连：actions.ts:16, 228-285；无 cd 恢复：terminal.ts:1302-1304；
+   无 tmux attach）；A9 已实现（term.paste 经 xterm.js 自动 ?2004 包裹，
+   terminal.ts:1448-1449）；A10 已实现 telnet/serial/local+FTP/SFTP、录制、编码/locale、
+   XMODEM/ZMODEM，无 YMODEM。
+
+验证：cargo test --lib → 207 passed / 1 failed / 7 ignored；唯一失败是 FTP wall-clock
+断言 ftp_tests.rs:302（并行时序抖动，单独重跑通过），与本次审计无关。</pre>
+</details>
+<details>
+  <summary>审计 B（文件层 + 开发运行层）6 行摘要</summary>
+  <pre>B1 未实现：终端→侧栏只有手动一次性"定位"（actions.ts:467-489，明确
+   "nothing follows the shell around"）；侧栏双击目录不向终端发 cd
+   （FilerPanel.tsx:1053-1056）；revealCwdInFiler 对 sftp 类型会话直接拒绝
+   （actions.ts:473-478）。
+B2 部分实现：断点续传与并发队列为真（journal+前缀哈希 sftp.rs:841-1108；
+   每端点 Semaphore::new(2) mod.rs:545-751；SFTP files/requests 并发 sftp.rs:402-404；
+   FTP 上限 4 ftp.rs:59），但传输限速完全不存在 —— fileTransfers.ts:20-24 的
+   bytesPerSecond 只是测速显示，不是节流器。
+B3 已实现：双击远程文件下载临时副本 + notify 监视回传（FilerPanel.tsx:1012-1056；
+   remote_edit.rs:167-179, 300-348；命令注册 lib.rs:452-454），机制是 OS 文件通知
+   而非拦截 Ctrl+S。
+B4 未实现：全仓库无 diff 实现、无 diff 命令注册、无 diff UI。
+B5 未实现：无 -L/-R/-D 端口转发配置或 UI，无监听端口嗅探；唯一 direct-tcpip 用法
+   是 ProxyJump 跳板链路（ssh.rs:719-765）。
+B6 未实现：StatusBar.tsx:39-78 只有状态/传输中心/legacy SSH/REC/窗口尺寸/协议/时钟；
+   nvidia_quirk.rs 是 Linux+NVIDIA Wayland 启动环境变量 workaround；前端 "GPU" 只是
+   WebGL 渲染开关（store.ts:541-542），二者都不是 GPU 监控。
+B7 已实现（命名不同）：Sender 标签库为持久化可复用命令片段（model.rs:353-380 含
+   scope；store.rs:192,823-831；commands.rs:94-108；SenderPanel.tsx:1047-1050），
+   缺口是无变量/占位符替换。
+B8 部分实现：拖拽三路径齐全（FilerPanel.tsx:928-970/632-633；paneDrop.ts:31-38；
+   拖出到系统 api.ts:481-548）；XMODEM/ZMODEM 完整，YMODEM 未实现；chmod 未实现；
+   文件搜索/过滤未实现。</pre>
+</details>
+
+<h2>复核说明</h2>
+<div class="note warn">
+  <p>审计 B 的注册表引用 <code>lib.rs:395-464</code> 存在一处偏移：SSH config 导入命令实际注册在 <a href="../src-tauri/src/lib.rs#L397"><code>lib.rs:397-399</code></a>（<code>default_ssh_config_path</code>/<code>read_ssh_config</code>/<code>import_ssh_config</code>），本报告的结论已按实际行号修正。此外审计 B 报告把 B1 记为“未实现”，本报告按你的清单口径记为“部分具备”（手动定位真实存在，但自动双向联动不存在），差异仅为口径，不改变实质。</p>
+</div>
+
+<footer>
+  生成时间：本次会话 &nbsp;·&nbsp; 基线 <code>58a4420</code>（2026-10-14）&nbsp;·&nbsp;
+  审计方式：两位只读审计员分工核实 + 主导独立复核 &nbsp;·&nbsp;
+  相关文档：<a href="test-plan.zh-CN.md">测试与验收方案</a>、
+  <a href="engineering-standards.zh-CN.md">工程规范</a>、
+  <a href="audit-2026-10-14.zh-CN.md">逐提交复审记录</a>
+</footer>
+
+</div>
+</body>
+</html>
