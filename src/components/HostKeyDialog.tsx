@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 import type { HostKeyPrompt } from "../store";
 import { useT } from "../useT";
+import { ModalDialog } from "./ModalDialog";
 
 interface Props {
   prompt: HostKeyPrompt;
@@ -20,33 +21,16 @@ function serverKeyFile(keyType: string): string {
 
 /**
  * Shown when an SSH server presents a key that differs from the one recorded
- * for it. The safe answer is the default: Cancel has focus, Esc cancels, and
- * accepting takes a deliberate click.
+ * for it. The safe answer is the default: Cancel has focus (show-modal focus
+ * algorithm picks the first focusable), Esc cancels through the primitive,
+ * and accepting takes a deliberate click — no Enter shortcut exists, so a
+ * stray Enter cannot accept a new host key.
  */
 export function HostKeyDialog({ prompt, onAccept, onCancel }: Props) {
   const { change } = prompt;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const cancelRef = useRef<HTMLButtonElement>(null);
   const t = useT();
-
-  useEffect(() => {
-    // Pull focus out of whatever was active so keystrokes reach the dialog.
-    cancelRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        onCancel();
-      }
-    };
-    // Capture phase so the dialog answers before any global shortcut handler.
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [onCancel]);
 
   const accept = async () => {
     setBusy(true);
@@ -61,66 +45,66 @@ export function HostKeyDialog({ prompt, onAccept, onCancel }: Props) {
   };
 
   return (
-    <div className="dialog-backdrop" onMouseDown={busy ? undefined : onCancel}>
-      <div
-        className="dialog confirm-dialog host-key-dialog"
-        role="alertdialog"
-        aria-labelledby="host-key-title"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="dialog-header" id="host-key-title">
-          {t("hostKey.title")}
-        </div>
-        <div className="dialog-body confirm-dialog-body">
-          <span>
-            <strong>
-              {change.host}:{change.port}
-            </strong>
-            {t("hostKey.presented")}
-          </span>
-          <dl className="host-key-facts">
-            <dt>{t("hostKey.newKey")}</dt>
-            <dd>
-              {change.keyType} {change.fingerprint}
-            </dd>
-            <dt>{t("hostKey.recordedIn")}</dt>
-            <dd>
-              {t("hostKey.recordedInValue", {
-                file: change.knownHosts,
-                line: change.line,
-              })}
-            </dd>
-          </dl>
-          <span className="confirm-dialog-hint">
-            {t("hostKey.hintStart")}
-            <code>ssh-keygen -lf {serverKeyFile(change.keyType)}</code>
-            {t("hostKey.hintEnd")}
-          </span>
-          {error && <div className="dialog-error">{error}</div>}
-        </div>
-        <div className="dialog-footer confirm-dialog-footer">
-          <span className="confirm-dialog-keys">
-            <kbd>Esc</kbd> {t("keys.cancel")}
-          </span>
-          <button
-            ref={cancelRef}
-            type="button"
-            className="btn"
-            onClick={onCancel}
-            disabled={busy}
-          >
-            {t("common.cancel")}
-          </button>
-          <button
-            type="button"
-            className="btn is-danger"
-            onClick={() => void accept()}
-            disabled={busy}
-          >
-            {busy ? t("hostKey.accepting") : t("hostKey.accept")}
-          </button>
-        </div>
+    <ModalDialog
+      open
+      role="alertdialog"
+      labelledBy="host-key-title"
+      contentClassName="confirm-dialog host-key-dialog"
+      onClose={() => { if (!busy) onCancel(); }}
+      dismissable={!busy}
+    >
+      <div className="dialog-header" id="host-key-title">
+        {t("hostKey.title")}
       </div>
-    </div>
+      <div className="dialog-body confirm-dialog-body">
+        <span>
+          <strong>
+            {change.host}:{change.port}
+          </strong>
+          {t("hostKey.presented")}
+        </span>
+        <dl className="host-key-facts">
+          <dt>{t("hostKey.newKey")}</dt>
+          <dd>
+            {change.keyType} {change.fingerprint}
+          </dd>
+          <dt>{t("hostKey.recordedIn")}</dt>
+          <dd>
+            {t("hostKey.recordedInValue", {
+              file: change.knownHosts,
+              line: change.line,
+            })}
+          </dd>
+        </dl>
+        <span className="confirm-dialog-hint">
+          {t("hostKey.hintStart")}
+          <code>ssh-keygen -lf {serverKeyFile(change.keyType)}</code>
+          {t("hostKey.hintEnd")}
+        </span>
+        {error && <div className="dialog-error">{error}</div>}
+      </div>
+      <div className="dialog-footer confirm-dialog-footer">
+        <span className="confirm-dialog-keys">
+          <kbd>Esc</kbd> {t("keys.cancel")}
+        </span>
+        <button
+          autoFocus
+          type="button"
+          className="btn"
+          onClick={onCancel}
+          disabled={busy}
+        >
+          {t("common.cancel")}
+        </button>
+        <button
+          type="button"
+          className="btn is-danger"
+          onClick={() => void accept()}
+          disabled={busy}
+        >
+          {busy ? t("hostKey.accepting") : t("hostKey.accept")}
+        </button>
+      </div>
+    </ModalDialog>
   );
 }

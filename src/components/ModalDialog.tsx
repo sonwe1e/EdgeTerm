@@ -33,8 +33,16 @@ interface Props {
   draggable?: boolean;
   role?: "dialog" | "alertdialog";
   labelledBy?: string;
-  /** Extra class on the inner content box (confirm-dialog, …). */
+  ariaLabel?: string;
+  headerClassName?: string;
+  /**
+   * Extra class on the inner content box (confirm-dialog, ...). With
+   * bare, the box carries ONLY this class — for dialogs with their own
+   * complete styling (FileDiff) that must not inherit the .dialog base.
+   */
   contentClassName?: string;
+  /** Skip the .dialog base class on the inner content box. */
+  bare?: boolean;
   /**
    * Key handler for keys aimed at this dialog, invoked from the dialog's
    * own key listener before the event is stopped from bubbling further —
@@ -84,7 +92,10 @@ export function ModalDialog({
   draggable = false,
   role = "dialog",
   labelledBy,
+  ariaLabel,
+  headerClassName,
   contentClassName,
+  bare = false,
   onKeyDown,
   children,
 }: Props) {
@@ -93,7 +104,7 @@ export function ModalDialog({
   // Set while a close is driven from this component (the open/closed effect
   // or cleanup), so the element's own `close` event does not report it back
   // as a user dismissal.
-  const closingInternally = useRef(false);
+  const internalCloses = useRef(0);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   /**
@@ -132,7 +143,8 @@ export function ModalDialog({
   }, [dragTargetRef]);
 
   const supportsNativeModal = () =>
-    typeof dialogRef.current?.showModal === "function";
+    typeof dialogRef.current?.showModal === "function" &&
+    typeof dialogRef.current?.close === "function";
 
   const focusContent = () => {
     // The show-modal focus algorithm honours autofocus; the fallback starts
@@ -163,8 +175,9 @@ export function ModalDialog({
   // showModal's autofocus ran); a stacked fallback beneath takes it instead.
   const restoreFocusAfterClose = () => {
     const beneath = fallbackStack[fallbackStack.length - 1];
-    if (beneath) beneath.focus({ preventScroll: true });
-    else openerRef.current?.focus({ preventScroll: true });
+    const opener = openerRef.current;
+    if (opener?.isConnected && (!beneath || beneath.contains(opener))) opener.focus({ preventScroll: true });
+    else beneath?.focus({ preventScroll: true });
   };
 
   /**
@@ -176,7 +189,7 @@ export function ModalDialog({
   const closeOpenedDialog = (dialog: HTMLDialogElement) => {
     if (openedNatively.current) {
       if (dialog.open) {
-        closingInternally.current = true;
+        internalCloses.current += 1;
         dialog.close();
       }
     } else if (dialog.hasAttribute("open")) {
@@ -213,11 +226,11 @@ export function ModalDialog({
     if (!dialog) return;
     const notify = () => onCloseRef.current();
     const onDialogClose = () => {
-      if (closingInternally.current) {
-        closingInternally.current = false;
+      if (internalCloses.current > 0) {
+        internalCloses.current -= 1;
         return;
       }
-      notify();
+      if (!dialog.open) notify();
     };
     // Native path only: the fallback has no cancel event, its Escape is
     // handled by the dialog key listener below.
@@ -245,7 +258,7 @@ export function ModalDialog({
   // *requests* the close (the controlled `open` flip performs it), so a
   // caller deferring the close keeps its state consistent.
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDialogElement>) => {
-    onKeyDownRef.current?.(event as unknown as ReactKeyboardEvent<HTMLDialogElement>);
+    if (!event.nativeEvent.isComposing) onKeyDownRef.current?.(event);
     // Native path: stop the key here so window-level shortcut listeners
     // never see a dialog key, and keep Tab cycling inside the content box
     // (Edge 155 lets one Tab from the last control land on body). The
@@ -253,7 +266,11 @@ export function ModalDialog({
     // because without the top layer the key event may not even pass
     // through this dialog.
     event.stopPropagation();
-    if (event.key === "Tab" && !event.defaultPrevented) {
+    if (event.key === "Escape" && !event.defaultPrevented && !event.nativeEvent.defaultPrevented && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      onCloseRef.current();
+    }
+    if (event.key === "Tab" && !event.defaultPrevented && !event.nativeEvent.defaultPrevented) {
       containTab(event.nativeEvent, dialogRef.current!);
     }
   };
@@ -263,7 +280,9 @@ export function ModalDialog({
       dialog.querySelectorAll<HTMLElement>(
         "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])",
       ),
-    ).filter((element) => !element.hasAttribute("disabled"));
+    ).filter((element) => element.tabIndex >= 0 && !element.matches(":disabled") &&
+      !element.closest("[inert]") && element.getClientRects().length > 0 &&
+      getComputedStyle(element).visibility !== "hidden");
     if (focusables.length === 0) {
       event.preventDefault();
       return;
@@ -271,10 +290,10 @@ export function ModalDialog({
     const first = focusables[0];
     const last = focusables[focusables.length - 1];
     const active = document.activeElement;
-    if (event.shiftKey && (active === first || !dialog.contains(active))) {
+    if (event.shiftKey && (active === first || !focusables.includes(active as HTMLElement))) {
       event.preventDefault();
       last.focus();
-    } else if (!event.shiftKey && (active === last || !dialog.contains(active))) {
+    } else if (!event.shiftKey && (active === last || !focusables.includes(active as HTMLElement))) {
       event.preventDefault();
       first.focus();
     }
@@ -294,16 +313,15 @@ export function ModalDialog({
     if (!dialog) return;
     const isTopmost = () => fallbackStack[fallbackStack.length - 1] === dialog;
     const onWindowKeyDown = (event: KeyboardEvent) => {
-      onKeyDownRef.current?.(event as unknown as ReactKeyboardEvent<HTMLDialogElement>);
-      // Owned: nothing else (App shortcuts, background listeners) may react.
-      event.stopPropagation();
-      if (event.defaultPrevented) return;
-      if (event.key === "Escape" && isTopmost()) {
+      if (!isTopmost() || dialog.contains(event.target as Node)) return;
+      // Inside keys must reach React children (forms, IME and shortcut capture).
+      // Only a key aimed outside the fallback needs a capture boundary.
+      event.stopImmediatePropagation();
+      focusContent();
+      if (event.key === "Escape" && !event.isComposing) {
         event.preventDefault();
         onCloseRef.current();
-        return;
-      }
-      if (event.key === "Tab") containTab(event, dialog);
+      } else if (event.key === "Tab") containTab(event, dialog);
     };
     window.addEventListener("keydown", onWindowKeyDown, true);
     return () => window.removeEventListener("keydown", onWindowKeyDown, true);
@@ -355,20 +373,22 @@ export function ModalDialog({
       className="dialog-backdrop"
       role={role}
       aria-labelledby={labelledBy}
+      aria-label={ariaLabel}
+      aria-modal="true"
       onKeyDown={handleKeyDown}
       onPointerDown={onBackdropPointerDown}
       onPointerUp={onBackdropPointerUp}
     >
       <div
         ref={attachContentBox}
-        className={`dialog${contentClassName ? ` ${contentClassName}` : ""}`}
+        className={bare ? contentClassName : `dialog${contentClassName ? ` ${contentClassName}` : ""}`}
         tabIndex={-1}
         onMouseDown={onContentMouseDown}
         onAnimationEnd={onContentAnimationEnd}
       >
         {title !== undefined && (
           <div
-            className="dialog-header"
+            className={`dialog-header${headerClassName ? ` ${headerClassName}` : ""}${draggable ? " is-drag-handle" : ""}`}
             id={labelledBy}
             {...(draggable ? handleProps : undefined)}
           >

@@ -1,3 +1,4 @@
+import { ModalDialog } from "./components/ModalDialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { exit } from "@tauri-apps/plugin-process";
@@ -715,13 +716,8 @@ export default function App() {
       )}
 
       {aboutOpen && (
-        <div className="dialog-backdrop" onMouseDown={() => setAboutOpen(false)}>
-          <div
-            className="dialog"
-            style={{ width: 380 }}
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <div className="dialog-header">{t("about.title")}</div>
+        <ModalDialog open onClose={() => setAboutOpen(false)} title={t("about.title")}
+          labelledBy="about-title" contentClassName="about-dialog">
             <div className="dialog-body" style={{ lineHeight: 1.7 }}>
               <strong>
                 EdgeTerm{updater.appVersion ? ` ${updater.appVersion}` : ""}
@@ -748,8 +744,7 @@ export default function App() {
                 {t("common.close")}
               </button>
             </div>
-          </div>
-        </div>
+        </ModalDialog>
       )}
     </div>
   );

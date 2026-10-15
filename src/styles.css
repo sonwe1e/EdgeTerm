@@ -3594,6 +3594,7 @@ dialog.dialog-backdrop::backdrop {
    the dim. Focus containment and Escape are the primitive's own job here;
    the background is not inert (declared platform boundary). */
 dialog.dialog-backdrop.is-fallback[open] {
+  z-index: 10000;
   background: rgba(0, 0, 0, 0.5);
 }
 
@@ -5096,3 +5097,5 @@ dialog.dialog-backdrop.is-fallback[open] {
 .forward-error { color: var(--red); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .forward-job button { margin-top: 3px; }
 .forward-popover .is-warning { color: var(--yellow); }
+
+.about-dialog { width: 380px; }

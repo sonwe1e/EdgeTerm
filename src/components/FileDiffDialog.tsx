@@ -3,6 +3,7 @@ import * as api from "../api";
 import { VirtualFileRows } from "./VirtualFileRows";
 import { useStableCallback } from "../useStableCallback";
 import { useT } from "../useT";
+import { ModalDialog } from "./ModalDialog";
 
 const ROW_HEIGHT = 28;
 export function FileDiffDialog({ sessionId, local, remote, active, onClose }: {
@@ -14,7 +15,6 @@ export function FileDiffDialog({ sessionId, local, remote, active, onClose }: {
   const [loading, setLoading] = useState(true);
   const [attempt, setAttempt] = useState(0);
   const pending = useRef<string | null>(null);
-  const dialog = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const close = useStableCallback(onClose);
   useEffect(() => {
@@ -40,22 +40,6 @@ export function FileDiffDialog({ sessionId, local, remote, active, onClose }: {
       }
     };
   }, [sessionId, local, remote, active, attempt]);
-  useEffect(() => {
-    if (!active) return;
-    const previous = document.activeElement as HTMLElement | null;
-    dialog.current?.querySelector<HTMLButtonElement>("button")?.focus();
-    const key = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { event.preventDefault(); close(); }
-      if (event.key === "Tab") {
-        const targets = [...(dialog.current?.querySelectorAll<HTMLElement>('button:not(:disabled),[tabindex="0"]') ?? [])];
-        const first = targets[0], last = targets[targets.length - 1];
-        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
-        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
-      }
-    };
-    document.addEventListener("keydown", key);
-    return () => { document.removeEventListener("keydown", key); previous?.focus(); };
-  }, [active, close]);
   const columnWidth = useMemo(() => Math.max(280, (result?.rows.reduce((max, row) => Math.max(max,
     (row.left ?? "").replace(/\t/g, "        ").replace(/[^\x00-\x7f]/g, "xx").length,
     (row.right ?? "").replace(/\t/g, "        ").replace(/[^\x00-\x7f]/g, "xx").length), 0) ?? 0) * 8 + 100), [result]);
@@ -66,9 +50,8 @@ export function FileDiffDialog({ sessionId, local, remote, active, onClose }: {
     if (id) void api.cancelFileDiff(id).catch((e) => setError(t("diff.cancelFailed", { error: String(e) })));
   };
   const jump = (end: boolean) => scroller.current?.scrollTo({ top: end ? scroller.current.scrollHeight : 0 });
-  return <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
-    <div className="file-diff-dialog" role="dialog" aria-modal="true" aria-label={t("diff.dialogAria")} ref={dialog}>
-      <div className="file-diff-heading"><strong>{t("diff.heading")}</strong><button type="button" onClick={close} aria-label={t("diff.closeAria")}>×</button></div>
+  return <ModalDialog open={active} bare role="dialog" ariaLabel={t("diff.dialogAria")} contentClassName="file-diff-dialog" onClose={close}>
+    <div className="file-diff-heading" id="file-diff-title"><strong>{t("diff.heading")}</strong><button type="button" onClick={close} aria-label={t("diff.closeAria")}>×</button></div>
       <div className="file-diff-paths"><div title={local}><strong>{t("diff.localLabel")}</strong> {local}</div><div title={remote}><strong>{t("diff.remoteLabel")}</strong> {remote}</div></div>
       <div className="file-diff-toolbar">
         <span role="status">{loading ? t("diff.readingFiles") : result?.status === "identical" ? t("diff.identical") : result?.status === "different" ? t("diff.differ") : result ? t("diff.notComplete") : t("diff.stopped")}</span>
@@ -91,8 +74,7 @@ export function FileDiffDialog({ sessionId, local, remote, active, onClose }: {
             </VirtualFileRows>
           </div>}
       </>}
-    </div>
-  </div>;
+  </ModalDialog>;
 }
 function Metadata({ metadata }: { metadata: api.DiffMetadata }) {
   const t = useT();

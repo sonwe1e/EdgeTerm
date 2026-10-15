@@ -20,11 +20,7 @@ import {
 } from "../sessionGroups";
 import { useStore } from "../store";
 import { useT } from "../useT";
-import {
-  endDialogAttention,
-  requestDialogAttention,
-} from "./dialogAttention";
-import { useDialogDrag } from "./useDialogDrag";
+import { ModalDialog } from "./ModalDialog";
 import {
   colorForSession,
   isFileSession,
@@ -224,8 +220,6 @@ function nextColorIndex(
 export function SessionDialog({ initial, onClose }: Props) {
   const colorPickerRef = useRef<HTMLDivElement>(null);
   const t = useT();
-  const { dialogRef, handleProps: dragHandleProps } =
-    useDialogDrag<HTMLDivElement>();
   const [profile, setProfile] = useState<SessionProfile>(() =>
     initial
       ? {
@@ -627,28 +621,9 @@ export function SessionDialog({ initial, onClose }: Props) {
     profile.parity === "odd" ? "O" : profile.parity === "even" ? "E" : "N";
 
   return (
-    <div
-      className="dialog-backdrop"
-      onMouseDown={(event) => {
-        // A stray click outside must not discard the form (issue #33): keep
-        // the dialog and its focus, and flash it so the click is answered.
-        event.preventDefault();
-        requestDialogAttention(dialogRef.current);
-      }}
-    >
-      <div
-        ref={dialogRef}
-        className="dialog session-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="session-dialog-title"
-        onMouseDown={(event) => event.stopPropagation()}
-        onAnimationEnd={endDialogAttention}
-      >
-        <div
-          className="dialog-header session-dialog-header is-drag-handle"
-          {...dragHandleProps}
-        >
+    <ModalDialog open onClose={onClose} dismissable={false} draggable
+      contentClassName="session-dialog" headerClassName="session-dialog-header"
+      labelledBy="session-dialog-title" title={<>
           {/* The badge carries the session colour picked below, so the
               dialog wears the identity the tab will have. */}
           <span
@@ -663,7 +638,7 @@ export function SessionDialog({ initial, onClose }: Props) {
             <Icon name={protocolIcon(profile.kind)} />
           </span>
           <div className="session-dialog-heading">
-            <div id="session-dialog-title" className="session-dialog-title">
+            <div className="session-dialog-title">
               {initial?.id ? t("session.editTitle") : t("session.newTitle")}
             </div>
             <div className="session-dialog-subtitle">{summary()}</div>
@@ -676,7 +651,7 @@ export function SessionDialog({ initial, onClose }: Props) {
           >
             <Icon name="close" />
           </button>
-        </div>
+      </>}>
 
         <div className="dialog-body session-dialog-body">
           <section className="session-section">
@@ -1318,7 +1293,6 @@ export function SessionDialog({ initial, onClose }: Props) {
             {busy ? t("session.connecting") : t("session.connect")}
           </button>
         </div>
-      </div>
-    </div>
+    </ModalDialog>
   );
 }

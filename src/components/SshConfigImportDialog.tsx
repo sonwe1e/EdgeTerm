@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import * as api from "../api";
 import { t as translateMsg } from "../i18n";
@@ -66,19 +66,6 @@ export function SshConfigImportDialog({ preview, onClose }: Props) {
         .sort((a, b) => a.label.localeCompare(b.label)),
     [groups],
   );
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        onClose();
-      }
-    };
-    // Capture phase so the dialog answers before any global shortcut handler.
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [onClose]);
 
   const toggle = (alias: string) =>
     setSelected((current) => {
