@@ -43,11 +43,12 @@ export function UpdateDialog({
   return (
     <ModalDialog
       open
+      labelledBy="update-dialog-title"
       contentClassName={"update-dialog"}
       onClose={onDismiss}
       dismissable={dismissible}
     >
-        <div className="dialog-header">{title}</div>
+        <div className="dialog-header" id="update-dialog-title">{title}</div>
         <div className="dialog-body update-dialog-body">
           {state.phase === "checking" && (
             <>
