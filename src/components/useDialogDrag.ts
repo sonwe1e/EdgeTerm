@@ -1,3 +1,4 @@
+import { useStableCallback } from "../useStableCallback";
 import { useEffect, useRef } from "react";
 
 interface DragState {
@@ -26,7 +27,7 @@ export function useDialogDrag<T extends HTMLElement>() {
   const offset = useRef({ x: 0, y: 0 });
   const drag = useRef<DragState | null>(null);
 
-  const apply = (x: number, y: number) => {
+  const apply = useStableCallback((x: number, y: number) => {
     const dialog = dialogRef.current;
     if (!dialog) return;
     // Clamp against where layout put the dialog, i.e. the rect with the
@@ -42,7 +43,7 @@ export function useDialogDrag<T extends HTMLElement>() {
     y = Math.min(Math.max(y, minY), Math.max(minY, maxY));
     offset.current = { x, y };
     dialog.style.transform = x || y ? `translate(${x}px, ${y}px)` : "";
-  };
+  });
 
   useEffect(() => {
     const dialog = dialogRef.current;

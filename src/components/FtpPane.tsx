@@ -406,7 +406,7 @@ export function FtpPane({ tab, active }: Props) {
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
-  const endDragState = () => {
+  const endDragState = useStableCallback(() => {
     // A scheduled hit test must not fire after the drag is over and light a
     // highlight nothing will clear.
     hoverGate.current?.cancel();
@@ -415,7 +415,7 @@ export function FtpPane({ tab, active }: Props) {
     draggedRef.current = null;
     setDragging(null);
     setDropHover(null);
-  };
+  });
 
   // A drag held at a list's top or bottom edge keeps that list scrolling
   // (see edgeScroll.ts); the pointer position arrives with each gated hover

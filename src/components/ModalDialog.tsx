@@ -1,3 +1,4 @@
+import { useStableCallback } from "../useStableCallback";
 import {
   useCallback,
   useEffect,
@@ -142,15 +143,15 @@ export function ModalDialog({
     dragTargetRef.current = element;
   }, [dragTargetRef]);
 
-  const supportsNativeModal = () =>
+  const supportsNativeModal = useStableCallback(() =>
     typeof dialogRef.current?.showModal === "function" &&
-    typeof dialogRef.current?.close === "function";
+    typeof dialogRef.current?.close === "function");
 
-  const focusContent = () => {
+  const focusContent = useStableCallback(() => {
     // The show-modal focus algorithm honours autofocus; the fallback starts
     // on the content box so Tab cycling has an anchor.
     if (!supportsNativeModal()) contentRef.current?.focus();
-  };
+  });
 
   // --- fallback focus ownership ------------------------------------------------
   // Without the top layer nothing stops a programmatic (or click-driven)
@@ -173,12 +174,12 @@ export function ModalDialog({
   // --- close/cleanup -----------------------------------------------------------
   // On the last close, focus returns to the real opener (captured before
   // showModal's autofocus ran); a stacked fallback beneath takes it instead.
-  const restoreFocusAfterClose = () => {
+  const restoreFocusAfterClose = useStableCallback(() => {
     const beneath = fallbackStack[fallbackStack.length - 1];
     const opener = openerRef.current;
     if (opener?.isConnected && (!beneath || beneath.contains(opener))) opener.focus({ preventScroll: true });
     else beneath?.focus({ preventScroll: true });
-  };
+  });
 
   /**
    * Closes THIS open cycle the way it was opened: native cycles use
@@ -186,7 +187,7 @@ export function ModalDialog({
    * with showModal) drop the open attribute. Then the fallback bookkeeping
    * and the opener/stack focus restore run unconditionally.
    */
-  const closeOpenedDialog = (dialog: HTMLDialogElement) => {
+  const closeOpenedDialog = useStableCallback((dialog: HTMLDialogElement) => {
     if (openedNatively.current) {
       if (dialog.open) {
         internalCloses.current += 1;
@@ -198,7 +199,7 @@ export function ModalDialog({
     const index = fallbackStack.indexOf(dialog);
     if (index !== -1) fallbackStack.splice(index, 1);
     restoreFocusAfterClose();
-  };
+  });
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -275,7 +276,7 @@ export function ModalDialog({
     }
   };
 
-  const containTab = (event: KeyboardEvent, dialog: HTMLDialogElement) => {
+  const containTab = useStableCallback((event: KeyboardEvent, dialog: HTMLDialogElement) => {
     const focusables = Array.from(
       dialog.querySelectorAll<HTMLElement>(
         "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])",
@@ -297,7 +298,7 @@ export function ModalDialog({
       event.preventDefault();
       first.focus();
     }
-  };
+  });
 
   // --- fallback keyboard boundary ------------------------------------------------
   // Without showModal there is no top layer, so the key event for a click

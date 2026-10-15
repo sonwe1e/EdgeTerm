@@ -122,10 +122,7 @@ let server;
 let browserVersion = "";
 let page = null;
 let lastPhase = "start";
-const phase = (name) => {
-  lastPhase = name;
-  console.error(`[phase] ${name}`);
-};
+
 try {
   const built = await build({
     root: repoRoot,

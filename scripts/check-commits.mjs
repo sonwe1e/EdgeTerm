@@ -1,6 +1,6 @@
 // Commit-range checker for engineering standards R8-R10.
 //
-// Usage: node scripts/check-commits.mjs [<base>..<head>] [--typecheck] [--json]
+// Usage: node scripts/check-commits.mjs [<base>..<head>] [--typecheck] [--lint] [--json]
 //                                       [--include-merges] [--clean-stale]
 //
 // Default range: $(git merge-base main HEAD)..HEAD. Lints every commit
@@ -213,9 +213,10 @@ export function summarizeTsc(output, max = 5) {
 
 /** Parse CLI arguments. Throws on unknown flags. */
 export function parseArgs(argv) {
-  const opts = { range: null, typecheck: false, json: false, includeMerges: false, cleanStale: false };
+  const opts = { range: null, typecheck: false, lint: false, json: false, includeMerges: false, cleanStale: false };
   for (const a of argv) {
     if (a === "--typecheck") opts.typecheck = true;
+    else if (a === "--lint") opts.lint = true;
     else if (a === "--json") opts.json = true;
     else if (a === "--include-merges") opts.includeMerges = true;
     else if (a === "--clean-stale") opts.cleanStale = true;
@@ -311,7 +312,7 @@ function checkStale(root, cleanStale) {
   }
 }
 
-function typecheckCommit(root, commit, active) {
+function typecheckCommit(root, commit, active, opts) {
   const dir = path.join(worktreeBase(root), commit.short);
   if (existsSync(dir)) throw new Error(`${dir} already exists`);
   active.add(dir);
@@ -323,7 +324,13 @@ function typecheckCommit(root, commit, active) {
       cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024,
     });
     const output = `${r.stdout ?? ""}${r.stderr ?? ""}`;
-    return { pass: r.status === 0, ...summarizeTsc(output), raw: r.status === 0 ? "" : output.trim().split(/\r?\n/).slice(0, 5) };
+    let lint = { skipped: true, reason: "commit predates biome.json" };
+    if (opts.lint && existsSync(path.join(dir, "biome.json"))) {
+      const biome = path.join(root, "node_modules", "@biomejs", "biome", "bin", "biome");
+      const checked = spawnSync(process.execPath, [biome, "lint"], { cwd: dir, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+      lint = { pass: checked.status === 0, output: `${checked.stdout ?? ""}${checked.stderr ?? ""}`.slice(0, 8000) };
+    }
+    return { lint, pass: r.status === 0, ...summarizeTsc(output), raw: r.status === 0 ? "" : output.trim().split(/\r?\n/).slice(0, 5) };
   } finally {
     const removed = removeWorktree(root, dir);
     active.delete(dir);
@@ -347,7 +354,7 @@ function format(results) {
 async function main(argv) {
   const opts = parseArgs(argv);
   if (opts.help) {
-    console.log("usage: node scripts/check-commits.mjs [<base>..<head>] [--typecheck] [--json] [--include-merges] [--clean-stale]");
+    console.log("usage: node scripts/check-commits.mjs [<base>..<head>] [--typecheck] [--lint] [--json] [--include-merges] [--clean-stale]");
     return 0;
   }
   const root = git(["rev-parse", "--show-toplevel"], process.cwd()).stdout.trim();
@@ -361,15 +368,16 @@ async function main(argv) {
 
   const results = [];
   try {
-    if (opts.typecheck) checkStale(root, opts.cleanStale);
+    if (opts.typecheck || opts.lint) checkStale(root, opts.cleanStale);
     for (const sha of shas) {
       const c = readCommit(root, sha);
       const items = [...lintMessage(c), ...scopeHeuristics(c, { typecheck: opts.typecheck })];
       const result = { sha: c.sha, short: c.short, subject: c.subject, items };
-      if (opts.typecheck) {
+      if (opts.typecheck || opts.lint) {
         if (!opts.json) process.stderr.write(`typecheck ${c.short}…\n`);
-        const tc = typecheckCommit(root, c, active);
+        const tc = typecheckCommit(root, c, active, opts);
         result.typecheck = tc;
+        if (tc.lint.pass === false) items.push(item("ERROR", "lint", tc.lint.output));
         if (!tc.pass) {
           const detail = tc.first.length ? tc.first : tc.raw;
           items.push(item("ERROR", "typecheck", `tsc --noEmit failed (${tc.count} errors)${detail.length ? ":\n       " + detail.join("\n       ") : ""}`));

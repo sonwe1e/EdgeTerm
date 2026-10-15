@@ -1,3 +1,4 @@
+import { useStableCallback } from "../useStableCallback";
 import {
   forwardRef,
   useEffect,
@@ -83,21 +84,21 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
     // replaces it instead of being appended to it. A query taken from the
     // terminal selection is already being searched, so the caret just sits
     // after it.
-    const focusInput = (selectQuery = true) => {
+    const focusInput = useStableCallback((selectQuery = true) => {
       const input = inputRef.current;
       if (!input) return;
       input.focus();
       if (selectQuery) input.select();
       else input.setSelectionRange(input.value.length, input.value.length);
-    };
+    });
 
-    const clearSearch = () => {
+    const clearSearch = useStableCallback(() => {
       if (searchedRef.current) getController(searchedRef.current)?.clearSearch();
       searchedRef.current = null;
       setResults(null);
-    };
+    });
 
-    const runSearch = (forward: boolean, incremental = false, term = query) => {
+    const runSearch = useStableCallback((forward: boolean, incremental: boolean = false, term: string = query) => {
       if (!activeId) return;
       if (!term) {
         clearSearch();
@@ -106,7 +107,7 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
       if (searchedRef.current !== activeId) clearSearch();
       searchedRef.current = activeId;
       getController(activeId)?.search(term, forward, incremental);
-    };
+    });
 
     // Highlights and the counter belong to one session; switching tabs ends
     // that search rather than showing stale numbers.
@@ -125,29 +126,31 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
     // Search the seeded selection right away; the search starts at the
     // selection, so it stays the current match. Closing the box drops the
     // highlights.
+    const [seededQuery] = useState(query);
     useEffect(() => {
-      if (query) runSearch(true, true);
+      if (seededQuery) runSearch(true, true, seededQuery);
       return clearSearch;
-    }, []);
+    }, [seededQuery, runSearch, clearSearch]);
 
     // The tab the box opened in. Its seeded query is left unselected there;
     // after a tab switch the query is selected so typing replaces it. (Kept
     // as state, not a mutable ref, so StrictMode's repeated effects agree.)
     const [openedIn] = useState({ tab: tab?.info.id, seeded: query !== "" });
+    const tabId = tab?.info.id, tabKind = tab?.info.kind;
     useEffect(() => {
-      if (tab && isFileSession(tab.info.kind)) return;
-      focusInput(!(openedIn.seeded && tab?.info.id === openedIn.tab));
-    }, [tab?.info.id, tab?.info.kind]);
+      if (tabKind && isFileSession(tabKind)) return;
+      focusInput(!(openedIn.seeded && tabId === openedIn.tab));
+    }, [tabId, tabKind, openedIn, focusInput]);
 
     // Adopt a fresh terminal selection as the query and search it. The input
     // is updated synchronously so the focus that follows sees the new text.
-    const adoptSelection = () => {
+    const adoptSelection = useStableCallback(() => {
       const term = selectedText(activeId);
       if (!term || term === query) return false;
       flushSync(() => setQuery(term));
       runSearch(true, true, term);
       return true;
-    };
+    });
 
     useImperativeHandle(
       ref,

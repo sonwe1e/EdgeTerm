@@ -110,3 +110,13 @@ pass/fail regression gate.
 The Win32 scripts have machine-specific process/window assumptions. Pass `-Exe`
 explicitly when using them on another checkout. They were not run against the
 user's desktop during the 2026-10-14 audit.
+
+### Static checks
+
+`npm run lint` runs Biome 2.5.15 without formatting. Unused variables/imports and
+missing React dependencies are errors; explicit `any` is a warning. Extra effect
+dependencies are allowed because retry/revision/layout tokens intentionally trigger
+work. `useStableCallback` is registered as returning a stable event callback;
+subscription lifetimes still use explicit dependencies. `check:commits -- <range>
+--typecheck --lint` checks each revision in an isolated worktree; revisions before
+biome.json are reported as skipped for lint, rather than using a future config.

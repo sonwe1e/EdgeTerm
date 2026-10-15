@@ -1,6 +1,6 @@
 // Throttle the renderer N x and drag the splitters with sessions flooding.
 // Usage: node cdp-throttle-drag.cjs [rate=20] [rounds=10]
-const { sleep, findPageWs, connect } = require("./cdp-helpers.cjs");
+const { sleep, findPageWs } = require("./cdp-helpers.cjs");
 
 async function main() {
   const rate = Number(process.argv[2] || 20);
@@ -62,7 +62,7 @@ async function main() {
 
     for (let round = 1; round <= rounds; round++) {
       let before, after;
-      try { before = await evalJs(`JSON.stringify(window.__diag)`); } catch (e) { console.log(`round ${round}: PROBE TIMEOUT before drag (${e.message})`); result = "wedged"; break; }
+      try { before = await evalJs(`JSON.stringify(window.__diag)`); } catch { console.log(`round ${round}: PROBE TIMEOUT before drag (${e.message})`); result = "wedged"; break; }
       const startX = await evalJs(`(() => { const s = document.querySelectorAll(".splitter.is-vertical")[0]; if (!s) return null; const r = s.getBoundingClientRect(); return Math.round(r.x); })()`);
       const dir = round % 2 ? 1 : -1;
       try {
@@ -78,7 +78,7 @@ async function main() {
         break;
       }
       await sleep(600);
-      try { after = await evalJs(`JSON.stringify(window.__diag)`, 5000); } catch (e) { console.log(`round ${round}: RENDERER STOPPED RESPONDING after drag`); result = "wedged"; break; }
+      try { after = await evalJs(`JSON.stringify(window.__diag)`, 5000); } catch { console.log(`round ${round}: RENDERER STOPPED RESPONDING after drag`); result = "wedged"; break; }
       const b = JSON.parse(before), a = JSON.parse(after);
       console.log(`round ${round}: frames +${a.frames - b.frames} ro +${a.ro - b.ro}`);
       if (a.frames - b.frames === 0) { console.log(`=> rAF starved; renderer wedged`); result = "wedged"; break; }

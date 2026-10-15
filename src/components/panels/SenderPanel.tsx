@@ -179,7 +179,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
     return () => {
       cancelled = true;
     };
-  }, [setStatus, libraryVersion]);
+  }, [setStatus, libraryVersion, t]);
 
   useEffect(() => () => {
     if (tooltipTimer.current) clearTimeout(tooltipTimer.current);

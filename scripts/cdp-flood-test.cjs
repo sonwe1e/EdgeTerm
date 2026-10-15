@@ -1,6 +1,6 @@
 // Does a session die under output flood alone, or only flood + drag?
 // Usage: node cdp-flood-test.cjs [mode]  mode: flood | flood+drag
-const { sleep, findPageWs, connect, CLICK_JS } = require("./cdp-helpers.cjs");
+const { sleep, findPageWs, CLICK_JS } = require("./cdp-helpers.cjs");
 
 async function main() {
   const mode = process.argv[2] || "flood";

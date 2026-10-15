@@ -26,7 +26,7 @@ Use Node.js/npm, Rust/Cargo, and the platform's Tauri build prerequisites. Run f
 
 ## Coding Style & Naming Conventions
 
-Match existing TypeScript: two-space indentation, double quotes, semicolons, camelCase helpers, and PascalCase components/types. Keep strict TypeScript checks passing. Rust uses four-space indentation, snake_case functions/modules, and rustfmt. No ESLint or Prettier configuration is present.
+Match existing TypeScript: two-space indentation, double quotes, semicolons, camelCase helpers, and PascalCase components/types. Keep strict TypeScript checks passing. Rust uses four-space indentation, snake_case functions/modules, and rustfmt. Biome runs targeted lint rules with formatting disabled (`npm run lint`). Hook dependencies that intentionally trigger work remain valid; stable event callbacks use `useStableCallback`.
 
 Reuse Codicons through `src/components/icons.tsx`. Put shared preferences in the store; register external panel persistence keys in `src/persistKeys.ts`.
 

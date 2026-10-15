@@ -372,12 +372,12 @@ function FilerPanelBase() {
    * and the transfer's promise rejects, which `failTransfer` then reads as
    * a cancel rather than a failure.
    */
-  const cancelTransfer = () => {
+  const cancelTransfer = useStableCallback(() => {
     const active = activeTransfer.current;
     if (!active || active.cancelled) return;
     active.cancelled = true;
     void api.cancelTransfer(active.id);
-  };
+  });
 
   /** Ends the transfer a rejection belongs to: cancelled, or failed with `e`. */
   const failTransfer = (e: unknown, id = visibleTransferId.current) => {
@@ -444,13 +444,13 @@ function FilerPanelBase() {
    * panel is showing. Claimed on return, so the mount-time load below and
    * the effect watching `filerTarget` never both act on one request.
    */
-  const claimTarget = (): string | null => {
+  const claimTarget = useStableCallback((): string | null => {
     const target = useStore.getState().filerTarget;
     if (!target || target.token === consumedTarget.current) return null;
     consumedTarget.current = target.token;
     const tabId = useStore.getState().activeId;
     return target.sessionId === tabId ? target.path : null;
-  };
+  });
 
   useEffect(() => {
     if (offline) {
@@ -640,17 +640,17 @@ function FilerPanelBase() {
     else void copyPaths(paths);
   };
 
-  const updateDragOut = (next: DragOutState | null) => {
+  const updateDragOut = useStableCallback((next: DragOutState | null) => {
     dragOutRef.current = next;
     setDragOut(next);
-  };
+  });
 
   /**
    * Whether files dropped on the panel right now would be uploaded, and what
    * to tell the user when they would not. A refusal without a reason is this
    * panel's own drag passing over the window, which says nothing.
    */
-  const dropVerdict = (): DropVerdict => {
+  const dropVerdict = useStableCallback((): DropVerdict => {
     if (dragOutRef.current) return { accept: false, reason: null };
     if (offlineReasonRef.current) {
       return { accept: false, reason: offlineReasonRef.current };
@@ -670,7 +670,7 @@ function FilerPanelBase() {
       };
     }
     return { accept: true, reason: null };
-  };
+  });
 
   /**
    * Hands local paths to the system, which carries them until the user drops
