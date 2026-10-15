@@ -38,6 +38,7 @@ const browserOptimizeDeps = [
   "@xterm/addon-webgl",
   "@tauri-apps/api/core",
   "@tauri-apps/api/event",
+  "@tauri-apps/api/webview",
   "@tauri-apps/plugin-dialog",
   "@tauri-apps/plugin-opener",
   "zmodem.js",
