@@ -6,6 +6,8 @@
 /dist-ssr/
 /coverage/
 /.tmp/
+/src/test/__screenshots__/
+/.vitest-attachments/
 /artifacts/performance/
 /src-tauri/target/
 /src-tauri/gen/schemas/
