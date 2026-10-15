@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import { IS_MAC } from "../platform";
 import {
@@ -14,8 +14,8 @@ import {
   type ShortcutCommand,
 } from "../shortcuts";
 import { useT } from "../useT";
-import { endDialogAttention, requestDialogAttention } from "./dialogAttention";
 import { Icon } from "./icons";
+import { ModalDialog } from "./ModalDialog";
 
 interface Props {
   bindings: ShortcutBindings;
@@ -34,7 +34,6 @@ const FIXED_SHORTCUTS: { keys: string }[] = IS_MAC
  * `chordProblem`).
  */
 export function ShortcutsDialog({ bindings, onApply, onClose }: Props) {
-  const dialogRef = useRef<HTMLFormElement>(null);
   const [draft, setDraft] = useState<ShortcutBindings>(() => ({ ...bindings }));
   const [recording, setRecording] = useState<ShortcutCommand | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -42,57 +41,39 @@ export function ShortcutsDialog({ bindings, onApply, onClose }: Props) {
   const labels = shortcutLabels(t);
   const hints = shortcutHints(t);
 
-  useEffect(() => {
-    if (!recording) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      // Every key belongs to the row being recorded, so nothing reaches the
-      // window shortcut handler, the browser or the terminal underneath.
-      event.preventDefault();
-      event.stopPropagation();
-      if (event.key === "Escape") {
-        setRecording(null);
-        return;
-      }
-      const chord = chordFromEvent(event);
-      if (!chord) return;
-      const problem = chordProblem(chord);
-      if (problem) {
-        setNotice(problem);
-        return;
-      }
-      // One chord, one command: whoever held it before gives it up, so the
-      // table can never be applied with two commands on the same keys.
-      const taken = SHORTCUT_COMMANDS.find(
-        ({ id }) => id !== recording && sameChord(draft[id], chord),
-      );
+  const onRecordedKey = (event: KeyboardEvent, command: ShortcutCommand) => {
+    // Every key belongs to the row being recorded, so nothing reaches the
+    // window shortcut handler, the browser or the terminal underneath.
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.key === "Escape") {
       setRecording(null);
-      setNotice(
-        taken
-          ? t("sc.taken", { chord: chordLabel(chord), label: labels[taken.id] })
-          : null,
-      );
-      setDraft((current) => {
-        const next = { ...current, [recording]: chord };
-        if (taken) next[taken.id] = null;
-        return next;
-      });
-    };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [draft, recording]);
-
-  useEffect(() => {
-    if (recording) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      event.stopPropagation();
-      onClose();
-    };
-    // Capture phase so the dialog answers before any global shortcut handler.
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [onClose, recording]);
+      return;
+    }
+    const chord = chordFromEvent(event);
+    if (!chord) return;
+    const problem = chordProblem(chord);
+    if (problem) {
+      setNotice(problem);
+      return;
+    }
+    // One chord, one command: whoever held it before gives it up, so the
+    // table can never be applied with two commands on the same keys.
+    const taken = SHORTCUT_COMMANDS.find(
+      ({ id }) => id !== command && sameChord(draft[id], chord),
+    );
+    setRecording(null);
+    setNotice(
+      taken
+        ? t("sc.taken", { chord: chordLabel(chord), label: labels[taken.id] })
+        : null,
+    );
+    setDraft((current) => {
+      const next = { ...current, [command]: chord };
+      if (taken) next[taken.id] = null;
+      return next;
+    });
+  };
 
   const unassign = (command: ShortcutCommand) => {
     setRecording(null);
@@ -100,16 +81,22 @@ export function ShortcutsDialog({ bindings, onApply, onClose }: Props) {
     setDraft((current) => ({ ...current, [command]: null }));
   };
 
+  // The recording phase owns every key while armed (the row decides, nothing
+  // underneath reacts); outside it, Escape closes through the primitive and
+  // a backdrop press only flashes the dialog (the table is a draft).
+  const onDialogKeyDown = (event: ReactKeyboardEvent<HTMLDialogElement>) => {
+    if (recording) onRecordedKey(event.nativeEvent, recording);
+  };
+
   return (
-    <div
-      className="dialog-backdrop"
-      onMouseDown={() => requestDialogAttention(dialogRef.current)}
+    <ModalDialog
+      open
+      contentClassName="shortcuts-dialog"
+      onClose={onClose}
+      dismissable={false}
+      onKeyDown={onDialogKeyDown}
     >
       <form
-        ref={dialogRef}
-        className="dialog shortcuts-dialog"
-        onMouseDown={(event) => event.stopPropagation()}
-        onAnimationEnd={endDialogAttention}
         onSubmit={(event) => {
           event.preventDefault();
           onApply(draft);
@@ -195,6 +182,6 @@ export function ShortcutsDialog({ bindings, onApply, onClose }: Props) {
           </button>
         </div>
       </form>
-    </div>
+    </ModalDialog>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useT } from "../useT";
+import { ModalDialog } from "./ModalDialog";
 
 interface Props {
   title: string;
@@ -29,22 +30,10 @@ export function GroupNameDialog({
   const t = useT();
 
   useEffect(() => {
-    inputRef.current?.focus();
+    // The show-modal focus algorithm puts focus here (autofocus); select so
+    // renaming starts by overwriting the current name.
     inputRef.current?.select();
   }, []);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        onCancel();
-      }
-    };
-    // Capture phase so the dialog answers before any global shortcut handler.
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [onCancel]);
 
   const submit = async () => {
     const trimmed = name.trim();
@@ -64,13 +53,16 @@ export function GroupNameDialog({
   };
 
   return (
-    <div className="dialog-backdrop" onMouseDown={onCancel}>
+    <ModalDialog
+      open
+      labelledBy="group-name-title"
+      contentClassName="confirm-dialog"
+      onClose={onCancel}
+    >
       <form
-        className="dialog confirm-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby="group-name-title"
-        onMouseDown={(event) => event.stopPropagation()}
         onSubmit={(event) => {
           event.preventDefault();
           void submit();
@@ -84,6 +76,7 @@ export function GroupNameDialog({
             <span className="session-field-label">{t("groupName.nameLabel")}</span>
             <input
               ref={inputRef}
+              autoFocus
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
@@ -110,6 +103,6 @@ export function GroupNameDialog({
           </button>
         </div>
       </form>
-    </div>
+    </ModalDialog>
   );
 }

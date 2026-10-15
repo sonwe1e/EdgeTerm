@@ -16,6 +16,7 @@ import {
 } from "../store";
 import type { CursorStyle } from "../terminal";
 import { useT } from "../useT";
+import { ModalDialog } from "./ModalDialog";
 
 /** Everything the dialog hands back when Apply is pressed. */
 export interface DisplaySettings {
@@ -94,14 +95,6 @@ export function FontSizeDialog({
     [probedMono, systemFonts],
   );
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-
   const updateNumber = (
     value: number,
     setValue: (value: number) => void,
@@ -112,10 +105,13 @@ export function FontSizeDialog({
   };
 
   return (
-    <div className="dialog-backdrop" onMouseDown={onClose}>
+    <ModalDialog
+      open
+      contentClassName="font-size-dialog"
+      onClose={onClose}
+      dismissable={false}
+    >
       <form
-        className="dialog font-size-dialog"
-        onMouseDown={(event) => event.stopPropagation()}
         onSubmit={(event) => {
           event.preventDefault();
           onApply({
@@ -311,7 +307,7 @@ export function FontSizeDialog({
           </button>
         </div>
       </form>
-    </div>
+    </ModalDialog>
   );
 }
 
