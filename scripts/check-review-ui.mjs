@@ -59,7 +59,11 @@ let browser;
 try {
   await server.listen();
   browser = await chromium.launch({ channel: process.env.PERF_BROWSER || "msedge", headless: true });
-  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  // locale "en" pins the interface language: the app takes it from the
+  // browser, and the assertions below match English column captions. On a
+  // machine whose browser locale is not English the localized captions broke
+  // this script even though the behaviour under test was fine.
+  const page = await browser.newPage({ locale: "en", viewport: { width: 1280, height: 720 } });
   const errors = [];
   page.on("pageerror", e => errors.push(String(e)));
   let confirms = 0;
