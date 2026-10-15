@@ -107,6 +107,7 @@ export function FontSizeDialog({
   return (
     <ModalDialog
       open
+      labelledBy="display-settings-title"
       contentClassName="font-size-dialog"
       onClose={onClose}
       dismissable={false}
@@ -126,7 +127,7 @@ export function FontSizeDialog({
           });
         }}
       >
-        <div className="dialog-header">{t("fontDialog.title")}</div>
+        <div className="dialog-header" id="display-settings-title">{t("fontDialog.title")}</div>
         <div className="dialog-body font-size-dialog-body">
           <label className="font-size-setting">
             <span>

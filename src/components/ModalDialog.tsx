@@ -17,8 +17,7 @@ interface Props {
   /** Controlled by the caller's conditional render; true renders the modal. */
   open: boolean;
   /**
-   * The single close exit: Escape on the top-layer dialog (native cancel,
-   * or the fallback handler when showModal is unavailable) and a backdrop
+   * The single close exit: Escape on the topmost dialog (or a native cancel event) and a backdrop
    * press that starts and ends outside the content box both come through
    * here. Every occurrence is reported — a caller that defers closing (a
    * busy submit) simply gets the next Escape/backdrop as a fresh request.
@@ -47,7 +46,7 @@ interface Props {
   /**
    * Key handler for keys aimed at this dialog, invoked from the dialog's
    * own key listener before the event is stopped from bubbling further —
-   * so no dialog key can reach window-level shortcut listeners, and a
+   * so bubbling dialog keys cannot reach window-level shortcut listeners, and a
    * dialog underneath can never answer the same keystroke. Confirmation
    * dialogs keep their Enter-means-confirm contract here; Escape on the
    * native path stays on the cancel event.
@@ -64,26 +63,12 @@ interface Props {
 const fallbackStack: HTMLDialogElement[] = [];
 
 /**
- * The application's modal dialog primitive on the native
- * `dialog.showModal()`: the browser owns the top layer, the background's
- * inertness, focus containment and Tab cycling, and delivers Escape as the
- * `cancel` event — which only the top-layer dialog receives, so nested
- * dialogs close one at a time by construction. Keys aimed at the dialog are
- * stopped at the dialog element (they cannot reach window-level listeners),
- * and backdrop presses are resolved by a pointer sequence (press and
- * release both outside the content box), so a drag that starts inside and
- * ends outside is never a dismissal.
- *
- * When `showModal` is unavailable the primitive says so instead of
- * pretending: the dialog opens non-natively with its own dim, a Tab cycle
- * that stays inside the content box, Escape handling and topmost-focus
- * management for stacked fallback dialogs. The background is then visually
- * dimmed but not inert — a declared platform boundary, verified by the
- * forced-fallback contracts.
- *
- * Lifecycle is idempotent under StrictMode's double effects: the open
- * action runs only on a closed dialog, the close action only on an open
- * one, and internally driven closes do not call `onClose`.
+ * Controlled modal with native top-layer inertness, a React keyboard boundary,
+ * Tab wrapping, focus return and matching outside press/release dismissal.
+ * Escape is handled before the browser default (repeated cancel gestures may
+ * otherwise escalate). Native cancel still accepts platform close requests.
+ * The fallback uses a full-viewport overlay, focus ownership and a stack;
+ * it does not claim native inertness or platform WebView equivalence.
  */
 export function ModalDialog({
   open,

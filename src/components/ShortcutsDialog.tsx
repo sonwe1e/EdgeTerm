@@ -91,6 +91,7 @@ export function ShortcutsDialog({ bindings, onApply, onClose }: Props) {
   return (
     <ModalDialog
       open
+      labelledBy="shortcuts-title"
       contentClassName="shortcuts-dialog"
       onClose={onClose}
       dismissable={false}
@@ -102,7 +103,7 @@ export function ShortcutsDialog({ bindings, onApply, onClose }: Props) {
           onApply(draft);
         }}
       >
-        <div className="dialog-header">{t("sc.title")}</div>
+        <div className="dialog-header" id="shortcuts-title">{t("sc.title")}</div>
         <div className="dialog-body shortcuts-dialog-body">
           <div className="shortcuts-list">
             {SHORTCUT_COMMANDS.map(({ id }) => {
