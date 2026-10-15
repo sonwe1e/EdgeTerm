@@ -52,7 +52,8 @@ export type PaintLine = LineInternals;
 export function internalLine(line: IBufferLine | undefined): PaintLine | null {
   const inner = (line as unknown as { _line?: LineInternals } | undefined)?._line;
   if (!inner || !(inner._data instanceof Uint32Array)) return null;
-  if (inner._data.length < inner.length * CELL_SIZE) return null;
+  if (!Number.isInteger(inner.length) || inner.length < 0 ||
+      inner._data.length !== inner.length * CELL_SIZE) return null;
   return inner;
 }
 
