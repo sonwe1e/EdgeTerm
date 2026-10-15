@@ -11,13 +11,14 @@ import {
 import { create } from "zustand";
 
 import {
-  DOCK_LABELS,
   DOCK_NAMES,
+  dockLabels,
   dockOf,
-  PANEL_LABELS,
+  panelLabels,
   type PanelDock,
 } from "../panelDock";
 import { type PanelName, useStore } from "../store";
+import { useT } from "../useT";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { Splitter } from "./Splitter";
 
@@ -244,6 +245,7 @@ export function DockArea({ dock, panels, size, render }: DockAreaProps) {
   const movePanel = useStore((s) => s.movePanel);
   const togglePanel = useStore((s) => s.togglePanel);
   const panelDocks = useStore((s) => s.panelDocks);
+  const t = useT();
   const dragging = usePanelDrag((s) => s.panel);
 
   // Splitters between panels share the dock out by weight (flex-grow), so
@@ -364,9 +366,11 @@ export function DockArea({ dock, panels, size, render }: DockAreaProps) {
   };
   const menuItems = (panel: PanelName): MenuItem[] => {
     const current = dockOf(panelDocks, panel);
+    const docks = dockLabels(t);
+    const panels = panelLabels(t);
     return [
       ...DOCK_NAMES.map((name) => ({
-        label: `Dock ${DOCK_LABELS[name]}`,
+        label: `${t("dock.dock")} ${docks[name]}`,
         checked: current === name,
         mark: "radio" as const,
         action: () => {
@@ -375,7 +379,7 @@ export function DockArea({ dock, panels, size, render }: DockAreaProps) {
       })),
       "separator",
       {
-        label: `Hide ${PANEL_LABELS[panel]}`,
+        label: `${t("dock.hide")} ${panels[panel]}`,
         action: () => togglePanel(panel),
       },
     ];

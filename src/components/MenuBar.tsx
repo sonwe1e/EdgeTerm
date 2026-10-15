@@ -24,16 +24,14 @@ import {
   importSshConfig,
 } from "../dataTransfer";
 import { commandHistory } from "../history";
+import { LANGUAGES, LANGUAGE_LABELS, type Language } from "../i18n";
 import { ask } from "../nativeDialog";
+import { programClipboardLabels, type ProgramClipboardMode } from "../osc52";
 import {
-  PROGRAM_CLIPBOARD_LABELS,
-  type ProgramClipboardMode,
-} from "../osc52";
-import {
-  DOCK_LABELS,
   DOCK_NAMES,
+  dockLabels,
   dockOf,
-  PANEL_LABELS,
+  panelLabels,
   PANEL_NAMES,
 } from "../panelDock";
 import { IS_MAC } from "../platform";
@@ -45,7 +43,8 @@ import type {
   TerminalController,
 } from "../terminal";
 import { getController } from "../terminalRegistry";
-import { THEME_LABELS, type ThemeMode } from "../types";
+import { THEME_MODES, themeLabels, type ThemeMode } from "../types";
+import { useT } from "../useT";
 import { MenuCheck, menuRole, type MenuMark } from "./ContextMenu";
 import { Icon } from "./icons";
 import { submenuKey, useSubmenuHover } from "./submenuHover";
@@ -164,6 +163,7 @@ const RESTORE_ICON = (
 const CLOSE_ICON = <path d="M0.5 0.5l9 9M9.5 0.5l-9 9" />;
 
 function WindowControls({ maximized }: { maximized: boolean }) {
+  const t = useT();
   // Minimize / maximize go through `windowControl` rather than
   // `win.minimize()` / `win.toggleMaximize()`: on Windows the tao path behind
   // those refreshes the frame right after `ShowWindow`, which kills the DWM
@@ -175,15 +175,15 @@ function WindowControls({ maximized }: { maximized: boolean }) {
   const toggleMaximize = () => windowControl("toggle-maximize");
   const controls: WindowControl[] = [
     {
-      label: "Minimize",
+      label: t("window.minimize"),
       icon: MINIMIZE_ICON,
       action: () => windowControl("minimize"),
     },
     maximized
-      ? { label: "Restore Down", icon: RESTORE_ICON, action: toggleMaximize }
-      : { label: "Maximize", icon: MAXIMIZE_ICON, action: toggleMaximize },
+      ? { label: t("window.restoreDown"), icon: RESTORE_ICON, action: toggleMaximize }
+      : { label: t("window.maximize"), icon: MAXIMIZE_ICON, action: toggleMaximize },
     {
-      label: "Close",
+      label: t("window.close"),
       icon: CLOSE_ICON,
       action: (win) => win.close(),
       className: " is-close",
@@ -255,6 +255,7 @@ export function MenuBar(props: Props) {
   const macFullscreen = useWindowFlag(IS_MAC, readFullscreen);
   const maximized = useWindowFlag(!IS_MAC, readMaximized);
 
+  const t = useT();
   const activeId = useStore((s) => s.activeId);
   const activeTab = useActiveTab();
   const activeState = activeTab?.state;
@@ -275,6 +276,8 @@ export function MenuBar(props: Props) {
   const setGutterMode = useStore((s) => s.setGutterMode);
   const theme = useStore((s) => s.theme);
   const setTheme = useStore((s) => s.setTheme);
+  const language = useStore((s) => s.language);
+  const setLanguage = useStore((s) => s.setLanguage);
   const suggestionsEnabled = useStore((s) => s.suggestionsEnabled);
   const setSuggestionsEnabled = useStore((s) => s.setSuggestionsEnabled);
   const rightClickAction = useStore((s) => s.rightClickAction);
@@ -313,12 +316,18 @@ export function MenuBar(props: Props) {
     if (activeId) fn(activeId);
   };
 
+  // Display names for the enumerations the menus list, in the current language.
+  const themes = themeLabels(t);
+  const panelNames = panelLabels(t);
+  const docks = dockLabels(t);
+  const clipboards = programClipboardLabels(t);
+
   // File transfers run over a terminal's byte stream; (S)FTP tabs have none.
   const withTerminal = (fn: (terminal: TerminalController) => void) =>
     withActive((id) => {
       const terminal = getController(id);
       if (terminal) fn(terminal);
-      else setStatus("File transfers need a terminal session");
+      else setStatus(t("status.fileTransferNeedsTerminal"));
     });
 
   // One gutter mode and one theme are in force at a time: radios, not boxes.
@@ -330,7 +339,7 @@ export function MenuBar(props: Props) {
   });
 
   const themeEntry = (mode: ThemeMode): Entry => ({
-    label: THEME_LABELS[mode],
+    label: themes[mode],
     checked: theme === mode,
     mark: "radio",
     action: () => setTheme(mode),
@@ -348,50 +357,60 @@ export function MenuBar(props: Props) {
     ...PANEL_NAMES.flatMap((panel, index): (Entry | "separator")[] => [
       ...(index > 0 ? ["separator" as const] : []),
       ...DOCK_NAMES.map((dock): Entry => ({
-        label: `${PANEL_LABELS[panel]} on ${DOCK_LABELS[dock]}`,
+        label: t("menu.panelOnDock", {
+          panel: panelNames[panel],
+          dock: docks[dock],
+        }),
         checked: dockOf(panelDocks, panel) === dock,
         mark: "radio",
         action: () => movePanel(panel, dock),
       })),
     ]),
     "separator",
-    { label: "Reset Panel Layout", action: resetPanelLayout },
+    { label: t("menu.resetPanelLayout"), action: resetPanelLayout },
   ];
 
   const programClipboardEntry = (mode: ProgramClipboardMode): Entry => ({
-    label: PROGRAM_CLIPBOARD_LABELS[mode],
+    label: clipboards[mode],
     checked: programClipboard === mode,
     mark: "radio",
     action: () => setProgramClipboard(mode),
   });
 
+  const languageEntry = (lang: Language): Entry => ({
+    label: LANGUAGE_LABELS[lang],
+    checked: language === lang,
+    mark: "radio",
+    action: () => setLanguage(lang),
+  });
+
   const menus: Menu[] = [
     {
-      title: "Session",
+      title: t("menu.session"),
       entries: [
         {
-          label: "New Session…",
+          label: t("menu.newSession"),
           shortcut: accel("newSession"),
           action: props.onNewSession,
         },
         "separator",
         {
-          label: "Previous Session",
+          label: t("menu.previousSession"),
           shortcut: accel("prevTab"),
           action: () => activateAdjacentTab(-1),
         },
         {
-          label: "Next Session",
+          label: t("menu.nextSession"),
           shortcut: accel("nextTab"),
           action: () => activateAdjacentTab(1),
         },
         {
-          label: "Previous Pane",
+          label: t("menu.previousPane"),
           shortcut: accel("prevPane"),
           action: () => activateAdjacentPane(-1),
         },
         {
-          label: "Next Pane",
+          label: t("menu.nextPane"),
           shortcut: accel("nextPane"),
           action: () => activateAdjacentPane(1),
         },
@@ -401,37 +420,37 @@ export function MenuBar(props: Props) {
           // whichever side of the switch applies to the active session now.
           label:
             activeState === "closed" || activeState === "error"
-              ? "Reconnect Session"
-              : "Disconnect Session",
+              ? t("menu.reconnectSession")
+              : t("menu.disconnectSession"),
           action: withActive(toggleSessionConnection),
         },
         {
-          label: "Close Session",
+          label: t("menu.closeSession"),
           shortcut: accel("closeSession"),
           action: withActive(requestCloseTab),
         },
         {
           // ZMODEM starts itself when `rz` / `sz` runs in the terminal;
           // XMODEM has no such handshake and is started from here.
-          label: "File Transfer",
+          label: t("menu.fileTransfer"),
           children: [
             {
-              label: "Send via XMODEM…",
+              label: t("menu.sendXmodem"),
               action: withTerminal((terminal) => terminal.sendXmodem(128)),
             },
             {
-              label: "Send via XMODEM-1K…",
+              label: t("menu.sendXmodem1k"),
               action: withTerminal((terminal) => terminal.sendXmodem(1024)),
             },
             {
-              label: "Receive via XMODEM…",
+              label: t("menu.receiveXmodem"),
               action: withTerminal((terminal) => terminal.receiveXmodem()),
             },
             {
-              label: "Cancel Transfer",
+              label: t("menu.cancelTransfer"),
               action: withTerminal((terminal) => {
                 if (!terminal.cancelTransfer()) {
-                  setStatus("No file transfer is running");
+                  setStatus(t("status.noTransferRunning"));
                 }
               }),
             },
@@ -439,38 +458,38 @@ export function MenuBar(props: Props) {
         },
         "separator",
         {
-          label: "Timestamp & Line",
+          label: t("menu.timestampLine"),
           children: [
-            gutterEntry("Timestamp + Line Number", "both"),
-            gutterEntry("Line Number Only", "line"),
-            gutterEntry("Timestamp Only", "time"),
-            gutterEntry("No Gutter", "off"),
+            gutterEntry(t("menu.gutterBoth"), "both"),
+            gutterEntry(t("menu.gutterLine"), "line"),
+            gutterEntry(t("menu.gutterTime"), "time"),
+            gutterEntry(t("menu.gutterOff"), "off"),
           ],
         },
         "separator",
-        { label: "Export Data…", action: () => void exportAppData() },
-        { label: "Import Data…", action: () => void importAppData() },
+        { label: t("menu.exportData"), action: () => void exportAppData() },
+        { label: t("menu.importData"), action: () => void importAppData() },
         {
-          label: "Import OpenSSH Config…",
+          label: t("menu.importOpenSshConfig"),
           action: () => void importSshConfig(),
         },
       ],
     },
     {
-      title: "Edit",
+      title: t("menu.edit"),
       entries: [
         {
-          label: "Copy",
+          label: t("menu.copy"),
           shortcut: accel("copy"),
           action: withActive((id) => getController(id)?.copySelection()),
         },
         {
-          label: "Paste",
+          label: t("menu.paste"),
           shortcut: accel("paste"),
           action: withActive((id) => getController(id)?.pasteFromClipboard()),
         },
         {
-          label: "Select All",
+          label: t("menu.selectAll"),
           shortcut: accel("selectAll"),
           action: withActive((id) => getController(id)?.selectAll()),
         },
@@ -478,21 +497,21 @@ export function MenuBar(props: Props) {
         {
           // The X11 / PuTTY habit: a selection is on the clipboard the
           // moment the mouse button comes up.
-          label: "Copy on Select",
+          label: t("menu.copyOnSelect"),
           checked: copyOnSelect,
           action: () => setCopyOnSelect(!copyOnSelect),
         },
         {
           // Every line of a paste after the first runs as its own command,
           // so a paste that holds several is confirmed first (issue #63).
-          label: "Warn Before Multi-line Paste",
+          label: t("menu.warnMultiLinePaste"),
           checked: pasteWarning,
           action: () => setPasteWarning(!pasteWarning),
         },
         {
           // OSC 52: tmux, vim and TUI agents copy through the terminal
           // (issue #65). Reading the clipboard back is never allowed.
-          label: "Programs Can Set Clipboard",
+          label: t("menu.programsCanSetClipboard"),
           children: [
             programClipboardEntry("ask"),
             programClipboardEntry("allow"),
@@ -506,13 +525,15 @@ export function MenuBar(props: Props) {
           : [
               "separator" as const,
               {
-                label: "Right Click",
+                label: t("menu.rightClick"),
                 children: [
-                  rightClickEntry("Show Menu", "menu"),
+                  rightClickEntry(t("menu.rightClickShowMenu"), "menu"),
                   // With Copy on Select the selection is copied already,
                   // so this mode only pastes (see TerminalPane).
                   rightClickEntry(
-                    copyOnSelect ? "Paste" : "Copy or Paste",
+                    copyOnSelect
+                      ? t("menu.rightClickPaste")
+                      : t("menu.rightClickCopyOrPaste"),
                     "copyPaste",
                   ),
                 ],
@@ -520,35 +541,34 @@ export function MenuBar(props: Props) {
             ]),
         "separator",
         {
-          label: "Clear Buffer",
+          label: t("menu.clearBuffer"),
           shortcut: accel("clear"),
           action: withActive((id) => getController(id)?.clear()),
         },
         "separator",
         {
-          label: "Command Suggestions",
+          label: t("menu.commandSuggestions"),
           checked: suggestionsEnabled,
           action: () => setSuggestionsEnabled(!suggestionsEnabled),
         },
         {
-          label: "Clear Command History…",
+          label: t("menu.clearCommandHistory"),
           action: () => {
             void (async () => {
-              const confirmed = await ask(
-                "Delete the recorded command history used for inline suggestions?",
-                {
-                  title: "Clear Command History",
-                  kind: "warning",
-                  okLabel: "Clear",
-                  cancelLabel: "Cancel",
-                },
-              );
+              const confirmed = await ask(t("confirm.clearCommandHistory"), {
+                title: t("confirm.clearCommandHistoryTitle"),
+                kind: "warning",
+                okLabel: t("confirm.clear"),
+                cancelLabel: t("common.cancel"),
+              });
               if (!confirmed) return;
               try {
                 await commandHistory.clear();
-                setStatus("Command history cleared");
+                setStatus(t("status.commandHistoryCleared"));
               } catch (error) {
-                setStatus(`Failed to clear command history: ${error}`);
+                setStatus(
+                  t("status.commandHistoryClearFailed", { error: String(error) }),
+                );
               }
             })();
           },
@@ -556,108 +576,109 @@ export function MenuBar(props: Props) {
       ],
     },
     {
-      title: "Search",
+      title: t("menu.search"),
       entries: [
         {
-          label: "Find…",
+          label: t("menu.find"),
           shortcut: accel("find"),
           action: props.onFind,
         },
         {
-          label: "Find Next",
+          label: t("menu.findNext"),
           shortcut: accel("findNext"),
           action: props.onFindNext,
         },
       ],
     },
     {
-      title: "View",
+      title: t("menu.view"),
       entries: [
         {
-          label: "Session",
+          label: t("menu.panelSessions"),
           shortcut: accel("panelSessions"),
           checked: panels.sessions,
           action: () => togglePanel("sessions"),
         },
         {
-          label: "Filer",
+          label: t("menu.panelFiler"),
           shortcut: accel("panelFiler"),
           checked: panels.filer,
           action: () => togglePanel("filer"),
         },
         {
-          label: "Sender",
+          label: t("menu.panelSender"),
           shortcut: accel("panelSender"),
           checked: panels.sender,
           action: () => togglePanel("sender"),
         },
-        { label: "Panel Layout", children: panelLayoutEntries() },
+        { label: t("menu.panelLayout"), children: panelLayoutEntries() },
         "separator",
         {
           // A split opens the active session's profile again beside it; see
           // splitSession.
-          label: "Split Right",
+          label: t("menu.splitRight"),
           shortcut: accel("splitRight"),
           action: withActive((id) => void splitSession(id, "right")),
         },
         {
-          label: "Split Down",
+          label: t("menu.splitDown"),
           shortcut: accel("splitDown"),
           action: withActive((id) => void splitSession(id, "down")),
         },
         "separator",
         {
-          label: "Reveal Working Directory in Filer",
+          label: t("menu.revealCwdInFiler"),
           shortcut: accel("revealCwd"),
           action: withActive((id) => void revealCwdInFiler(id)),
         },
         "separator",
         {
-          label: "Theme",
-          children: (Object.keys(THEME_LABELS) as ThemeMode[]).map(themeEntry),
+          label: t("menu.theme"),
+          children: THEME_MODES.map(themeEntry),
         },
         "separator",
-        { label: "Display Settings…", action: props.onFontSettings },
+        { label: t("menu.displaySettings"), action: props.onFontSettings },
         {
-          label: "Keyboard Shortcuts…",
+          label: t("menu.keyboardShortcuts"),
           action: props.onKeyboardShortcuts,
         },
       ],
     },
     {
-      title: "Help",
+      title: t("menu.help"),
       entries: [
         {
-          label: "Tutorial",
+          label: t("menu.tutorial"),
           action: () => {
             void openUrl(TUTORIAL_URL).catch((error) => {
-              setStatus(`Failed to open tutorial: ${error}`);
+              setStatus(t("status.tutorialOpenFailed", { error: String(error) }));
             });
           },
         },
-        { label: "Check for Updates…", action: props.onCheckForUpdates },
+        { label: t("menu.checkForUpdates"), action: props.onCheckForUpdates },
         "separator",
         {
-          label: "Restore Default Settings…",
+          label: t("menu.restoreDefaultSettings"),
           action: () => {
             void (async () => {
-              const confirmed = await ask(
-                "Restore panel visibility and layout, timestamp and line display, theme, font sizes, scrollback, command suggestions, keyboard shortcuts, and mouse copy / paste to their defaults?",
-                {
-                  title: "Restore Default Settings",
-                  kind: "warning",
-                  okLabel: "Restore",
-                  cancelLabel: "Cancel",
-                },
-              );
+              const confirmed = await ask(t("confirm.restoreDefaults"), {
+                title: t("confirm.restoreDefaultsTitle"),
+                kind: "warning",
+                okLabel: t("confirm.restore"),
+                cancelLabel: t("common.cancel"),
+              });
               if (!confirmed) return;
               resetSettings();
-              setStatus("Default settings restored");
+              setStatus(t("status.defaultSettingsRestored"));
             })();
           },
         },
+        {
+          label: t("menu.language"),
+          children: LANGUAGES.map(languageEntry),
+        },
         "separator",
-        { label: "About EdgeTerm", action: props.onAbout },
+        { label: t("menu.about"), action: props.onAbout },
       ],
     },
   ];
@@ -749,8 +770,8 @@ export function MenuBar(props: Props) {
             className="panel-action"
             disabled={!activeId}
             onClick={withActive((id) => void splitSession(id, "right"))}
-            title={`Split Right${accel("splitRight") ? ` (${accel("splitRight")})` : ""}`}
-            aria-label="Split Right"
+            title={`${t("menu.splitRight")}${accel("splitRight") ? ` (${accel("splitRight")})` : ""}`}
+            aria-label={t("menu.splitRight")}
           >
             <Icon name="split-horizontal" />
           </button>
@@ -758,8 +779,8 @@ export function MenuBar(props: Props) {
             className="panel-action"
             disabled={!activeId}
             onClick={withActive((id) => void splitSession(id, "down"))}
-            title={`Split Down${accel("splitDown") ? ` (${accel("splitDown")})` : ""}`}
-            aria-label="Split Down"
+            title={`${t("menu.splitDown")}${accel("splitDown") ? ` (${accel("splitDown")})` : ""}`}
+            aria-label={t("menu.splitDown")}
           >
             <Icon name="split-vertical" />
           </button>

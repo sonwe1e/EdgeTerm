@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import INDEX from "../index.html?raw";
 import { SEMANTIC_BANDS, SEMANTIC_PALETTES } from "./semanticColors";
 import STYLES from "./styles.css?raw";
-import { THEME_LABELS, isLightTheme, type ThemeMode } from "./types";
+import { isLightTheme, THEME_MODES, type ThemeMode } from "./types";
 
-const MODES = Object.keys(THEME_LABELS) as ThemeMode[];
+const MODES: readonly ThemeMode[] = THEME_MODES;
 
 // Record<ThemeMode, …> makes the compiler check the palettes a theme is
 // looked up in; the stylesheet and the pre-paint script in index.html are

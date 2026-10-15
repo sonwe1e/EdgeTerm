@@ -1,3 +1,5 @@
+import type { Translate } from "./i18n";
+
 export type SessionKind =
   "local" | "ssh" | "telnet" | "ftp" | "sftp" | "serial";
 export type AuthKind = "password" | "publicKey" | "agent";
@@ -24,15 +26,22 @@ export function isSshTransport(kind: SessionKind): boolean {
  * styles.css plus an entry in the xterm, search and semantic palettes; the
  * serialX pair is ported from that project's own workbench design system.
  */
-export type ThemeMode = "dark" | "light" | "serialx-dark" | "serialx-light";
+export const THEME_MODES = [
+  "dark",
+  "light",
+  "serialx-dark",
+  "serialx-light",
+] as const;
 
-/** Menu labels, in the order View → Theme lists them. */
-export const THEME_LABELS: Record<ThemeMode, string> = {
-  dark: "Dark",
-  light: "Light",
-  "serialx-dark": "Dark (serialX)",
-  "serialx-light": "Light (serialX)",
-};
+export type ThemeMode = (typeof THEME_MODES)[number];
+
+/** Display names for View → Theme, in the order the menu lists them. */
+export const themeLabels = (t: Translate): Record<ThemeMode, string> => ({
+  dark: t("theme.dark"),
+  light: t("theme.light"),
+  "serialx-dark": t("theme.serialxDark"),
+  "serialx-light": t("theme.serialxLight"),
+});
 
 /**
  * True for the palettes drawn on paper. Anything that picks between a pair of

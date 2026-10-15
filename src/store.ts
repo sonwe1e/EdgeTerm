@@ -10,6 +10,13 @@ import {
 } from "./fileSort";
 import { commandHistory } from "./history";
 import {
+  detectLanguage,
+  type Language,
+  parseLanguage,
+  setCurrentLanguage,
+  t,
+} from "./i18n";
+import {
   adjacentPane,
   leaf,
   removePane as removePaneFromLayout,
@@ -42,7 +49,7 @@ import {
 } from "./shortcuts";
 import type { CursorStyle, GutterMode, RightClickAction } from "./terminal";
 import { disposeController, getController } from "./terminalRegistry";
-import { THEME_LABELS } from "./types";
+import { THEME_MODES } from "./types";
 import type {
   AuthPrompt,
   HostKeyChange,
@@ -192,6 +199,7 @@ const SSH_AUTO_REUSE_KEY = "edgeterm.sshAutoReuse";
 const PASTE_WARNING_KEY = "edgeterm.pasteWarning";
 const COPY_ON_SELECT_KEY = "edgeterm.copyOnSelect";
 const PROGRAM_CLIPBOARD_KEY = "edgeterm.programClipboard";
+const LANGUAGE_KEY = "edgeterm.language";
 
 // On by default: a paste that would run several commands is confirmed first
 // (see `TerminalController.paste`). Only an explicit "off" turns it off, so a
@@ -235,6 +243,17 @@ const loadProgramClipboard = (): ProgramClipboardMode => {
   }
 };
 
+// The interface language: whatever the user chose, else the machine's (see
+// detectLanguage). Kept in step with i18n.ts's module state so imperative
+// status strings translate with it too.
+const loadLanguage = (): Language => {
+  try {
+    return parseLanguage(localStorage.getItem(LANGUAGE_KEY)) ?? detectLanguage();
+  } catch {
+    return detectLanguage();
+  }
+};
+
 // Opt-in: command capture and the completion popup stay off until the user
 // enables them in the Edit menu.
 const loadSuggestionsEnabled = (): boolean => {
@@ -248,7 +267,7 @@ const loadSuggestionsEnabled = (): boolean => {
 // The parse* helpers validate a stored or imported value and return null for
 // anything unknown, so both localStorage and a data file get the same checks.
 const parseTheme = (value: unknown): ThemeMode | null =>
-  typeof value === "string" && value in THEME_LABELS
+  typeof value === "string" && THEME_MODES.includes(value as ThemeMode)
     ? (value as ThemeMode)
     : null;
 
@@ -534,6 +553,8 @@ export interface AppSettings {
   panelDocks: PanelDocks;
   gutterMode: GutterMode;
   theme: ThemeMode;
+  /** Interface language; see i18n.ts. */
+  language: Language;
   panelFontSize: number;
   bufferFontSize: number;
   /** Interface font family; empty means the platform default stack. */
@@ -594,6 +615,8 @@ interface AppStore {
    */
   filerSort: FileSort;
   theme: ThemeMode;
+  /** Interface language; drives every `t(...)` in the frontend. */
+  language: Language;
   panelFontSize: number;
   bufferFontSize: number;
   panelFontFamily: string;
@@ -764,6 +787,7 @@ interface AppStore {
   /** One column order shared by the Filer and both dual-pane browsers. */
   setFilerSort: (sort: FileSort) => void;
   setTheme: (theme: ThemeMode) => void;
+  setLanguage: (language: Language) => void;
   setPanelFontSize: (size: number) => void;
   setBufferFontSize: (size: number) => void;
   setPanelFontFamily: (family: string) => void;
@@ -823,6 +847,11 @@ const acknowledgeTab = (tabs: Tab[], id: string | null): Tab[] =>
 // is pushed into `shortcuts.ts` here and again from `setShortcuts`.
 const initialShortcuts = loadShortcuts();
 setActiveShortcuts(initialShortcuts);
+
+// Same push for localisation: imperative status strings (actions.ts, the
+// store's own "Ready") translate with the language the interface opens in.
+const initialLanguage = loadLanguage();
+setCurrentLanguage(initialLanguage);
 
 let paneCounter = 0;
 const newPaneId = (): string => `pane-${++paneCounter}`;
@@ -930,6 +959,7 @@ export const useStore = create<AppStore>((set, get) => ({
   filerSort: loadFileSort(),
   panelPreferencesRevision: 0,
   theme: loadTheme(),
+  language: initialLanguage,
   panelFontSize: loadFontSize(PANEL_FONT_SIZE_KEY, PANEL_FONT_SIZE),
   bufferFontSize: loadFontSize(BUFFER_FONT_SIZE_KEY, BUFFER_FONT_SIZE),
   panelFontFamily: loadFontFamily(PANEL_FONT_FAMILY_KEY),
@@ -951,7 +981,7 @@ export const useStore = create<AppStore>((set, get) => ({
   shortcuts: initialShortcuts,
   panels: loadPanels(),
   panelDocks: loadPanelDocks(),
-  status: "Ready",
+  status: t("status.ready"),
   error: null,
   errorSessionId: null,
   hostKeyPrompt: null,
@@ -1096,7 +1126,7 @@ export const useStore = create<AppStore>((set, get) => ({
     set({
       ...settled,
       tabs: acknowledgeTab(settled.tabs, settled.activeId),
-      status: clearsSessionError ? "Ready" : current.status,
+      status: clearsSessionError ? t("status.ready") : current.status,
       error: clearsSessionError ? null : current.error,
       errorSessionId: clearsSessionError ? null : current.errorSessionId,
       hostKeyPrompt:
@@ -1364,6 +1394,18 @@ export const useStore = create<AppStore>((set, get) => ({
     }
   },
 
+  setLanguage(language) {
+    if (parseLanguage(language) === null) return;
+    set({ language });
+    // Imperative status strings translate with the new language from here on.
+    setCurrentLanguage(language);
+    try {
+      localStorage.setItem(LANGUAGE_KEY, language);
+    } catch {
+      // The setting still applies for this run when storage is unavailable.
+    }
+  },
+
   setPanelFontSize(size) {
     const panelFontSize = normalizeFontSize(size, PANEL_FONT_SIZE);
     set({ panelFontSize });
@@ -1563,6 +1605,7 @@ export const useStore = create<AppStore>((set, get) => ({
         }),
       ),
       theme: state.theme,
+      language: state.language,
       panelFontSize: state.panelFontSize,
       bufferFontSize: state.bufferFontSize,
       panelFontFamily: state.panelFontFamily,
@@ -1589,6 +1632,8 @@ export const useStore = create<AppStore>((set, get) => ({
     // or hand-edited file can only ever change the fields it names.
     const theme = parseTheme(values.theme);
     if (theme) state.setTheme(theme);
+    const language = parseLanguage(values.language);
+    if (language) state.setLanguage(language);
     const gutterMode = parseGutterMode(values.gutterMode);
     if (gutterMode) state.setGutterMode(gutterMode);
     const filerSort = parseFileSort(values.filerSort);

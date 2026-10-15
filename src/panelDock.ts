@@ -1,3 +1,4 @@
+import type { Translate } from "./i18n";
 import type { PanelName } from "./store";
 
 /**
@@ -16,17 +17,19 @@ export const PANEL_NAMES: readonly PanelName[] = [
 ];
 export const DOCK_NAMES: readonly PanelDock[] = ["left", "right", "bottom"];
 
-export const PANEL_LABELS: Record<PanelName, string> = {
-  sessions: "Session",
-  filer: "Filer",
-  sender: "Sender",
-};
+/** Display names for the three tool panels. */
+export const panelLabels = (t: Translate): Record<PanelName, string> => ({
+  sessions: t("panel.sessions"),
+  filer: t("panel.filer"),
+  sender: t("panel.sender"),
+});
 
-export const DOCK_LABELS: Record<PanelDock, string> = {
-  left: "Left",
-  right: "Right",
-  bottom: "Bottom",
-};
+/** Display names for the three docks a panel can sit in. */
+export const dockLabels = (t: Translate): Record<PanelDock, string> => ({
+  left: t("dock.left"),
+  right: t("dock.right"),
+  bottom: t("dock.bottom"),
+});
 
 const DEFAULT_DOCK: Record<PanelName, PanelDock> = {
   sessions: "left",
