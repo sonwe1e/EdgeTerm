@@ -19,10 +19,11 @@ use russh_sftp::{
 };
 use serde::Serialize;
 
+use imara_diff::{Algorithm, InternedInput, TokenSource};
+
 const MAX_BYTES: usize = 4 * 1024 * 1024;
 const MAX_LINES: usize = 50_000;
 const MAX_LINE_BYTES: usize = 16 * 1024;
-const MAX_WORK: usize = 1_000_000;
 
 #[derive(Default)]
 struct Requests {
@@ -123,6 +124,12 @@ pub struct Comparison {
     pub right: Metadata,
     pub reason: Option<String>,
     pub rows: Vec<DiffRow>,
+    /// Whether the rows came out of a positional fallback instead of an
+    /// anchored alignment. The retired 64-line lookahead set this once its
+    /// 1,000,000-comparison budget ran out; the histogram alignment always
+    /// computes whole-file anchors, so nothing degrades end to end and this
+    /// stays false. Kept because the serialized contract and the frontend
+    /// notice reference it.
     pub alignment_simplified: bool,
 }
 struct Snapshot {
@@ -480,6 +487,38 @@ fn row(a: Option<(&Line, usize)>, b: Option<(&Line, usize)>) -> DiffRow {
         right_ending: b.map(|v| v.0.ending),
     }
 }
+/// The comparison's diff tokens: one per decoded line, the line's text.
+/// Text-only tokens are what keep anchors alive across a whole-file line
+/// ending conversion that also inserts lines; endings are compared later,
+/// through `row`'s `same`, exactly like the old alignment did.
+struct LineTokens<'a>(&'a [Line]);
+
+impl<'a> TokenSource for LineTokens<'a> {
+    type Token = &'a str;
+    type Tokenizer = std::iter::Map<std::slice::Iter<'a, Line>, fn(&Line) -> &str>;
+
+    fn tokenize(&self) -> Self::Tokenizer {
+        self.0.iter().map(|line: &Line| line.text.as_str())
+    }
+
+    fn estimate_tokens(&self) -> u32 {
+        self.0.len() as u32
+    }
+}
+
+/// Alignment: histogram over the whole file, anchored on line text. Between
+/// hunks both sides run through equal text in lockstep, and `row`'s `same`
+/// check is what turns matching text with a changed line ending into a
+/// `modified` pair instead of `equal`. A hunk is already bounded by anchors
+/// on both of its ends; its interior is paired by position, so content edits
+/// keep the two-column `modified` presentation and any surplus on one side
+/// comes out as `deleted` / `added`. Every line of both files is emitted
+/// exactly once, in order.
+///
+/// Cancellation is checked at entry and on every emitted row. The histogram
+/// run itself is not interruptible: the 12 s timeout in `compare` bounds the
+/// wait for a result, not a compute that is already running, and the input
+/// bounds (50,000 lines per side) are what cap the work.
 fn compare_snapshots(
     left: Snapshot,
     right: Snapshot,
@@ -511,41 +550,58 @@ fn compare_snapshots(
         result.reason = Some(if bytes_equal.is_none() { "A file exceeds 4 MiB; complete contents were not compared." } else { "Complete bytes were compared; a text view is unavailable (binary, unsupported encoding, or over 50,000 lines / 16 KiB per line)." }.into());
         return Ok(result);
     };
-    // Bounded lookahead alignment: no N×M matrix. If the comparison budget
-    // runs out, pair the remaining lines directly; content remains complete.
-    let (mut i, mut j, mut work) = (0, 0, 0);
+    let input = InternedInput::new(LineTokens(&a), LineTokens(&b));
+    let diff = imara_diff::Diff::compute(Algorithm::Histogram, &input);
+    control.check()?;
+    let mut rows = Vec::new();
+    let (mut i, mut j) = (0usize, 0usize);
+    for hunk in diff.hunks() {
+        // The equal stretch before the hunk: equal tokens, so both sides
+        // advance together (the single-side loops only mop up if they ever
+        // disagree, which would still keep the projection total).
+        let (before, after) = (hunk.before.start as usize, hunk.after.start as usize);
+        while i < before && j < after {
+            control.check()?;
+            rows.push(row(
+                a.get(i).map(|v| (v, i + 1)),
+                b.get(j).map(|v| (v, j + 1)),
+            ));
+            i += 1;
+            j += 1;
+        }
+        while i < before {
+            control.check()?;
+            rows.push(row(Some((&a[i], i + 1)), None));
+            i += 1;
+        }
+        while j < after {
+            control.check()?;
+            rows.push(row(None, Some((&b[j], j + 1))));
+            j += 1;
+        }
+        // The hunk interior: paired by position, bounded by the anchors.
+        let (before_end, after_end) = (hunk.before.end as usize, hunk.after.end as usize);
+        while i < before_end && j < after_end {
+            control.check()?;
+            rows.push(row(Some((&a[i], i + 1)), Some((&b[j], j + 1))));
+            i += 1;
+            j += 1;
+        }
+        while i < before_end {
+            control.check()?;
+            rows.push(row(Some((&a[i], i + 1)), None));
+            i += 1;
+        }
+        while j < after_end {
+            control.check()?;
+            rows.push(row(None, Some((&b[j], j + 1))));
+            j += 1;
+        }
+    }
+    // Hunks stop at the last change; walk whatever equal tail remains.
     while i < a.len() || j < b.len() {
         control.check()?;
-        if i < a.len() && j < b.len() && !same(&a[i], &b[j]) && work < MAX_WORK {
-            let mut skip = None;
-            for distance in 1..=64 {
-                work += 2;
-                if work >= MAX_WORK {
-                    break;
-                }
-                if i + distance < a.len() && same(&a[i + distance], &b[j]) {
-                    skip = Some((true, distance));
-                    break;
-                }
-                if j + distance < b.len() && same(&a[i], &b[j + distance]) {
-                    skip = Some((false, distance));
-                    break;
-                }
-            }
-            if let Some((delete, count)) = skip {
-                for _ in 0..count {
-                    if delete {
-                        result.rows.push(row(Some((&a[i], i + 1)), None));
-                        i += 1;
-                    } else {
-                        result.rows.push(row(None, Some((&b[j], j + 1))));
-                        j += 1;
-                    }
-                }
-                continue;
-            }
-        }
-        result.rows.push(row(
+        rows.push(row(
             a.get(i).map(|v| (v, i + 1)),
             b.get(j).map(|v| (v, j + 1)),
         ));
@@ -556,7 +612,7 @@ fn compare_snapshots(
             j += 1;
         }
     }
-    result.alignment_simplified = work >= MAX_WORK;
+    result.rows = rows;
     Ok(result)
 }
 
@@ -578,6 +634,181 @@ mod tests {
         )
         .unwrap()
     }
+
+    // The six flow181_ tests below were authored independently (supervisor
+    // baseline) against the old lookahead implementation on 91b962b, where
+    // four of them failed on behavior (100-line insertion, 100-line deletion,
+    // anchors after a 5->100 replacement, whole-file CRLF->LF with three
+    // insertions) and two passed as controls (replacement stays modified,
+    // projection preserves each side once, in order). Adopted as written;
+    // the candidate implementation must pass all six.
+    fn flow181_wire_rows(left: &str, right: &str) -> Vec<serde_json::Value> {
+        serde_json::to_value(compare_bytes(left.as_bytes(), right.as_bytes(), None)).unwrap()
+            ["rows"]
+            .as_array()
+            .unwrap()
+            .clone()
+    }
+
+    #[test]
+    fn flow181_large_insertion_keeps_fifty_text_anchors() {
+        let common = (0..50).map(|n| format!("anchor-{n}\n")).collect::<String>();
+        let inserted = (0..100).map(|n| format!("new-{n}\n")).collect::<String>();
+        let rows = flow181_wire_rows(&common, &(inserted + &common));
+        assert_eq!(rows.iter().filter(|r| r["kind"] == "equal").count(), 50);
+        assert_eq!(rows.iter().filter(|r| r["kind"] == "added").count(), 100);
+        for n in 0..50 {
+            let row = rows.iter().find(|r| r["leftLine"] == n + 1).unwrap();
+            assert_eq!(row["rightLine"], n + 101);
+            assert_eq!(row["left"], row["right"]);
+        }
+    }
+
+    #[test]
+    fn flow181_large_deletion_keeps_fifty_text_anchors() {
+        let common = (0..50).map(|n| format!("anchor-{n}\n")).collect::<String>();
+        let deleted = (0..100).map(|n| format!("old-{n}\n")).collect::<String>();
+        let rows = flow181_wire_rows(&(deleted + &common), &common);
+        assert_eq!(rows.iter().filter(|r| r["kind"] == "equal").count(), 50);
+        assert_eq!(rows.iter().filter(|r| r["kind"] == "deleted").count(), 100);
+    }
+
+    #[test]
+    fn flow181_unbalanced_replacement_preserves_following_anchors() {
+        let left = "start\nold-a\nold-b\nold-c\nold-d\nold-e\nanchor-a\nanchor-b\n";
+        let right = "start\n".to_string()
+            + &(0..100).map(|n| format!("new-{n}\n")).collect::<String>()
+            + "anchor-a\nanchor-b\n";
+        let rows = flow181_wire_rows(left, &right);
+        for anchor in ["anchor-a", "anchor-b"] {
+            let row = rows.iter().find(|r| r["left"] == anchor).unwrap();
+            assert_eq!(row["kind"], "equal");
+            assert_eq!(row["right"], anchor);
+        }
+    }
+
+    #[test]
+    fn flow181_eol_conversion_with_insertion_preserves_pairing() {
+        let left = (0..40)
+            .map(|n| format!("anchor-{n}\r\n"))
+            .collect::<String>();
+        let right = (0..20).map(|n| format!("anchor-{n}\n")).collect::<String>()
+            + "insert-a\ninsert-b\ninsert-c\n"
+            + &(20..40)
+                .map(|n| format!("anchor-{n}\n"))
+                .collect::<String>();
+        let rows = flow181_wire_rows(&left, &right);
+        for row in rows.iter().filter(|r| !r["leftLine"].is_null()) {
+            assert_eq!(row["right"], row["left"]);
+            assert_eq!(row["kind"], "modified");
+            assert_eq!(row["leftEnding"], "CRLF");
+            assert_eq!(row["rightEnding"], "LF");
+        }
+        assert_eq!(rows.iter().filter(|r| r["kind"] == "added").count(), 3);
+    }
+
+    #[test]
+    fn flow181_content_replacement_retains_modified_pair() {
+        let rows = flow181_wire_rows("alpha\n", "beta\n");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["kind"], "modified");
+        assert_eq!(rows[0]["left"], "alpha");
+        assert_eq!(rows[0]["right"], "beta");
+    }
+
+    #[test]
+    fn flow181_projection_preserves_each_side_once_and_in_order() {
+        for (left, right) in [
+            ("a\r\n\r\na\nb\rfinal", "a\ninsert\n\na\r\nb\rfinal\n"),
+            ("a\nb\na\n", "b\na\nb\n"),
+            ("", "added\n"),
+            ("removed\n", ""),
+        ] {
+            let rows = flow181_wire_rows(left, right);
+            for (text_key, ending_key, line_key, expected) in [
+                ("left", "leftEnding", "leftLine", left),
+                ("right", "rightEnding", "rightLine", right),
+            ] {
+                let mut text = String::new();
+                let mut next = 1;
+                for row in rows.iter().filter(|r| !r[line_key].is_null()) {
+                    assert_eq!(row[line_key], next);
+                    next += 1;
+                    text.push_str(row[text_key].as_str().unwrap());
+                    text.push_str(match row[ending_key].as_str().unwrap() {
+                        "CRLF" => "\r\n",
+                        "LF" => "\n",
+                        "CR" => "\r",
+                        "none" => "",
+                        other => panic!("unexpected ending: {other}"),
+                    });
+                }
+                assert_eq!(text, expected);
+            }
+        }
+    }
+
+    #[test]
+    fn duplicate_and_blank_lines_stay_anchored() {
+        let rows = flow181_wire_rows("a\n\na\n\nb\n", "a\n\n\n\na\n\nb\n");
+        assert_eq!(rows.iter().filter(|r| r["kind"] == "equal").count(), 5);
+        assert_eq!(rows.iter().filter(|r| r["kind"] == "added").count(), 2);
+        assert_eq!(rows.iter().filter(|r| r["kind"] == "deleted").count(), 0);
+    }
+
+    #[test]
+    fn mixed_line_endings_and_missing_final_newline_pair_by_text() {
+        let comparison = compare_bytes(b"a\r\nb\nc", b"a\nb\nc\n", None);
+        assert_eq!(comparison.status, "different");
+        assert_eq!(comparison.bytes_equal, Some(false));
+        let kinds = comparison
+            .rows
+            .iter()
+            .map(|row| row.kind)
+            .collect::<Vec<_>>();
+        assert_eq!(kinds, ["modified", "equal", "modified"]);
+        assert_eq!(comparison.rows[0].left_ending, Some("CRLF"));
+        assert_eq!(comparison.rows[0].right_ending, Some("LF"));
+        assert_eq!(comparison.rows[2].left_ending, Some("none"));
+        assert_eq!(comparison.rows[2].right_ending, Some("LF"));
+    }
+
+    #[test]
+    fn cancelled_control_stops_before_aligning() {
+        let control = Control::default();
+        control.set(2);
+        let error = compare_snapshots(
+            Snapshot {
+                size: 2,
+                bytes: Some(b"a\n".to_vec()),
+            },
+            Snapshot {
+                size: 2,
+                bytes: Some(b"b\n".to_vec()),
+            },
+            None,
+            &control,
+        )
+        .unwrap_err();
+        assert_eq!(error.code, "cancelled");
+    }
+
+    #[test]
+    fn large_input_stays_anchored_and_completes() {
+        let left: String = (0..20_000).map(|n| format!("row-{n}\n")).collect();
+        let mut right: Vec<String> = (0..20_000).map(|n| format!("row-{n}")).collect();
+        right.splice(10_000..10_000, (0..200).map(|n| format!("new-{n}")));
+        let right: String = right.into_iter().map(|line| line + "\n").collect();
+        let started = Instant::now();
+        let rows = flow181_wire_rows(&left, &right);
+        // Wall-clock on this one machine, printed for the record; not a bound
+        // on any other machine or input.
+        println!("20k-line alignment took {:?}", started.elapsed());
+        assert_eq!(rows.iter().filter(|r| r["kind"] == "equal").count(), 20_000);
+        assert_eq!(rows.iter().filter(|r| r["kind"] == "added").count(), 200);
+        assert_eq!(rows.iter().filter(|r| r["kind"] == "modified").count(), 0);
+    }
+
     #[test]
     fn exact_bytes_and_line_edits_include_line_endings_and_bom() {
         assert_eq!(compare_bytes(b"", b"", None).status, "identical");

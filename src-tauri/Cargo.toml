@@ -61,6 +61,9 @@ dirs = "6"
 ring = "0.17"
 notify = "8"
 futures-util = "0.3"
+# Anchors the file comparison on line text across whole files (git's
+# histogram alignment), replacing the bounded 64-line lookahead.
+imara-diff = "0.2"
 
 [dev-dependencies]
 bytes = "1"
