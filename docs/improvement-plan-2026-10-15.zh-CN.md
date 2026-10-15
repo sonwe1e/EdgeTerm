@@ -202,8 +202,14 @@ PAINTED=bit32）。现有 terminalSemanticPaint.test.ts 覆盖很厚，布局变
 只做设计笔记不实施。
 
 第二阶段（Rust VT 内核 + 视口快照 + 单画布）**不列入本次生产改动**。原方案两处断言更正：
-WEBGL_MAX_TERMINALS=6 的动因是每 context 钉窗口级 GPU 表面与 context 丢失滞留
-（见 terminal.ts 注释），不是"16 上限逼出"；"百万行零内存膨胀"是假承诺——
+`WEBGL_MAX_TERMINALS = 6` 的动因是隐藏标签用不上快速渲染器、每个 context 钉一块
+窗口级 GPU 表面（把 GPU 内存控制在几百 MB）并与 WebKit 的 16 个 live context 上限
+保持余量（[terminal.ts:78-89](src/terminal.ts#L78-L89) 注释）；LRU 让最久未显示的
+放弃渲染器、显示时再取回。context **丢失**另有有界恢复：2 秒后重建、60 秒窗口内至多
+3 次（`WEBGL_RECOVERY_DELAY_MS`/`WEBGL_RECOVERY_LIMIT`，terminal.ts 的
+`handleWebglLoss`/`scheduleWebglRecovery`），窗口之外的丢失是新预算；只有持续掉
+context 的 GPU 才留在 DOM 渲染器——不存在"上下文丢失必然永久滞留 DOM"。
+"百万行零内存膨胀"是假承诺——
 Rust 环形缓冲仍是内存，只是搬出 WebView 堆并降低每行成本，表述改为
 "有界、可配置的更低每行内存"。未来进入条件：先做 2–3 天 spike（Rust VTE 解析
 吞吐/内存基准 + 快照通道 PoC）产出数据，VT 奇偶性、IME、选择、搜索、unicode11、
