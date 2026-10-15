@@ -9,6 +9,13 @@ import { defineConfig } from "vitest/config";
 // (canvas, matchMedia, rAF) and would mask exactly what the browser
 // environment is here to prove. Both projects include styles.css as real
 // CSS: without it vitest stubs every CSS import, `?raw` included.
+//
+// The browser comes from Playwright's own Chromium by default (`npx
+// playwright install chromium` on a clean machine). Setting PERF_BROWSER
+// drives a system channel instead — PERF_BROWSER=msedge runs the installed
+// Microsoft Edge, the same knob the check-*.mjs scripts use.
+const channel = process.env.PERF_BROWSER?.trim();
+
 export default defineConfig({
   test: {
     projects: [
@@ -30,7 +37,7 @@ export default defineConfig({
           browser: {
             enabled: true,
             headless: true,
-            provider: playwright({ launchOptions: { channel: "msedge" } }),
+            provider: playwright({ launchOptions: channel ? { channel } : {} }),
             instances: [{ browser: "chromium" }],
           },
         },

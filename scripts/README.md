@@ -10,11 +10,14 @@ The review harness mocks Tauri IPC and file listings; it does not validate a
 real remote server. The performance harness measures DOM virtualization and
 ordinary-byte ZMODEM input handling, not complete terminal rendering throughput.
 
-`npm run test:browser` runs the `src/**/*.browser.test.ts` contracts in
-headless Edge through the same channel and provider; `npm test` stays the
-fast jsdom unit project and skips those files. The browser project does not
-load `src/test/setup.ts` — those are jsdom stubs, and stubbing canvas or
-layout there would defeat the point of the browser run.
+`npm run test:browser` runs the `src/**/*.browser.test.ts` contracts in a
+headless browser through the same provider; `npm test` stays the fast jsdom
+unit project and skips those files. The browser project does not load
+`src/test/setup.ts` — those are jsdom stubs, and stubbing canvas or layout
+there would defeat the point of the browser run. By default it uses
+Playwright's own Chromium (`npx playwright install chromium` on a clean
+machine); setting `PERF_BROWSER` drives a system channel instead, e.g.
+`PERF_BROWSER=msedge` for the installed Microsoft Edge.
 
 `check-file-performance.mjs` additionally gates two timings, each the median of
 5 samples, and exits 1 when one is breached (it prints
