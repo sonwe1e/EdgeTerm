@@ -447,6 +447,24 @@ describe("TerminalController fit in a real container", () => {
       expect(sample.maxRowOffset, `${when}: max gutter/text row offset ${sample.maxRowOffset}`)
         .toBeLessThan(0.5);
     };
+
+    // A font change while hidden lands at the show boundary, and the LAST
+    // request wins: 14→26→14 while hidden must render at the 14 font, not
+    // leave 26 staged behind an early return. Proven on the rendered row
+    // pitch through the public setters, not on internal fields.
+    const beforeRoundtrip = gutterAlignment();
+    expect(beforeRoundtrip.rows).toBeGreaterThan(1);
+    session.render(paneProps(false, 900, 560));
+    controller.setFontSize(26);
+    controller.setFontSize(14);
+    await twoFrames();
+    session.render(paneProps(true, 900, 560));
+    await wait(250);
+    const afterRoundtrip = gutterAlignment();
+    expect(afterRoundtrip.rows).toBeGreaterThan(1);
+    expect(Math.abs(afterRoundtrip.textPitch - beforeRoundtrip.textPitch),
+      `round-tripped font renders at the final size: ${afterRoundtrip.textPitch} vs ${beforeRoundtrip.textPitch}`)
+      .toBeLessThan(0.1);
     await twoFrames();
     expectAligned("two frames after the resized show");
     await wait(250);

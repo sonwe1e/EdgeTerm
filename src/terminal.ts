@@ -426,6 +426,18 @@ export class TerminalController {
   private pendingCellMeasure: number | null = null;
   /** One deferred proposal for a renderer that has not measured yet; see fit. */
   private pendingProposeRetry: number | null = null;
+  /**
+   * A font change made while the pane was display:none, landed at the show
+   * boundary where the renderer can measure it; see setFontSize.
+   */
+  private pendingFont: { size?: number; family?: string } | null = null;
+  /**
+   * Watches the fit parent itself: the gutter widening after its rows first
+   * paint (or a font-size change) shrinks the host the fit measured, and the
+   * pane-level observer cannot see that. One observer per terminal, no
+   * polling.
+   */
+  private hostResize: ResizeObserver | null = null;
 
   private root: HTMLElement | null = null;
   private host: HTMLElement | null = null;
@@ -977,6 +989,12 @@ export class TerminalController {
 
     this.host = document.createElement("div");
     this.host.className = "term-host";
+    this.hostResize = new ResizeObserver(() => {
+      // The entry-level contract: a hidden terminal is never asked to fit
+      // (the show path refits explicitly).
+      if (this.visible) this.scheduleFit();
+    });
+    this.hostResize.observe(this.host);
 
     root.appendChild(this.gutter);
     root.appendChild(this.host);
@@ -1009,6 +1027,18 @@ export class TerminalController {
     if (this.visible === visible) return;
     this.visible = visible;
     if (visible) {
+      // A font change made while hidden lands here, where the renderer can
+      // measure it, and before the pane's show refit proposes dimensions.
+      const pending = this.pendingFont;
+      this.pendingFont = null;
+      if (pending?.size !== undefined) {
+        this.term.options.fontSize = pending.size;
+        this.refreshFontMetrics();
+      }
+      if (pending?.family !== undefined) {
+        this.term.options.fontFamily = pending.family;
+        this.refreshFontMetrics();
+      }
       this.loadWebgl();
       // Output that arrived while hidden was not painted; do the viewport now,
       // ahead of the first frame, and the rest in the backlog.
@@ -1243,8 +1273,10 @@ export class TerminalController {
 
   /** ResizeObserver entry point; uses the same settle policy as explicit fits. */
   scheduleFit() {
-    // ResizeObserver and explicit fits share one scheduler. An outer fixed
-    // interval would let the inner settle window expire during a live drag.
+    // A hidden terminal never fits (the show path refits explicitly), so the
+    // entry point itself is a no-op there — the host observer and any other
+    // caller share this one guard.
+    if (this.disposed || !this.visible) return;
     this.fit();
   }
 
@@ -1717,14 +1749,28 @@ export class TerminalController {
   }
 
   setFontSize(fontSize: number) {
-    if (this.term.options.fontSize === fontSize) return;
+    // Compare against the value that would actually land (a pending hidden
+    // change included): the last request wins, and 14→26→14 while hidden
+    // must not leave 26 staged behind an early return.
+    if ((this.pendingFont?.size ?? this.term.options.fontSize) === fontSize) return;
+    if (!this.visible) {
+      // The renderer re-measures the font from real pixels; a change made
+      // while the pane is display:none left WebKit rendering the old font
+      // after the show. Land it at the show boundary instead.
+      this.pendingFont = { ...this.pendingFont, size: fontSize };
+      return;
+    }
     this.term.options.fontSize = fontSize;
     this.refreshFontMetrics();
   }
 
   /** The family is a full CSS stack; see `fontStack` in `fonts.ts`. */
   setFontFamily(fontFamily: string) {
-    if (this.term.options.fontFamily === fontFamily) return;
+    if ((this.pendingFont?.family ?? this.term.options.fontFamily) === fontFamily) return;
+    if (!this.visible) {
+      this.pendingFont = { ...this.pendingFont, family: fontFamily };
+      return;
+    }
     this.term.options.fontFamily = fontFamily;
     this.refreshFontMetrics();
   }
@@ -1831,6 +1877,8 @@ export class TerminalController {
       window.cancelAnimationFrame(this.pendingProposeRetry);
       this.pendingProposeRetry = null;
     }
+    this.hostResize?.disconnect();
+    this.hostResize = null;
     if (this.webglTimer !== null) {
       window.clearTimeout(this.webglTimer);
       this.webglTimer = null;

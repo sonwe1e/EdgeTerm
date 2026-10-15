@@ -86,7 +86,8 @@ const server = http.createServer(async (req, res) => {
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 
-const { chromium } = require("playwright");
+const { chromium, webkit } = require("playwright");
+const engine = process.env.PERF_ENGINE?.trim() || "chromium";
 const channel = process.env.PERF_BROWSER?.trim() || "chromium";
 let browser;
 const errors = [];
@@ -94,7 +95,9 @@ const badResources = [];
 const results = [];
 let browserVersion = "";
 try {
-  browser = await chromium.launch(channel === "chromium" ? { headless: true } : { channel, headless: true });
+  browser = engine === "webkit"
+    ? await webkit.launch({ headless: true })
+    : await chromium.launch(channel === "chromium" ? { headless: true } : { channel, headless: true });
   browserVersion = browser.version();
   const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
   page.on("pageerror", (error) => errors.push(String(error)));
