@@ -1,5 +1,6 @@
 import type { UpdaterState } from "../updater";
 import { useT } from "../useT";
+import { ModalDialog } from "./ModalDialog";
 
 interface Props {
   appVersion: string;
@@ -40,14 +41,12 @@ export function UpdateDialog({
   if (state.phase === "error") title = t("update.failed");
 
   return (
-    <div
-      className="dialog-backdrop"
-      onMouseDown={() => dismissible && onDismiss()}
+    <ModalDialog
+      open
+      contentClassName={"update-dialog"}
+      onClose={onDismiss}
+      dismissable={dismissible}
     >
-      <div
-        className="dialog update-dialog"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
         <div className="dialog-header">{title}</div>
         <div className="dialog-body update-dialog-body">
           {state.phase === "checking" && (
@@ -135,7 +134,6 @@ export function UpdateDialog({
             )}
           </div>
         )}
-      </div>
-    </div>
+    </ModalDialog>
   );
 }
