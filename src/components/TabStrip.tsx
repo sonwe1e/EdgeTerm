@@ -14,8 +14,10 @@ import {
   duplicateSshChannel,
   splitSession,
 } from "../actions";
+import { t as translateMsg } from "../i18n";
 import { tabTitle, useStore, type DropTarget, type Tab } from "../store";
 import { colorForSession } from "../types";
+import { useT } from "../useT";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { Icon } from "./icons";
 import { useAccelerator } from "./TerminalPane";
@@ -45,8 +47,14 @@ interface Props {
  */
 function activityLabel(tab: Tab): string | null {
   if (tab.commandActivity === "idle") return null;
-  const subject = tab.activityKind === "ai" ? "AI" : "command";
-  return `${subject} ${tab.commandActivity === "running" ? "running" : "finished"}`;
+  const subject = tab.activityKind === "ai"
+    ? translateMsg("tab.ai")
+    : translateMsg("tab.command");
+  const state =
+    tab.commandActivity === "running"
+      ? translateMsg("tab.running")
+      : translateMsg("tab.finished");
+  return `${subject} ${state}`;
 }
 
 interface TabDrag {
@@ -143,6 +151,7 @@ const dropTargetAt = (
 };
 
 export function TabStrip({ paneId }: Props) {
+  const t = useT();
   const allTabs = useStore((s) => s.tabs);
   // The strip is the pane's tabs in list order; see `placeTab` in the store.
   const tabs = useMemo(
@@ -222,45 +231,45 @@ export function TabStrip({ paneId }: Props) {
     const tab = tabs.find((item) => item.info.id === id);
     return [
       {
-        label: "Close",
+        label: t("common.close"),
         shortcut: closeKey,
         action: () => requestCloseTabs([id]),
       },
       {
-        label: "Close Others",
+        label: t("tab.closeOthers"),
         disabled: ids.length < 2,
         action: () => requestCloseTabs(ids.filter((other) => other !== id)),
       },
       {
-        label: "Close to the Left",
+        label: t("tab.closeLeft"),
         disabled: index <= 0,
         action: () => requestCloseTabs(ids.slice(0, index)),
       },
       {
-        label: "Close to the Right",
+        label: t("tab.closeRight"),
         disabled: index >= ids.length - 1,
         action: () => requestCloseTabs(ids.slice(index + 1)),
       },
-      { label: "Close All", action: () => requestCloseTabs(ids) },
+      { label: t("tab.closeAll"), action: () => requestCloseTabs(ids) },
       "separator",
       // Only a live SSH tab has a connection to open another channel on.
       ...(tab && canDuplicateSshChannel(tab)
         ? [
             {
-              label: "Duplicate SSH Channel",
+              label: t("tab.duplicateSsh"),
               icon: "copy",
               action: () => void duplicateSshChannel(id),
             } satisfies MenuItem,
           ]
         : []),
       {
-        label: "Split Right",
+        label: t("menu.splitRight"),
         icon: "split-horizontal",
         shortcut: splitRightKey,
         action: () => void splitSession(id, "right"),
       },
       {
-        label: "Split Down",
+        label: t("menu.splitDown"),
         icon: "split-vertical",
         shortcut: splitDownKey,
         action: () => void splitSession(id, "down"),
@@ -515,7 +524,7 @@ export function TabStrip({ paneId }: Props) {
               tab.commandActivity === "running"
                 ? activityLabel(tab)
                 : tab.commandActivity === "complete"
-                  ? `${activityLabel(tab)} — select to view`
+                  ? `${activityLabel(tab)}${t("tab.selectToView")}`
                   : (tab.message ?? tab.state)
             }`}
           >
@@ -533,8 +542,8 @@ export function TabStrip({ paneId }: Props) {
                 event.stopPropagation();
                 requestCloseTabs([tab.info.id]);
               }}
-              title="Close session"
-              aria-label="Close session"
+              title={t("tab.closeSession")}
+              aria-label={t("tab.closeSession")}
             >
               <Icon name="close" />
             </button>
@@ -560,7 +569,7 @@ export function TabStrip({ paneId }: Props) {
               const rect = event.currentTarget.getBoundingClientRect();
               setListMenu({ x: rect.right, y: rect.bottom + 2 });
             }}
-            title="All sessions"
+            title={t("tab.allSessions")}
             aria-haspopup="menu"
             aria-expanded={listMenu !== null}
           >

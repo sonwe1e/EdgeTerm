@@ -1,3 +1,4 @@
+import { t as translateMsg, type MessageKey, type Translate } from "./i18n";
 import { IS_MAC, IS_WINDOWS } from "./platform";
 import type { PanelName } from "./store";
 
@@ -70,122 +71,78 @@ export type AppShortcut =
   | { kind: "selectAll" }
   | { kind: "togglePanel"; panel: PanelName };
 
-/** What each command does, and the order the settings dialog lists them in. */
+/** Every action a user can put on a key, in the order the settings dialog lists them. */
 export const SHORTCUT_COMMANDS: {
   id: ShortcutCommand;
-  label: string;
-  hint: string;
   action: AppShortcut;
 }[] = [
-  {
-    id: "newSession",
-    label: "New Session",
-    hint: "Open the new-session dialog",
-    action: { kind: "newSession" },
-  },
-  {
-    id: "closeSession",
-    label: "Close Session",
-    hint: "Close the current tab",
-    action: { kind: "closeSession" },
-  },
-  {
-    id: "prevTab",
-    label: "Previous Session",
-    hint: "Select the tab on the left",
-    action: { kind: "tabStep", step: -1 },
-  },
-  {
-    id: "nextTab",
-    label: "Next Session",
-    hint: "Select the tab on the right",
-    action: { kind: "tabStep", step: 1 },
-  },
-  {
-    id: "splitRight",
-    label: "Split Right",
-    hint: "Open the current session's profile again in a pane to the right",
-    action: { kind: "splitPane", side: "right" },
-  },
-  {
-    id: "splitDown",
-    label: "Split Down",
-    hint: "Open the current session's profile again in a pane below",
-    action: { kind: "splitPane", side: "down" },
-  },
-  {
-    id: "prevPane",
-    label: "Previous Pane",
-    hint: "Focus the pane before this one",
-    action: { kind: "paneStep", step: -1 },
-  },
-  {
-    id: "nextPane",
-    label: "Next Pane",
-    hint: "Focus the pane after this one",
-    action: { kind: "paneStep", step: 1 },
-  },
-  {
-    id: "copy",
-    label: "Copy",
-    hint: "Copy the terminal selection",
-    action: { kind: "copy" },
-  },
-  {
-    id: "paste",
-    label: "Paste",
-    hint: "Paste the clipboard into the terminal",
-    action: { kind: "paste" },
-  },
-  {
-    id: "selectAll",
-    label: "Select All",
-    hint: "Select the whole terminal buffer",
-    action: { kind: "selectAll" },
-  },
-  {
-    id: "find",
-    label: "Find",
-    hint: "Search the terminal buffer",
-    action: { kind: "find" },
-  },
-  {
-    id: "findNext",
-    label: "Find Next",
-    hint: "Jump to the next match",
-    action: { kind: "findNext" },
-  },
-  {
-    id: "clear",
-    label: "Clear Buffer",
-    hint: "Clear the screen and scrollback",
-    action: { kind: "clear" },
-  },
-  {
-    id: "revealCwd",
-    label: "Reveal Working Directory",
-    hint: "Point the Filer at the shell's directory",
-    action: { kind: "revealCwd" },
-  },
-  {
-    id: "panelSessions",
-    label: "Toggle Session Panel",
-    hint: "Show or hide the left panel",
-    action: { kind: "togglePanel", panel: "sessions" },
-  },
-  {
-    id: "panelFiler",
-    label: "Toggle Filer Panel",
-    hint: "Show or hide the right panel",
-    action: { kind: "togglePanel", panel: "filer" },
-  },
-  {
-    id: "panelSender",
-    label: "Toggle Sender Panel",
-    hint: "Show or hide the bottom panel",
-    action: { kind: "togglePanel", panel: "sender" },
-  },
+  { id: "newSession", action: { kind: "newSession" } },
+  { id: "closeSession", action: { kind: "closeSession" } },
+  { id: "prevTab", action: { kind: "tabStep", step: -1 } },
+  { id: "nextTab", action: { kind: "tabStep", step: 1 } },
+  { id: "splitRight", action: { kind: "splitPane", side: "right" } },
+  { id: "splitDown", action: { kind: "splitPane", side: "down" } },
+  { id: "prevPane", action: { kind: "paneStep", step: -1 } },
+  { id: "nextPane", action: { kind: "paneStep", step: 1 } },
+  { id: "copy", action: { kind: "copy" } },
+  { id: "paste", action: { kind: "paste" } },
+  { id: "selectAll", action: { kind: "selectAll" } },
+  { id: "find", action: { kind: "find" } },
+  { id: "findNext", action: { kind: "findNext" } },
+  { id: "clear", action: { kind: "clear" } },
+  { id: "revealCwd", action: { kind: "revealCwd" } },
+  { id: "panelSessions", action: { kind: "togglePanel", panel: "sessions" } },
+  { id: "panelFiler", action: { kind: "togglePanel", panel: "filer" } },
+  { id: "panelSender", action: { kind: "togglePanel", panel: "sender" } },
 ];
+
+/** Display name of each command, in the current language. */
+export const shortcutLabels = (
+  t: Translate,
+): Record<ShortcutCommand, string> => ({
+  newSession: t("sc.newSession.label"),
+  closeSession: t("sc.closeSession.label"),
+  prevTab: t("sc.prevTab.label"),
+  nextTab: t("sc.nextTab.label"),
+  splitRight: t("sc.splitRight.label"),
+  splitDown: t("sc.splitDown.label"),
+  prevPane: t("sc.prevPane.label"),
+  nextPane: t("sc.nextPane.label"),
+  copy: t("sc.copy.label"),
+  paste: t("sc.paste.label"),
+  selectAll: t("sc.selectAll.label"),
+  find: t("sc.find.label"),
+  findNext: t("sc.findNext.label"),
+  clear: t("sc.clear.label"),
+  revealCwd: t("sc.revealCwd.label"),
+  panelSessions: t("sc.panelSessions.label"),
+  panelFiler: t("sc.panelFiler.label"),
+  panelSender: t("sc.panelSender.label"),
+});
+
+/** One-line description of each command, in the current language. */
+export const shortcutHints = (
+  t: Translate,
+): Record<ShortcutCommand, string> => ({
+  newSession: t("sc.newSession.hint"),
+  closeSession: t("sc.closeSession.hint"),
+  prevTab: t("sc.prevTab.hint"),
+  nextTab: t("sc.nextTab.hint"),
+  splitRight: t("sc.splitRight.hint"),
+  splitDown: t("sc.splitDown.hint"),
+  prevPane: t("sc.prevPane.hint"),
+  nextPane: t("sc.nextPane.hint"),
+  copy: t("sc.copy.hint"),
+  paste: t("sc.paste.hint"),
+  selectAll: t("sc.selectAll.hint"),
+  find: t("sc.find.hint"),
+  findNext: t("sc.findNext.hint"),
+  clear: t("sc.clear.hint"),
+  revealCwd: t("sc.revealCwd.hint"),
+  panelSessions: t("sc.panelSessions.hint"),
+  panelFiler: t("sc.panelFiler.hint"),
+  panelSender: t("sc.panelSender.hint"),
+});
 
 const chord = (
   code: string,
@@ -419,12 +376,12 @@ export function chordLabel(binding: KeyChord | null | undefined): string {
  * here; they are ordinary commands of the table now (#47), answered by the
  * terminal's key filter.
  */
-const RESERVED_CHORDS: { chord: KeyChord; owner: string }[] = IS_MAC
+const RESERVED_CHORDS: { chord: KeyChord; owner: MessageKey }[] = IS_MAC
   ? [
-      { chord: chord("KeyX", { meta: true }), owner: "Cut" },
-      { chord: chord("KeyQ", { meta: true }), owner: "Quit EdgeTerm" },
-      { chord: chord("KeyH", { meta: true }), owner: "Hide EdgeTerm" },
-      { chord: chord("KeyM", { meta: true }), owner: "Minimize" },
+      { chord: chord("KeyX", { meta: true }), owner: "sc.ownerCut" },
+      { chord: chord("KeyQ", { meta: true }), owner: "sc.ownerQuit" },
+      { chord: chord("KeyH", { meta: true }), owner: "sc.ownerHide" },
+      { chord: chord("KeyM", { meta: true }), owner: "sc.ownerMinimize" },
     ]
   : [];
 
@@ -469,18 +426,25 @@ export function chordProblem(binding: KeyChord): string | null {
   const bareShift = binding.shift && SHIFT_ONLY_KEYS.test(binding.code);
   if (!binding.ctrl && !binding.alt && !binding.meta && !bareShift) {
     return IS_MAC
-      ? "Hold ⌘, ⌥ or ⌃ as well, or the key would be typed into the terminal."
-      : "Hold Ctrl or Alt as well, or the key would be typed into the terminal.";
+      ? translateMsg("sc.problemMac")
+      : translateMsg("sc.problemOther");
   }
   const reserved = RESERVED_CHORDS.find((entry) =>
     sameChord(entry.chord, binding),
   );
-  if (reserved) return `${chordLabel(binding)} is already ${reserved.owner}.`;
+  if (reserved)
+    return translateMsg("sc.reserved", {
+      chord: chordLabel(binding),
+      owner: translateMsg(reserved.owner),
+    });
   if (
     /^Digit[1-9]$/.test(binding.code) &&
     tabDigitModifiers(toEvent(binding))
   ) {
-    return `${chordLabel(binding)} switches to tab ${binding.code.slice(5)}.`;
+    return translateMsg("sc.switchesToTab", {
+      chord: chordLabel(binding),
+      number: binding.code.slice(5),
+    });
   }
   return null;
 }
