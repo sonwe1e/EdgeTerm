@@ -12,26 +12,27 @@ import {
 
 import { isLightTheme, type ThemeMode } from "./types";
 
-// Keep the SVGs in this lazy-loaded module instead of emitting one asset per
-// icon. Each icon used by a file list gets one blob URL, shared by its rows;
-// <img> keeps the SVG's IDs isolated from those in other icons.
-// The `.clone` suffix marks generated colour variants, not part of the name.
-// The Filer is a flat list, so expanded "-open" folders are never shown.
-const iconMarkup: Record<string, string> = {};
-for (const [path, svg] of Object.entries(
+// One SVG asset per icon (`?no-inline` keeps Vite from inlining the small
+// ones as data URLs): a row's <img> reads the SVG it needs straight from the
+// app's own origin, the browser caches each SVG separately, and this lazy
+// module stays a name-to-URL map instead of ~850 KB of SVG markup that the
+// first Filer open parses and keeps on the heap (ESM caches the module, so
+// later opens pay neither the parse nor the markup). The `.clone` suffix
+// marks generated colour variants, not part of the name. The Filer is a flat
+// list, so expanded "-open" folders are never shown.
+const iconUrl: Record<string, string> = {};
+for (const [path, url] of Object.entries(
   import.meta.glob(
     [
       "/node_modules/material-icon-theme/icons/*.svg",
       "!/node_modules/material-icon-theme/icons/*-open.svg",
     ],
-    { eager: true, query: "?raw", import: "default" },
+    { eager: true, query: "?no-inline", import: "default" },
   ) as Record<string, string>,
 )) {
   const base = path.slice(path.lastIndexOf("/") + 1);
-  iconMarkup[base.replace(/\.svg$/, "").replace(/\.clone$/, "")] = svg;
+  iconUrl[base.replace(/\.svg$/, "").replace(/\.clone$/, "")] = url;
 }
-
-const iconSources = new Map<string, string>();
 
 // VS Code matches names case-insensitively, so lower-case the mapping keys
 // once instead of on every lookup.
@@ -94,20 +95,15 @@ function resolveIconName(
   );
 }
 
-/** Blob URL of the Material icon for a file or folder entry. */
+/** URL of the Material icon for a file or folder entry. */
 export function fileIconSource(
   name: string,
   isDir: boolean,
   theme: ThemeMode,
 ): string {
   const icon = resolveIconName(name, isDir, theme);
-  const key = iconMarkup[icon] ? icon : isDir ? defaultFolderIcon : defaultFileIcon;
-  let source = iconSources.get(key);
-  if (!source) {
-    source = URL.createObjectURL(
-      new Blob([iconMarkup[key]], { type: "image/svg+xml" }),
-    );
-    iconSources.set(key, source);
-  }
-  return source;
+  // An icon name the asset glob does not carry falls back to the theme's
+  // default, exactly like the built-in maps do.
+  const key = iconUrl[icon] ? icon : isDir ? defaultFolderIcon : defaultFileIcon;
+  return iconUrl[key];
 }

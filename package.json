@@ -14,6 +14,7 @@
     "test:browser": "vitest run --project browser",
     "version:set": "node scripts/set-version.mjs",
     "check:commits": "node scripts/check-commits.mjs",
+    "check:icons": "node scripts/check-icon-assets.mjs",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"

@@ -15,7 +15,7 @@ HEAD `91b962b1f9e9ee47f757a03425d3f20110df3331` 的源码核对与依赖注册�
 | #4 ZMODEM/XMODEM 下沉 Rust | **暂缓**（非本次生产改动） | 互操作证据链未建立；现有实现已做内存分界 |
 | #5 Biome 静态检查 | **本次实施**（有针对性规则集） | 零运行时成本；需同步修订 AGENTS.md 表述 |
 | #6 React Compiler | **只做可比试验，不默认启用** | 缺少同环境前后对照；jsdom 测试不覆盖编译产物 |
-| #7 fileIcons 构建精简 | **本次实施第一阶段**（构建期过滤+压缩） | 原方案两处关键断言（数 MB、"70%~85%"）经实测不成立 |
+| #7 fileIcons 加载 | **本次实施：URL 资源方案（以测量定案）** | 原方案两处关键断言（数 MB、"70%~85%"）经实测不成立；详见 #7 节测量与取舍 |
 | #8 统一弹窗 `<dialog>` | **实施，补交互事实后分批** | 证据成立；WebKitGTK 支持与 StrictMode/::backdrop 细节必须先验证 |
 | #9 浏览器契约测试 | **本次实施**（先钉 vitest 主版本决定） | @vitest/browser 5.x 与仓库 vitest 4.x 主版本不匹配，需前置决定 |
 | #10 语义色兼容守卫 | **本次实施第一阶段**（位布局契约锁） | 第二阶段 Rust VT/单画布重写降为探索 spike，不设结果性承诺 |
@@ -146,19 +146,43 @@ CRC/组包占用 JS 主线程——收益存在但未测量。
 首绘/切换对照（记录样本与中位数），组件级测试在编译开关两种状态下各跑一遍；
 无对照数据不启用，启用提交按 R9 带 `Measured:`，否则标题只写 "enable" 并带 `Unmeasured:`。
 
-## #7 fileIcons 构建精简 —— 第一阶段实施
+## #7 fileIcons 加载 —— 已实施为 URL 资源方案（以测量定案）
 
-实测（本机 node_modules）：SVG 共 1251 个，排除 `*-open` 后 982 个、约 850 KB；
-构建产物 fileIcons chunk 1,138,403 B / gzip 277,268 B（外层基线一致）。
-theme JSON 实际引用 906 个图标——"剔除孤立图标"仅省约 8%；原方案"数 MB""缩减 70%~85%"
-不成立，予以更正。模块本身已 `import()` 懒加载并保持占位（FileIcon.tsx），不在首屏包内；
-真实成本是首次打开 Filer 时解析执行约 1.1 MB 本地 JS。
+**最终实现（已落地）**：`src/fileIcons.ts` 改为 `import.meta.glob(..., { query: "?no-inline" })`
+的每图标一个 SVG 资产：解析契约不变（大小写不敏感、exact 文件名优先于扩展名、
+最长后缀优先、`.clone` 变体剥离、`light.*` 覆盖、文件/目录默认回退），渲染仍是
+懒加载模块 + `<img src=URL>`。`npm run check:icons` 在构建后校验：chunk 内 982 个
+映射键与包内非 -open SVG 一一对应、chunk 提到的每个 /assets/*.svg 在 dist 真实存在、
+theme JSON（含 light.file/folder 默认）引用的 906 个图标全部可解析；负对照
+（删除真实资产、篡改 chunk 键）均使门禁以非零退出失败。
 
-第一阶段（本次）：Vite 构建期插件按 theme JSON 引用闭包过滤 + SVG 去空白/注释/metadata，
-**保留全部 `.clone` 变体与 `light.*` 覆盖语义**、大小写不敏感与多后缀匹配语义不变。
-第二阶段（分片懒加载）只有在第一阶段实测后仍证明值得才做：任何异步分片加载必须沿用
-FileIcon 现有订阅模式（useReducer rerender + 卸载守卫），不产生无订阅的异步换图。
-验收：记录前后 chunk 原始/gzip 体积与同机首开耗时；图标回归全绿；亮暗主题抽样目视一致。
+**测量（全部为局部测量，非整体应用提速结论）**：
+
+- 体积：fileIcons chunk 1,138,403 B / gzip 277,268 B → 318.64 KB / gzip 53.42 KB
+  （raw -72%，gzip -81%）。**dist 总量上升**：9 文件 2,443,749 B（gzip 660,069）→
+  988 文件 2,472,038 B（gzip 873,355），raw +1.2%、gzip +32%——逐文件压缩失去了
+  单 chunk 的跨文件字典收益，这是本方案用首开换来的代价，如实记录。
+- 首开（外层独立 A/B，`independent-icons-second/results.json`：真实
+  FileBrowser/FileIcon + 生产 CSS、10k 条目、图标模块不预载、冷 context 每臂 6 次
+  交替、计到已渲染窗口行（含 overscan）图标全部 naturalWidth>0 再过 2 帧）：
+  baseline 68.20 ms / candidate 52.55 ms（-23%）；pageerror 与资产 404 为 0，
+  像素一致。这是该夹具单批六次的中位数，不是普遍速度保证。
+- 堆（`independent-icon-heap.json`：冻结两臂生产 fixture、每臂 4 个 fresh
+  context 交替、显式 GC 后 V8 usedSize、首挂载增量中位数）：
+  baseline 2,597,928 B / candidate 1,777,202 B，保留堆 -820,726 B。
+  仅 V8 保留堆，不是总进程/GPU/image backing/WebView2。
+- 本仓库内可复用驱动 `scripts/measure-file-icons.mjs`：显式 `resolveId` 绑定
+  变体并从构建产物核验（svg 资产数/createObjectURL 存在性），杜绝变体误绑；
+  其 21 行小夹具首轮曾因 alias 未拦截相对 specifier 测成 A/A（原始失败记录保留
+  于 `.tmp/records/implementation-02/`），该批数据已作废，未用于任何结论。
+- 截图：`scripts/icon-screenshots.mjs` 产出的暗/亮两幅（各 21 行真实组件）位于
+  `.tmp/records/implementation-02/icons/{dark,light}.png`。
+
+**范围与边界**：以上都是合成生产组件夹具——不证明真实 Filer 全链路、SFTP 列表
+或 WebView2/GPU 行为；"首开"不包含应用入口与 IPC。记录中曾出现的
+`Runtime.compileScript` 计时路线（对 ESM 按 classic 编译报语法错）已被
+`compile-probe-negative-control.json` 证伪并废弃；21 行 probe 的首轮 A/A 数据
+同样仅作废案存档。
 
 ## #8 统一弹窗 —— 实施，补齐交互事实后分批
 
