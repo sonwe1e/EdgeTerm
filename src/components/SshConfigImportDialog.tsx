@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import * as api from "../api";
 import { t as translateMsg } from "../i18n";
 import { groupPath } from "../sessionGroups";
 import { useStore } from "../store";
 import type { SshConfigEntry, SshConfigPreview } from "../types";
-import { endDialogAttention, requestDialogAttention } from "./dialogAttention";
 import { Icon } from "./icons";
 import { useT } from "../useT";
+import { ModalDialog } from "./ModalDialog";
 
 interface Props {
   preview: SshConfigPreview;
@@ -43,7 +43,6 @@ export function SshConfigImportDialog({ preview, onClose }: Props) {
   const groups = useStore((s) => s.groups);
   const setStatus = useStore((s) => s.setStatus);
   const loadProfiles = useStore((s) => s.loadProfiles);
-  const dialogRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<Set<string>>(
     () =>
       new Set(
@@ -158,19 +157,13 @@ export function SshConfigImportDialog({ preview, onClose }: Props) {
   };
 
   return (
-    <div
-      className="dialog-backdrop"
-      onMouseDown={() => requestDialogAttention(dialogRef.current)}
+    <ModalDialog
+      open
+      labelledBy="ssh-import-title"
+      contentClassName="ssh-import-dialog"
+      onClose={onClose}
+      dismissable={false}
     >
-      <div
-        ref={dialogRef}
-        className="dialog ssh-import-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="ssh-import-title"
-        onMouseDown={(event) => event.stopPropagation()}
-        onAnimationEnd={endDialogAttention}
-      >
         <div className="dialog-header">
           <span id="ssh-import-title">{t("sshImport.title")}</span>
           <button
@@ -273,7 +266,6 @@ export function SshConfigImportDialog({ preview, onClose }: Props) {
             {t("sshImport.importButton")}
           </button>
         </div>
-      </div>
-    </div>
+    </ModalDialog>
   );
 }
