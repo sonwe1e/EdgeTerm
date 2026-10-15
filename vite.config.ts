@@ -7,10 +7,12 @@ const host = process.env.TAURI_DEV_HOST;
 const targetIsMac: boolean = process.platform === "darwin";
 // @ts-expect-error process is a nodejs global
 const targetIsWindows: boolean = process.platform === "win32";
+// @ts-expect-error process is a nodejs global
+const compilerExperiment = process.env.EDGETERM_REACT_COMPILER === "1";
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
-  plugins: [react()],
+  plugins: [react({ babel: { plugins: compilerExperiment ? [["babel-plugin-react-compiler", { target: "19" }]] : [] } })],
 
   // Keyboard shortcuts follow platform-specific flows (⌘ on macOS, Alt
   // elsewhere; see src/shortcuts.ts) and the window chrome differs per
