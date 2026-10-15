@@ -11,12 +11,12 @@ HEAD `91b962b1f9e9ee47f757a03425d3f20110df3331` 的源码核对与依赖注册�
 | 项 | 决定 | 一句话理由 |
 |---|---|---|
 | #2 文件对比算法 | **本次实施** | 真实缺陷（64 行前瞻失步），可行为级回归 |
-| #3 IPC 类型契约 | **部分实施**：file_diff 枚举化先行，绑定生成试点 | raw 字节路径（Request/Response、原始 Channel）是类型签名例外；普通命令与事件的生成覆盖以实际编译证据决定，不预先排除 |
+| #3 IPC 类型契约 | **已实施**：枚举、共享 DTO、92/97 命令与 5 类事件生成 | raw 字节路径（Request/Response、原始 Channel）是类型签名例外；普通命令与事件的生成覆盖以实际编译证据决定，不预先排除 |
 | #4 ZMODEM/XMODEM 下沉 Rust | **暂缓**（非本次生产改动） | 互操作证据链未建立；现有实现已做内存分界 |
 | #5 Biome 静态检查 | **本次实施**（有针对性规则集） | 零运行时成本；需同步修订 AGENTS.md 表述 |
 | #6 React Compiler | **只做可比试验，不默认启用** | 缺少同环境前后对照；jsdom 测试不覆盖编译产物 |
 | #7 fileIcons 加载 | **本次实施：URL 资源方案（以测量定案）** | 原方案两处关键断言（数 MB、"70%~85%"）经实测不成立；详见 #7 节测量与取舍 |
-| #8 统一弹窗 `<dialog>` | **实施，补交互事实后分批** | 证据成立；WebKitGTK 支持与 StrictMode/::backdrop 细节必须先验证 |
+| #8 统一弹窗 `<dialog>` | **实施，补交互事实后分批** | 证据成立；原生路径与能力检测回退已实现；真实 GTK/WKWebView 待平台验收 |
 | #9 浏览器契约测试 | **本次实施**（先钉 vitest 主版本决定） | @vitest/browser 5.x 与仓库 vitest 4.x 主版本不匹配，需前置决定 |
 | #10 语义色兼容守卫 | **本次实施第一阶段**（位布局契约锁） | 第二阶段 Rust VT/单画布重写降为探索 spike，不设结果性承诺 |
 
@@ -67,8 +67,8 @@ Rust 文件做格式核对，不做全仓重排；fileIcons chunk 基线 1,138,4
    也不声称"所有 50,000 行输入都在数毫秒内"——该断言无测量依据。
 6. **`alignment_simplified` 语义（重定义并写入代码注释）**：它表达的退化是
    "行配对退化为按位置对齐，而非锚定对齐"。旧实现中该退化由 1M 比较预算触发；
-   新实现总是先计算整文件锚定对齐，等值区间按锚点配对、hunk 内部在锚点界定下
-   按位置配对，不存在"整体失去锚点"的退化，因此该字段在本实现中恒为 `false`。
+   新实现不再使用上述应用级比较预算，因此该字段恒为 `false`。Histogram 仍有启发式；
+   完全不同的输入可以没有公共锚点。该字段不证明最小编辑距离、最佳锚点或任意输入的耗时上界。
    字段与前端提示（`diff.alignmentNote`）保留以维持序列化契约，提示随之不再出现。
 
 **验收。**
@@ -86,28 +86,17 @@ Rust 文件做格式核对，不做全仓重排；fileIcons chunk 基线 1,138,4
 - 投影不变量在多个输入上验证：每侧原始行恰好出现一次、行号单调、内容修改仍 `modified`。
 - 提交说明按 R9：`fix:` 带 `Tests:`（引用上述旧实现失败证据）；不出现未测量的耗时/倍率。
 
-## #3 IPC 类型契约 —— 部分实施
+## #3 IPC 类型契约 —— 已实施
 
-**当前证据。** `src/types.ts`、`src/api.ts` 与 Rust 侧模型平行维护，已有真实漂移：
-后端 `SessionProfile.backspace: Option<String>`，前端却是 `"delete" | "controlH"` 联合类型；
-`file_diff.rs` 的 `Metadata.kind` / `Comparison.status` / `DiffRow.kind` 为 `&'static str`。
+由 Rust 源离线生成共享 DTO、92/97 条注册命令和 5 类结构事件，默认发布不启用反射依赖。
+file_diff 三组字符串成为 serde 枚举，前端复用生成 DTO。Backspace 未知旧值按默认 DEL
+行为归一；保留 JSON number 的大整数边界与 rejected Promise 错误语义。
+普通 State/AppHandle/Channel 均已实际编译；四条 raw 二进制路径保留手写，第五条例外
+是 rc.25 对 open_local_path 的参数 with 生成非法 TS 保留字。前端保留必要默认值/流控适配，
+没有宣称 92 个调用方都已迁移。详见 [覆盖、例外和生成门禁](ipc-contracts.zh-CN.md)。
 
-**边界修正（原方案未覆盖）。** 96 个 `#[tauri::command]` 中约 65 个含特殊签名，其中真正的
-**类型签名例外**是 raw 字节路径：`tauri::ipc::Request`/`Response` 原始字节体 +
-`x-edgeterm-metadata` 自定义头（`zmodem_write_bytes`/`zmodem_read_bytes`）与
-`Channel<ArrayBuffer>` 原始输出流——serde 值签名不描述字节体，这些保留手写契约 +
-双侧测试（现有 `apiBinary.test.ts` 与 Rust `binary_transfer_tests` 模式）。
-其余不预先排除：tauri-specta 本身支持事件（`Event` derive + `collect_events`），
-本仓库只是尚未接入，是否接入以迁移成本与漂移证据决定；`State`/`AppHandle` 等
-Rust 侧注入参数由宏跳过，不妨碍其余参数生成。普通命令与事件的生成覆盖范围
-以 spike 的实际编译结果决定。`types.ts` 含非 DTO 内容（主题、调色板、helper），
-只能按 DTO 子集重导出。"CI 中报错"无落点：仓库仅有 release 流水线，验收落在
-`cargo test` + `npm run typecheck` 与 `check:commits`。
-
-**分步**：① file_diff 三组枚举改 `#[derive(Serialize)]` enum + serde 命名与现 JSON 逐字一致
-（以序列化契约测试证明）；② model/commands 标注 `specta::Type`/`#[specta::specta]` 试点，
-先以 spike 记录 96 个命令中哪些签名不可标注及原因；③ 绑定生成测试 + DTO 子集重导出。
-release 体积影响实测后再写结论，不预设"零损耗"。
+`npm run check:bindings` 正常通过；临时 worktree 将 SessionProfile.name 的 serde 字段名
+改为 displayName 后，Rust 导出成功、新鲜度检查明确失败；未影响主工作区。
 
 ## #4 ZMODEM/XMODEM 下沉 —— 暂缓（非本次生产改动）
 
@@ -136,15 +125,13 @@ CRC/组包占用 JS 主线程——收益存在但未测量。
 同一提交更新 AGENTS.md 的 "No ESLint or Prettier configuration is present" 表述，
 并把 `--lint` 纳入 `check:commits` 的可选项。
 
-## #6 React Compiler —— 只做可比试验
+## #6 React Compiler —— 对照完成，默认关闭
 
-非测试源码 `useMemo`/`useCallback` 共 44 处、13 个文件，原方案"大量手写"言过其实。
-`babel-plugin-react-compiler` 已 1.0.0 stable；仓库钉 `@vitejs/plugin-react` ^4.6.0，
-`babel.plugins` 挂载方式对 4.x 有效。**关键边界**：vitest 以 esbuild 转换源码，
-不经过该 Babel 插件，jsdom 测试不覆盖编译产物语义。
-试验流程：同一基线提交上，用 `scripts/check-file-performance.mjs` 同机同负载跑
-首绘/切换对照（记录样本与中位数），组件级测试在编译开关两种状态下各跑一遍；
-无对照数据不启用，启用提交按 R9 带 `Measured:`，否则标题只写 "enable" 并带 `Unmeasured:`。
+精确锁定 1.0.0，真实 production 编译两臂，生产组件得到 14 条 CompileSuccess。
+8 个新 context/臂、交替顺序，选择、排序/滚动复位、指针与弹窗契约均通过。
+首绘中位数 off 29.3 ms / on 30.5 ms；8 次滚动 RAF 交互 off 138.8 ms / on 140.4 ms。
+本机合成组件夹具未显示有价值的收益，默认关闭。没有全应用/桌面 WebView 性能声明。
+复现方式、原始样本与进一步采用条件见 [Compiler 实验](compiler-experiment.zh-CN.md)。
 
 ## #7 fileIcons 加载 —— 已实施为 URL 资源方案（以测量定案）
 
@@ -175,7 +162,7 @@ theme JSON（含 light.file/folder 默认）引用的 906 个图标全部可解�
   变体并从构建产物核验（svg 资产数/createObjectURL 存在性），杜绝变体误绑；
   其 21 行小夹具首轮曾因 alias 未拦截相对 specifier 测成 A/A（原始失败记录保留
   于 `.tmp/records/implementation-02/`），该批数据已作废，未用于任何结论。
-- 截图：`scripts/icon-screenshots.mjs` 产出的暗/亮两幅（各 21 行真实组件）位于
+- 截图：`scripts/icon-screenshots.mjs` 产出的暗/亮两幅（21 行夹具的可见子集，约 11 行）位于
   `.tmp/records/implementation-02/icons/{dark,light}.png`。
 
 **范围与边界**：以上都是合成生产组件夹具——不证明真实 Filer 全链路、SFTP 列表
@@ -193,19 +180,16 @@ window capture 监听都会收到 Escape，一次 Esc 双关（同一 target 上
 不拦截同元素其他监听器）。多数弹窗关闭不恢复焦点；FileDiffDialog 已有完整
 trap+恢复，作迁移范本。
 
-实施前必须落地的四类事实：
+已完成 15 个自定义 Dialog 与 App About 的迁移。原生 showModal 提供 top layer/inert，
+React 键盘边界补充 Tab 循环和 Esc；能力不足时用覆盖层/焦点所有权/堆栈回退。
+表单外点击仍只提示，确认框外点击可请求关闭，按下与松开需都在内容外；保留拖动。
+close 是可拒绝、可重试的请求；busy 守卫由业务调用方保留。HostKey 显式聚焦 Cancel，
+Enter 不会接受新密钥；Shortcuts 录制阶段的 Esc 先取消录制，子输入仍接到键盘事件。
 
-1. 平台支持：WebView2/WKWebView 现代版支持 `<dialog>`+top layer；Tauri Linux 的
-   WebKitGTK 行为须本机实测，不达标则保留旧实现或能力检测回退（回退策略先进方案）。
-2. `::backdrop` 不接收事件：点外部关闭与 attention 抖动改为坐标判定，
-   dialogAttention 测试同步。
-3. StrictMode 已启用：showModal/close 幂等（open 守卫、仅本人打开者关闭），
-   组件测试含 StrictMode 双挂载用例。
-4. 焦点恢复：`dialog.close()` 原生恢复与手工恢复的差异逐弹窗核对；
-   弹窗打开时其下 context menu 因 inert 不可达写入预期并测试。
-
-验收：Tab 不出顶层弹窗；双弹窗下 Esc 仅关顶层（先在旧实现复现双关并失败）；
-800px 断点两侧浏览器验证；每批迁移一个提交。
+原有两个确认框基线在 Edge/WebKit 的三个边界用例均失败；候选独立 8 项检查通过。
+永久浏览器用例覆盖 StrictMode、嵌套 Esc/焦点恢复、输入/Tab、重复关闭请求、子级取消，
+以及 HostKey 的明确接受与 busy 守卫。暗/亮 Session 和 Display Settings 截图已检查。
+Windows 主机未验证真实 WebKitGTK、WKWebView；Playwright WebKit 只是辅助引擎证据。
 
 ## #9 浏览器契约测试 —— 实施（先钉版本决定）
 
@@ -262,7 +246,7 @@ paneDrop 同侧放行、FIT_BUFFER_THRESHOLD 201、staged-font 早退复原—�
 组件 + 合成数据 + 受控 IPC 契约；不证明 WebView2 打包、GPU 渲染器、真实
 PTY/服务器吞吐或其他平台引擎。
 
-## #10 终端仿真 —— 第一阶段实施；第二阶段降为探索 spike
+## #10 终端仿真 —— 第一阶段已实施；第二阶段暂缓
 
 第一阶段：`semanticPaint.ts` 直接读写 xterm 6 私有 `_line._data`（3 word/格、
 PAINTED=bit32）。现有 terminalSemanticPaint.test.ts 覆盖很厚，布局变更时测试会失败，
@@ -310,3 +294,13 @@ OSC52、语义色的重证明计划成立后另行立项；未立项前不写任
 2. 后续：#10 第一阶段契约锁；#5 Biome；#3 枚举化；#7 构建期精简；#9 版本决定后落双环境；
    #8 分批迁移；#6 对照试验报告。
 3. 暂缓：#4 全量迁移、#10 第二阶段——按上文进入条件另行立项。
+
+
+## 最终交付（2026-10-16）
+
+#2、#3、#5、#7、#8、#9、#10 第一阶段已落地；#6 对照完成且默认关闭。
+#4 和 #10 第二阶段按上述进入条件暂缓，不做风险较大的协议/渲染内核重写。
+GLM/Flow 执行至弹窗迁移中途，用户要求后由 Codex 接手完成，不能当成 GLM 无监督基准。
+
+最终测试、可运行产物和手动体验路径见 [体验与验收说明](experience-guide-2026-10-16.zh-CN.md)。
+历史测量、无效探针与前期阶段用例计数原样保留，不改标为最终版本结果。
