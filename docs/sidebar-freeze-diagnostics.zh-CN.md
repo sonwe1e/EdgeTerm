@@ -1,0 +1,133 @@
+# 侧栏拖拽卡死：诊断与修复边界
+
+## 1. 已知事实与未知项
+
+症状：拖动侧栏分隔线时界面不再响应；松手后整个 EdgeTerm 仍显示双向箭头；通过任务栏也无法关闭。
+
+当前源码能确认两件事，但不能仅凭这两个症状判断硬卡死根因：
+
+- [全局光标样式](../src/styles.css#L3443-L3453)由 `.splitter.is-dragging` 触发。旧版 [Splitter](../src/components/Splitter.tsx) 只在自身 `pointerup`/`pointercancel` 中结束拖拽，没有处理丢失捕获、失焦、隐藏或 Escape。缺失终止事件会残留拖拽状态；这也可能是主线程已经堵塞、终止事件无法执行的结果。
+- [窗口关闭回调](../src/App.tsx#L299-L312)在有活动会话时阻止直接关闭，并通过前端显示确认框。因此“任务栏关闭无效”不等同于“Rust 已死锁”；需同时确认前端及宿主是否仍响应。
+
+用户的实际安装版本、操作系统/构建号、CPU/GPU、显卡驱动、WebView 版本尚未知。本次修改针对当前工作区；需先确认故障机器是否使用同一版本。“老平台”不能直接当作某一 Windows/WebView2 版本。
+
+## 2. 先收集最小复现信息
+
+记录以下项目，不要先更换多个变量：
+
+- EdgeTerm 版本/提交、debug 或 release、安装包来源。
+- OS/构建号、CPU、内存、GPU/驱动版本、实际 WebView 运行时版本；不是系统默认浏览器版本。
+- 拖动左/右侧栏宽度，还是底栏高度；是否拖出窗口、Alt+Tab、最小化、触控或鼠标操作。
+- 会话类型、标签数、分屏数、历史行数、是否有持续输出，以及是否在远程桌面环境。
+- 松手后终端输出、菜单、键盘、窗口拖动是否仍响应；分别记录应用宿主、renderer、GPU 进程的 CPU/内存。
+
+只用可丢弃的本地会话复现。不要把生产 SSH 会话、传输或未保存配置当测试负载。
+
+## 3. 区分拖拽残留与真正阻塞
+
+先松开鼠标，按一次 Escape，切换到其他应用再回来。新补丁会处理这些恢复路径；旧版没有对应保证。若仍不响应，先抓证据，不要继续反复拖动。
+
+若专用实例的 DevTools/远程调试仍能执行 JavaScript，在松手后读取：
+
+```javascript
+({
+  time: performance.now(),
+  visibility: document.visibilityState,
+  focused: document.hasFocus(),
+  dragging: [...document.querySelectorAll(".splitter.is-dragging")].map(el => ({
+    className: el.className,
+    cursor: getComputedStyle(el).cursor,
+  })),
+});
+```
+
+| 观察结果 | 下一步；不是根因结论 |
+|---|---|
+| JavaScript 能响应，仍有 `is-dragging` | 优先核对 pointer 生命周期；记录 `pointerup`、`pointercancel`、`lostpointercapture`、`blur` 是否到达 |
+| JavaScript 能响应，没有残留状态，但画面不更新 | 查看 Performance trace 和 GPU/渲染相关进程，不能靠改 cursor 判断恢复 |
+| JavaScript 不能响应，renderer CPU 高 | 提前录制 Performance，分析长任务/调用栈；resize、样式计算、布局、终端绘制均只是候选 |
+| 宿主窗口消息也不响应，或各进程低 CPU 长时间等待 | 捕获宿主与相关 WebView 子进程 dump，分析线程栈和等待链 |
+
+不要把手动删除 `.is-dragging` 当修复：那只修改 DOM 样式，不会清理 React 状态、指针捕获或排队的 resize。JavaScript 心跳超时只能提供线索；WebView 隐藏节流、调试暂停也可能影响计时。
+
+## 4. 老平台的低风险对照
+
+在能正常操作的专用实例中，进入 **View → Display Settings… → GPU rendering**，取消 **Enabled** 后点 **Apply**。这是已有的终端渲染开关，不是关闭整个 WebView 的硬件加速。入口见 [显示设置](../src/components/FontSizeDialog.tsx#L241-L257)，应用路径见 [App](../src/App.tsx#L290-L297)。
+
+同一台机器、同一版本、同一负载对比：
+
+1. GPU 开 / 关，每组记录拖动方向、次数和能否复现。
+2. 先单标签、少量历史且不持续输出，再逐步加入原始工作负载。
+3. 分别尝试侧栏宽度与底栏高度；不要同时改字体、历史上限和标签数。
+4. 在支持范围内单独对照运行时或显卡驱动版本，保留原版本信息。不要盲目给旧 OS 安装不受支持的最新版本。
+
+关闭 GPU 后不复现只能缩小嫌疑范围，不能单独证明显卡驱动根因；未关闭的 WebView 合成路径仍可能涉及 GPU。不要用额外 `requestAnimationFrame` 包装或提高防抖时间来代替阻塞栈分析。
+
+## 5. Windows：卡住时先留 dump，再结束确切进程
+
+如果实际系统不是 Windows，本节不适用，需按该平台的 WebView/线程采样方式取证。
+
+仓库已有 [diagnose-hang.ps1](../scripts/diagnose-hang.ps1) 可检查窗口消息响应及 `TAURI_DRAG_RESIZE_BORDERS` 子窗口的尺寸/region。它不重启或终止应用，但会截取整个虚拟桌面并保存到用户目录，可能包含其他窗口的敏感内容。它默认选第一个 `edgeterm`，因此只有在确认**恰好一个、且正是故障实例**时才使用：
+
+```powershell
+Get-Process edgeterm | Select-Object Id, Path, MainWindowHandle
+# 核对输出只含唯一故障实例，且同意保存整个桌面截图后，在仓库根目录运行：
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\diagnose-hang.ps1
+```
+
+解释输出时只把它作为线索：
+
+- `responds-to-WM_NULL=False`：主窗口消息未在 2 秒内返回，需要 dump；不能直接证明 COM 死锁。
+- 原生消息、JavaScript 均响应，却只有鼠标操作异常：查看边框子窗口是否可见、覆盖内容区、region 是否异常。需要确认命中测试和依赖版本后，才考虑修复 Tauri/tao/wry 的原生 resize 路径。
+- `rgnType=0` 也可能是 API 错误。该脚本的 `VERDICT CANDIDATE` 文案推断过强，不能将它直接用作根因或回归验收结论。它也没有证明子窗口一定在最上层。
+
+不要拿会启动/结束应用的旧复现脚本替代原地取证。
+
+随后可在任务管理器的“详细信息”中，对核实 PID 的 EdgeTerm 进程选择“创建转储文件”；对属于该实例的 WebView renderer/GPU 进程也保留转储。菜单名称随 Windows 版本可能不同。可先用下面的只读命令核对路径与进程关系：
+
+```powershell
+Get-Process | Where-Object { $_.ProcessName -match 'edgeterm' } |
+  Select-Object Id, ProcessName, Path, Responding, CPU, WorkingSet64
+Get-CimInstance Win32_Process |
+  Where-Object { $_.Name -match 'edgeterm|msedgewebview2' } |
+  Select-Object ProcessId, ParentProcessId, Name, ExecutablePath, CommandLine
+```
+
+不要终止所有 `msedgewebview2.exe`；其他应用也可能使用它。先核对父子进程关系及该实例路径。`Responding` 也不能单独证明 JavaScript 健康。
+
+如果机器上已有与该 OS 兼容的 Microsoft ProcDump，可抓三份间隔 5 秒的完整 dump。先将提示中的 PID 核实为目标进程，再运行：
+
+```powershell
+$targetPid = [int](Read-Host '输入已经核实的 EdgeTerm 进程 PID')
+Get-Process -Id $targetPid | Select-Object Id, ProcessName, Path
+New-Item -ItemType Directory -Force .\hang-dumps | Out-Null
+.\procdump.exe -ma -n 3 -s 5 $targetPid .\hang-dumps
+```
+
+对相关 renderer/GPU PID 分别重复；保留与故障时间对应的日志/trace。不要只依赖 `-h` 自动触发：它看窗口消息是否超时，不等同于页面 JavaScript 挂起。当前 ProcDump 官方支持列表为 Windows 11+/Server 2016+；更老系统不能默认使用最新版，应优先使用系统已有的转储能力或组织认可的兼容工具。
+
+确认取证完成且可以丢弃会话后，才在任务管理器结束该 EdgeTerm 进程。强制退出会中断连接/传输并可能丢失未保存状态。dump 可能包含终端文本、凭据及其他内存数据，勿直接上传公开 issue。
+
+参考：[ProcDump 官方说明](https://learn.microsoft.com/en-us/sysinternals/downloads/procdump)、[WebView2 线程模型](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/threading-model)。WebView2 依赖宿主 UI 消息泵；只有实际线程栈才能判断本次是否发生了阻塞。
+
+## 6. 本次补丁与验证
+
+基线为 `15d4fad`；候选为其上的本次未提交工作区补丁。验证使用 Node.js 24.19.0、npm 11.17.0、Vitest 4.1.11 / jsdom；不是故障机器上的 WebView。
+
+[Splitter](../src/components/Splitter.tsx)的改动：
+
+- 通过 ref 记录活动 pointerId、目标元素和坐标；拒绝右键、非主指针及并发覆盖。
+- 在 `window` 捕获阶段接收 `pointerup`/`pointercancel`，并处理捕获丢失、失焦、Escape、页面隐藏、卸载及方向切换。
+- 鼠标移动时发现主键已松开则取消，避免漏掉松手后继续调整尺寸。
+- 先退役活动状态、移除监听器、释放捕获，再提交最后一帧；异常路径也执行清理。
+- 正常松手提交最后一帧。中断仅丢弃尚未执行的帧，不回滚已经应用的尺寸。
+
+[组件回归测试](../src/components/Splitter.test.ts)挂载真实 React 组件并使用真实 frameBatch；仅模拟 jsdom 缺失的指针捕获边界和帧时钟。首轮 16 个用例在旧实现上 3 通过、13 失败；修改后全部通过，之后补充捕获异常和监听清理共 19 个用例。
+
+本轮已运行：完整前端 60 文件/480 用例通过；TypeScript 检查通过；生产前端构建通过；`git diff --check` 通过。构建仍提示大 chunk；jsdom 下出现预期的 WebGL 不支持、回退 DOM 提示。
+
+未运行：Playwright 浏览器指针/实际 CSS 交互验证（本机未提供 Playwright）、老平台真实 WebView/显卡复现、Tauri 安装包构建、Rust 测试（未修改后端）。本次没有在用户故障机器上抓到 dump 或 trace，不能宣称“原始硬卡死已解决”。
+
+实机验收需同时满足：正常横/纵拖动尺寸正确；松手、Alt+Tab、Escape、隐藏恢复和拖出窗口后无残留光标/捕获；反复拖动后终端持续响应；有活动会话时任务栏关闭能显示确认框、取消后能继续操作；确认退出正常结束。
+
+仓库现有诊断工具的权限、目标选择和局限见 [scripts/README.md](../scripts/README.md#L50-L67)。CDP 工具须指定专用实例的 `EDGETERM_CDP_TARGET_ID`，不能把任意第一页或生产会话作为目标；合成 pointer 事件不是 OS 鼠标拖动。
