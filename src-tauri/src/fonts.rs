@@ -22,6 +22,7 @@ use serde::Serialize;
 
 /// One family, whether it is fixed-pitch, which is what the terminal's
 /// picker lists by default, and whether it draws the Nerd Font icons.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FontFamily {

@@ -20,6 +20,7 @@ const MAX_INCLUDE_DEPTH: usize = 16;
 const DEFAULT_IDENTITIES: [&str; 3] = ["id_ed25519", "id_ecdsa", "id_rsa"];
 
 /// One `Host` alias, resolved to what `ssh alias` would connect to.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SshConfigEntry {
@@ -44,6 +45,7 @@ pub struct SshConfigEntry {
 }
 
 /// What an import of `path` would bring in, for the dialog to choose from.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SshConfigPreview {
@@ -51,6 +53,7 @@ pub struct SshConfigPreview {
     pub entries: Vec<SshConfigEntry>,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SshImportSummary {

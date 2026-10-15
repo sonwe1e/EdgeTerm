@@ -12,12 +12,14 @@ use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 const SCRIPT: &str = include_str!("resource_monitor.sh");
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Memory {
     pub used_bytes: u64,
     pub total_bytes: u64,
 }
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Capacity {
@@ -25,6 +27,7 @@ pub struct Capacity {
     pub total_bytes: u64,
     pub mount: String,
 }
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Gpu {
@@ -35,6 +38,7 @@ pub struct Gpu {
     pub total_bytes: Option<u64>,
     pub temperature: Option<f64>,
 }
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Metrics {

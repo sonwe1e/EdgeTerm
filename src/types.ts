@@ -1,10 +1,10 @@
+import type * as Wire from "./bindings";
 import type { Translate } from "./i18n";
 
-export type SessionKind =
-  "local" | "ssh" | "telnet" | "ftp" | "sftp" | "serial";
-export type AuthKind = "password" | "publicKey" | "agent";
+export type SessionKind = Wire.SessionKind;
+export type AuthKind = Wire.AuthKind;
 /** What the Backspace key sends; see `SessionProfile.backspace`. */
-export type BackspaceKey = "delete" | "controlH";
+export type BackspaceKey = Wire.BackspaceKey;
 
 /**
  * File-transfer sessions with no interactive terminal: they open the dual-pane
@@ -60,186 +60,41 @@ export function isSerialxTheme(theme: ThemeMode): boolean {
   return theme === "serialx-dark" || theme === "serialx-light";
 }
 
-export interface SessionProfile {
-  id: string;
-  name: string;
-  kind: SessionKind;
-  color?: string | null;
-  /**
-   * Session panel group holding this profile; null / undefined lists it
-   * directly under its kind's top-level heading.
-   */
-  groupId?: string | null;
-
-  // terminal text (local / ssh / serial)
-  /**
-   * Character encoding of the terminal byte stream, a WHATWG label such as
-   * "gbk"; null / unknown means UTF-8. See encodings.ts.
-   */
-  encoding?: string | null;
-  /**
-   * Locale handed to the shell as LANG — set on a local shell, requested
-   * from an SSH server. Null means automatic (see session/locale.rs).
-   */
-  locale?: string | null;
-  /**
-   * What the Backspace key sends: "controlH" for ^H (0x08), which old
-   * network gear and serial consoles take as erase; null means ^? (0x7f),
-   * xterm's own (issue #89).
-   */
-  backspace?: BackspaceKey | null;
-  /**
-   * Whether every session opened from this profile writes the output it
-   * receives to a file, one per connection. Off unless the dialog's
-   * checkbox was ticked; see session/recording.rs.
-   */
-  record?: boolean;
-  /** Folder the recordings go to; null / empty means the app's default. */
-  recordDir?: string | null;
-
-  // local
-  shell?: string | null;
-  cwd?: string | null;
-
-  // ssh / ftp
-  host?: string | null;
-  port?: number | null;
-  username?: string | null;
-  auth?: AuthKind | null;
-  password?: string | null;
-  privateKeyPath?: string | null;
-  passphrase?: string | null;
-  /**
-   * Saved SSH / SFTP profile to tunnel through (ProxyJump), for a host that
-   * is only reachable from that session's network. The jump profile may
-   * itself name a jump host, giving a chain.
-   */
-  jumpProfileId?: string | null;
-
-  // serial
-  portName?: string | null;
-  baudRate?: number | null;
-  dataBits?: number | null;
-  stopBits?: number | null;
-  parity?: string | null;
-  flowControl?: string | null;
-}
+export type SessionProfile = Omit<Wire.SessionProfile_Deserialize, "id"> & { id: string };
 
 /**
  * A user-defined folder in the Session panel. Groups belong to one session
  * kind and may nest under another group of the same kind.
  */
-export interface SessionGroup {
-  id: string;
-  name: string;
-  kind: SessionKind;
-  /** Enclosing group, or null for a group directly under the kind heading. */
-  parentId: string | null;
-}
+export type SessionGroup = Required<Wire.SessionGroup>;
 
-export interface SessionInfo {
-  id: string;
-  profileId: string | null;
-  name: string;
-  kind: SessionKind;
-  protocol: string;
-  address: string;
-  color: string | null;
-  supportsRemoteFiles: boolean;
-  /** Path of the file the session's output is recorded to, if it is. */
-  recording: string | null;
-  /**
-   * The SSH servers of this session (jump hosts first) that only connected
-   * on algorithms kept for old devices; empty when none did.
-   */
-  legacyAlgorithms: LegacyAlgorithms[];
-  /**
-   * Whether the session runs on another tab's SSH connection instead of one
-   * of its own (Duplicate SSH Channel): the login was not repeated, and the tabs
-   * sharing the connection go down together.
-   */
-  sharedConnection: boolean;
-}
+export type SessionInfo = Required<Wire.SessionInfo>;
 
 /** The legacy algorithms one SSH server was connected with (issue #60). */
-export interface LegacyAlgorithms {
-  /** host:port of the server. */
-  address: string;
-  /** SSH algorithm names, e.g. "diffie-hellman-group14-sha1". */
-  algorithms: string[];
-}
+export type LegacyAlgorithms = Wire.LegacyAlgorithms;
 
 /** An SSH host whose key no longer matches the one recorded in known_hosts. */
-export interface HostKeyChange {
-  host: string;
-  port: number;
-  /** Algorithm of the presented key, e.g. "ssh-ed25519". */
-  keyType: string;
-  /** SHA256 fingerprint of the presented key, for the user to verify. */
-  fingerprint: string;
-  /** The presented key as an OpenSSH public key line; this exact key is recorded on accept. */
-  publicKey: string;
-  /** known_hosts file and line holding the conflicting entry. */
-  knownHosts: string;
-  line: number;
-  /** One-line explanation for the terminal and status bar. */
-  message: string;
-}
+export type HostKeyChange = Wire.HostKeyChange;
 
 /** One question in a server's keyboard-interactive challenge. */
-export interface AuthPromptField {
-  /** The server's wording, e.g. "Verification code:". */
-  prompt: string;
-  /** Whether what the user types may be shown; false for secrets. */
-  echo: boolean;
-}
+export type AuthPromptField = Wire.AuthPromptField;
 
 /**
  * A round of questions an SSH server asked while authenticating (RFC 4256's
  * keyboard-interactive, the usual carrier for MFA). The answers go back to
  * `answerAuthPrompt` under the same id and are never saved.
  */
-export interface AuthPrompt {
-  id: string;
-  /** The session being opened, so the dialog can name its tab. */
-  sessionId: string;
-  /** host:port of the hop asking; a jump host has challenges of its own. */
-  address: string;
-  username: string;
-  /** Server-supplied title for the round; usually empty. */
-  name: string;
-  /** Server-supplied text shown above the questions; usually empty. */
-  instructions: string;
-  prompts: AuthPromptField[];
-}
+export type AuthPrompt = Wire.AuthPrompt;
 
 /** What open_session produced: a live session, or a decision for the user. */
-export type OpenSessionOutcome =
-  | { status: "connected"; info: SessionInfo }
-  | { status: "hostKeyChanged"; change: HostKeyChange };
+export type OpenSessionOutcome = Exclude<Wire.OpenSessionOutcome, { status: "connected" }> |
+  (Extract<Wire.OpenSessionOutcome, { status: "connected" }> & { info: SessionInfo });
 
-export interface FileEntry {
-  name: string;
-  path: string;
-  isDir: boolean;
-  isSymlink: boolean;
-  size: number;
-  modified: number | null;
-  permissions: number | null;
-  owner: string | null;
-  group: string | null;
-}
+export type FileEntry = Wire.FileEntry;
 
-export interface DirListing {
-  path: string;
-  entries: FileEntry[];
-}
+export type DirListing = Wire.DirListing;
 
-export interface SerialPortDesc {
-  portName: string;
-  portType: string;
-  description: string | null;
-}
+export type SerialPortDesc = Wire.SerialPortDesc;
 
 export type SessionState = "connecting" | "connected" | "closed" | "error";
 
@@ -250,81 +105,30 @@ export type LineEnding = "none" | "lf" | "crlf";
  * for a Session panel group (and everything nested in it), or for one saved
  * session. See `senderScope.ts` for how a tab's chain of scopes is resolved.
  */
-export type CommandScope =
-  | { type: "global" }
-  | { type: "kind"; kind: SessionKind }
-  | { type: "group"; id: string }
-  | { type: "profile"; id: string };
+export type CommandScope = Wire.CommandScope;
 
-export interface SavedCommand {
-  id: string;
-  name: string;
-  text: string;
-  ending: LineEnding;
-  scope: CommandScope;
-}
+export type SavedCommand = Required<Wire.SavedCommand>;
 
 /**
  * One export / import file (Session → Export / Import Data…). `settings` is
  * the frontend's own `AppSettings`, carried through the backend untouched;
  * passwords and passphrases are never part of a data file.
  */
-export interface AppData {
-  app: string;
-  format: number;
-  exportedAt?: string | null;
-  settings?: unknown;
-  profiles: SessionProfile[];
-  groups: SessionGroup[];
-  senderCommands: SavedCommand[];
-}
+export type AppData = Omit<Wire.AppData_Serialize, "profiles"> & { profiles: SessionProfile[] };
 
 /** How many entries an export wrote or an import merged. */
-export interface DataSummary {
-  profiles: number;
-  groups: number;
-  senderCommands: number;
-  /** Sender tags an import left out because the library was already full. */
-  skippedSenderCommands: number;
-}
+export type DataSummary = Wire.DataSummary;
 
 /**
  * One `Host` alias of an OpenSSH client configuration, resolved the way
  * `ssh alias` resolves it (Session → Import OpenSSH Config…).
  */
-export interface SshConfigEntry {
-  alias: string;
-  host: string;
-  port: number;
-  username: string;
-  auth: AuthKind;
-  privateKeyPath?: string | null;
-  /** ProxyJump hops, first hop first: aliases of the file or `[user@]host[:port]`. */
-  jumps: string[];
-  /**
-   * A saved SSH session that already stands for the alias; importing it
-   * updates that session in place instead of adding a twin.
-   */
-  existingId?: string | null;
-  existingName?: string | null;
-}
+export type SshConfigEntry = Wire.SshConfigEntry_Serialize;
 
 /** What an import of the file would bring in, for the dialog to choose from. */
-export interface SshConfigPreview {
-  path: string;
-  entries: SshConfigEntry[];
-}
+export type SshConfigPreview = Wire.SshConfigPreview_Serialize;
 
-export interface SshImportSummary {
-  added: number;
-  updated: number;
-  /** Profiles created beyond the selection because a selected host tunnels through them. */
-  jumpHosts: number;
-  /** Hosts whose multi-hop ProxyJump was left unimported (only single-hop jumps are imported). */
-  jumpsIgnored: number;
-  /** Links that could not be made; the sessions themselves were saved. */
-  warnings: string[];
-}
+export type SshImportSummary = Required<Wire.SshImportSummary>;
 
 /** Colours used for session dots, mirroring WindTerm's per-session markers. */
 export const SESSION_COLORS = [

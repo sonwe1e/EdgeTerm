@@ -1,3 +1,5 @@
+import { commands, events } from "./bindings";
+import type * as Wire from "./bindings";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { OutputConsumption } from "./outputFlow";
@@ -20,40 +22,16 @@ import type {
   ThemeMode,
 } from "./types";
 
-export interface StateEvent {
-  id: string;
-  state: string;
-  message: string | null;
-}
+export type StateEvent = Wire.StateEvent;
 
-export interface TransferProgress {
-  transferred: number;
-  total: number;
-}
+export type TransferProgress = Wire.TransferProgress;
 
-export interface TransferItem {
-  local: string;
-  remote: string;
-  upload: boolean;
-  directory?: boolean;
-}
-export interface TransferOptions { requests: number; chunkKib: number; files: number; durable: boolean; tar: boolean; rateLimitBps: number }
-export interface FileTransfer {
-  revision: number;
-  id: string;
-  sessionId: string;
-  name: string;
+export type TransferItem = Wire.TransferItem;
+export type TransferOptions = Required<Wire.TransferOptions>;
+export type FileTransfer = Omit<Wire.FileTransfer, "status" | "options"> & {
   status: "queued" | "running" | "pausing" | "paused" | "retrying" | "cancelling" | "cancelled" | "complete" | "error";
-  phase: string;
-  transferred: number;
-  total: number;
-  completedFiles: number;
-  totalFiles: number;
-  failedFiles: string[];
-  error: { code: string; message: string; retryable: boolean } | null;
-  attempt: number;
   options: TransferOptions;
-}
+};
 export const transferFiles = (
   id: string, items: TransferItem[], onProgress: (progress: TransferProgress) => void,
   transfer = newTransferId(), options?: TransferOptions,
@@ -72,39 +50,12 @@ export const onFileTransferRemoved = (callback: (id: string) => void) =>
 
 // --- interrupted-transfer recovery -------------------------------------------
 
-export interface DiffMetadata {
-  size: number;
-  kind: "text" | "binary" | "tooLarge" | "textLimit" | "undecodable";
-  encoding: string | null;
-  bom: boolean;
-  eol: string;
-  finalNewline: boolean | null;
-  lines: number | null;
-  sha256: string | null;
-  preview: string;
-}
-export interface DiffRow {
-  path: string;
-  kind: "equal" | "modified" | "deleted" | "added";
-  leftLine: number | null;
-  rightLine: number | null;
-  left: string | null;
-  right: string | null;
-  leftEnding: string | null;
-  rightEnding: string | null;
-}
-export interface FileComparison {
-  status: "identical" | "different" | "notCompared";
-  bytesEqual: boolean | null;
-  left: DiffMetadata;
-  right: DiffMetadata;
-  reason: string | null;
-  rows: DiffRow[];
-  alignmentSimplified: boolean;
-}
+export type DiffMetadata = Wire.DiffMetadata;
+export type DiffRow = Wire.DiffRow;
+export type FileComparison = Wire.FileComparison;
 export const compareFiles = (id: string, requestId: string, local: string, remote: string) =>
-  invoke<FileComparison>("compare_files", { id, requestId, local, remote });
-export const cancelFileDiff = (requestId: string) => invoke<void>("cancel_file_diff", { requestId });
+  commands.compareFiles(id, requestId, local, remote);
+export const cancelFileDiff = (requestId: string) => commands.cancelFileDiff(requestId);
 
 export interface ResourceMetrics {
   status: "ok" | "unsupported";
@@ -155,16 +106,11 @@ export const recoverTransfer = (
 export const discardRecoverableTransfer = (transfer: string) =>
   invoke<void>("discard_recoverable_transfer", { transfer });
 
-export interface ZmodemFileInfo {
-  name: string;
-  size: number;
-  /** Unix seconds. */
-  modified: number | null;
-}
+export type ZmodemFileInfo = Wire.ZmodemFileInfo;
 
 // --- profiles ---------------------------------------------------------------
 
-export const listProfiles = () => invoke<SessionProfile[]>("list_profiles");
+export const listProfiles = () => commands.listProfiles();
 
 export const saveProfile = (profile: SessionProfile) =>
   invoke<SessionProfile>("save_profile", { profile });
@@ -239,14 +185,7 @@ export const importSshConfig = (
 
 // --- command history ---------------------------------------------------------
 
-export interface CommandHistoryEntry {
-  command: string;
-  /** `protocol:address` of the session the command ran in. */
-  host: string;
-  count: number;
-  /** Unix milliseconds of the most recent use. */
-  lastUsed: number;
-}
+export type CommandHistoryEntry = Wire.CommandHistoryEntry;
 
 export const listCommandHistory = () =>
   invoke<CommandHistoryEntry[]>("list_command_history");
@@ -350,13 +289,7 @@ export const defaultRecordingDir = () =>
   invoke<string>("default_recording_dir");
 
 /** One installed font family, as `list_system_fonts` reports it. */
-export interface FontFamily {
-  name: string;
-  /** True when any face of the family is fixed-pitch. */
-  monospaced: boolean;
-  /** True when a face draws the Nerd Font icons prompt themes print. */
-  symbols: boolean;
-}
+export type FontFamily = Wire.FontFamily;
 
 /** Every family in the machine's font directories, sorted by name. */
 export const listSystemFonts = () => invoke<FontFamily[]>("list_system_fonts");
@@ -523,11 +456,7 @@ export const localRemove = (path: string, isDir: boolean) =>
   invoke<void>("local_remove", { path, isDir });
 
 /** What a copy into the Filer's local folder did; see `localCopyInto`. */
-export interface LocalCopySummary {
-  files: number;
-  /** Items that were already in the destination, so there was nothing to do. */
-  skipped: number;
-}
+export type LocalCopySummary = Wire.LocalCopySummary;
 
 /**
  * Copies a file or folder into `destination` under its own name, for a drop
@@ -570,12 +499,7 @@ export const dragStagingPath = (name: string) =>
   invoke<string>("drag_staging_path", { name });
 
 /** How a drag out of the window ended; see `startFileDrag`. */
-export interface FileDragOutcome {
-  /** True when a drop target took the files, false when it was cancelled. */
-  dropped: boolean;
-  /** Set when the drag could not be started at all. */
-  error: string | null;
-}
+export type FileDragOutcome = Wire.FileDragOutcome;
 
 /**
  * Hands `paths` to the system as a drag, so the Filer can drop a file on the
@@ -684,25 +608,21 @@ export const listSerialPorts = () =>
 export const onSessionState = (
   handler: (event: StateEvent) => void,
 ): Promise<UnlistenFn> =>
-  listen<StateEvent>("session:state", (e) => handler(e.payload));
+  events.sessionState.listen((e) => handler(e.payload));
 
 /** A session recording that can no longer be written; see session/recording.rs. */
-export interface RecordingError {
-  id: string;
-  path: string;
-  message: string;
-}
+export type RecordingError = Wire.RecordingErrorEvent;
 
 export const onRecordingError = (
   handler: (event: RecordingError) => void,
 ): Promise<UnlistenFn> =>
-  listen<RecordingError>("session:recording-error", (e) => handler(e.payload));
+  events.sessionRecordingError.listen((e) => handler(e.payload));
 
 /** A server asking for a verification code (or another factor) mid-connect. */
 export const onAuthPrompt = (
   handler: (prompt: AuthPrompt) => void,
 ): Promise<UnlistenFn> =>
-  listen<AuthPrompt>("session:auth-prompt", (e) => handler(e.payload));
+  events.sessionAuthPrompt.listen((e) => handler(e.payload));
 
 /**
  * Fired by the Rust menu handler when the user hits ⌘Q / Quit on macOS;

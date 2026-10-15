@@ -3,6 +3,8 @@ use std::fmt::{self, Display};
 /// A flat, display-oriented error. Every failure that crosses the IPC boundary
 /// becomes a plain string, which is all the frontend can act on anyway.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
+#[cfg_attr(feature = "bindings", specta(transparent))]
 pub struct AppError(pub String);
 
 impl AppError {

@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SessionKind {
@@ -14,6 +15,7 @@ pub enum SessionKind {
 /// The colour theme of the user interface. It is a front-end setting kept in
 /// the webview's own storage; the backend only remembers the last one so the
 /// next window can be created in its background colour (`store::startup_theme`).
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Theme {
@@ -31,6 +33,7 @@ impl Default for Theme {
     }
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum AuthKind {
@@ -45,8 +48,30 @@ impl Default for AuthKind {
     }
 }
 
+/// Unknown strings from old/imported profiles retain the default DEL behavior.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BackspaceKey {
+    Delete,
+    ControlH,
+}
+impl<'de> Deserialize<'de> for BackspaceKey {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        let value = String::deserialize(deserializer)?;
+        Ok(if value == "controlH" {
+            Self::ControlH
+        } else {
+            Self::Delete
+        })
+    }
+}
+
 /// A saved connection. One profile can be opened many times; each open produces
 /// a separate live session with its own id.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionProfile {
@@ -81,7 +106,7 @@ pub struct SessionProfile {
     /// absent means `^?` (0x7f), xterm's own. The key is translated in the
     /// frontend (`TerminalController.filterKey`); nothing here reads it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub backspace: Option<String>,
+    pub backspace: Option<BackspaceKey>,
     /// Whether every session opened from this profile writes the terminal
     /// output it receives to a file, one file per connection. Off unless the
     /// dialog's checkbox was ticked; see `session::recording`.
@@ -209,6 +234,7 @@ impl SessionProfile {
 
 /// A user-defined folder in the Session panel. Groups belong to one session
 /// kind and may nest under another group of the same kind.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionGroup {
@@ -222,6 +248,7 @@ pub struct SessionGroup {
 }
 
 /// A live session, as the frontend sees it.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionInfo {
@@ -252,6 +279,7 @@ pub struct SessionInfo {
 
 /// The legacy algorithms one SSH server was connected with, because it
 /// offered nothing newer.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LegacyAlgorithms {
@@ -264,6 +292,7 @@ pub struct LegacyAlgorithms {
 /// An SSH host whose key no longer matches the one recorded for it in
 /// `known_hosts`. The frontend shows this to the user, who may accept the new
 /// key (see `accept_host_key`) and reconnect.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostKeyChange {
@@ -285,6 +314,7 @@ pub struct HostKeyChange {
 }
 
 /// One question in a keyboard-interactive challenge.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthPromptField {
@@ -298,8 +328,11 @@ pub struct AuthPromptField {
 /// (RFC 4256's `keyboard-interactive`, the usual carrier for MFA). The
 /// frontend collects the answers and hands them back to `answer_auth_prompt`
 /// under the same `id`; nothing typed here is ever saved.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "bindings", derive(tauri_specta::Event))]
+#[cfg_attr(feature = "bindings", tauri_specta(event_name = "session:auth-prompt"))]
 pub struct AuthPrompt {
     /// Identifies this round to `answer_auth_prompt`.
     pub id: String,
@@ -317,6 +350,7 @@ pub struct AuthPrompt {
 
 /// What `open_session` produced: a live session, or a decision the user has
 /// to make before one can be opened.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "status", rename_all = "camelCase")]
 pub enum OpenSessionOutcome {
@@ -324,6 +358,7 @@ pub enum OpenSessionOutcome {
     HostKeyChanged { change: HostKeyChange },
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LineEnding {
@@ -333,6 +368,7 @@ pub enum LineEnding {
 }
 
 /// One remembered shell command, used for inline suggestions while typing.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandHistoryEntry {
@@ -350,6 +386,7 @@ pub struct CommandHistoryEntry {
 /// a scope only decides what is listed, never where a command may be sent.
 /// A command scoped to a profile or group belongs to it and is deleted with
 /// it (`Store::delete` / `Store::delete_group`).
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum CommandScope {
@@ -366,6 +403,7 @@ impl Default for CommandScope {
 }
 
 /// A reusable command shown as a tag in the Sender pane.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SavedCommand {
@@ -393,9 +431,20 @@ pub const APP_DATA_FORMAT: u32 = 3;
 /// it is opened; the contents are still plain JSON.
 pub const APP_DATA_EXTENSION: &str = "edgeterm";
 
+/// Opaque frontend preferences: keep their JSON wire shape without reflecting
+/// serde_json::Value's recursive implementation graph into the exporter.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct AppSettingsValue(
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Unknown))]
+    pub  serde_json::Value,
+);
+
 /// One export / import file: the frontend's settings, saved sessions with
 /// their groups, and Sender tags. Session passwords and key passphrases are
 /// never part of it — see `Store::snapshot` and `Store::import_data`.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppData {
@@ -405,6 +454,7 @@ pub struct AppData {
     pub exported_at: Option<String>,
     /// Frontend preferences (theme, fonts, panels…); opaque to the backend.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "bindings", specta(type = Option<specta_typescript::Unknown>))]
     pub settings: Option<serde_json::Value>,
     #[serde(default)]
     pub profiles: Vec<SessionProfile>,
@@ -415,6 +465,7 @@ pub struct AppData {
 }
 
 /// How many entries an export wrote or an import merged.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DataSummary {
@@ -426,6 +477,7 @@ pub struct DataSummary {
 }
 
 /// What a copy into the Filer's local folder actually did.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LocalCopySummary {
@@ -435,6 +487,7 @@ pub struct LocalCopySummary {
     pub skipped: u32,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileEntry {
@@ -450,6 +503,7 @@ pub struct FileEntry {
     pub group: Option<String>,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DirListing {
@@ -460,6 +514,7 @@ pub struct DirListing {
 /// Metadata needed to offer a local file through ZMODEM. The file contents
 /// travel through separate bounded chunk commands so large files are never
 /// materialized in one IPC message.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ZmodemFileInfo {
@@ -469,6 +524,7 @@ pub struct ZmodemFileInfo {
     pub modified: Option<u64>,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SerialPortDesc {
@@ -561,5 +617,63 @@ pub fn default_shell() -> String {
     #[cfg(not(windows))]
     {
         std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string())
+    }
+}
+
+#[cfg(test)]
+mod wire_contract_tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn profile_defaults_nulls_and_unknown_backspace_round_trip() {
+        for (raw, expected) in [
+            ("controlH", "controlH"),
+            ("delete", "delete"),
+            ("future-key", "delete"),
+        ] {
+            let profile: SessionProfile = serde_json::from_value(
+                json!({"name":"fixture", "kind":"ssh", "backspace":raw, "host":null}),
+            )
+            .unwrap();
+            let serialized = serde_json::to_value(&profile).unwrap();
+            assert_eq!(serialized["backspace"], expected);
+            assert_eq!(serialized["id"], "");
+            assert_eq!(serialized["host"], serde_json::Value::Null);
+            assert!(serialized.get("encoding").is_none());
+            let reloaded: SessionProfile = serde_json::from_value(serialized).unwrap();
+            assert_eq!(reloaded.backspace, profile.backspace);
+        }
+        let missing: SessionProfile =
+            serde_json::from_value(json!({"name":"fixture", "kind":"ssh"})).unwrap();
+        assert!(missing.backspace.is_none());
+        assert!(serde_json::from_value::<SessionProfile>(
+            json!({"name":"fixture", "kind":"ssh", "port":70000})
+        )
+        .is_err());
+    }
+    #[test]
+    fn app_data_and_tagged_enums_keep_the_json_contract() {
+        let data: AppData = serde_json::from_value(json!({"app":"EdgeTerm", "format":3, "settings":{"opaque":[true,1,null]}, "unknown":true})).unwrap();
+        assert!(data.profiles.is_empty());
+        assert_eq!(
+            serde_json::to_value(&data).unwrap()["settings"]["opaque"],
+            json!([true, 1, null])
+        );
+        assert_eq!(
+            serde_json::to_value(CommandScope::Kind {
+                kind: SessionKind::Ssh
+            })
+            .unwrap(),
+            json!({"type":"kind", "kind":"ssh"})
+        );
+        let info = ZmodemFileInfo {
+            name: "fixture".into(),
+            size: 9_007_199_254_740_993,
+            modified: None,
+        };
+        assert_eq!(
+            serde_json::to_value(info).unwrap()["size"].as_u64(),
+            Some(9_007_199_254_740_993)
+        );
     }
 }

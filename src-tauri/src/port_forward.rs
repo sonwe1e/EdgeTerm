@@ -24,14 +24,17 @@ use tokio::{
     task::JoinSet,
 };
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Direction {
     Local,
     Remote,
 }
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "bindings", serde(rename = "PortForwardSpec"))]
 pub struct Spec {
     pub direction: Direction,
     pub listen_host: String,
@@ -39,8 +42,10 @@ pub struct Spec {
     pub target_host: String,
     pub target_port: u16,
 }
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "bindings", serde(rename = "PortForward"))]
 pub struct Snapshot {
     pub id: String,
     pub owner: String,
@@ -431,6 +436,7 @@ async fn bridge(job: Arc<Job>, channel: russh::ChannelStream<Msg>, socket: TcpSt
     // russh ChannelStream owns ChannelCloseOnDrop; both halves are closed here.
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ListeningPort {
@@ -438,8 +444,10 @@ pub struct ListeningPort {
     pub port: u16,
     pub process: Option<String>,
 }
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "bindings", serde(rename = "PortDiscovery"))]
 pub struct Discovery {
     pub status: &'static str,
     pub ports: Vec<ListeningPort>,

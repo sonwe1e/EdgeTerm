@@ -38,8 +38,11 @@ const DEBOUNCE: Duration = Duration::from_millis(300);
 const RETRY_DELAY: Duration = Duration::from_secs(3);
 const MAX_RETRY_DELAY: Duration = Duration::from_secs(60);
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "bindings", derive(tauri_specta::Event))]
+#[cfg_attr(feature = "bindings", tauri_specta(event_name = "remote-edit:state"))]
 pub struct RemoteEditEvent {
     pub session_id: String,
     pub remote_path: String,

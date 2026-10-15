@@ -20,6 +20,7 @@ use crate::error::Result;
 /// file (once per drop in practice, and possibly after `Ended`), `Ended` once
 /// when the pointer is released, `Failed` instead of both when the drag could
 /// not be started.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum PromisedDragEvent {

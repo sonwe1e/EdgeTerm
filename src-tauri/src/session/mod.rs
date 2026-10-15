@@ -62,6 +62,7 @@ pub enum SftpResponse {
     Done,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TransferProgress {
@@ -187,9 +188,12 @@ impl SessionManager {
 
 // --- events -----------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct StateEvent {
+#[cfg_attr(feature = "bindings", derive(tauri_specta::Event))]
+#[cfg_attr(feature = "bindings", tauri_specta(event_name = "session:state"))]
+pub(crate) struct StateEvent {
     id: String,
     state: String,
     message: Option<String>,

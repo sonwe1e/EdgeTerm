@@ -6,6 +6,9 @@ authors = ["EdgeTerm contributors"]
 license = "GPL-3.0-only"
 edition = "2021"
 
+[features]
+bindings = ["dep:specta", "dep:specta-typescript", "dep:tauri-specta"]
+
 [lib]
 # The `_lib` suffix keeps the lib name distinct from the bin name on Windows.
 name = "edgeterm_lib"
@@ -15,6 +18,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2.7", features = [] }
 
 [dependencies]
+specta = { version = "=2.0.0-rc.25", features = ["derive", "function", "serde_json"], optional = true }
+specta-typescript = { version = "=0.0.12", optional = true }
+tauri-specta = { version = "=2.0.0-rc.25", features = ["typescript", "derive"], optional = true }
 tauri = { version = "2.12", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"

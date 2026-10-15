@@ -50,17 +50,20 @@ pub struct AppState {
 // --- profiles ---------------------------------------------------------------
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn list_profiles(state: State<'_, AppState>) -> Vec<SessionProfile> {
     state.store.list()
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn save_profile(state: State<'_, AppState>, profile: SessionProfile) -> Result<SessionProfile> {
     state.store.save(profile)
 }
 
 /// Saves a copy of a saved session, stored credentials included.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn duplicate_profile(state: State<'_, AppState>, id: String) -> Result<SessionProfile> {
     state.store.duplicate(&id)
 }
@@ -68,6 +71,7 @@ pub fn duplicate_profile(state: State<'_, AppState>, id: String) -> Result<Sessi
 /// Deletes a saved session with its credentials and the Sender commands
 /// scoped to it.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn delete_profile(state: State<'_, AppState>, id: String) -> Result<()> {
     state.store.delete(&id)
 }
@@ -75,11 +79,13 @@ pub fn delete_profile(state: State<'_, AppState>, id: String) -> Result<()> {
 // --- session groups ---------------------------------------------------------
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn list_session_groups(state: State<'_, AppState>) -> Vec<SessionGroup> {
     state.store.list_groups()
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn save_session_group(state: State<'_, AppState>, group: SessionGroup) -> Result<SessionGroup> {
     state.store.save_group(group)
 }
@@ -87,6 +93,7 @@ pub fn save_session_group(state: State<'_, AppState>, group: SessionGroup) -> Re
 /// Removes a group with everything in it: nested groups, their sessions
 /// (credentials included) and the Sender commands scoped to any of them.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn delete_session_group(state: State<'_, AppState>, id: String) -> Result<()> {
     state.store.delete_group(&id)
 }
@@ -94,11 +101,13 @@ pub fn delete_session_group(state: State<'_, AppState>, id: String) -> Result<()
 // --- sender commands -------------------------------------------------------
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn list_sender_commands(state: State<'_, AppState>) -> Vec<SavedCommand> {
     state.store.list_sender_commands()
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn save_sender_command(
     state: State<'_, AppState>,
     command: SavedCommand,
@@ -107,6 +116,7 @@ pub fn save_sender_command(
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn delete_sender_command(state: State<'_, AppState>, id: String) -> Result<()> {
     state.store.delete_sender_command(&id)
 }
@@ -114,21 +124,25 @@ pub fn delete_sender_command(state: State<'_, AppState>, id: String) -> Result<(
 // --- command history --------------------------------------------------------
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn list_command_history(state: State<'_, AppState>) -> Vec<CommandHistoryEntry> {
     state.store.list_command_history()
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn record_command(state: State<'_, AppState>, command: String, host: String) -> Result<()> {
     state.store.record_command(&command, &host)
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn delete_command_history(state: State<'_, AppState>, command: String) -> Result<()> {
     state.store.delete_command_history(&command)
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn clear_command_history(state: State<'_, AppState>) -> Result<()> {
     state.store.clear_command_history()
 }
@@ -141,16 +155,17 @@ pub fn clear_command_history(state: State<'_, AppState>) -> Result<()> {
 /// the `.edgeterm` extension (the UI appends it), so every data file is
 /// recognisable by name.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn export_app_data(
     state: State<'_, AppState>,
     path: String,
-    settings: serde_json::Value,
+    settings: crate::model::AppSettingsValue,
     exported_at: String,
 ) -> Result<DataSummary> {
     require_data_file_path(&path)?;
     let mut data = state.store.snapshot();
     data.exported_at = Some(exported_at);
-    data.settings = Some(settings);
+    data.settings = Some(settings.0);
     std::fs::write(&path, serde_json::to_string_pretty(&data)?)?;
     Ok(DataSummary {
         profiles: data.profiles.len(),
@@ -166,6 +181,7 @@ pub fn export_app_data(
 /// version. Credentials in the file are dropped here so they never reach
 /// the webview.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn read_app_data(path: String) -> Result<AppData> {
     require_data_file_path(&path)?;
     let raw = std::fs::read_to_string(&path)?;
@@ -193,6 +209,7 @@ fn require_data_file_path(path: &str) -> Result<()> {
 /// Merges a file returned by `read_app_data` into the store; see
 /// `Store::import_data` for the rules. The frontend applies `settings` itself.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn import_app_data(state: State<'_, AppState>, data: AppData) -> Result<DataSummary> {
     state.store.import_data(data)
 }
@@ -202,6 +219,7 @@ pub fn import_app_data(state: State<'_, AppState>, data: AppData) -> Result<Data
 /// The file `ssh` reads by default (`~/.ssh/config`), for the open dialog to
 /// start at; it may not exist.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn default_ssh_config_path() -> String {
     ssh_config::Context::from_environment()
         .default_config_path()
@@ -212,6 +230,7 @@ pub fn default_ssh_config_path() -> String {
 /// Parses an OpenSSH client configuration and says which of its aliases
 /// are already saved, so the dialog can offer the rest.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn read_ssh_config(state: State<'_, AppState>, path: String) -> Result<SshConfigPreview> {
     let context = ssh_config::Context::from_environment();
     ssh_config::preview(&state.store, Path::new(&path), &context)
@@ -220,6 +239,7 @@ pub fn read_ssh_config(state: State<'_, AppState>, path: String) -> Result<SshCo
 /// Saves the chosen aliases of the file as SSH sessions under `group_id`;
 /// see `ssh_config::import` for what comes along and what is updated.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn import_ssh_config(
     state: State<'_, AppState>,
     path: String,
@@ -470,6 +490,7 @@ pub async fn open_session(
 /// Record the key a host now presents, replacing every `known_hosts` entry
 /// the file held for it, after the user accepted a reported `HostKeyChange`.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn accept_host_key(host: String, port: u16, public_key: String) -> Result<()> {
     session::ssh::accept_host_key(&host, port, &public_key)
 }
@@ -479,6 +500,7 @@ pub fn accept_host_key(host: String, port: u16, public_key: String) -> Result<()
 /// on `id`. `responses` is `None` when the user cancelled. The answers are
 /// used once and never stored.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn answer_auth_prompt(
     state: State<'_, AppState>,
     id: String,
@@ -488,6 +510,7 @@ pub fn answer_auth_prompt(
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn close_session(state: State<'_, AppState>, id: String) -> Result<()> {
     state.file_transfers.forget(&id);
     state.file_diffs.close_session(&id);
@@ -512,11 +535,13 @@ pub fn close_session(state: State<'_, AppState>, id: String) -> Result<()> {
 /// Consumption acknowledgements must bypass a potentially busy transport's
 /// command queue. Tokens distinguish reconnects that reuse a tab/session id.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn acknowledge_session_output(state: State<'_, AppState>, token: String, consumed: u64) {
     state.outputs.acknowledge(&token, consumed);
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn list_sessions(state: State<'_, AppState>) -> Vec<SessionInfo> {
     state.sessions.list()
 }
@@ -524,6 +549,7 @@ pub fn list_sessions(state: State<'_, AppState>) -> Vec<SessionInfo> {
 /// Where a profile's recordings go when it names no folder of its own; the
 /// session dialog shows it as the folder field's placeholder.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn default_recording_dir() -> String {
     recording::default_dir().display().to_string()
 }
@@ -531,6 +557,7 @@ pub fn default_recording_dir() -> String {
 /// The font families installed on this machine; see `fonts`. Reading the
 /// font directories takes a moment, so it runs off the async runtime.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn list_system_fonts() -> Vec<FontFamily> {
     tauri::async_runtime::spawn_blocking(fonts::system_font_families)
         .await
@@ -541,6 +568,7 @@ pub async fn list_system_fonts() -> Vec<FontFamily> {
 /// `fonts::system_monospace_family`. `fc-match` is a process, so it runs off
 /// the async runtime too.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn system_monospace_family() -> Option<String> {
     tauri::async_runtime::spawn_blocking(fonts::system_monospace_family)
         .await
@@ -551,6 +579,7 @@ pub async fn system_monospace_family() -> Option<String> {
 /// Keyboard and paste input, which xterm.js hands us as a UTF-8 string; it
 /// goes out in the session's own encoding.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn write_session(state: State<'_, AppState>, id: String, data: String) -> Result<()> {
     state.sessions.write_text(&id, &data)
 }
@@ -558,6 +587,7 @@ pub fn write_session(state: State<'_, AppState>, id: String, data: String) -> Re
 /// Raw bytes, base64-encoded, for ZMODEM's protocol frames; waits until
 /// the session has written them (see `SessionManager::write_confirmed`).
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn write_session_binary(
     state: State<'_, AppState>,
     id: String,
@@ -619,6 +649,7 @@ pub async fn write_session_bytes(
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn resize_session(state: State<'_, AppState>, id: String, cols: u16, rows: u16) -> Result<()> {
     state
         .sessions
@@ -635,6 +666,7 @@ pub fn resize_session(state: State<'_, AppState>, id: String, cols: u16, rows: u
 const ZMODEM_FILE_CHUNK_SIZE: usize = 1024 * 1024;
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn zmodem_file_info(path: String) -> Result<ZmodemFileInfo> {
     let metadata = tokio::fs::metadata(&path).await?;
     if !metadata.is_file() {
@@ -661,6 +693,7 @@ pub async fn zmodem_file_info(path: String) -> Result<ZmodemFileInfo> {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn zmodem_read_chunk(path: String, offset: u64, length: u32) -> Result<String> {
     Ok(B64.encode(read_transfer_bytes(path, offset, length).await?))
 }
@@ -692,6 +725,7 @@ async fn read_transfer_bytes(path: String, offset: u64, length: u32) -> Result<V
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn zmodem_create_file(path: String) -> Result<()> {
     let file = tokio::fs::File::create(path).await?;
     file.sync_all().await?;
@@ -699,6 +733,7 @@ pub async fn zmodem_create_file(path: String) -> Result<()> {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn zmodem_write_chunk(path: String, offset: u64, data: String) -> Result<()> {
     let bytes = B64.decode(data).map_err(err)?;
     write_transfer_bytes(path, offset, &bytes).await
@@ -724,6 +759,7 @@ async fn write_transfer_bytes(path: String, offset: u64, bytes: &[u8]) -> Result
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn zmodem_finish_file(path: String, size: u64) -> Result<()> {
     let file = tokio::fs::OpenOptions::new().write(true).open(path).await?;
     file.set_len(size).await?;
@@ -907,17 +943,20 @@ mod binary_transfer_tests {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn sftp_home(state: State<'_, AppState>, id: String) -> Result<String> {
     expect_path(state.sessions.sftp(&id, SftpRequest::Home).await?)
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn sftp_list(state: State<'_, AppState>, id: String, path: String) -> Result<DirListing> {
     expect_listing(state.sessions.sftp(&id, SftpRequest::List { path }).await?)
 }
 
 /// Resolves `..`, symlinks and relative paths on the remote host.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn sftp_canonicalize(
     state: State<'_, AppState>,
     id: String,
@@ -932,6 +971,7 @@ pub async fn sftp_canonicalize(
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn sftp_mkdir(state: State<'_, AppState>, id: String, path: String) -> Result<()> {
     state
         .sessions
@@ -941,6 +981,7 @@ pub async fn sftp_mkdir(state: State<'_, AppState>, id: String, path: String) ->
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn sftp_create_file(state: State<'_, AppState>, id: String, path: String) -> Result<()> {
     state
         .sessions
@@ -950,6 +991,7 @@ pub async fn sftp_create_file(state: State<'_, AppState>, id: String, path: Stri
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn sftp_remove(
     state: State<'_, AppState>,
     id: String,
@@ -964,6 +1006,7 @@ pub async fn sftp_remove(
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn sftp_rename(
     state: State<'_, AppState>,
     id: String,
@@ -981,6 +1024,7 @@ pub async fn sftp_rename(
 /// `cancel_transfer` can name while the copy runs; without one the transfer
 /// gets a generated id and can still be controlled in the transfer center.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn sftp_download(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -1008,6 +1052,7 @@ pub async fn sftp_download(
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn sftp_download_directory(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -1035,6 +1080,7 @@ pub async fn sftp_download_directory(
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn sftp_upload(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -1062,6 +1108,7 @@ pub async fn sftp_upload(
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn sftp_upload_directory(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -1091,16 +1138,19 @@ pub async fn sftp_upload_directory(
 /// Interrupts pending I/O and asks the background worker to remove its owned
 /// partial files. Existing destination files are preserved.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn cancel_transfer(state: State<'_, AppState>, transfer: String) {
     state.file_transfers.cancel(&transfer);
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn list_file_transfers(state: State<'_, AppState>) -> Vec<crate::file_transfer::Snapshot> {
     state.file_transfers.snapshots()
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn control_file_transfer(
     state: State<'_, AppState>,
     transfer: String,
@@ -1110,6 +1160,7 @@ pub fn control_file_transfer(
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn transfer_files(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -1134,6 +1185,7 @@ pub async fn transfer_files(
 
 /// Journals of transfers interrupted by a restart, for the recovery list.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn list_recoverable_transfers(
     state: State<'_, AppState>,
 ) -> Vec<crate::file_transfer::Recoverable> {
@@ -1145,6 +1197,7 @@ pub fn list_recoverable_transfers(
 /// another authentication prompt; FTP dials separate transfer connections
 /// using the open session's profile credentials.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn recover_transfer(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -1209,6 +1262,7 @@ pub fn recover_transfer(
 /// Deletes an interrupted transfer's journal. Nothing remote is touched:
 /// partial files stay where the crash left them, for manual cleanup.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn discard_recoverable_transfer(state: State<'_, AppState>, transfer: String) -> Result<()> {
     state.file_transfers.discard_persisted(&transfer)
 }
@@ -1216,6 +1270,7 @@ pub fn discard_recoverable_transfer(state: State<'_, AppState>, transfer: String
 // --- local filesystem -------------------------------------------------------
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn start_port_forward(
     state: State<'_, AppState>,
     id: String,
@@ -1242,18 +1297,22 @@ pub fn start_port_forward(
     Ok(row)
 }
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn list_port_forwards(state: State<'_, AppState>) -> Vec<crate::port_forward::Snapshot> {
     state.port_forwards.list()
 }
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn stop_port_forward(state: State<'_, AppState>, id: String) -> Result<()> {
     state.port_forwards.stop(&id).await
 }
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn remove_port_forward(state: State<'_, AppState>, id: String) -> Result<()> {
     state.port_forwards.remove(&id)
 }
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn discover_listening_ports(
     state: State<'_, AppState>,
     id: String,
@@ -1274,11 +1333,13 @@ pub async fn discover_listening_ports(
     crate::port_forward::discover(request, transport).await
 }
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn cancel_port_discovery(state: State<'_, AppState>, request_id: String) {
     state.port_forwards.cancel_scan(&request_id);
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn compare_files(
     state: State<'_, AppState>,
     id: String,
@@ -1304,11 +1365,13 @@ pub async fn compare_files(
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn cancel_file_diff(state: State<'_, AppState>, request_id: String) {
     state.file_diffs.cancel(&request_id);
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn sample_resources(
     state: State<'_, AppState>,
     id: String,
@@ -1337,11 +1400,13 @@ pub async fn sample_resources(
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn cancel_resource_sample(state: State<'_, AppState>, request_id: String) {
     state.resource_monitor.cancel(&request_id);
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn local_home() -> String {
     fs_local::home()
 }
@@ -1349,6 +1414,7 @@ pub fn local_home() -> String {
 /// Where the session's shell is right now, for the Filer's "Reveal Working
 /// Directory" action; see `session::cwd`.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn session_cwd(state: State<'_, AppState>, id: String) -> Result<String> {
     state.sessions.query_cwd(&id).await
 }
@@ -1356,11 +1422,13 @@ pub async fn session_cwd(state: State<'_, AppState>, id: String) -> Result<Strin
 /// This machine's host name, so the frontend can tell a local shell's OSC 7
 /// directory report from one a remote shell sent through a hand-typed ssh.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn local_hostname() -> String {
     session::cwd::local_hostname()
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn local_list(path: String) -> Result<DirListing> {
     tokio::task::spawn_blocking(move || fs_local::list(&path))
         .await
@@ -1368,21 +1436,25 @@ pub async fn local_list(path: String) -> Result<DirListing> {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn local_parent(path: String) -> String {
     fs_local::parent_of(&path)
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn local_mkdir(path: String) -> Result<()> {
     fs_local::mkdir(&path)
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn local_create_file(path: String) -> Result<()> {
     fs_local::create_file(&path)
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn local_is_directory(path: String) -> bool {
     fs_local::is_directory(&path)
 }
@@ -1399,6 +1471,7 @@ pub fn open_local_path(path: String, with: Option<String>) -> Result<()> {
 /// Remembers the theme the front end is showing, so the next launch creates
 /// its window in the matching background colour (`store::save_startup_theme`).
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn set_startup_theme(theme: Theme) -> Result<()> {
     store::save_startup_theme(theme)
 }
@@ -1407,6 +1480,7 @@ pub fn set_startup_theme(theme: Theme) -> Result<()> {
 /// Windows keeps it DWM-cloaked until two animation frames have run; the
 /// native timeouts still reveal it if the frontend never acknowledges.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn show_main_window(window: tauri::WebviewWindow) -> Result<()> {
     window.show().map_err(err)?;
     #[cfg(target_os = "windows")]
@@ -1431,6 +1505,7 @@ pub fn show_main_window(window: tauri::WebviewWindow) -> Result<()> {
 /// Windows: reveal the painted WebView2 window after two visible animation
 /// frames. The native timeout above covers a stalled compositor or JS error.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn finish_main_window(window: tauri::WebviewWindow) {
     #[cfg(target_os = "windows")]
     crate::reveal_main_window(&window);
@@ -1451,6 +1526,7 @@ pub fn finish_main_window(window: tauri::WebviewWindow) {
 /// again), so on Windows the front end falls back to this (#45). Empty when
 /// the clipboard holds no text, as the page's read is.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn read_clipboard_text() -> Result<String> {
     #[cfg(windows)]
     {
@@ -1480,6 +1556,7 @@ pub fn read_clipboard_text() -> Result<String> {
 /// sets WebKitGTK's javascript-can-access-clipboard, which lifts the
 /// gesture requirement there.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn write_clipboard_text(text: String) -> Result<()> {
     #[cfg(windows)]
     {
@@ -1525,6 +1602,7 @@ pub fn write_clipboard_text(text: String) -> Result<()> {
 /// this is a no-op: Windows hides the pointer while typing through the
 /// system setting, which restores it on the next mouse move wherever it is.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn show_pointer(window: tauri::WebviewWindow) -> Result<()> {
     #[cfg(target_os = "macos")]
     {
@@ -1542,6 +1620,7 @@ pub fn show_pointer(window: tauri::WebviewWindow) -> Result<()> {
 /// executable holds all configuration). The updater must not run the NSIS
 /// installer then; the front end opens the release page instead.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn portable_mode() -> bool {
     crate::store::portable_data_dir().is_some()
 }
@@ -1549,6 +1628,7 @@ pub fn portable_mode() -> bool {
 /// Shows the Windows "Open with" chooser for a local file. Other platforms
 /// have no system-wide chooser; the front end picks an application itself.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn open_with_dialog(path: String) -> Result<()> {
     #[cfg(windows)]
     {
@@ -1573,6 +1653,7 @@ pub fn open_with_dialog(path: String) -> Result<()> {
 /// same place again while the file is still being watched. See
 /// `remote_edit::RemoteEdits::local_path`.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn remote_edit_path(
     state: State<'_, AppState>,
     id: String,
@@ -1586,6 +1667,7 @@ pub fn remote_edit_path(
 /// Starts sending `local` back to `remote` on session `id` whenever it
 /// changes. Called right after the download, so the copy is the baseline.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn watch_remote_edit(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -1602,6 +1684,7 @@ pub fn watch_remote_edit(
 /// copies; for when its tab is closed for good (a disconnect keeps the
 /// watchers, see `RemoteEdits`).
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn stop_remote_edits(app: AppHandle, state: State<'_, AppState>, id: String) {
     state.remote_edits.stop_session(&app, &id);
 }
@@ -1610,6 +1693,7 @@ pub fn stop_remote_edits(app: AppHandle, state: State<'_, AppState>, id: String)
 
 /// What became of a drag started by `start_file_drag`, reported once the
 /// pointer is released so the Filer can drop its dragging state.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileDragOutcome {
@@ -1623,6 +1707,7 @@ pub struct FileDragOutcome {
 /// Where a remote entry is downloaded to before `start_file_drag` hands it to
 /// the system; see `fs_local::drag_staging_path`.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn drag_staging_path(name: String) -> Result<String> {
     Ok(fs_local::drag_staging_path(&name)?
         .to_string_lossy()
@@ -1645,6 +1730,7 @@ const DRAG_PREVIEW_ICON: &[u8] = include_bytes!("../icons/32x32.png");
 /// whole drag inside `DoDragDrop` before the closure returns, so the outcome
 /// only ever arrives through `on_event`.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn start_file_drag(
     window: tauri::WebviewWindow,
     paths: Vec<String>,
@@ -1702,6 +1788,7 @@ pub fn start_file_drag(
 /// downloaded until a drop target names the path it wants; see
 /// `file_promise`. The pointer must still be down, as for `start_file_drag`.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn start_promised_file_drag(
     window: tauri::WebviewWindow,
     name: String,
@@ -1714,6 +1801,7 @@ pub fn start_promised_file_drag(
 /// Settles the download a promise drag's `write` event asked for: the
 /// receiver gets its file, or `error` as the reason it is not coming.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn finish_promised_file(
     window: tauri::WebviewWindow,
     token: String,
@@ -1726,6 +1814,7 @@ pub fn finish_promised_file(
 /// a drop on a Filer that has no remote session to upload to. Runs off the
 /// async runtime: the walk and the copies are blocking file system work.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn local_copy_into(
     source: String,
     destination: String,
@@ -1737,11 +1826,13 @@ pub async fn local_copy_into(
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn local_rename(from: String, to: String) -> Result<()> {
     fs_local::rename(&from, &to)
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn local_remove(path: String, is_dir: bool) -> Result<()> {
     fs_local::remove(&path, is_dir)
 }
@@ -1749,6 +1840,7 @@ pub fn local_remove(path: String, is_dir: bool) -> Result<()> {
 // --- serial -----------------------------------------------------------------
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn list_serial_ports() -> Result<Vec<SerialPortDesc>> {
     session::serial::list_ports()
 }

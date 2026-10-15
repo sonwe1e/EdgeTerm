@@ -18,7 +18,9 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "lint": "biome lint"
+    "lint": "biome lint",
+    "bindings": "node scripts/bindings.mjs",
+    "check:bindings": "node scripts/bindings.mjs --check"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.0",

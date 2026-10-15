@@ -33,6 +33,7 @@ use local::Signature;
 pub type TransferResult<T> = std::result::Result<T, Failure>;
 pub const EVENT: &str = "transfer:changed";
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Failure {
@@ -191,8 +192,10 @@ impl Control {
     }
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "bindings", serde(rename = "TransferItem"))]
 pub struct Item {
     pub local: String,
     pub remote: String,
@@ -201,8 +204,10 @@ pub struct Item {
     pub directory: bool,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "bindings", serde(rename = "TransferOptions"))]
 pub struct Options {
     pub requests: usize,
     pub chunk_kib: usize,
@@ -435,8 +440,12 @@ pub struct Checkpoint {
     pub owns_backup: bool,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "bindings", serde(rename = "FileTransfer"))]
+#[cfg_attr(feature = "bindings", derive(tauri_specta::Event))]
+#[cfg_attr(feature = "bindings", tauri_specta(event_name = "transfer:changed"))]
 pub struct Snapshot {
     pub revision: u64,
     pub id: String,
@@ -1494,6 +1503,7 @@ pub struct PersistedJournal {
 
 /// What the Restart Recovery list shows for one directory under
 /// `transfers/`.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Recoverable {

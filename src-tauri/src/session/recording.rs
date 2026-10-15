@@ -183,9 +183,15 @@ impl Writer {
     }
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct RecordingErrorEvent {
+#[cfg_attr(feature = "bindings", derive(tauri_specta::Event))]
+#[cfg_attr(
+    feature = "bindings",
+    tauri_specta(event_name = "session:recording-error")
+)]
+pub(crate) struct RecordingErrorEvent {
     id: String,
     path: String,
     message: String,

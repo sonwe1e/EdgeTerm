@@ -90,11 +90,43 @@ impl FileDiffs {
     }
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
+#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum MetadataKind {
+    Text,
+    Binary,
+    TooLarge,
+    TextLimit,
+    Undecodable,
+}
+
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
+#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum RowKind {
+    Equal,
+    Modified,
+    Deleted,
+    Added,
+}
+
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
+#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ComparisonStatus {
+    Identical,
+    Different,
+    NotCompared,
+}
+
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "bindings", serde(rename = "DiffMetadata"))]
 pub struct Metadata {
     pub size: u64,
-    pub kind: &'static str,
+    pub kind: MetadataKind,
     pub encoding: Option<String>,
     pub bom: bool,
     pub eol: String,
@@ -103,11 +135,12 @@ pub struct Metadata {
     pub sha256: Option<String>,
     pub preview: String,
 }
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct DiffRow {
     pub path: String,
-    pub kind: &'static str,
+    pub kind: RowKind,
     pub left_line: Option<usize>,
     pub right_line: Option<usize>,
     pub left: Option<String>,
@@ -115,10 +148,12 @@ pub struct DiffRow {
     pub left_ending: Option<&'static str>,
     pub right_ending: Option<&'static str>,
 }
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "bindings", serde(rename = "FileComparison"))]
 pub struct Comparison {
-    pub status: &'static str,
+    pub status: ComparisonStatus,
     pub bytes_equal: Option<bool>,
     pub left: Metadata,
     pub right: Metadata,
@@ -126,9 +161,9 @@ pub struct Comparison {
     pub rows: Vec<DiffRow>,
     /// Whether the rows came out of a positional fallback instead of an
     /// anchored alignment. The retired 64-line lookahead set this once its
-    /// 1,000,000-comparison budget ran out; the histogram alignment always
-    /// computes whole-file anchors, so nothing degrades end to end and this
-    /// stays false. Kept because the serialized contract and the frontend
+    /// 1,000,000-comparison budget ran out; the histogram path no longer uses that application budget. This
+    /// stays false; it does not certify optimal anchors, a minimal edit
+    /// script or a compute-time bound for arbitrary input. Kept because the serialized contract and the frontend
     /// notice reference it.
     pub alignment_simplified: bool,
 }
@@ -345,7 +380,7 @@ pub async fn compare(
 fn decode(snapshot: &Snapshot, fallback: Option<&str>) -> Text {
     let mut meta = Metadata {
         size: snapshot.size,
-        kind: "tooLarge",
+        kind: MetadataKind::TooLarge,
         encoding: None,
         bom: false,
         eol: "unknown".into(),
@@ -395,17 +430,17 @@ fn decode(snapshot: &Snapshot, fallback: Option<&str>) -> Text {
     };
     meta.encoding = Some(encoding.name().into());
     let Some(text) = decoded else {
-        meta.kind = "undecodable";
+        meta.kind = MetadataKind::Undecodable;
         return Text { meta, lines: None };
     };
     if text
         .chars()
         .any(|c| c == '\0' || (c.is_control() && !matches!(c, '\n' | '\r' | '\t' | '\u{c}')))
     {
-        meta.kind = "binary";
+        meta.kind = MetadataKind::Binary;
         return Text { meta, lines: None };
     }
-    meta.kind = "text";
+    meta.kind = MetadataKind::Text;
     meta.final_newline = Some(text.ends_with('\r') || text.ends_with('\n'));
     let mut lines = Vec::new();
     let mut start = 0;
@@ -423,7 +458,7 @@ fn decode(snapshot: &Snapshot, fallback: Option<&str>) -> Text {
             }
         };
         if i - start > MAX_LINE_BYTES || lines.len() >= MAX_LINES {
-            meta.kind = "textLimit";
+            meta.kind = MetadataKind::TextLimit;
             return Text { meta, lines: None };
         }
         let raw = text[start..i].to_string();
@@ -436,7 +471,7 @@ fn decode(snapshot: &Snapshot, fallback: Option<&str>) -> Text {
     }
     if start < text.len() {
         if text.len() - start > MAX_LINE_BYTES || lines.len() >= MAX_LINES {
-            meta.kind = "textLimit";
+            meta.kind = MetadataKind::TextLimit;
             return Text { meta, lines: None };
         }
         lines.push(line(text[start..].into(), "none"));
@@ -467,10 +502,10 @@ fn same(a: &Line, b: &Line) -> bool {
 }
 fn row(a: Option<(&Line, usize)>, b: Option<(&Line, usize)>) -> DiffRow {
     let kind = match (a, b) {
-        (Some((a, _)), Some((b, _))) if same(a, b) => "equal",
-        (Some(_), Some(_)) => "modified",
-        (Some(_), None) => "deleted",
-        _ => "added",
+        (Some((a, _)), Some((b, _))) if same(a, b) => RowKind::Equal,
+        (Some(_), Some(_)) => RowKind::Modified,
+        (Some(_), None) => RowKind::Deleted,
+        _ => RowKind::Added,
     };
     DiffRow {
         path: format!(
@@ -535,9 +570,9 @@ fn compare_snapshots(
     let b = decode(&right, fallback);
     let mut result = Comparison {
         status: match bytes_equal {
-            Some(true) => "identical",
-            Some(false) => "different",
-            None => "notCompared",
+            Some(true) => ComparisonStatus::Identical,
+            Some(false) => ComparisonStatus::Different,
+            None => ComparisonStatus::NotCompared,
         },
         bytes_equal,
         left: a.meta,
@@ -759,14 +794,17 @@ mod tests {
     #[test]
     fn mixed_line_endings_and_missing_final_newline_pair_by_text() {
         let comparison = compare_bytes(b"a\r\nb\nc", b"a\nb\nc\n", None);
-        assert_eq!(comparison.status, "different");
+        assert_eq!(comparison.status, ComparisonStatus::Different);
         assert_eq!(comparison.bytes_equal, Some(false));
         let kinds = comparison
             .rows
             .iter()
             .map(|row| row.kind)
             .collect::<Vec<_>>();
-        assert_eq!(kinds, ["modified", "equal", "modified"]);
+        assert_eq!(
+            kinds,
+            [RowKind::Modified, RowKind::Equal, RowKind::Modified]
+        );
         assert_eq!(comparison.rows[0].left_ending, Some("CRLF"));
         assert_eq!(comparison.rows[0].right_ending, Some("LF"));
         assert_eq!(comparison.rows[2].left_ending, Some("none"));
@@ -811,30 +849,49 @@ mod tests {
 
     #[test]
     fn exact_bytes_and_line_edits_include_line_endings_and_bom() {
-        assert_eq!(compare_bytes(b"", b"", None).status, "identical");
+        assert_eq!(
+            compare_bytes(b"", b"", None).status,
+            ComparisonStatus::Identical
+        );
         let changed = compare_bytes(b"a\nb\nc\n", b"a\nx\nb\nc\n", None);
-        assert_eq!(changed.rows.iter().filter(|r| r.kind == "added").count(), 1);
+        assert_eq!(
+            changed
+                .rows
+                .iter()
+                .filter(|r| r.kind == RowKind::Added)
+                .count(),
+            1
+        );
         assert_eq!(changed.rows[1].right.as_deref(), Some("x"));
         assert_eq!(
             compare_bytes(b"a\r\n", b"a\n", None).rows[0].kind,
-            "modified"
+            RowKind::Modified
         );
-        assert_eq!(compare_bytes(b"a", b"a\n", None).status, "different");
+        assert_eq!(
+            compare_bytes(b"a", b"a\n", None).status,
+            ComparisonStatus::Different
+        );
         let bom = compare_bytes(b"\xef\xbb\xbfa", b"a", None);
-        assert_eq!(bom.status, "different");
+        assert_eq!(bom.status, ComparisonStatus::Different);
         assert!(bom.left.bom);
         assert!(!bom.right.bom);
     }
     #[test]
     fn utf16_gbk_binary_and_invalid_encoding_are_explicit() {
         let utf16 = compare_bytes(&[0xff, 0xfe, 0x61, 0, 0x0a, 0], b"a\n", None);
-        assert_eq!(utf16.left.kind, "text");
+        assert_eq!(utf16.left.kind, MetadataKind::Text);
         assert_eq!(utf16.left.encoding.as_deref(), Some("UTF-16LE"));
         let gbk = compare_bytes(&[0xd6, 0xd0], "中".as_bytes(), Some("gbk"));
         assert_eq!(gbk.rows[0].left.as_deref(), Some("中"));
-        assert_eq!(gbk.status, "different");
-        assert_eq!(compare_bytes(b"a\0b", b"a\0b", None).left.kind, "binary");
-        assert_eq!(compare_bytes(&[0xff], b"a", None).left.kind, "undecodable");
+        assert_eq!(gbk.status, ComparisonStatus::Different);
+        assert_eq!(
+            compare_bytes(b"a\0b", b"a\0b", None).left.kind,
+            MetadataKind::Binary
+        );
+        assert_eq!(
+            compare_bytes(&[0xff], b"a", None).left.kind,
+            MetadataKind::Undecodable
+        );
     }
     #[test]
     fn limits_do_not_claim_truncated_content_is_equal() {
@@ -852,16 +909,16 @@ mod tests {
         )
         .unwrap();
         assert_eq!(result.bytes_equal, None);
-        assert_eq!(result.status, "notCompared");
+        assert_eq!(result.status, ComparisonStatus::NotCompared);
         let a = "a\n".repeat(50_001);
         assert_eq!(
             compare_bytes(a.as_bytes(), a.as_bytes(), None).left.kind,
-            "textLimit"
+            MetadataKind::TextLimit
         );
         let b = "a".repeat(16_385);
         assert_eq!(
             compare_bytes(b.as_bytes(), b.as_bytes(), None).left.kind,
-            "textLimit"
+            MetadataKind::TextLimit
         );
     }
     #[tokio::test]
@@ -984,7 +1041,7 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(found.status, "different");
+        assert_eq!(found.status, ComparisonStatus::Different);
         assert_eq!(found.right.encoding.as_deref(), Some("UTF-16LE"));
         assert_eq!(found.rows[0].right.as_deref(), Some("a"));
         assert_eq!(found.rows[0].right_ending, Some("CRLF"));
@@ -1025,7 +1082,7 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(found.status, "different");
+        assert_eq!(found.status, ComparisonStatus::Different);
         assert_eq!(found.rows[0].right.as_deref(), Some("remote"));
         let bytes = read_ftp(&profile, &remote, &Control::default())
             .unwrap()

@@ -1,3 +1,5 @@
+#[cfg(all(test, feature = "bindings"))]
+mod bindings;
 mod commands;
 mod error;
 mod file_diff;
@@ -222,6 +224,7 @@ fn observe(window: &tauri::Window) -> Option<Observation> {
 /// the transition. tao still tracks the result through `WM_SIZE` /
 /// `WM_SYSCOMMAND`, so `isMaximized()` stays right.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 fn window_control(window: tauri::Window, action: String) -> std::result::Result<(), String> {
     #[cfg(target_os = "windows")]
     {

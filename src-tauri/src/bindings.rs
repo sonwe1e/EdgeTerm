@@ -1,0 +1,119 @@
+//! Offline export: never constructs a window, store or connection.
+use crate::commands;
+#[test]
+fn export_bindings() {
+    assert_eq!(<crate::model::AuthPrompt as tauri_specta::Event>::NAME, crate::session::auth::EVENT_AUTH_PROMPT);
+    assert_eq!(<crate::session::StateEvent as tauri_specta::Event>::NAME, crate::session::EVENT_STATE);
+    assert_eq!(<crate::session::recording::RecordingErrorEvent as tauri_specta::Event>::NAME, crate::session::recording::EVENT_RECORDING_ERROR);
+    assert_eq!(<crate::remote_edit::RemoteEditEvent as tauri_specta::Event>::NAME, crate::remote_edit::EVENT_REMOTE_EDIT);
+    assert_eq!(<crate::file_transfer::Snapshot as tauri_specta::Event>::NAME, crate::file_transfer::EVENT);
+    let builder = tauri_specta::Builder::<tauri::Wry>::new()
+        .commands(tauri_specta::collect_commands![
+            commands::list_profiles,
+            commands::save_profile,
+            commands::duplicate_profile,
+            commands::delete_profile,
+            commands::list_session_groups,
+            commands::save_session_group,
+            commands::delete_session_group,
+            commands::list_sender_commands,
+            commands::save_sender_command,
+            commands::delete_sender_command,
+            commands::list_command_history,
+            commands::record_command,
+            commands::delete_command_history,
+            commands::clear_command_history,
+            commands::export_app_data,
+            commands::read_app_data,
+            commands::import_app_data,
+            commands::default_ssh_config_path,
+            commands::read_ssh_config,
+            commands::import_ssh_config,
+            commands::accept_host_key,
+            commands::answer_auth_prompt,
+            commands::close_session,
+            commands::acknowledge_session_output,
+            commands::list_sessions,
+            commands::default_recording_dir,
+            commands::list_system_fonts,
+            commands::system_monospace_family,
+            commands::write_session,
+            commands::write_session_binary,
+            commands::resize_session,
+            commands::zmodem_file_info,
+            commands::zmodem_read_chunk,
+            commands::zmodem_create_file,
+            commands::zmodem_write_chunk,
+            commands::zmodem_finish_file,
+            commands::sftp_home,
+            commands::sftp_list,
+            commands::sftp_canonicalize,
+            commands::sftp_mkdir,
+            commands::sftp_create_file,
+            commands::sftp_remove,
+            commands::sftp_rename,
+            commands::sftp_download,
+            commands::sftp_download_directory,
+            commands::sftp_upload,
+            commands::sftp_upload_directory,
+            commands::cancel_transfer,
+            commands::list_file_transfers,
+            commands::control_file_transfer,
+            commands::transfer_files,
+            commands::list_recoverable_transfers,
+            commands::recover_transfer,
+            commands::discard_recoverable_transfer,
+            commands::start_port_forward,
+            commands::list_port_forwards,
+            commands::stop_port_forward,
+            commands::remove_port_forward,
+            commands::discover_listening_ports,
+            commands::cancel_port_discovery,
+            commands::compare_files,
+            commands::cancel_file_diff,
+            commands::sample_resources,
+            commands::cancel_resource_sample,
+            commands::local_home,
+            commands::session_cwd,
+            commands::local_hostname,
+            commands::local_list,
+            commands::local_parent,
+            commands::local_mkdir,
+            commands::local_create_file,
+            commands::local_is_directory,
+            commands::set_startup_theme,
+            commands::show_main_window,
+            commands::finish_main_window,
+            commands::read_clipboard_text,
+            commands::write_clipboard_text,
+            commands::show_pointer,
+            commands::portable_mode,
+            commands::open_with_dialog,
+            commands::remote_edit_path,
+            commands::watch_remote_edit,
+            commands::stop_remote_edits,
+            commands::drag_staging_path,
+            commands::start_file_drag,
+            commands::start_promised_file_drag,
+            commands::finish_promised_file,
+            commands::local_copy_into,
+            commands::local_rename,
+            commands::local_remove,
+            commands::list_serial_ports,
+            crate::window_control
+        ])
+        .events(tauri_specta::collect_events![crate::model::AuthPrompt, crate::session::StateEvent,
+            crate::session::recording::RecordingErrorEvent, crate::remote_edit::RemoteEditEvent,
+            crate::file_transfer::Snapshot])
+        .typ::<crate::model::OpenSessionOutcome>()
+        .typ::<crate::model::SessionProfile>()
+        .typ::<crate::model::AppData>()
+        .typ::<crate::model::AuthPrompt>()
+        .typ::<crate::remote_edit::RemoteEditEvent>()
+        .error_handling(tauri_specta::ErrorHandlingMode::Throw)
+        // Existing Tauri JSON wire uses numbers; retain its >2^53 precision boundary.
+        .dangerously_cast_bigints_to_number();
+    let target = std::env::var("EDGETERM_BINDINGS_OUT")
+        .unwrap_or_else(|_| "../src/bindings.ts".into());
+    builder.export(specta_typescript::Typescript::default(), target).unwrap();
+}
