@@ -356,6 +356,10 @@ export default function App() {
       const inTerminal = Boolean(target?.closest(".xterm"));
       if (!inTerminal && target?.closest("input, textarea, select")) return;
 
+      // A native modal is open: the top layer keeps focus inside it, the
+      // dialog answers its own keys, and shortcuts must not fire underneath.
+      if (target?.closest("dialog[open]")) return;
+
       // The modifier scheme is platform-specific (⌘ on macOS, Alt elsewhere)
       // and lives in shortcuts.ts; only the dispatch happens here.
       const shortcut = matchAppShortcut(event);

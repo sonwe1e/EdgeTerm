@@ -3551,12 +3551,49 @@ textarea:focus {
 
 /* --- dialog --------------------------------------------------------------- */
 
-.dialog-backdrop {
+/* The modal primitive: the <dialog> element itself fills the viewport and
+   the browser's top layer supplies the backdrop, focus containment and
+   inertness. The ::backdrop layer only paints the dim; hit-testing treats
+   clicks on the dialog element outside the content box as backdrop clicks.
+   The legacy div.dialog-backdrop rule stays until every dialog is migrated. */
+/* Legacy div backdrops (dialogs not yet migrated): constrained to div so the
+   closed native dialog elements are not accidentally display:grid'd visible
+   by this rule before showModal runs. */
+div.dialog-backdrop {
   position: fixed;
   inset: 0;
   z-index: 200;
   display: grid;
   place-items: center;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+dialog.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+}
+
+dialog.dialog-backdrop[open] {
+  display: grid;
+  place-items: center;
+}
+
+dialog.dialog-backdrop::backdrop {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+/* showModal-less fallback: no top layer, so the dialog element itself paints
+   the dim. Focus containment and Escape are the primitive's own job here;
+   the background is not inert (declared platform boundary). */
+dialog.dialog-backdrop.is-fallback[open] {
   background: rgba(0, 0, 0, 0.5);
 }
 
