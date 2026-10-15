@@ -1,3 +1,4 @@
+import type { MessageKey, Translate } from "./i18n";
 import type { SessionGroup, SessionKind, SessionProfile } from "./types";
 
 /**
@@ -6,14 +7,14 @@ import type { SessionGroup, SessionKind, SessionProfile } from "./types";
  * single-kind labels are used where an individual kind is named, such as the
  * Sender's kind-scope description.
  */
-export const KIND_LABELS: Record<SessionKind, string> = {
-  ssh: "SSH Sessions",
-  telnet: "Telnet Sessions",
-  sftp: "SFTP Sessions",
-  ftp: "FTP Sessions",
-  serial: "Serial Sessions",
-  local: "Shell Sessions",
-};
+export const kindLabels = (t: Translate): Record<SessionKind, string> => ({
+  ssh: t("kind.ssh"),
+  telnet: t("kind.telnet"),
+  sftp: t("kind.sftp"),
+  ftp: t("kind.ftp"),
+  serial: t("kind.serial"),
+  local: t("kind.local"),
+});
 
 /**
  * The grouping namespace a session kind belongs to. FTP and SFTP are both
@@ -37,23 +38,29 @@ export interface SessionSection {
   kind: SessionKind;
   /** Profile kinds listed under this heading. */
   kinds: SessionKind[];
-  label: string;
 }
 
 /** Top-level headings of the Session panel, in display order. */
 export const SESSION_SECTIONS: readonly SessionSection[] = [
-  { kind: "ssh", kinds: ["ssh", "telnet"], label: "SSH / Telnet Sessions" },
-  { kind: "ftp", kinds: ["ftp", "sftp"], label: "(S)FTP Sessions" },
-  { kind: "serial", kinds: ["serial"], label: "Serial Sessions" },
-  { kind: "local", kinds: ["local"], label: "Shell Sessions" },
+  { kind: "ssh", kinds: ["ssh", "telnet"] },
+  { kind: "ftp", kinds: ["ftp", "sftp"] },
+  { kind: "serial", kinds: ["serial"] },
+  { kind: "local", kinds: ["local"] },
 ];
 
+/** The heading label of each section, in the current language. */
+const SECTION_LABEL_KEY: Partial<Record<SessionKind, MessageKey>> = {
+  ssh: "section.sshTelnet",
+  ftp: "section.sftp",
+  serial: "section.serial",
+  local: "section.shell",
+};
+
 /** The heading a kind is listed under — merged for FTP / SFTP. */
-export function sectionLabel(kind: SessionKind): string {
-  return (
-    SESSION_SECTIONS.find((section) => section.kinds.includes(kind))?.label ??
-    KIND_LABELS[kind]
-  );
+export function sectionLabel(kind: SessionKind, t: Translate): string {
+  const section = SESSION_SECTIONS.find((entry) => entry.kinds.includes(kind));
+  const key = section ? SECTION_LABEL_KEY[section.kind] : undefined;
+  return key ? t(key) : kindLabels(t)[kind];
 }
 
 /** A group with its nesting depth (0 = directly under the kind heading). */
@@ -161,6 +168,7 @@ export function describeLocation(
   groups: readonly SessionGroup[],
   kind: SessionKind,
   groupId: string | null,
+  t: Translate,
 ): string {
-  return [sectionLabel(kind), ...groupPath(groups, groupId)].join(" / ");
+  return [sectionLabel(kind, t), ...groupPath(groups, groupId)].join(" / ");
 }

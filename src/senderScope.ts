@@ -1,9 +1,10 @@
+import type { Translate } from "./i18n";
 import { SENDER_SAVE_LEVEL_KEY } from "./persistKeys";
 import {
   effectiveGroupId,
   effectiveParentId,
   groupPath,
-  KIND_LABELS,
+  kindLabels,
 } from "./sessionGroups";
 import type { Tab } from "./store";
 import type {
@@ -94,19 +95,24 @@ export function scopeLabel(
   scope: CommandScope,
   profiles: readonly SessionProfile[],
   groups: readonly SessionGroup[],
+  t: Translate,
 ): string {
   switch (scope.type) {
     case "global":
-      return "Everywhere";
+      return t("sender.everywhere");
     case "kind":
-      return KIND_LABELS[scope.kind];
+      return kindLabels(t)[scope.kind];
     case "group": {
       const path = groupPath(groups, scope.id);
-      return path.length > 0 ? `Group “${path.join(" / ")}”` : "Group";
+      return path.length > 0
+        ? t("sender.groupNamed", { path: path.join(" / ") })
+        : t("sender.group");
     }
     case "profile": {
       const profile = profiles.find((candidate) => candidate.id === scope.id);
-      return profile ? `Session “${profile.name}”` : "Session";
+      return profile
+        ? t("sender.sessionNamed", { name: profile.name })
+        : t("sender.session");
     }
   }
 }

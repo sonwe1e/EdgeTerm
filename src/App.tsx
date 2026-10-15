@@ -15,7 +15,7 @@ import { useShallow } from "zustand/react/shallow";
 import {
   acceptHostKey,
   revealCwdInFiler,
-  SESSION_CLOSED_NOTICE,
+  sessionClosedNotice,
   splitSession,
 } from "./actions";
 import * as api from "./api";
@@ -49,6 +49,7 @@ import { matchAppShortcut } from "./shortcuts";
 import { type PanelName, tabTitle, useStore, type Tab } from "./store";
 import { allControllers, getController, setWebglEnabled } from "./terminalRegistry";
 import { isFileSession, type SessionProfile, type SessionState } from "./types";
+import { useT } from "./useT";
 import { useUpdater } from "./updater";
 
 // The largest dialog in the application, and one nothing shows until the user
@@ -74,6 +75,7 @@ const hasLiveSessions = () =>
 
 export default function App() {
   const updater = useUpdater();
+  const t = useT();
   const activeId = useStore((s) => s.activeId);
   const panels = useStore((s) => s.panels);
   const panelDocks = useStore((s) => s.panelDocks);
@@ -251,7 +253,7 @@ export default function App() {
     const unlisten = api.onSessionState(({ id, state, message }) => {
       applyState(id, state as SessionState, message ?? undefined);
       if (state === "closed") {
-        getController(id)?.writeText(SESSION_CLOSED_NOTICE);
+        getController(id)?.writeText(sessionClosedNotice());
       }
     });
     return () => {
@@ -631,7 +633,7 @@ export default function App() {
       {clipboardPrompt && (
         <ClipboardWriteDialog
           key={clipboardPrompt.sessionId}
-          session={clipboardTab ? tabTitle(clipboardTab) : "a session"}
+          session={clipboardTab ? tabTitle(clipboardTab) : t("clipboard.unknownSession")}
           text={clipboardPrompt.text}
           onAllow={(always) => {
             const { sessionId, text } = clipboardPrompt;
@@ -715,18 +717,14 @@ export default function App() {
             style={{ width: 380 }}
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <div className="dialog-header">About EdgeTerm</div>
+            <div className="dialog-header">{t("about.title")}</div>
             <div className="dialog-body" style={{ lineHeight: 1.7 }}>
               <strong>
                 EdgeTerm{updater.appVersion ? ` ${updater.appVersion}` : ""}
               </strong>
-              <span>
-                A small, fast terminal, SSH, SFTP, FTP and serial client. The
-                installer is tiny, it starts instantly, and it stays out of
-                your way.
-              </span>
+              <span>{t("about.tagline")}</span>
               <span style={{ color: "var(--fg-faint)" }}>
-                Made by miskin ·{" "}
+                {t("about.madeBy")}{" "}
                 <a
                   className="about-link"
                   href={REPO_URL}
@@ -743,7 +741,7 @@ export default function App() {
             </div>
             <div className="dialog-footer">
               <button className="btn" onClick={() => setAboutOpen(false)}>
-                Close
+                {t("common.close")}
               </button>
             </div>
           </div>

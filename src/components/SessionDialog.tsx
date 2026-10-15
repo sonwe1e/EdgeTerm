@@ -9,6 +9,7 @@ import {
   LOCALE_SUGGESTIONS,
   TERMINAL_ENCODINGS,
 } from "../encodings";
+import { t as translateMsg, type Translate } from "../i18n";
 import { open as openDialog } from "../nativeDialog";
 import { IS_WINDOWS } from "../platform";
 import {
@@ -18,6 +19,7 @@ import {
   sectionLabel,
 } from "../sessionGroups";
 import { useStore } from "../store";
+import { useT } from "../useT";
 import {
   endDialogAttention,
   requestDialogAttention,
@@ -74,40 +76,49 @@ const defaultPort = (kind: SessionKind, current?: number | null) =>
  * and Telnet one "SSH / Telnet" choice, mirroring the Session panel's merged
  * sections; a sub-toggle inside the connection section picks the actual
  * protocol. `kinds[0]` is the default when the choice is selected fresh — the
- * encrypted one (SFTP, SSH). The icon and the
- * one-word hint are what the picker cards show under the name.
+ * encrypted one (SFTP, SSH). The icon and the one-word hint are what the
+ * picker cards show under the name.
  */
-const PROTOCOL_OPTIONS: {
-  label: string;
-  hint: string;
-  icon: IconName;
-  kinds: SessionKind[];
-}[] = [
-  {
-    label: "SSH / Telnet",
-    hint: "Remote shell",
-    icon: "server",
-    kinds: ["ssh", "telnet"],
-  },
-  {
-    label: "(S)FTP",
-    hint: "File transfer",
-    icon: "folder",
-    kinds: ["sftp", "ftp"],
-  },
-  { label: "Shell", hint: "Local shell", icon: "terminal", kinds: ["local"] },
-  {
-    label: "Serial",
-    hint: "Device port",
-    icon: "circuit-board",
-    kinds: ["serial"],
-  },
+const PROTOCOL_KINDS: { icon: IconName; kinds: SessionKind[] }[] = [
+  { icon: "server", kinds: ["ssh", "telnet"] },
+  { icon: "folder", kinds: ["sftp", "ftp"] },
+  { icon: "terminal", kinds: ["local"] },
+  { icon: "circuit-board", kinds: ["serial"] },
 ];
 
 /** The picker icon of the choice a kind belongs to; also the dialog's badge. */
 const protocolIcon = (kind: SessionKind): IconName =>
-  PROTOCOL_OPTIONS.find((option) => option.kinds.includes(kind))?.icon ??
-  "server";
+  PROTOCOL_KINDS.find((option) => option.kinds.includes(kind))?.icon ?? "server";
+
+/** The picker cards, with their labels and hints in the current language. */
+const protocolOptions = (
+  t: Translate,
+): { label: string; hint: string; icon: IconName; kinds: SessionKind[] }[] => [
+  {
+    label: t("protocol.sshTelnet.label"),
+    hint: t("protocol.sshTelnet.hint"),
+    icon: "server",
+    kinds: ["ssh", "telnet"],
+  },
+  {
+    label: t("protocol.sftp.label"),
+    hint: t("protocol.sftp.hint"),
+    icon: "folder",
+    kinds: ["sftp", "ftp"],
+  },
+  {
+    label: t("protocol.shell.label"),
+    hint: t("protocol.shell.hint"),
+    icon: "terminal",
+    kinds: ["local"],
+  },
+  {
+    label: t("protocol.serial.label"),
+    hint: t("protocol.serial.hint"),
+    icon: "circuit-board",
+    kinds: ["serial"],
+  },
+];
 
 /** How a kind is named in the header line, where the protocol is spelled out. */
 const PROTOCOL_NAMES: Record<SessionKind, string> = {
@@ -166,7 +177,7 @@ const describeJumpHost = (p: SessionProfile) =>
 
 function validateProfile(profile: SessionProfile): string | null {
   if (profile.locale && !LOCALE_NAME.test(profile.locale)) {
-    return "Locale must be a locale name such as en_US.UTF-8 or C.UTF-8.";
+    return translateMsg("session.localeError");
   }
   if (profile.kind !== "serial") return null;
 
@@ -177,7 +188,7 @@ function validateProfile(profile: SessionProfile): string | null {
     baudRate <= 0 ||
     baudRate > 0xffffffff
   ) {
-    return "Baud rate must be a positive whole number up to 4294967295.";
+    return translateMsg("session.baudError");
   }
   return null;
 }
@@ -212,6 +223,7 @@ function nextColorIndex(
 
 export function SessionDialog({ initial, onClose }: Props) {
   const colorPickerRef = useRef<HTMLDivElement>(null);
+  const t = useT();
   const { dialogRef, handleProps: dragHandleProps } =
     useDialogDrag<HTMLDivElement>();
   const [profile, setProfile] = useState<SessionProfile>(() =>
@@ -315,11 +327,11 @@ export function SessionDialog({ initial, onClose }: Props) {
     if (profile.kind === "serial") {
       const port = profile.portName?.trim();
       return port
-        ? `${name} · ${port} · ${profile.baudRate ?? 115200} baud`
-        : `${name} · no port selected`;
+        ? `${name} · ${port} · ${profile.baudRate ?? 115200}${t("session.baud")}`
+        : `${name} · ${t("session.noPort")}`;
     }
     const host = profile.host?.trim();
-    if (!host) return `${name} · no host yet`;
+    if (!host) return `${name} · ${t("session.noHost")}`;
     const user = profile.username?.trim();
     return `${name} · ${user ? `${user}@` : ""}${host}:${profile.port ?? defaultPort(profile.kind)}`;
   };
@@ -335,7 +347,7 @@ export function SessionDialog({ initial, onClose }: Props) {
     return (
       <>
         <label className="session-field">
-          <span className="session-field-label">Encoding</span>
+          <span className="session-field-label">{t("session.encoding")}</span>
           <select
             value={encoding}
             onChange={(event) => patch({ encoding: event.target.value })}
@@ -348,7 +360,9 @@ export function SessionDialog({ initial, onClose }: Props) {
           </select>
         </label>
         <label className="session-field">
-          <span className="session-field-label">Backspace sends</span>
+          <span className="session-field-label">
+            {t("session.backspaceSends")}
+          </span>
           <select
             value={profile.backspace ?? "delete"}
             onChange={(event) =>
@@ -362,12 +376,12 @@ export function SessionDialog({ initial, onClose }: Props) {
         {withLocale && (
           <>
             <label className="session-field">
-              <span className="session-field-label">Locale</span>
+              <span className="session-field-label">{t("session.locale")}</span>
               <input
                 {...RAW_TEXT_INPUT}
                 list="session-locale-suggestions"
                 value={profile.locale ?? ""}
-                placeholder="Automatic"
+                placeholder={t("session.automatic")}
                 onChange={(event) => patch({ locale: event.target.value })}
               />
               <datalist id="session-locale-suggestions">
@@ -380,13 +394,8 @@ export function SessionDialog({ initial, onClose }: Props) {
               <Icon name="info" />
               <span>
                 {profile.kind === "ssh"
-                  ? "The locale is sent as LANG when the shell starts, so " +
-                    "a server with AcceptEnv LANG prints file names in " +
-                    "UTF-8 instead of octal escapes. Empty keeps the " +
-                    "server's default."
-                  : "The locale becomes the shell's LANG. Empty inherits " +
-                    "the environment, with a UTF-8 locale filled in when " +
-                    "the environment names none."}
+                  ? t("session.localeNoteSsh")
+                  : t("session.localeNoteLocal")}
               </span>
             </div>
           </>
@@ -400,7 +409,7 @@ export function SessionDialog({ initial, onClose }: Props) {
       const picked = await openDialog({
         directory: true,
         multiple: false,
-        title: "Recording folder",
+        title: t("session.recordingFolderTitle"),
         defaultPath: profile.recordDir?.trim() || defaultRecordDir || undefined,
       });
       if (typeof picked === "string") patch({ recordDir: picked });
@@ -416,8 +425,8 @@ export function SessionDialog({ initial, onClose }: Props) {
     <section className="session-section">
       <div className="session-section-heading">
         <Icon name="record" />
-        <span>Recording</span>
-        <small>Terminal output to a file</small>
+        <span>{t("session.recording")}</span>
+        <small>{t("session.recordingHint")}</small>
       </div>
       <div className="session-form-grid">
         <label className="session-check is-wide">
@@ -426,42 +435,38 @@ export function SessionDialog({ initial, onClose }: Props) {
             checked={profile.record === true}
             onChange={(event) => patch({ record: event.target.checked })}
           />
-          <span>Record this session's output to a file</span>
+          <span>{t("session.recordOutput")}</span>
         </label>
         {profile.record === true && (
           <>
             <div className="session-field is-wide">
-              <span className="session-field-label">Folder</span>
+              <span className="session-field-label">{t("session.folder")}</span>
               <div className="serial-port-row">
                 <input
                   {...RAW_TEXT_INPUT}
                   value={profile.recordDir ?? ""}
-                  placeholder={defaultRecordDir || "Default folder"}
+                  placeholder={defaultRecordDir || t("session.defaultFolder")}
                   onChange={(event) => patch({ recordDir: event.target.value })}
                 />
                 <button
                   type="button"
                   className="btn serial-refresh"
                   onClick={() => void browseRecordDir()}
-                  title="Choose a folder"
-                  aria-label="Choose a folder"
+                  title={t("session.chooseFolder")}
+                  aria-label={t("session.chooseFolder")}
                 >
                   <Icon name="folder-opened" />
                 </button>
               </div>
               <small className="session-field-hint">
-                Each connection starts a new file, named{" "}
-                {`${profile.name.trim() || defaultName()}_<date>_<time>.log`}.
+                {t("session.recordNameHint", {
+                  name: `${profile.name.trim() || defaultName()}_<date>_<time>.log`,
+                })}
               </small>
             </div>
             <div className="session-note is-wide">
               <Icon name="info" />
-              <span>
-                The file is the raw output the terminal received, escape
-                sequences included, so it replays in a terminal with cat. What
-                you type appears only as the far end echoes it, so a password
-                entered without echo is not recorded.
-              </span>
+              <span>{t("session.recordNote")}</span>
             </div>
           </>
         )}
@@ -474,17 +479,17 @@ export function SessionDialog({ initial, onClose }: Props) {
   const renderJumpHostField = () => (
     <>
       <label className="session-field is-wide">
-        <span className="session-field-label">Jump host</span>
+        <span className="session-field-label">{t("session.jumpHost")}</span>
         <select
           value={profile.jumpProfileId ?? ""}
           onChange={(event) =>
             patch({ jumpProfileId: event.target.value || null })
           }
         >
-          <option value="">None — connect directly</option>
+          <option value="">{t("session.jumpNone")}</option>
           {jumpHostMissing && (
             <option value={profile.jumpProfileId ?? ""}>
-              (deleted session)
+              {t("session.jumpDeleted")}
             </option>
           )}
           {jumpChoices.map((p) => (
@@ -496,10 +501,7 @@ export function SessionDialog({ initial, onClose }: Props) {
       </label>
       <div className="session-note is-wide">
         <Icon name="info" />
-        <span>
-          Connect through a saved SSH session (ProxyJump) to reach a host that
-          is only visible from its network.
-        </span>
+        <span>{t("session.jumpNote")}</span>
       </div>
     </>
   );
@@ -510,22 +512,24 @@ export function SessionDialog({ initial, onClose }: Props) {
   const renderServerAuthFields = () => (
     <>
       <label className="session-field">
-        <span className="session-field-label">Authentication</span>
+        <span className="session-field-label">
+          {t("session.authentication")}
+        </span>
         <select
           value={profile.auth ?? "password"}
           onChange={(event) =>
             patch({ auth: event.target.value as SessionProfile["auth"] })
           }
         >
-          <option value="password">Password</option>
-          <option value="publicKey">Public key</option>
-          <option value="agent">SSH agent</option>
+          <option value="password">{t("session.authPassword")}</option>
+          <option value="publicKey">{t("session.authPublicKey")}</option>
+          <option value="agent">{t("session.authAgent")}</option>
         </select>
       </label>
 
       {profile.auth === "password" && (
         <label className="session-field is-wide">
-          <span className="session-field-label">Password</span>
+          <span className="session-field-label">{t("session.password")}</span>
           <input
             {...RAW_TEXT_INPUT}
             type="password"
@@ -533,7 +537,7 @@ export function SessionDialog({ initial, onClose }: Props) {
             // Left empty, the password is asked for at each connection (issue
             // #88). Only a new session can say so: a saved password never
             // reaches this dialog, so an existing one's empty field may hold one.
-            placeholder={initial?.id ? undefined : "Ask on connect"}
+            placeholder={initial?.id ? undefined : t("session.askOnConnect")}
             onChange={(event) => patch({ password: event.target.value })}
           />
         </label>
@@ -542,7 +546,9 @@ export function SessionDialog({ initial, onClose }: Props) {
       {profile.auth === "publicKey" && (
         <>
           <label className="session-field is-wide">
-            <span className="session-field-label">Private key</span>
+            <span className="session-field-label">
+              {t("session.privateKey")}
+            </span>
             <input
               {...RAW_TEXT_INPUT}
               value={profile.privateKeyPath ?? ""}
@@ -551,7 +557,9 @@ export function SessionDialog({ initial, onClose }: Props) {
             />
           </label>
           <label className="session-field is-wide">
-            <span className="session-field-label">Passphrase</span>
+            <span className="session-field-label">
+              {t("session.passphrase")}
+            </span>
             <input
               {...RAW_TEXT_INPUT}
               type="password"
@@ -604,7 +612,7 @@ export function SessionDialog({ initial, onClose }: Props) {
         passphrase: candidate.passphrase,
       });
       if (id) onClose();
-      else setError(useStore.getState().error ?? "connection failed");
+      else setError(useStore.getState().error ?? t("session.connectionFailed"));
     } catch (e) {
       setError(String(e));
     } finally {
@@ -656,7 +664,7 @@ export function SessionDialog({ initial, onClose }: Props) {
           </span>
           <div className="session-dialog-heading">
             <div id="session-dialog-title" className="session-dialog-title">
-              {initial?.id ? "Edit Session" : "New Session"}
+              {initial?.id ? t("session.editTitle") : t("session.newTitle")}
             </div>
             <div className="session-dialog-subtitle">{summary()}</div>
           </div>
@@ -664,7 +672,7 @@ export function SessionDialog({ initial, onClose }: Props) {
             className="panel-action"
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t("common.close")}
           >
             <Icon name="close" />
           </button>
@@ -674,25 +682,27 @@ export function SessionDialog({ initial, onClose }: Props) {
           <section className="session-section">
             <div className="session-section-heading">
               <Icon name="tag" />
-              <span>Session</span>
-              <small>Identity and protocol</small>
+              <span>{t("session.sectionSession")}</span>
+              <small>{t("session.identityHint")}</small>
             </div>
             <div className="session-form-grid">
               <div className="session-field is-wide">
-                <span className="session-field-label">Protocol</span>
+                <span className="session-field-label">
+                  {t("session.protocol")}
+                </span>
                 <div
                   className="protocol-picker"
                   role="radiogroup"
-                  aria-label="Protocol"
+                  aria-label={t("session.protocol")}
                 >
-                  {PROTOCOL_OPTIONS.map((option) => {
+                  {protocolOptions(t).map((option) => {
                     const active = option.kinds.includes(profile.kind);
                     // Keep the current sub-choice when the group already
                     // matches; otherwise select the option's default kind.
                     const target = active ? profile.kind : option.kinds[0];
                     return (
                       <button
-                        key={option.label}
+                        key={option.kinds[0]}
                         type="button"
                         role="radio"
                         aria-checked={active}
@@ -731,7 +741,7 @@ export function SessionDialog({ initial, onClose }: Props) {
               </div>
 
               <label className="session-field">
-                <span className="session-field-label">Name</span>
+                <span className="session-field-label">{t("session.name")}</span>
                 <input
                   {...RAW_TEXT_INPUT}
                   value={profile.name}
@@ -741,12 +751,12 @@ export function SessionDialog({ initial, onClose }: Props) {
               </label>
 
               <div className="session-field">
-                <span className="session-field-label">Color</span>
+                <span className="session-field-label">{t("session.color")}</span>
                 <div
                   ref={colorPickerRef}
                   className="session-color-picker"
                   role="radiogroup"
-                  aria-label="Session color"
+                  aria-label={t("session.sessionColor")}
                   onKeyDown={(event) => {
                     const current = SESSION_COLORS.indexOf(
                       (event.target as HTMLElement).dataset.color ?? "",
@@ -787,7 +797,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                         className={`session-color-option${selected ? " is-selected" : ""}`}
                         style={{ background: color }}
                         aria-checked={selected}
-                        aria-label={`Use session color ${color}`}
+                        aria-label={t("session.useColor", { color })}
                         title={color}
                         onClick={() => patch({ color })}
                       />
@@ -797,7 +807,7 @@ export function SessionDialog({ initial, onClose }: Props) {
               </div>
               <div className="session-field is-wide">
                 <label className="session-field-label" htmlFor="session-group">
-                  Group
+                  {t("session.group")}
                 </label>
                 <select
                   id="session-group"
@@ -807,7 +817,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                   }
                 >
                   <option value="">
-                    {sectionLabel(profile.kind)} (no group)
+                    {t("session.noGroup", { section: sectionLabel(profile.kind, t) })}
                   </option>
                   {groupChoices.map(({ group }) => (
                     <option key={group.id} value={group.id}>
@@ -817,8 +827,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                 </select>
                 {groupChoices.length === 0 && (
                   <small className="session-field-hint">
-                    Right-click a heading in the Session panel to create
-                    groups.
+                    {t("session.groupHint")}
                   </small>
                 )}
               </div>
@@ -831,18 +840,20 @@ export function SessionDialog({ initial, onClose }: Props) {
                 <Icon name="server" />
                 <span>
                   {profile.kind === "ssh"
-                    ? "SSH connection"
-                    : "Telnet connection"}
+                    ? t("session.sshConnection")
+                    : t("session.telnetConnection")}
                 </span>
                 <small>
                   {profile.kind === "ssh"
-                    ? "Server and authentication"
-                    : "Telnet · login typed at the server's prompt · unencrypted"}
+                    ? t("session.serverAndAuth")
+                    : t("session.telnetSubtitle")}
                 </small>
               </div>
               <div className="session-form-grid">
                 <div className="session-field is-wide">
-                  <span className="session-field-label">Protocol</span>
+                  <span className="session-field-label">
+                    {t("session.protocol")}
+                  </span>
                   <div className="kind-picker">
                     {(["ssh", "telnet"] as SessionKind[]).map((sub) => (
                       <button
@@ -868,7 +879,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                 </div>
 
                 <label className="session-field">
-                  <span className="session-field-label">Host</span>
+                  <span className="session-field-label">{t("session.host")}</span>
                   <input
                     {...RAW_TEXT_INPUT}
                     value={profile.host ?? ""}
@@ -880,7 +891,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                 </label>
 
                 <label className="session-field">
-                  <span className="session-field-label">Port</span>
+                  <span className="session-field-label">{t("session.port")}</span>
                   <input
                     type="number"
                     min={1}
@@ -899,7 +910,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                 {profile.kind === "ssh" ? (
                   <>
                     <label className="session-field">
-                      <span className="session-field-label">Username</span>
+                      <span className="session-field-label">{t("session.username")}</span>
                       <input
                         {...RAW_TEXT_INPUT}
                         value={profile.username ?? ""}
@@ -917,25 +928,27 @@ export function SessionDialog({ initial, onClose }: Props) {
                 ) : (
                   <>
                     <label className="session-field">
-                      <span className="session-field-label">Username</span>
+                      <span className="session-field-label">{t("session.username")}</span>
                       <input
                         {...RAW_TEXT_INPUT}
                         value={profile.username ?? ""}
-                        placeholder="Optional"
+                        placeholder={t("session.optional")}
                         onChange={(event) =>
                           patch({ username: event.target.value })
                         }
                       />
                     </label>
                     <label className="session-field">
-                      <span className="session-field-label">Password</span>
+                      <span className="session-field-label">{t("session.password")}</span>
                       <input
                         {...RAW_TEXT_INPUT}
                         type="password"
                         value={profile.password ?? ""}
                         // As for SSH, a saved password never reaches this
                         // dialog, so only a new session can say "optional".
-                        placeholder={initial?.id ? undefined : "Optional"}
+                        placeholder={
+                          initial?.id ? undefined : t("session.optional")
+                        }
                         onChange={(event) =>
                           patch({ password: event.target.value })
                         }
@@ -943,31 +956,16 @@ export function SessionDialog({ initial, onClose }: Props) {
                     </label>
                     <div className="session-note is-wide">
                       <Icon name="info" />
-                      <span>
-                        When the device prints a login prompt (Username:,
-                        login:, Password:) within a minute of connecting, the
-                        saved answer is typed for you, once. Leave a field
-                        empty to type it yourself.
-                      </span>
+                      <span>{t("session.telnetLoginNote")}</span>
                     </div>
                     {renderTextFields(false)}
                     <div className="session-note is-wide">
                       <Icon name="info" />
-                      <span>
-                        Port 23 opens with the usual telnet negotiation. On
-                        any other port the connection stays plain until the
-                        server negotiates, so text services such as HTTP or
-                        SMTP can be tested too; lines are edited and echoed
-                        locally until the server echoes them itself.
-                      </span>
+                      <span>{t("session.telnetPortNote")}</span>
                     </div>
                     <div className="session-note is-warning is-wide">
                       <Icon name="warning" />
-                      <span>
-                        Telnet sends everything you type, passwords included,
-                        without encryption. Use it only on a trusted network —
-                        choose SSH when the device supports it.
-                      </span>
+                      <span>{t("session.telnetWarning")}</span>
                     </div>
                   </>
                 )}
@@ -979,16 +977,18 @@ export function SessionDialog({ initial, onClose }: Props) {
             <section className="session-section">
               <div className="session-section-heading">
                 <Icon name="folder" />
-                <span>(S)FTP connection</span>
+                <span>{t("session.sftpConnection")}</span>
                 <small>
                   {profile.kind === "sftp"
-                    ? "SFTP · encrypted file transfer over SSH"
-                    : "FTP · passive mode · unencrypted"}
+                    ? t("session.sftpSubtitle")
+                    : t("session.ftpSubtitle")}
                 </small>
               </div>
               <div className="session-form-grid">
                 <div className="session-field is-wide">
-                  <span className="session-field-label">Protocol</span>
+                  <span className="session-field-label">
+                    {t("session.protocol")}
+                  </span>
                   <div className="kind-picker">
                     {(["sftp", "ftp"] as SessionKind[]).map((sub) => (
                       <button
@@ -1007,14 +1007,16 @@ export function SessionDialog({ initial, onClose }: Props) {
                           })
                         }
                       >
-                        {sub === "sftp" ? "SFTP (over SSH)" : "FTP"}
+                        {sub === "sftp"
+                          ? t("session.sftpOverSsh")
+                          : t("session.ftp")}
                       </button>
                     ))}
                   </div>
                 </div>
 
                 <label className="session-field">
-                  <span className="session-field-label">Host</span>
+                  <span className="session-field-label">{t("session.host")}</span>
                   <input
                     {...RAW_TEXT_INPUT}
                     value={profile.host ?? ""}
@@ -1028,7 +1030,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                 </label>
 
                 <label className="session-field">
-                  <span className="session-field-label">Port</span>
+                  <span className="session-field-label">{t("session.port")}</span>
                   <input
                     type="number"
                     min={1}
@@ -1045,7 +1047,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                 </label>
 
                 <label className="session-field">
-                  <span className="session-field-label">Username</span>
+                  <span className="session-field-label">{t("session.username")}</span>
                   <input
                     {...RAW_TEXT_INPUT}
                     value={profile.username ?? ""}
@@ -1062,12 +1064,12 @@ export function SessionDialog({ initial, onClose }: Props) {
                 ) : (
                   <>
                     <label className="session-field">
-                      <span className="session-field-label">Password</span>
+                      <span className="session-field-label">{t("session.password")}</span>
                       <input
                         {...RAW_TEXT_INPUT}
                         type="password"
                         value={profile.password ?? ""}
-                        placeholder="Optional for anonymous FTP"
+                        placeholder={t("session.optionalAnonFtp")}
                         onChange={(event) =>
                           patch({ password: event.target.value })
                         }
@@ -1076,11 +1078,7 @@ export function SessionDialog({ initial, onClose }: Props) {
 
                     <div className="session-note is-warning is-wide">
                       <Icon name="warning" />
-                      <span>
-                        Standard FTP sends credentials and file contents
-                        without encryption. Use it only on a trusted network —
-                        choose SFTP when transport security is required.
-                      </span>
+                      <span>{t("session.ftpWarning")}</span>
                     </div>
                   </>
                 )}
@@ -1092,12 +1090,14 @@ export function SessionDialog({ initial, onClose }: Props) {
             <section className="session-section">
               <div className="session-section-heading">
                 <Icon name="terminal" />
-                <span>Local shell</span>
-                <small>Process and working directory</small>
+                <span>{t("session.localShell")}</span>
+                <small>{t("session.processAndCwd")}</small>
               </div>
               <div className="session-form-grid">
                 <label className="session-field is-wide">
-                  <span className="session-field-label">Shell</span>
+                  <span className="session-field-label">
+                    {t("session.shell")}
+                  </span>
                   <input
                     {...RAW_TEXT_INPUT}
                     value={profile.shell ?? ""}
@@ -1106,11 +1106,13 @@ export function SessionDialog({ initial, onClose }: Props) {
                   />
                 </label>
                 <label className="session-field is-wide">
-                  <span className="session-field-label">Directory</span>
+                  <span className="session-field-label">
+                    {t("session.directory")}
+                  </span>
                   <input
                     {...RAW_TEXT_INPUT}
                     value={profile.cwd ?? ""}
-                    placeholder="Home directory"
+                    placeholder={t("session.homeDirectory")}
                     onChange={(event) => patch({ cwd: event.target.value })}
                   />
                 </label>
@@ -1123,17 +1125,23 @@ export function SessionDialog({ initial, onClose }: Props) {
             <section className="session-section">
               <div className="session-section-heading">
                 <Icon name="circuit-board" />
-                <span>Serial connection</span>
+                <span>{t("session.serialConnection")}</span>
                 <small>
                   {profile.dataBits ?? 8}-{parityCode}-{profile.stopBits ?? 1}
                   {profile.flowControl && profile.flowControl !== "none"
-                    ? ` · ${profile.flowControl} flow`
-                    : " · no flow control"}
+                    ? ` · ${
+                        profile.flowControl === "software"
+                          ? t("session.flowWordSoftware")
+                          : t("session.flowWordHardware")
+                      } ${t("session.flowControl")}`
+                    : t("session.noFlowControl")}
                 </small>
               </div>
               <div className="session-form-grid">
                 <div className="session-field is-wide">
-                  <span className="session-field-label">Port</span>
+                  <span className="session-field-label">
+                    {t("session.port")}
+                  </span>
                   <div className="serial-port-row">
                     <select
                       value={profile.portName ?? ""}
@@ -1141,7 +1149,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                         patch({ portName: event.target.value })
                       }
                     >
-                      <option value="">Select a port…</option>
+                      <option value="">{t("session.selectPort")}</option>
                       {ports.map((port) => (
                         <option key={port.portName} value={port.portName}>
                           {port.portName}
@@ -1158,8 +1166,8 @@ export function SessionDialog({ initial, onClose }: Props) {
                           .then(setPorts)
                           .catch(() => undefined)
                       }
-                      title="Refresh serial ports"
-                      aria-label="Refresh serial ports"
+                      title={t("session.refreshPorts")}
+                      aria-label={t("session.refreshPorts")}
                     >
                       <Icon name="refresh" />
                     </button>
@@ -1167,8 +1175,8 @@ export function SessionDialog({ initial, onClose }: Props) {
                   <small className="session-field-hint">
                     {selectedPort?.description ||
                       (ports.length
-                        ? "Choose a detected COM or TTY device."
-                        : "No serial ports detected. Refresh to scan again.")}
+                        ? t("session.portHintDetected")
+                        : t("session.portHintNone"))}
                   </small>
                 </div>
 
@@ -1177,7 +1185,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                     className="session-field-label"
                     htmlFor="serial-baud-rate"
                   >
-                    Baud rate
+                    {t("session.baudRate")}
                   </label>
                   <div className="input-with-suffix">
                     <input
@@ -1199,7 +1207,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                         })
                       }
                     />
-                    <span>baud</span>
+                    <span>{t("session.baudUnit")}</span>
                   </div>
                   <datalist id="serial-baud-rates">
                     {COMMON_BAUD_RATES.map((rate) => (
@@ -1207,12 +1215,14 @@ export function SessionDialog({ initial, onClose }: Props) {
                     ))}
                   </datalist>
                   <small className="session-field-hint">
-                    Select a common value or enter any custom positive integer.
+                    {t("session.baudHint")}
                   </small>
                 </div>
 
                 <label className="session-field">
-                  <span className="session-field-label">Data bits</span>
+                  <span className="session-field-label">
+                    {t("session.dataBits")}
+                  </span>
                   <select
                     value={profile.dataBits ?? 8}
                     onChange={(event) =>
@@ -1221,48 +1231,58 @@ export function SessionDialog({ initial, onClose }: Props) {
                   >
                     {[5, 6, 7, 8].map((bits) => (
                       <option key={bits} value={bits}>
-                        {bits} bits
+                        {t("session.bitsCount", { count: bits })}
                       </option>
                     ))}
                   </select>
                 </label>
 
                 <label className="session-field">
-                  <span className="session-field-label">Stop bits</span>
+                  <span className="session-field-label">
+                    {t("session.stopBits")}
+                  </span>
                   <select
                     value={profile.stopBits ?? 1}
                     onChange={(event) =>
                       patch({ stopBits: Number(event.target.value) })
                     }
                   >
-                    <option value={1}>1 bit</option>
-                    <option value={2}>2 bits</option>
+                    <option value={1}>{t("session.stopBitOne")}</option>
+                    <option value={2}>{t("session.stopBitTwo")}</option>
                   </select>
                 </label>
 
                 <label className="session-field">
-                  <span className="session-field-label">Parity</span>
+                  <span className="session-field-label">
+                    {t("session.parity")}
+                  </span>
                   <select
                     value={profile.parity ?? "none"}
                     onChange={(event) => patch({ parity: event.target.value })}
                   >
-                    <option value="none">None (N)</option>
-                    <option value="odd">Odd (O)</option>
-                    <option value="even">Even (E)</option>
+                    <option value="none">{t("session.parityNone")}</option>
+                    <option value="odd">{t("session.parityOdd")}</option>
+                    <option value="even">{t("session.parityEven")}</option>
                   </select>
                 </label>
 
                 <label className="session-field">
-                  <span className="session-field-label">Flow control</span>
+                  <span className="session-field-label">
+                    {t("session.flowControlField")}
+                  </span>
                   <select
                     value={profile.flowControl ?? "none"}
                     onChange={(event) =>
                       patch({ flowControl: event.target.value })
                     }
                   >
-                    <option value="none">None</option>
-                    <option value="software">XON/XOFF (software)</option>
-                    <option value="hardware">RTS/CTS (hardware)</option>
+                    <option value="none">{t("session.flowNone")}</option>
+                    <option value="software">
+                      {t("session.flowSoftware")}
+                    </option>
+                    <option value="hardware">
+                      {t("session.flowHardware")}
+                    </option>
                   </select>
                 </label>
                 {renderTextFields(false)}
@@ -1282,11 +1302,11 @@ export function SessionDialog({ initial, onClose }: Props) {
 
         <div className="dialog-footer">
           <button type="button" className="btn" onClick={onClose}>
-            Cancel
+            {t("common.cancel")}
           </button>
           <button type="button" className="btn" onClick={save} disabled={busy}>
             <Icon name="save" />
-            Save
+            {t("common.save")}
           </button>
           <button
             type="button"
@@ -1295,7 +1315,7 @@ export function SessionDialog({ initial, onClose }: Props) {
             disabled={busy}
           >
             <Icon name="plug" />
-            {busy ? "Connecting…" : "Connect"}
+            {busy ? t("session.connecting") : t("session.connect")}
           </button>
         </div>
       </div>

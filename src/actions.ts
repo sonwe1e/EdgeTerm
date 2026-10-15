@@ -1,6 +1,7 @@
 import * as api from "./api";
 import { fontStack } from "./fonts";
 import { commandHistory } from "./history";
+import { t } from "./i18n";
 import { IS_WINDOWS } from "./platform";
 import { tabTitle, useStore, type HostKeyPrompt, type Tab } from "./store";
 import type { TerminalController } from "./terminal";
@@ -11,9 +12,12 @@ import {
 } from "./terminalRegistry";
 import { isFileSession, type SessionInfo, type SessionProfile } from "./types";
 
-/** Line written into a terminal when its session ends, however it ended. */
-export const SESSION_CLOSED_NOTICE =
-  "\r\n\x1b[33m[session closed — press Enter to reconnect]\x1b[0m\r\n";
+/**
+ * Line written into a terminal when its session ends, however it ended. Built
+ * per call so it carries the interface language in force (see i18n.ts).
+ */
+export const sessionClosedNotice = (): string =>
+  `\r\n\x1b[33m${t("terminal.sessionClosed")}\x1b[0m\r\n`;
 
 function newSessionId(): string {
   if (typeof crypto?.randomUUID === "function") return crypto.randomUUID();
@@ -46,7 +50,7 @@ function pendingSessionInfo(
     address = `${profile.portName || "-"}@${profile.baudRate ?? 115_200}`;
   } else {
     protocol = "shell";
-    address = profile.shell || "default shell";
+    address = profile.shell || t("session.defaultShell");
   }
 
   return {
@@ -245,12 +249,12 @@ export async function disconnectSession(id: string): Promise<void> {
   // to mark.
   if (!current || current.state !== "connected") return;
 
-  store.applyState(id, "closed", failure ?? "Disconnected");
+  store.applyState(id, "closed", failure ?? t("status.disconnectedReason"));
   // The backend stays silent for a close it was asked for, so echo the same
   // notice into the terminal that a peer-initiated close gets (see App.tsx).
-  getController(id)?.writeText(SESSION_CLOSED_NOTICE);
+  getController(id)?.writeText(sessionClosedNotice());
   if (failure) store.setError(failure, id);
-  else store.setStatus(`Disconnected from ${tabTitle(current)}`);
+  else store.setStatus(t("status.disconnected", { name: tabTitle(current) }));
 }
 
 /**
@@ -301,7 +305,7 @@ async function connectSession(
     ? tabTitle(pending)
     : profile.name || profile.host || profile.portName || "session";
 
-  store.setStatus(`Connecting to ${label}…`);
+  store.setStatus(t("status.connecting", { name: label }));
   store.setError(null);
   store.applyState(id, "connecting");
 
@@ -351,10 +355,11 @@ async function connectSession(
     const { info } = outcome;
     connectedStore.updateTabInfo(id, info);
     connectedStore.applyState(id, "connected");
+    const name = tabTitle({ info, ordinal: tab.ordinal });
     connectedStore.setStatus(
       info.sharedConnection
-        ? `Connected to ${tabTitle({ info, ordinal: tab.ordinal })} on the same connection`
-        : `Connected to ${tabTitle({ info, ordinal: tab.ordinal })}`,
+        ? t("status.connectedShared", { name })
+        : t("status.connected", { name }),
     );
 
     // The pane was fitted while the backend was still connecting, so its
@@ -385,11 +390,12 @@ function failSession(id: string, message: string, hint = true): void {
   const store = useStore.getState();
   store.applyState(id, "error", message);
   store.setError(message, id);
-  store.setStatus(`Failed: ${message}`);
+  store.setStatus(t("status.failed", { message }));
   const terminalMessage = message.replace(/[\x00-\x1f\x7f]/g, " ");
+  const failed = t("terminal.connectionFailed", { message: terminalMessage });
   getController(id)?.writeText(
-    `\r\n\x1b[31m[connection failed: ${terminalMessage}${
-      hint ? " — press Enter to reconnect" : ""
+    `\r\n\x1b[31m${failed}${
+      hint ? t("terminal.pressEnterToReconnect") : ""
     }]\x1b[0m\r\n`,
   );
 }
@@ -405,7 +411,9 @@ export async function acceptHostKey(prompt: HostKeyPrompt): Promise<void> {
   store.setHostKeyPrompt(null);
   if (!store.tabs.some((tab) => tab.info.id === prompt.sessionId)) return;
   getController(prompt.sessionId)?.writeText(
-    `\r\n[accepted new host key ${prompt.change.fingerprint}; reconnecting]\r\n`,
+    `\r\n${t("terminal.acceptedHostKey", {
+      fingerprint: prompt.change.fingerprint,
+    })}\r\n`,
   );
   void connectSession(prompt.sessionId, prompt.profile);
 }
@@ -472,20 +480,20 @@ export async function revealCwdInFiler(id: string): Promise<void> {
   const tab = store.tabs.find((item) => item.info.id === id);
   if (!tab) return;
   if (tab.info.kind !== "local" && tab.info.kind !== "ssh") {
-    store.setStatus(
-      "Filer: only shell and SSH sessions have a working directory",
-    );
+    store.setStatus(t("status.filerOnlyShellSsh"));
     return;
   }
   if (tab.state !== "connected") {
-    store.setStatus("Filer: the session is not connected");
+    store.setStatus(t("status.filerNotConnected"));
     return;
   }
   try {
     const path = await shellCwd(tab);
     useStore.getState().revealInFiler(id, path);
-    useStore.getState().setStatus(`Filer: ${path}`);
+    useStore.getState().setStatus(t("status.filerPath", { path }));
   } catch (error) {
-    useStore.getState().setError(`Filer: ${String(error)}`, id);
+    useStore
+      .getState()
+      .setError(t("status.filerError", { error: String(error) }), id);
   }
 }
