@@ -71,7 +71,11 @@ fn edit_root() -> PathBuf {
 /// editors still had them open), except those flagged as holding unsent
 /// changes. Run once at startup, before any watch of this run exists.
 pub fn clean_leftovers() {
-    let Ok(entries) = std::fs::read_dir(edit_root()) else {
+    clean_leftovers_in(&edit_root());
+}
+
+fn clean_leftovers_in(root: &Path) {
+    let Ok(entries) = std::fs::read_dir(root) else {
         return;
     };
     for entry in entries.flatten() {
@@ -135,12 +139,22 @@ impl RemoteEdits {
     /// half-written download for a save and send it back. `watch` restarts
     /// it once the download is complete.
     pub fn local_path(&self, session_id: &str, remote: &str, name: &str) -> Result<PathBuf> {
+        self.local_path_in(&edit_root(), session_id, remote, name)
+    }
+
+    fn local_path_in(
+        &self,
+        root: &Path,
+        session_id: &str,
+        remote: &str,
+        name: &str,
+    ) -> Result<PathBuf> {
         let key = (session_id.to_string(), remote.to_string());
         if let Some(watched) = self.watchers.lock().remove(&key) {
             watched.task.abort();
             return Ok(watched.local);
         }
-        let dir = edit_root().join(uuid::Uuid::new_v4().to_string());
+        let dir = root.join(uuid::Uuid::new_v4().to_string());
         std::fs::create_dir_all(&dir).map_err(err)?;
         safe_local_child(&dir, name)
     }
@@ -370,5 +384,91 @@ async fn watch_loop(
                 retry_delay = (retry_delay * 2).min(MAX_RETRY_DELAY);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct TempRoot(PathBuf);
+
+    impl TempRoot {
+        fn new() -> Self {
+            let dir =
+                std::env::temp_dir().join(format!("edgeterm-remote-edit-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir_all(&dir).unwrap();
+            Self(dir)
+        }
+    }
+
+    impl Drop for TempRoot {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn local_path_isolates_folders_and_rejects_unsafe_names() {
+        let root = TempRoot::new();
+        let edits = RemoteEdits::default();
+
+        let first = edits
+            .local_path_in(&root.0, "s1", "/etc/app/config.toml", "config.toml")
+            .unwrap();
+        let second = edits
+            .local_path_in(&root.0, "s1", "/var/app/config.toml", "config.toml")
+            .unwrap();
+
+        assert_eq!(first.file_name().unwrap(), "config.toml");
+        assert_eq!(second.file_name().unwrap(), "config.toml");
+        assert_ne!(first.parent().unwrap(), second.parent().unwrap());
+
+        for unsafe_name in ["", ".", "..", "../secret", "sub/file.txt", "sub\\file.txt"] {
+            assert!(
+                edits
+                    .local_path_in(&root.0, "s1", "/etc/app/file", unsafe_name)
+                    .is_err(),
+                "expected {unsafe_name:?} to be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn clean_leftovers_removes_synced_folders_and_preserves_unsynced_copies() {
+        let root = TempRoot::new();
+        let synced = root.0.join("synced-copy");
+        let unsynced = root.0.join("unsynced-copy");
+        std::fs::create_dir_all(&synced).unwrap();
+        std::fs::create_dir_all(&unsynced).unwrap();
+        std::fs::write(synced.join("notes.txt"), b"already uploaded").unwrap();
+        std::fs::write(unsynced.join("notes.txt"), b"local draft").unwrap();
+        std::fs::write(unsynced.join(UNSYNCED_MARKER), b"").unwrap();
+
+        clean_leftovers_in(&root.0);
+
+        assert!(!synced.exists());
+        assert!(unsynced.exists());
+        assert_eq!(
+            std::fs::read(unsynced.join("notes.txt")).unwrap(),
+            b"local draft"
+        );
+    }
+
+    #[test]
+    fn snapshot_tracks_missing_files_and_content_size_changes() {
+        let root = TempRoot::new();
+        let file = root.0.join("sample.txt");
+
+        assert_eq!(snapshot(&file), None);
+
+        std::fs::write(&file, b"one").unwrap();
+        let before = snapshot(&file).expect("snapshot of existing file");
+        assert_eq!(before.1, 3);
+
+        std::fs::write(&file, b"three").unwrap();
+        let after = snapshot(&file).expect("snapshot after write");
+        assert_eq!(after.1, 5);
+        assert_ne!(before, after);
     }
 }
