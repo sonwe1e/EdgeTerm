@@ -27,7 +27,7 @@ let unlistenRemoved: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-  vi.clearAllMocks(); localStorage.clear(); useFileTransfers.setState({ jobs: {} });
+  vi.clearAllMocks(); localStorage.clear(); useFileTransfers.setState({ jobs: {}, open: false });
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
   unlisten = vi.fn(); unlistenRemoved = vi.fn();
   api.onFileTransfer.mockImplementation(async (callback) => { changed = callback; return unlisten; });

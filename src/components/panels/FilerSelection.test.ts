@@ -27,6 +27,8 @@ import * as nativeDialog from "../../nativeDialog";
 import { useStore, type Tab } from "../../store";
 import type { FileEntry } from "../../types";
 import { FilerPanel } from "./FilerPanel";
+import { useFileTransfers } from "../../fileTransfers";
+import { TransferCenter } from "../TransferCenter";
 
 const initialState = useStore.getState();
 const entries: FileEntry[] = ["file10.txt", "file2.txt", "file3.txt", "folder"].map((name) => ({
@@ -77,6 +79,7 @@ beforeEach(() => {
   platform.mac = false;
   localStorage.clear();
   useStore.setState({ ...initialState, language: "en", tabs: [], activeId: null }, true);
+  useFileTransfers.setState({ jobs: {}, open: false });
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
   vi.mocked(api.localHome).mockResolvedValue("/selection");
   vi.mocked(api.localList).mockImplementation(async (path) => ({ path, entries }));
@@ -101,7 +104,12 @@ afterEach(() => {
   vi.restoreAllMocks(); vi.unstubAllGlobals();
 });
 const mount = () => act(async () => root.render(h(FilerPanel)));
-
+const transferJob = (id: string, name: string, status: api.FileTransfer["status"]): api.FileTransfer => ({
+  id, name, status, sessionId: "selection-ssh", revision: 1, phase: status,
+  transferred: 0, total: 100, completedFiles: 0, totalFiles: 1, failedFiles: [], error: null,
+  attempt: status === "queued" ? 0 : 1,
+  options: { requests: 32, chunkKib: 128, files: 16, durable: false, tar: false, rateLimitBps: 0 },
+});
 
 describe("Filer multiple selection at the real panel entry", () => {
   it("adds and toggles paths with Ctrl instead of replacing the selection", async () => {
@@ -226,13 +234,88 @@ describe("Filer multiple selection at the real panel entry", () => {
     ], expect.any(Function), expect.any(String));
   });
 
+  it("accepts another download while earlier downloads are still pending", async () => {
+    useRemote();
+    const complete: (() => void)[] = [];
+    vi.mocked(api.transferFiles).mockImplementation(() => new Promise<void>((resolve) => { complete.push(resolve); }));
+    vi.mocked(nativeDialog.save).mockResolvedValueOnce("/downloads/first.txt").mockResolvedValueOnce("/downloads/second.txt");
+    await mount();
+    press("file10.txt");
+    await act(async () => toolbar("Download file or folder").click());
+    expect(api.transferFiles).toHaveBeenCalledTimes(1);
+    expect(toolbar("Download file or folder").disabled).toBe(false);
+    press("file2.txt");
+    await act(async () => toolbar("Download file or folder").click());
+    expect(api.transferFiles).toHaveBeenCalledTimes(2);
+    const calls = vi.mocked(api.transferFiles).mock.calls;
+    expect(calls[0][1]).toEqual([{ local: "/downloads/first.txt", remote: "/selection/file10.txt", upload: false, directory: false }]);
+    expect(calls[1][1]).toEqual([{ local: "/downloads/second.txt", remote: "/selection/file2.txt", upload: false, directory: false }]);
+    expect(calls[0][3]).not.toBe(calls[1][3]);
+    await act(async () => complete.forEach((resolve) => resolve()));
+  });
 
+  it("shows backend queue states and opens the transfer center to cancel a waiting job", async () => {
+    useRemote();
+    const pending: { resolve: () => void; reject: (error: Error) => void }[] = [];
+    vi.mocked(api.transferFiles).mockImplementation(() => new Promise<void>((resolve, reject) => pending.push({ resolve, reject })));
+    vi.mocked(nativeDialog.save).mockResolvedValue("/downloads/target.txt");
+    await act(async () => root.render(h("div", null, h(FilerPanel), h(TransferCenter))));
+    for (const name of ["file10.txt", "file2.txt", "file3.txt"]) {
+      press(name);
+      await act(async () => toolbar("Download file or folder").click());
+    }
+    expect(api.transferFiles).toHaveBeenCalledTimes(3);
+    const ids = vi.mocked(api.transferFiles).mock.calls.map((call) => call[3]!);
+    const snapshots = ids.map((id, index) => transferJob(id, `job-${index}`, index < 2 ? "running" : "queued"));
+    act(() => snapshots.forEach((job) => useFileTransfers.getState().update(job)));
+    expect(host.querySelector(".filer-transfer-summary")!.textContent).toContain("2 running · 1 queued");
+    act(() => host.querySelector<HTMLButtonElement>('[aria-label="Open transfer queue"]')!.click());
+    expect(host.querySelector(".transfer-center-popover")).not.toBeNull();
+    const queued = [...host.querySelectorAll<HTMLElement>(".transfer-job")].find((job) => job.textContent!.includes("job-2"))!;
+    await act(async () => [...queued.querySelectorAll("button")].find((button) => button.textContent === "Cancel")!.click());
+    expect(api.controlFileTransfer).toHaveBeenCalledWith(ids[2], "cancel");
+    await act(async () => {
+      useFileTransfers.getState().update({ ...snapshots[2], revision: 2, status: "cancelled" });
+      pending[2].reject(Error("transfer cancelled"));
+    });
+    expect(useStore.getState().error).toBeNull();
+    expect(host.querySelector(".filer-transfer-summary")!.textContent).toContain("2 running · 0 queued");
+    await act(async () => { pending[0].resolve(); pending[1].resolve(); });
+  });
 
+  it("keeps a later job independent when an earlier download fails after the panel unmounts", async () => {
+    useRemote();
+    let failFirst!: (error: Error) => void;
+    let finishSecond!: () => void;
+    vi.mocked(api.transferFiles)
+      .mockReturnValueOnce(new Promise((_, reject) => { failFirst = reject; }))
+      .mockReturnValueOnce(new Promise<void>((resolve) => { finishSecond = resolve; }));
+    vi.mocked(nativeDialog.save).mockResolvedValue("/downloads/target.txt");
+    await mount();
+    press("file10.txt"); await act(async () => toolbar("Download file or folder").click());
+    press("file2.txt"); await act(async () => toolbar("Download file or folder").click());
+    act(() => root.render(null));
+    await act(async () => failFirst(Error("connection lost")));
+    expect(useStore.getState().error).toContain("file10.txt");
+    expect(useStore.getState().error).toContain("connection lost");
+    expect(useStore.getState().errorSessionId).toBe("selection-ssh");
+    await act(async () => finishSecond());
+    expect(api.cancelTransfer).not.toHaveBeenCalled();
+  });
 
-
-
-
-
+  it("serializes destination pickers and rejects a stale single-file selection", async () => {
+    useRemote();
+    let choose!: (value: string) => void;
+    vi.mocked(nativeDialog.save).mockReturnValueOnce(new Promise((resolve) => { choose = resolve; }));
+    await mount();
+    press("file10.txt"); act(() => toolbar("Download file or folder").click());
+    expect(toolbar("Download file or folder").disabled).toBe(true);
+    act(() => toolbar("Download file or folder").click());
+    expect(nativeDialog.save).toHaveBeenCalledTimes(1);
+    await act(async () => useStore.setState({ tabs: [], activeId: null }));
+    await act(async () => choose("/downloads/stale.txt"));
+    expect(api.transferFiles).not.toHaveBeenCalled();
+  });
 
   it("starts no download when its destination picker is cancelled or its source changes", async () => {
     useRemote();

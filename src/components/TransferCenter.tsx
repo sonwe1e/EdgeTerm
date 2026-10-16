@@ -16,7 +16,8 @@ function rateKib(options: api.TransferOptions): number {
 export function TransferCenter() {
   const t = useT();
   const records = useFileTransfers((s) => s.jobs);
-  const [open, setOpen] = useState(false);
+  const open = useFileTransfers((s) => s.open);
+  const setOpen = useFileTransfers((s) => s.setOpen);
   const container=useRef<HTMLDivElement>(null);
   usePopoverDismiss(open,()=>setOpen(false),container);
   const [error, setError] = useState<string | null>(null);

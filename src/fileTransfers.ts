@@ -3,6 +3,8 @@ import * as api from "./api";
 
 export type TransferView = api.FileTransfer & { bytesPerSecond: number; sampledAt: number };
 interface State {
+  open: boolean;
+  setOpen: (open: boolean) => void;
   jobs: Record<string, TransferView>;
   update: (job: api.FileTransfer) => void;
   mergeSnapshot: (jobs: api.FileTransfer[]) => void;
@@ -20,6 +22,8 @@ function view(job: api.FileTransfer, old: TransferView | undefined, now: number)
 }
 
 export const useFileTransfers = create<State>((set) => ({
+  open: false,
+  setOpen: (open) => set({ open }),
   jobs: {},
   update: (job) => set((state) => {
     if (removed.has(job.id)) return state;

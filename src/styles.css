@@ -4357,14 +4357,14 @@ dialog.dialog-backdrop.is-fallback[open] {
   overflow-wrap: anywhere;
 }
 
+.confirm-dialog-hint {
+  color: var(--fg-faint);
+}
+
 .confirm-dialog-target.is-multiple {
   white-space: pre-wrap;
   max-height: 180px;
   overflow: auto;
-}
-
-.confirm-dialog-hint {
-  color: var(--fg-faint);
 }
 
 .confirm-dialog-footer {
@@ -4897,6 +4897,30 @@ dialog.dialog-backdrop.is-fallback[open] {
   border-top: 1px solid var(--border);
   color: var(--fg-faint);
   font-size: calc(var(--panel-font-size) - 1px);
+}
+
+.filer-transfer-summary {
+  flex-shrink: 0;
+  padding: 5px 10px;
+  border-top: 1px solid var(--border);
+}
+.filer-transfer-summary button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  color: var(--fg-dim);
+  text-align: left;
+}
+.filer-transfer-summary button:hover {
+  color: var(--fg);
+}
+.filer-transfer-summary [role="status"] {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .filer-footer.has-transfer {

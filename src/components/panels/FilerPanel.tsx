@@ -20,13 +20,14 @@ import {
   type SortKey,
 } from "../../fileSort";
 import { t as translateMsg, type Translate } from "../../i18n";
-import { open as openDialog, save as saveDialog } from "../../nativeDialog";
+import { open as openDialog } from "../../nativeDialog";
 import { IS_MAC, IS_WINDOWS } from "../../platform";
 import { FILER_OPEN_WITH_KEY } from "../../persistKeys";
 import { chordLabel } from "../../shortcuts";
 import { tabTitle, useActiveTab, useStore } from "../../store";
 import { useStableCallback } from "../../useStableCallback";
 import { useFileSelection } from "../../useFileSelection";
+import { useFilerDownloads } from "../../useFilerDownloads";
 import { useT } from "../../useT";
 import { ContextMenu, type MenuItem } from "../ContextMenu";
 import { DeleteEntryDialog } from "../DeleteEntryDialog";
@@ -34,6 +35,7 @@ import { FileIcon } from "../FileIcon";
 import { Icon } from "../icons";
 import { SortIndicator } from "../SortIndicator";
 import { VirtualFileRows } from "../VirtualFileRows";
+import { FilerTransferSummary } from "../FilerTransferSummary";
 import type { FileEntry, ThemeMode } from "../../types";
 
 interface TransferState {
@@ -219,6 +221,7 @@ function FilerPanelBase() {
   const collapseSelection = useRef<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { download: downloadEntries, choosing: choosingDownload } = useFilerDownloads(remoteId, setError);
   const [creating, setCreating] = useState<NewEntryDraft | null>(null);
   const [uploadMenu, setUploadMenu] = useState<{ x: number; y: number } | null>(
     null,
@@ -513,73 +516,6 @@ function FilerPanelBase() {
     if (!path) return;
     const parent = remoteId ? remoteParent(path) : await api.localParent(path);
     await load(parent);
-  };
-
-  const download = async (entry: FileEntry) => {
-    if (!remoteId) return;
-    let target: string | null = null;
-    if (entry.isDir) {
-      // A folder lands inside the chosen directory under its own name, so an
-      // existing folder of that name is merged into rather than replaced.
-      const parent = await openDialog({
-        directory: true,
-        multiple: false,
-        title: t("filer.saveFolderInto", { name: entry.name }),
-      });
-      if (typeof parent === "string") target = joinLocal(parent, entry.name);
-    } else {
-      target = await saveDialog({ defaultPath: entry.name });
-    }
-    if (!target) return;
-    setBusy(true);
-    setError(null);
-    const transfer = beginTransfer("download", entry.name, true);
-    try {
-      if (entry.isDir) {
-        await api.sftpDownloadDirectory(
-          remoteId,
-          entry.path,
-          target,
-          progressFor(transfer),
-          transfer,
-        );
-      } else {
-        await api.sftpDownload(
-          remoteId,
-          entry.path,
-          target,
-          progressFor(transfer),
-          transfer,
-        );
-      }
-      finishTransfer("complete", transfer);
-    } catch (e) {
-      failTransfer(e, transfer);
-    } finally {
-      if (ownsTransfer(transfer)) setBusy(false);
-    }
-  };
-
-  const downloadEntries = async (chosen: readonly FileEntry[]) => {
-    if (chosen.length === 1) return download(chosen[0]);
-    const sessionId = remoteId;
-    if (!sessionId || chosen.length === 0 || busyRef.current) return;
-    const parent = await openDialog({ directory: true, multiple: false, title: t("filer.saveSelectedInto") });
-    if (typeof parent !== "string" || remoteIdRef.current !== sessionId || busyRef.current) return;
-    busyRef.current = true;
-    setBusy(true);
-    setError(null);
-    const transfer = beginTransfer("download", t("filer.selectedCount", { count: chosen.length }), true);
-    try {
-      await api.transferFiles(sessionId, chosen.map((entry) => ({
-        local: joinLocal(parent, entry.name), remote: entry.path, upload: false, directory: entry.isDir,
-      })), progressFor(transfer), transfer);
-      finishTransfer("complete", transfer);
-    } catch (e) {
-      failTransfer(e, transfer);
-    } finally {
-      if (ownsTransfer(transfer)) { busyRef.current = false; setBusy(false); }
-    }
   };
 
   const uploadPaths = async (localPaths: string[]) => {
@@ -1201,7 +1137,7 @@ function FilerPanelBase() {
           {
             label: t("filer.downloadEllipsis"),
             icon: "cloud-download" as const,
-            disabled: busy,
+            disabled: busy || choosingDownload,
             action: () => void downloadEntries(chosen),
           },
         ]
@@ -1414,7 +1350,7 @@ function FilerPanelBase() {
           onClick={() => void downloadEntries(selectedEntries)}
           title={remoteTitle(t("filer.downloadFileOrFolder"))}
           aria-label={t("filer.downloadFileOrFolder")}
-          disabled={!remote || selectedEntries.length === 0 || busy}
+          disabled={!remote || selectedEntries.length === 0 || busy || choosingDownload}
         >
           <Icon name="cloud-download" />
         </button>
@@ -1605,6 +1541,7 @@ function FilerPanelBase() {
         />
       )}
 
+      {remoteId && <FilerTransferSummary sessionId={remoteId} />}
       <div className={`filer-footer${transfer ? " has-transfer" : ""}`}>
         {transfer ? (
           <div
