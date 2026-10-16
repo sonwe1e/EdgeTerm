@@ -1,4 +1,5 @@
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { errorText } from "../../errorInfo";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import * as api from "../../api";
@@ -141,7 +142,7 @@ export function useFilerDrag({
       });
     } catch (e) {
       updateDragOut(null);
-      setError(String(e));
+      setError(errorText(e));
     }
   };
 
@@ -171,7 +172,7 @@ export function useFilerDrag({
       });
     } catch (e) {
       updateDragOut(null);
-      setError(String(e));
+      setError(errorText(e));
     }
   };
 
@@ -208,7 +209,7 @@ export function useFilerDrag({
     } catch (e) {
       failure = activeTransfer.current?.cancelled
         ? t("filer.downloadCancelled", { name: entry.name })
-        : String(e);
+        : errorText(e);
       failTransfer(e, transfer);
     } finally {
       if (ownsTransfer(transfer)) busyRef.current = false;
@@ -217,7 +218,7 @@ export function useFilerDrag({
     try {
       await api.finishPromisedFile(token, failure);
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   };
 

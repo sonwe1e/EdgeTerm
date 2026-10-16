@@ -61,7 +61,7 @@ impl ReuseKey {
 enum Flight {
     Ready(Weak<SharedTransport>),
     Changed(HostKeyChange),
-    Failed(String),
+    Failed(AppError),
 }
 struct Slot {
     transport: Weak<SharedTransport>,
@@ -82,9 +82,10 @@ struct Leader {
 impl Drop for Leader {
     fn drop(&mut self) {
         if !self.finished {
-            self.sender.send_replace(Some(Flight::Failed(
-                "the connection attempt was cancelled; retry the connection".into(),
-            )));
+            self.sender
+                .send_replace(Some(Flight::Failed(AppError::cancelled(
+                    "the connection attempt was cancelled; retry the connection",
+                ))));
             self.pool.0.lock().remove(&self.key);
         }
     }
@@ -182,9 +183,9 @@ impl ConnectionPool {
                 if let Some(answer) = answer {
                     return match answer {
                         Flight::Ready(weak) => weak.upgrade().filter(|t| !t.is_closed())
-                            .map(|t| { request.info("reuse", "another session finished authenticating this login"); TransportOutcome::Ready(t,true)}).ok_or_else(|| AppError::new("the authenticated connection closed before another channel could open")),
+                            .map(|t| { request.info("reuse", "another session finished authenticating this login"); TransportOutcome::Ready(t,true)}).ok_or_else(|| AppError::connection_failed("the authenticated connection closed before another channel could open")),
                         Flight::Changed(change) => Ok(TransportOutcome::HostKeyChanged(change)),
-                        Flight::Failed(error) => Err(AppError::new(error)),
+                        Flight::Failed(error) => Err(error),
                     };
                 }
                 receiver
@@ -213,7 +214,7 @@ impl ConnectionPool {
                 Flight::Changed(change.clone()),
                 Ok(TransportOutcome::HostKeyChanged(change)),
             ),
-            Err(error) => (Flight::Failed(error.to_string()), Err(error)),
+            Err(error) => (Flight::Failed(error.clone()), Err(error)),
         };
         {
             let mut slots = self.0.lock();

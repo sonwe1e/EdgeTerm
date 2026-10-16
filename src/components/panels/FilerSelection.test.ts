@@ -206,7 +206,7 @@ describe("Filer multiple selection at the real panel entry", () => {
     await act(async () => host.querySelector<HTMLButtonElement>(".confirm-dialog .is-danger")!.click());
     expect(api.localRemove).toHaveBeenCalledTimes(3);
     expect(chosen()).toEqual(["file2.txt"]);
-    expect(host.textContent).toContain("file2.txt: Error: permission denied");
+    expect(host.textContent).toContain("file2.txt: permission denied");
   });
 
   it("cancels deletion without removing anything and closes stale confirmations on a source change", async () => {

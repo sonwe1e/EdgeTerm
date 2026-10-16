@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
+import { errorText } from "../../errorInfo";
 import { useCallback, useEffect, useRef } from "react";
 import * as api from "../../api";
 import { useStore } from "../../store";
@@ -86,7 +87,7 @@ export function useFilerDirectory({
         return true;
       } catch (e) {
         if (!quiet && request === listRequest.current && remoteIdRef.current === remoteId)
-          setError(String(e));
+          setError(errorText(e));
         return false;
       } finally {
         if (request === listRequest.current && remoteIdRef.current === remoteId) setBusy(false);
@@ -136,7 +137,7 @@ export function useFilerDirectory({
         const home = remoteId ? await api.sftpHome(remoteId) : await api.localHome();
         if (!cancelled) await load(home);
       } catch (e) {
-        if (!cancelled) setError(String(e));
+        if (!cancelled) setError(errorText(e));
       }
     })();
     return () => {

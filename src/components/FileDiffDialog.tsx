@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { errorText } from "../errorInfo";
 import * as api from "../api";
 import { FileDiffView } from "./FileDiffView";
 import { useStableCallback } from "../useStableCallback";
@@ -33,7 +34,7 @@ export function FileDiffDialog({ sessionId, local, remote, active, onClose }: {
     }).catch((e) => {
       if (!disposed && pending.current === requestId) {
         pending.current = null;
-        setError(String(e));
+        setError(errorText(e));
         setLoading(false);
       }
     });
@@ -51,7 +52,7 @@ export function FileDiffDialog({ sessionId, local, remote, active, onClose }: {
     pending.current = null;
     setLoading(false);
     setError(t("diff.cancelled"));
-    if (id) void api.cancelFileDiff(id).catch((e) => setError(t("diff.cancelFailed", { error: String(e) })));
+    if (id) void api.cancelFileDiff(id).catch((e) => setError(t("diff.cancelFailed", { error: errorText(e) })));
   };
   const status = loading ? t("diff.readingFiles")
     : result?.status === "identical" ? t("diff.identical")

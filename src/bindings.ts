@@ -416,10 +416,54 @@ export type AppData_Serialize = {
 };
 
 /**
- *  A flat, display-oriented error. Every failure that crosses the IPC boundary
- *  becomes a plain string, which is all the frontend can act on anyway.
+ *  A failure that can cross the IPC boundary: the human-readable `message`
+ *  plus the machine-readable fields the UI and the diagnostics log act on.
+ * 
+ *  `Display` is the message alone, so anything that formats the error (the
+ *  diagnostics log, tests, `format!`) shows what a user would read, while the
+ *  front end receives `{ code, message, operation?, requestId? }`.
  */
-export type AppError = string;
+export type AppError = AppError_Serialize | AppError_Deserialize;
+
+/**
+ *  A failure that can cross the IPC boundary: the human-readable `message`
+ *  plus the machine-readable fields the UI and the diagnostics log act on.
+ * 
+ *  `Display` is the message alone, so anything that formats the error (the
+ *  diagnostics log, tests, `format!`) shows what a user would read, while the
+ *  front end receives `{ code, message, operation?, requestId? }`.
+ */
+export type AppError_Deserialize = {
+	code: ErrorCode,
+	message: string,
+	/**
+	 *  The operation that was running when this error was raised, e.g.
+	 *  `open_session`; attached at the command boundary by `Request::finish`.
+	 */
+	operation: string | null,
+	/**  The diagnostics request id correlating this failure's log lines. */
+	requestId: string | null,
+};
+
+/**
+ *  A failure that can cross the IPC boundary: the human-readable `message`
+ *  plus the machine-readable fields the UI and the diagnostics log act on.
+ * 
+ *  `Display` is the message alone, so anything that formats the error (the
+ *  diagnostics log, tests, `format!`) shows what a user would read, while the
+ *  front end receives `{ code, message, operation?, requestId? }`.
+ */
+export type AppError_Serialize = {
+	code: ErrorCode,
+	message: string,
+	/**
+	 *  The operation that was running when this error was raised, e.g.
+	 *  `open_session`; attached at the command boundary by `Request::finish`.
+	 */
+	operation?: string | null,
+	/**  The diagnostics request id correlating this failure's log lines. */
+	requestId?: string | null,
+};
 
 /**
  *  Opaque frontend preferences: keep their JSON wire shape without reflecting
@@ -529,6 +573,49 @@ export type DirListing = {
 };
 
 export type Direction = "local" | "remote";
+
+/**
+ *  The machine-readable half of [`AppError`]: what went wrong, as a stable
+ *  identifier the front end can switch on without parsing a translated
+ *  message. Serialized in camelCase (`"connectionFailed"`).
+ * 
+ *  `unknown` is the honest answer wherever a failure has no category yet —
+ *  including every legacy string error, which the TypeScript side normalizes
+ *  into this code before any UI sees it.
+ */
+export type ErrorCode = 
+/**  No more specific code applies; the message is the whole story. */
+"unknown" | 
+/**
+ *  Dialling, the SSH handshake or a channel on an established connection
+ *  failed.
+ */
+"connectionFailed" | 
+/**
+ *  An operation ran past its deadline: a dial, a handshake, a subsystem
+ *  request or a remote command.
+ */
+"timeout" | 
+/**
+ *  The server refused the credentials, or accepted them only far enough
+ *  to ask for a factor EdgeTerm cannot supply here.
+ */
+"authenticationDenied" | 
+/**  The user cancelled the operation. */
+"cancelled" | 
+/**  A file or directory operation was refused for permissions. */
+"permissionDenied" | 
+/**  The peer does not speak anything this client can or will speak. */
+"unsupported" | 
+/**  The OS credential store is unavailable (see the credential store). */
+"credentialStoreUnavailable" | 
+/**
+ *  A write reached the server, but whether it landed could not be
+ *  confirmed.
+ */
+"remoteWriteUncertain" | 
+/**  The input the operation was given is invalid or incomplete. */
+"invalidInput";
 
 export type Failure = {
 	code: string,

@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
+import { errorText } from "../../errorInfo";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as api from "../../api";
 import type { Translate } from "../../i18n";
@@ -83,7 +84,7 @@ export function useSenderLibrary({
         setEditing(null);
       })
       .catch((error) => {
-        if (!cancelled) setStatus(t("sender.loadFailed", { error: String(error) }));
+        if (!cancelled) setStatus(t("sender.loadFailed", { error: errorText(error) }));
       })
       .finally(() => {
         if (!cancelled) setCommandsLoading(false);
@@ -176,7 +177,7 @@ export function useSenderLibrary({
         }),
       );
     } catch (error) {
-      setStatus(t("sender.saveFailed", { error: String(error) }));
+      setStatus(t("sender.saveFailed", { error: errorText(error) }));
     } finally {
       setLibraryBusy(false);
     }
@@ -202,7 +203,7 @@ export function useSenderLibrary({
       );
       if (editing?.command.id === saved.id) setEnding(saved.ending);
     } catch (error) {
-      setStatus(t("sender.updateFailed", { error: String(error) }));
+      setStatus(t("sender.updateFailed", { error: errorText(error) }));
     } finally {
       setLibraryBusy(false);
     }
@@ -255,7 +256,7 @@ export function useSenderLibrary({
       setTagName("");
       setStatus(t("sender.updated", { scope: labelOf(saved.scope) }));
     } catch (error) {
-      setStatus(t("sender.updateFailed", { error: String(error) }));
+      setStatus(t("sender.updateFailed", { error: errorText(error) }));
     } finally {
       setLibraryBusy(false);
     }
@@ -271,7 +272,7 @@ export function useSenderLibrary({
       if (contextMenu?.commandId === id) setContextMenu(null);
       if (editing?.command.id === id) cancelEdit();
     } catch (error) {
-      setStatus(t("sender.deleteFailed", { error: String(error) }));
+      setStatus(t("sender.deleteFailed", { error: errorText(error) }));
     } finally {
       setLibraryBusy(false);
     }

@@ -1,4 +1,5 @@
 import type { useFileSelection } from "../../useFileSelection";
+import { errorText } from "../../errorInfo";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import { type MouseEvent } from "react";
 import * as api from "../../api";
@@ -98,7 +99,7 @@ export function useFilerActions({
         await load(destination);
       if (remoteIdRef.current === sessionId && pathRef.current === destination && failed.length) {
         selection.replace(failed.map(({ entry }) => entry.path));
-        setError(failed.map(({ entry, error }) => `${entry.name}: ${String(error)}`).join("\n"));
+        setError(failed.map(({ entry, error }) => `${entry.name}: ${errorText(error)}`).join("\n"));
       }
     } finally {
       if (remoteIdRef.current === sessionId && pathRef.current === destination) {
@@ -109,7 +110,7 @@ export function useFilerActions({
   };
 
   const copyText = (text: string) => {
-    navigator.clipboard.writeText(text).catch((e) => setError(String(e)));
+    navigator.clipboard.writeText(text).catch((e) => setError(errorText(e)));
   };
 
   /**
@@ -145,7 +146,7 @@ export function useFilerActions({
       await api.openLocalPath(target, app);
       if (app) setOpenWithApps(rememberOpenWithApp(app));
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   };
 
@@ -167,7 +168,7 @@ export function useFilerActions({
     if (IS_WINDOWS) {
       const target = await localCopyOf(entry);
       if (!target) return;
-      await api.openWithDialog(target).catch((e) => setError(String(e)));
+      await api.openWithDialog(target).catch((e) => setError(errorText(e)));
       return;
     }
     const picked = await openDialog({
@@ -333,7 +334,7 @@ export function useFilerActions({
       }
       await load(path);
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   };
 

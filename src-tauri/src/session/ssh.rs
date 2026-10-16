@@ -29,7 +29,7 @@ use super::{
     SftpResponse,
 };
 use crate::diagnostics::Request;
-use crate::error::{AppError, Result};
+use crate::error::{key_code, russh_code, AppError, Result};
 use crate::model::{
     AuthKind, AuthPromptField, DirListing, FileEntry, HostKeyChange, LegacyAlgorithms,
     SessionProfile,

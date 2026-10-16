@@ -1,4 +1,5 @@
 import { getVersion } from "@tauri-apps/api/app";
+import { errorText } from "./errorInfo";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
@@ -28,8 +29,7 @@ export type UpdaterState =
   | { phase: "error"; message: string };
 
 function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
+  return errorText(error);
 }
 
 export function useUpdater() {

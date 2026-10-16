@@ -122,7 +122,9 @@ pub(crate) fn connect_controlled(
     // data port selected by PASV/EPSV.
     stream.set_passive_nat_workaround(true);
     stream.login(&username, &password).map_err(|error| {
-        AppError::new(format!("ftp authentication failed for {username}: {error}"))
+        AppError::authentication_denied(format!(
+            "ftp authentication failed for {username}: {error}"
+        ))
     })?;
     stream.transfer_type(FileType::Binary).map_err(|error| {
         AppError::new(format!("ftp server refused binary transfer mode: {error}"))

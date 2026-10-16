@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { errorText, isCancelled } from "./errorInfo";
 import * as api from "./api";
 import { useFileTransfers } from "./fileTransfers";
 import { t } from "./i18n";
@@ -52,11 +53,11 @@ export function useFilerDownloads(sessionId: string | null, onError: (error: str
       // Subscription snapshots drive the transfer center even after this panel unmounts.
       void api.transferFiles(source, items, () => {}, transfer).catch((error) => {
         const status = useFileTransfers.getState().jobs[transfer]?.status;
-        if (status === "cancelled" || status === "cancelling" || String(error).includes("transfer cancelled")) return;
-        useStore.getState().setError(t("filer.downloadFailed", { name, error: String(error) }), source);
+        if (status === "cancelled" || status === "cancelling" || isCancelled(error)) return;
+        useStore.getState().setError(t("filer.downloadFailed", { name, error: errorText(error) }), source);
       });
     } catch (error) {
-      if (current()) report(String(error));
+      if (current()) report(errorText(error));
     } finally {
       choosingRef.current = false;
       if (alive.current) setChoosing(false);

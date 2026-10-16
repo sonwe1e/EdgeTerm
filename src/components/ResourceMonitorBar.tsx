@@ -1,4 +1,5 @@
 import { memo, useEffect, useRef, useState } from "react";
+import { errorText } from "../errorInfo";
 import * as api from "../api";
 import { readMonitorSettings, saveMonitorSettings } from "../monitorSettings";
 import { transferBytes } from "../fileTransfers";
@@ -35,7 +36,7 @@ export const ResourceMonitorBar = memo(function ResourceMonitorBar({tab}:{tab:Ta
       try {
         const found=await api.sampleResources(id,requestId);
         if (!stopped && pending.current===requestId) {setSample(found);setError(null);unsupported=found.status==="unsupported";}
-      } catch(e) {if(!stopped && pending.current===requestId)setError(String(e));}
+      } catch(e) {if(!stopped && pending.current===requestId)setError(errorText(e));}
       finally {
         if(pending.current===requestId)pending.current=null;
         if(!stopped && !unsupported)timer=setTimeout(poll,Math.max(100,settings.intervalSeconds*1000-(performance.now()-started)));

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { errorText } from "../errorInfo";
 import * as api from "../api";
 import { startTransferSubscription, transferActive, transferBytes, useFileTransfers } from "../fileTransfers";
 import { Icon } from "./icons";
@@ -43,7 +44,7 @@ export function TransferCenter() {
     let stop: (() => void) | undefined;
     void startTransferSubscription().then((unlisten) => {
       if (disposed) unlisten(); else stop = unlisten;
-    }).catch((e) => { if (!disposed) setError(String(e)); });
+    }).catch((e) => { if (!disposed) setError(errorText(e)); });
     return () => { disposed = true; stop?.(); };
   }, []);
   const refreshRecoverable = useCallback(() => {
@@ -55,7 +56,7 @@ export function TransferCenter() {
           setRecoveryError(null);
         }
       })
-      .catch((e) => { if (alive.current && recoveryRequest.current === request) setRecoveryError(String(e)); });
+      .catch((e) => { if (alive.current && recoveryRequest.current === request) setRecoveryError(errorText(e)); });
   }, []);
   useEffect(() => {
     if (open) refreshRecoverable();
@@ -67,7 +68,7 @@ export function TransferCenter() {
       // transfer:changed subscription like any other job.
       await api.recoverTransfer(id, () => {});
       if (alive.current) refreshRecoverable();
-    } catch (e) { if (alive.current) setRecoveryError(String(e)); }
+    } catch (e) { if (alive.current) setRecoveryError(errorText(e)); }
   };
   const forget = async (id: string) => {
     setRecoveryError(null);
@@ -76,7 +77,7 @@ export function TransferCenter() {
       if (!alive.current) return;
       ++recoveryRequest.current;
       setRecoverable((found) => found.filter((entry) => entry.id !== id));
-    } catch (e) { if (alive.current) setRecoveryError(String(e)); }
+    } catch (e) { if (alive.current) setRecoveryError(errorText(e)); }
   };
   const jobs = useMemo(() => Object.values(records).sort((a, b) => b.id.localeCompare(a.id)),[records]);
   const jobRows = useMemo(() => jobs.map((job) => ({ ...job, path: job.id })),[jobs]);
@@ -87,7 +88,7 @@ export function TransferCenter() {
     try {
       await api.controlFileTransfer(id, action);
       if (action === "dismiss") useFileTransfers.getState().remove(id);
-    } catch (e) { setError(String(e)); }
+    } catch (e) { setError(errorText(e)); }
   };
   return <div className="transfer-center" ref={container}>
     <button className="status-item" type="button" aria-expanded={open} onClick={() => setOpen(!open)} title={t("transfer.backgroundTitle")}>

@@ -1,4 +1,5 @@
 import { useRef, useState, type FormEvent } from "react";
+import { errorText } from "../errorInfo";
 
 import * as api from "../api";
 import type { AuthPrompt } from "../types";
@@ -46,7 +47,7 @@ export function AuthPromptDialog({ prompt, onDone }: Props) {
     } catch (e) {
       // The round timed out or the session went away: there is nothing left
       // to answer, so let the user dismiss it.
-      setError(String(e));
+      setError(errorText(e));
       setBusy(false);
     }
   };

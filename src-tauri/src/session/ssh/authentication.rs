@@ -71,14 +71,16 @@ pub(super) async fn authenticate<H: client::Handler>(
                 .private_key_path
                 .clone()
                 .filter(|p| !p.is_empty())
-                .ok_or_else(|| AppError::new("public-key auth needs a private key path"))?;
+                .ok_or_else(|| {
+                    AppError::invalid_input("public-key auth needs a private key path")
+                })?;
             let path = expand_tilde(&path);
             let passphrase = profile.passphrase.as_deref().filter(|p| !p.is_empty());
             // The path is diagnosis material; its contents and passphrase are
             // never logged.
             request.info("auth", format!("loading the private key from {path}"));
             let key = russh::keys::load_secret_key(&path, passphrase)
-                .map_err(|e| AppError::new(format!("cannot load {path}: {e}")))?;
+                .map_err(|e| AppError::coded(key_code(&e), format!("cannot load {path}: {e}")))?;
             // Modern servers reject SHA-1 RSA signatures; ask the server which
             // hash it accepts before signing.
             let hash = handle.best_supported_rsa_hash().await?.flatten();
@@ -208,7 +210,7 @@ pub(super) async fn password_method<H: client::Handler>(
                 "auth",
                 format!("the password prompt for {username} was cancelled"),
             );
-            return Err(AppError::new(format!(
+            return Err(AppError::cancelled(format!(
                 "authentication for {username} was cancelled"
             )));
         };
@@ -263,12 +265,12 @@ pub(super) fn auth_failure(
             .map(|method| <&str>::from(method))
             .collect::<Vec<_>>()
             .join(", ");
-        return AppError::new(format!(
+        return AppError::authentication_denied(format!(
             "the {method} was accepted for {username}, but the server requires another \
              authentication factor and offers only: {remaining}"
         ));
     }
-    AppError::new(match auth {
+    AppError::authentication_denied(match auth {
         AuthKind::Agent => format!("no identity in the ssh agent was accepted for {username}"),
         _ => format!("authentication failed for {username} ({method})"),
     })
@@ -298,7 +300,7 @@ pub(super) async fn keyboard_interactive<H: client::Handler>(
         let (name, instructions, prompts) = match reply {
             KeyboardInteractiveAuthResponse::Success => return Ok(()),
             KeyboardInteractiveAuthResponse::Failure { .. } => {
-                return Err(AppError::new(format!(
+                return Err(AppError::authentication_denied(format!(
                     "the server rejected the verification response for {username}"
                 )));
             }
@@ -349,7 +351,7 @@ pub(super) async fn keyboard_interactive<H: client::Handler>(
                             round + 1
                         ),
                     );
-                    return Err(AppError::new(format!(
+                    return Err(AppError::cancelled(format!(
                         "authentication for {username} was cancelled"
                     )));
                 }
@@ -359,7 +361,7 @@ pub(super) async fn keyboard_interactive<H: client::Handler>(
             .authenticate_keyboard_interactive_respond(answers)
             .await?;
     }
-    Err(AppError::new(format!(
+    Err(AppError::authentication_denied(format!(
         "the server asked {username} for more than {MAX_AUTH_ROUNDS} rounds of verification"
     )))
 }

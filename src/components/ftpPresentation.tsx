@@ -5,6 +5,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from "react";
+import { errorText } from "../errorInfo";
 import { sortFileEntries, toggleFileSort, type SortKey } from "../fileSort";
 import { type PaneSide } from "../paneDrop";
 import { useStore, type Tab } from "../store";
@@ -351,7 +352,7 @@ export function formatDate(seconds: number | null): string {
 }
 
 export function friendlyFtpError(error: unknown): string {
-  const message = String(error);
+  const message = errorText(error);
   if (message.includes("Response contains an invalid syntax")) {
     return "The FTP server returned a legacy or non-UTF-8 directory listing. Reconnect after updating EdgeTerm and try again.";
   }

@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
+import { errorText } from "../errorInfo";
 import * as api from "../api";
 import type { FileEntry } from "../types";
 import { friendlyFtpError, joinLocal, joinRemote } from "./ftpPresentation";
@@ -75,7 +76,7 @@ export function useFtpActions({
       await api.localMkdir(joinLocal(localPath, name));
       await loadLocal(localPath);
     } catch (error) {
-      setLocalError(String(error));
+      setLocalError(errorText(error));
     }
   };
 
@@ -88,7 +89,7 @@ export function useFtpActions({
       await api.localRename(selectedLocal.path, joinLocal(localPath, name));
       await loadLocal(localPath);
     } catch (error) {
-      setLocalError(String(error));
+      setLocalError(errorText(error));
     }
   };
 
@@ -101,7 +102,7 @@ export function useFtpActions({
       await api.localRemove(selectedLocal.path, selectedLocal.isDir);
       await loadLocal(localPath);
     } catch (error) {
-      setLocalError(String(error));
+      setLocalError(errorText(error));
     }
   };
 

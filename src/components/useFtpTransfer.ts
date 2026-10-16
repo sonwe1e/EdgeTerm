@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
+import { errorText, isCancelled } from "../errorInfo";
 import { useRef, useState } from "react";
 import * as api from "../api";
 import { useFileTransfers } from "../fileTransfers";
@@ -140,8 +141,8 @@ export function useFtpTransfer({
         current
           ? {
               ...current,
-              status: String(error).includes("transfer cancelled") ? "cancelled" : "error",
-              message: String(error),
+              status: isCancelled(error) ? "cancelled" : "error",
+              message: errorText(error),
             }
           : current,
       );
@@ -157,7 +158,7 @@ export function useFtpTransfer({
     try {
       existing = (await entriesAt("local", destDir)).find((entry) => entry.name === incoming.name);
     } catch (error) {
-      setLocalError(String(error));
+      setLocalError(errorText(error));
       return;
     }
     if (!mayLand("local", incoming, existing)) return;
@@ -198,8 +199,8 @@ export function useFtpTransfer({
         current
           ? {
               ...current,
-              status: String(error).includes("transfer cancelled") ? "cancelled" : "error",
-              message: String(error),
+              status: isCancelled(error) ? "cancelled" : "error",
+              message: errorText(error),
             }
           : current,
       );

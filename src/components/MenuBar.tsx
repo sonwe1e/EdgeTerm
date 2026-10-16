@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { errorText } from "../errorInfo";
 import {
   getCurrentWindow,
   type Window as TauriWindow,
@@ -567,7 +568,7 @@ export function MenuBar(props: Props) {
                 setStatus(t("status.commandHistoryCleared"));
               } catch (error) {
                 setStatus(
-                  t("status.commandHistoryClearFailed", { error: String(error) }),
+                  t("status.commandHistoryClearFailed", { error: errorText(error) }),
                 );
               }
             })();
@@ -651,7 +652,7 @@ export function MenuBar(props: Props) {
           label: t("menu.tutorial"),
           action: () => {
             void openUrl(TUTORIAL_URL).catch((error) => {
-              setStatus(t("status.tutorialOpenFailed", { error: String(error) }));
+              setStatus(t("status.tutorialOpenFailed", { error: errorText(error) }));
             });
           },
         },

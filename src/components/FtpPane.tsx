@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { errorText } from "../errorInfo";
 import { FileBrowser, Props, ToolButton, formatBytes, remoteParent } from "./ftpPresentation";
 import { useFtpActions } from "./useFtpActions";
 import { useFtpDirectory } from "./useFtpDirectory";
@@ -319,7 +320,7 @@ export function FtpPane({ tab, active }: Props) {
                             transferId.current!,
                             transferJob?.status === "paused" ? "resume" : "pause",
                           )
-                          .catch((e) => setRemoteError(String(e)))
+                          .catch((e) => setRemoteError(errorText(e)))
                       }
                     >
                       {transferJob?.status === "paused" ? "Resume" : "Pause"}
@@ -329,7 +330,7 @@ export function FtpPane({ tab, active }: Props) {
                       onClick={() =>
                         void api
                           .cancelTransfer(transferId.current!)
-                          .catch((e) => setRemoteError(String(e)))
+                          .catch((e) => setRemoteError(errorText(e)))
                       }
                     >
                       Cancel

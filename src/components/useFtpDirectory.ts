@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { errorText } from "../errorInfo";
 import * as api from "../api";
 import type { Tab } from "../store";
 import type { FileEntry } from "../types";
@@ -63,7 +64,7 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
       setLocalSelected(null);
     } catch (error) {
       if (request !== localRequest.current) return;
-      setLocalError(String(error));
+      setLocalError(errorText(error));
     } finally {
       if (request === localRequest.current) setLocalLoading(false);
     }

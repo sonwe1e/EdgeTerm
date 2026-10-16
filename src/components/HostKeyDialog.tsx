@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { errorText } from "../errorInfo";
 
 import type { HostKeyPrompt } from "../store";
 import { useT } from "../useT";
@@ -39,7 +40,7 @@ export function HostKeyDialog({ prompt, onAccept, onCancel }: Props) {
       // On success the prompt is cleared and this dialog unmounts.
       await onAccept();
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
       setBusy(false);
     }
   };

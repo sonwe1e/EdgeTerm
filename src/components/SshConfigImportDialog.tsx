@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { errorText } from "../errorInfo";
 
 import * as api from "../api";
 import { t as translateMsg } from "../i18n";
@@ -138,7 +139,7 @@ export function SshConfigImportDialog({ preview, onClose }: Props) {
       setStatus(status);
       onClose();
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
       setBusy(false);
     }
   };

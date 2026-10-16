@@ -102,7 +102,7 @@ impl SharedTransport {
         });
         receive
             .await
-            .map_err(|_| AppError::new("remote listener request ended"))?
+            .map_err(|_| AppError::connection_failed("remote listener request ended"))?
     }
     pub async fn transfer_channel(&self) -> Result<russh::ChannelStream<Msg>> {
         let mut channel = self.owned_command_channel().await?;
@@ -121,9 +121,13 @@ impl SharedTransport {
         .await;
         if answer != Ok(true) {
             let _ = channel.close().await;
-            return Err(AppError::new(
-                "the server did not accept the sftp subsystem",
-            ));
+            return Err(match answer {
+                Err(_) => AppError::timeout(format!(
+                    "the server did not answer the sftp subsystem request within {} s",
+                    SFTP_SUBSYSTEM_TIMEOUT.as_secs()
+                )),
+                _ => AppError::connection_failed("the server did not accept the sftp subsystem"),
+            });
         }
         Ok(channel.into_stream())
     }
@@ -150,7 +154,7 @@ impl SharedTransport {
         });
         receive
             .await
-            .map_err(|_| AppError::new("SSH command channel request ended"))?
+            .map_err(|_| AppError::connection_failed("SSH command channel request ended"))?
     }
 
     /// The transports that could only connect on legacy algorithms — this
@@ -163,12 +167,12 @@ impl SharedTransport {
     /// be the same login, and the transport has to still be up.
     pub(super) fn carries(&self, profile: &SessionProfile) -> Result<()> {
         if self.endpoint != Endpoint::of(profile) {
-            return Err(AppError::new(
+            return Err(AppError::invalid_input(
                 "that session is connected to a different server",
             ));
         }
         if self.is_closed() {
-            return Err(AppError::new(
+            return Err(AppError::connection_failed(
                 "the connection this session would share has gone down",
             ));
         }
@@ -467,13 +471,13 @@ pub(super) async fn connect_hop(
         .host
         .clone()
         .filter(|h| !h.is_empty())
-        .ok_or_else(|| AppError::new("session is missing a host"))?;
+        .ok_or_else(|| AppError::invalid_input("session is missing a host"))?;
     let port = profile.port.unwrap_or(22);
     let username = profile
         .username
         .clone()
         .filter(|u| !u.is_empty())
-        .ok_or_else(|| AppError::new("session is missing a username"))?;
+        .ok_or_else(|| AppError::invalid_input("session is missing a username"))?;
     let address = format!("{host}:{port}");
     match via {
         None => request.info("connect", format!("dialling {address}")),
@@ -505,7 +509,7 @@ pub(super) async fn connect_hop(
                 .channel_open_direct_tcpip(host.as_str(), u32::from(port), "127.0.0.1", 0)
                 .await
                 .map_err(|e| {
-                    AppError::new(format!(
+                    AppError::connection_failed(format!(
                         "jump host {} cannot reach {host}:{port}: {e}",
                         via.label
                     ))
@@ -544,10 +548,13 @@ pub(super) async fn connect_hop(
                     }
                 },
             );
-            return Err(AppError::new(match via {
-                None => format!("cannot reach {host}:{port}: {reason}"),
-                Some(via) => format!("cannot reach {host}:{port} via {}: {reason}", via.label),
-            }));
+            return Err(AppError::coded(
+                russh_code(&e),
+                match via {
+                    None => format!("cannot reach {host}:{port}: {reason}"),
+                    Some(via) => format!("cannot reach {host}:{port} via {}: {reason}", via.label),
+                },
+            ));
         }
     };
 

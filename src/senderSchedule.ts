@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { errorText } from "./errorInfo";
 
 import { SENDER_REPEAT_KEY } from "./persistKeys";
 import { newStopSignal, sendUnits, type StopSignal } from "./senderSend";
@@ -137,7 +138,7 @@ export function startSchedule(spec: ScheduleSpec): string | null {
   try {
     units = buildUnits(spec.text, spec.ending);
   } catch (error) {
-    return String(error);
+    return errorText(error);
   }
   if (units.length === 0) return "enter a command before repeating it";
   if (spec.target === "current" && !spec.sessionId) return "no session selected";

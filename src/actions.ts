@@ -1,4 +1,5 @@
 import * as api from "./api";
+import { errorText } from "./errorInfo";
 import { fontStack } from "./fonts";
 import { commandHistory } from "./history";
 import { t } from "./i18n";
@@ -239,7 +240,7 @@ export async function disconnectSession(id: string): Promise<void> {
 
   let failure: string | null = null;
   await api.closeSession(id).catch((e) => {
-    failure = String(e);
+    failure = errorText(e);
   });
 
   const store = useStore.getState();
@@ -369,7 +370,7 @@ async function connectSession(
     }
     return id;
   } catch (e) {
-    const message = String(e);
+    const message = errorText(e);
     if (useStore.getState().tabs.some((tab) => tab.info.id === id)) {
       failSession(id, message);
     } else {
@@ -494,6 +495,6 @@ export async function revealCwdInFiler(id: string): Promise<void> {
   } catch (error) {
     useStore
       .getState()
-      .setError(t("status.filerError", { error: String(error) }), id);
+      .setError(t("status.filerError", { error: errorText(error) }), id);
   }
 }

@@ -1,4 +1,5 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
+import { errorText } from "../../errorInfo";
 import * as api from "../../api";
 import type { Translate } from "../../i18n";
 import { open as openDialog } from "../../nativeDialog";
@@ -118,7 +119,7 @@ export function useFilerUpload({
     } catch (e) {
       finishTransfer("error");
       await load(destination);
-      setError(String(e));
+      setError(errorText(e));
     } finally {
       busyRef.current = false;
       setBusy(false);

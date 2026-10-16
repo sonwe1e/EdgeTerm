@@ -241,13 +241,17 @@ pub(super) async fn ensure_sftp(
         // A plain `Channel` is not closed on drop; left open, every retry
         // would leave another session channel on the server.
         let _ = channel.close().await;
-        return Err(AppError::new(
-            "the server does not offer the sftp subsystem",
-        ));
+        return Err(match answer {
+            Err(_) => AppError::timeout(format!(
+                "the server did not answer the sftp subsystem request within {} s",
+                SFTP_SUBSYSTEM_TIMEOUT.as_secs()
+            )),
+            _ => AppError::connection_failed("the server does not offer the sftp subsystem"),
+        });
     }
-    let session = SftpSession::new(channel.into_stream())
-        .await
-        .map_err(|e| AppError::new(format!("the server refused the sftp subsystem: {e}")))?;
+    let session = SftpSession::new(channel.into_stream()).await.map_err(|e| {
+        AppError::connection_failed(format!("the server refused the sftp subsystem: {e}"))
+    })?;
     let session = Arc::new(session);
     *slot = Some(session.clone());
     Ok(session)

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { errorText } from "../../errorInfo";
 import type { Translate } from "../../i18n";
 import {
   clampRepeat,
@@ -91,7 +92,7 @@ export function useSenderSend({ tabs, activeId, setStatus, t, activeTab }: Optio
         );
       }
     } catch (e) {
-      setStatus(t("sender.error", { error: String(e) }));
+      setStatus(t("sender.error", { error: errorText(e) }));
     } finally {
       stopRef.current = null;
       setRunning(false);

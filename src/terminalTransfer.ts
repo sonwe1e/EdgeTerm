@@ -1,4 +1,5 @@
 import * as api from "./api";
+import { errorText } from "./errorInfo";
 
 /**
  * Pieces shared by the terminal file-transfer protocols (ZMODEM in
@@ -166,8 +167,7 @@ export function formatBytes(bytes: number): string {
 }
 
 export function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
+  return errorText(error);
 }
 
 export function withTimeout<T>(

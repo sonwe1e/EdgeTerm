@@ -226,8 +226,14 @@ impl Request {
     }
 
     /// Logs the operation's `end` event — duration and outcome — and returns
-    /// the result unchanged.
+    /// the result, with the operation name and request id attached to any
+    /// error so the failing call itself carries its diagnostics correlation.
     pub fn finish<T>(&self, result: Result<T>) -> Result<T> {
+        let result = result.map_err(|error| {
+            error
+                .with_operation(self.operation)
+                .with_request_id(self.id())
+        });
         let duration_ms = self.started.elapsed().as_millis() as u64;
         match &result {
             Ok(_) => tracing::info!(
@@ -355,6 +361,22 @@ mod tests {
             .iter()
             .all(|name| name.starts_with(FILE_NAME)));
         std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn finish_attaches_the_operation_and_request_id_to_failures() {
+        let request = Request::begin("open_session");
+        let error = request
+            .finish::<()>(Err(AppError::new("boom")))
+            .unwrap_err();
+        assert_eq!(error.operation.as_deref(), Some("open_session"));
+        assert_eq!(error.request_id.as_deref(), Some(request.id()));
+
+        // An operation an inner layer set wins over the command's own name.
+        let inner = AppError::new("boom").with_operation("write_remote_key");
+        let error = request.finish::<()>(Err(inner)).unwrap_err();
+        assert_eq!(error.operation.as_deref(), Some("write_remote_key"));
+        assert_eq!(error.request_id.as_deref(), Some(request.id()));
     }
 
     #[test]

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { errorText } from "../errorInfo";
 
 import { useT } from "../useT";
 import { ModalDialog } from "./ModalDialog";
@@ -47,7 +48,7 @@ export function GroupNameDialog({
     try {
       await onSubmit(trimmed);
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
       setBusy(false);
     }
   };

@@ -156,7 +156,7 @@ async fn open_session_inner(
                         session::ssh::connect_on(transport, &profile)
                             .await
                             .map_err(|e| {
-                                AppError::new(format!(
+                                AppError::connection_failed(format!(
                                     "the server refused another channel on this connection \
                                      (sshd limits them with MaxSessions, 10 by default): {e}"
                                 ))

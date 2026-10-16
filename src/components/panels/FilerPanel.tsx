@@ -8,6 +8,7 @@ import {
   type MouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { errorText } from "../../errorInfo";
 import {
   FilerEntryIcon,
   FilerRow,
@@ -557,7 +558,7 @@ function FilerPanelBase() {
                           id,
                           backgroundTransfer?.status === "paused" ? "resume" : "pause",
                         )
-                        .catch((e) => setError(String(e)));
+                        .catch((e) => setError(errorText(e)));
                   }}
                   title={
                     backgroundTransfer?.status === "paused" ? t("filer.resume") : t("filer.pause")

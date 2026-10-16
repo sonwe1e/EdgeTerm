@@ -1,4 +1,5 @@
 import { memo, useEffect, useRef, useState } from "react";
+import { errorText } from "../errorInfo";
 import * as api from "../api";
 import { transferBytes } from "../fileTransfers";
 import { useActiveTab } from "../store";
@@ -39,7 +40,7 @@ export const ForwardCenter = memo(function ForwardCenter() {
     let disposed = false; let timer: ReturnType<typeof setTimeout> | undefined;
     const poll = async () => {
       try { const found = await api.listPortForwards(); if (!disposed) setRows(found); }
-      catch (e) { if (!disposed) setError(String(e)); }
+      catch (e) { if (!disposed) setError(errorText(e)); }
       finally { if (!disposed) timer = setTimeout(poll, open ? 1000 : 4000); }
     };
     void poll(); return () => { disposed = true; clearTimeout(timer); };
@@ -53,7 +54,7 @@ export const ForwardCenter = memo(function ForwardCenter() {
       try {
         const found = await api.discoverListeningPorts(owner, requestId);
         if (!disposed && scan.current === requestId) { setDiscovery(found); setScanError(null); unsupported = found.status === "unsupported"; }
-      } catch (e) { if (!disposed && scan.current === requestId) setScanError(String(e)); }
+      } catch (e) { if (!disposed && scan.current === requestId) setScanError(errorText(e)); }
       finally {
         if (!disposed && scan.current === requestId) { scan.current = null; setScanning(false); }
         if (!disposed && !unsupported) timer = setTimeout(poll, 5000);
@@ -65,7 +66,7 @@ export const ForwardCenter = memo(function ForwardCenter() {
   const perform = async (operation: () => Promise<unknown>) => {
     const version = ++mutation.current; setBusy(true); setError(null);
     try { await operation(); if (mounted.current && mutation.current === version) setRefresh((value) => value + 1); }
-    catch (e) { if (mounted.current && mutation.current === version) setError(String(e)); }
+    catch (e) { if (mounted.current && mutation.current === version) setError(errorText(e)); }
     finally { if (mounted.current && mutation.current === version) setBusy(false); }
   };
   const count = rows.filter(active).length;

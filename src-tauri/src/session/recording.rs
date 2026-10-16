@@ -83,10 +83,10 @@ impl Recorder {
             .unwrap_or_else(default_dir);
         let now = Local::now();
         fs::create_dir_all(&dir).map_err(|e| {
-            AppError::new(format!(
-                "cannot create the recording folder {}: {e}",
-                dir.display()
-            ))
+            AppError::from_io(
+                format!("cannot create the recording folder {}", dir.display()),
+                &e,
+            )
         })?;
         let (path, file) = create_file(&dir, &file_stem(&profile.name), &now)?;
 
@@ -342,7 +342,7 @@ mod tests {
         let error = Recorder::start("s2", &profile, Box::new(|_, _| {}))
             .err()
             .expect("a file in the folder's place must fail");
-        assert!(error.0.contains("recording folder"), "{error}");
+        assert!(error.message.contains("recording folder"), "{error}");
         fs::remove_dir_all(&dir).unwrap();
 
         // Blank means the default folder; only the choice of path is checked

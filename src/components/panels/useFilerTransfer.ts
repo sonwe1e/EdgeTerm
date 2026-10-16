@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
+import { errorText, isCancelled } from "../../errorInfo";
 import { useEffect, useRef, useState } from "react";
 import * as api from "../../api";
 import { useFileTransfers } from "../../fileTransfers";
@@ -132,11 +133,11 @@ export function useFilerTransfer({ setError, t }: Options) {
   /** Ends the transfer a rejection belongs to: cancelled, or failed with `e`. */
   const failTransfer = (e: unknown, id = visibleTransferId.current) => {
     if (!ownsTransfer(id)) return;
-    if (activeTransfer.current?.cancelled || String(e).includes("transfer cancelled")) {
+    if (activeTransfer.current?.cancelled || isCancelled(e)) {
       finishTransfer("cancelled");
       return;
     }
-    setError(String(e));
+    setError(errorText(e));
     finishTransfer("error");
   };
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { errorText } from "../errorInfo";
 
 import { openSession } from "../actions";
 import * as api from "../api";
@@ -408,7 +409,7 @@ export function SessionDialog({ initial, onClose }: Props) {
       });
       if (typeof picked === "string") patch({ recordDir: picked });
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   };
 
@@ -580,7 +581,7 @@ export function SessionDialog({ initial, onClose }: Props) {
       await upsertProfile(candidate);
       onClose();
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -608,7 +609,7 @@ export function SessionDialog({ initial, onClose }: Props) {
       if (id) onClose();
       else setError(useStore.getState().error ?? t("session.connectionFailed"));
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }
