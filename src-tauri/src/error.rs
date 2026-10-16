@@ -22,6 +22,10 @@ pub enum ErrorCode {
     /// The server refused the credentials, or accepted them only far enough
     /// to ask for a factor EdgeTerm cannot supply here.
     AuthenticationDenied,
+    /// The credential was accepted, but the account needs another
+    /// authentication factor and the operation runs where none can be asked
+    /// for — a public-key check, which only ever sends the key.
+    AdditionalFactorRequired,
     /// The user cancelled the operation.
     Cancelled,
     /// A file or directory operation was refused for permissions.

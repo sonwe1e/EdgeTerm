@@ -4,11 +4,14 @@ use russh::keys::PublicKey;
 
 use super::{
     auth_failure, authenticate, client_config, connect, connect_on, connect_sftp, ensure_sftp,
-    handshake_failure, legacy_choices, open_shell, replace_host_key, run_sftp, saved_answer,
-    verify_host_key, AuthPrompter, Client, ConnectOutcome, Endpoint, Handle, HandshakeError, Hops,
-    LegacyRecord, Prompt, Request, SftpConnectOutcome, SftpRequest, SftpResponse, SharedTransport,
-    SshTransports, SAVED_PASSWORD_REJECTED,
+    handshake_failure, key_check, key_only_verdict, legacy_choices, open_shell, replace_host_key,
+    run_sftp, saved_answer, verify_host_key, AuthFlow, AuthPrompter, Client, ConnectOutcome,
+    Endpoint, Handle, HandshakeError, Hops, KeyCheck, KeyCheckOutcome, LegacyRecord, Prompt,
+    Request, SftpConnectOutcome, SftpRequest, SftpResponse, SharedTransport, SshTransports,
+    SAVED_PASSWORD_REJECTED,
 };
+use crate::error::{AppError, ErrorCode};
+use crate::file_transfer::Control;
 use crate::model::{AuthKind, AuthPromptField, SessionKind, SessionProfile};
 use crate::session::auth::CannedAnswers;
 use parking_lot::Mutex;
@@ -431,6 +434,7 @@ async fn transport_to(address: SocketAddr, known_hosts: &Path) -> Arc<SharedTran
         "ops",
         "127.0.0.1",
         &AuthPrompter::canned(&user),
+        AuthFlow::Interactive,
         &request(),
     )
     .await
@@ -1131,6 +1135,7 @@ async fn a_public_key_that_needs_a_verification_code_finishes_the_login() {
         "alice",
         "mfa.example:22",
         &AuthPrompter::canned(&user),
+        AuthFlow::Interactive,
         &request(),
     )
     .await
@@ -1179,6 +1184,7 @@ async fn a_server_that_asks_for_nothing_logs_straight_in() {
         "root",
         "192.168.1.1:22",
         &AuthPrompter::canned(&user),
+        AuthFlow::Interactive,
         &request(),
     )
     .await
@@ -1212,6 +1218,7 @@ async fn a_refused_public_key_is_reported_as_a_refused_key() {
         "alice",
         "mfa.example:22",
         &AuthPrompter::canned(&user),
+        AuthFlow::Interactive,
         &request(),
     )
     .await
@@ -1285,6 +1292,7 @@ async fn a_password_round_is_answered_from_the_profile_but_a_code_is_not() {
         "alice",
         "mfa.example:22",
         &AuthPrompter::canned(&user),
+        AuthFlow::Interactive,
         &request(),
     )
     .await
@@ -1340,6 +1348,7 @@ async fn a_password_only_server_gets_the_password_asked_for() {
         "alice",
         "switch.example:22",
         &AuthPrompter::canned(&user),
+        AuthFlow::Interactive,
         &request(),
     )
     .await
@@ -1376,6 +1385,7 @@ async fn asking_for_a_password_stops_after_three_tries_or_a_cancel() {
         "alice",
         "switch.example:22",
         &AuthPrompter::canned(&user),
+        AuthFlow::Interactive,
         &request(),
     )
     .await
@@ -1398,6 +1408,7 @@ async fn asking_for_a_password_stops_after_three_tries_or_a_cancel() {
         "alice",
         "switch.example:22",
         &AuthPrompter::canned(&user),
+        AuthFlow::Interactive,
         &request(),
     )
     .await
@@ -1427,6 +1438,7 @@ async fn a_refused_saved_password_is_asked_for_rather_than_resent() {
         "alice",
         "switch.example:22",
         &AuthPrompter::canned(&user),
+        AuthFlow::Interactive,
         &request(),
     )
     .await
@@ -1466,6 +1478,7 @@ async fn a_refused_saved_password_is_not_resent_to_keyboard_interactive() {
         "alice",
         "pam.example:22",
         &AuthPrompter::canned(&user),
+        AuthFlow::Interactive,
         &request(),
     )
     .await
@@ -1503,6 +1516,7 @@ async fn with_nothing_saved_a_pam_server_asks_for_the_password_itself() {
         "alice",
         "pam.example:22",
         &AuthPrompter::canned(&user),
+        AuthFlow::Interactive,
         &request(),
     )
     .await
@@ -1773,6 +1787,8 @@ impl russh_sftp::server::Handler for SftpFiles {
         attrs: FileAttributes,
     ) -> Result<SftpHandle, Self::Error> {
         let local = self.local(&filename);
+        // Only the unix branch below can use a mode; Windows has none.
+        #[cfg_attr(not(unix), allow(unused_variables))]
         let requested_mode = attrs.permissions;
         let mut options = std::fs::OpenOptions::new();
         options.read(pflags.contains(OpenFlags::READ));
@@ -2061,5 +2077,704 @@ async fn a_symlinked_authorized_keys_is_refused() {
         std::fs::read_to_string(&target).expect("target"),
         "# elsewhere\n",
         "the symlink's target is untouched"
+    );
+}
+
+// --- public-key checks ----------------------------------------------------
+
+/// What a check fixture answers one connection's public-key attempt with.
+#[derive(Clone, Copy)]
+enum KeyReply {
+    /// Any public key is accepted.
+    Accept,
+    /// The key is refused with password and keyboard-interactive suggested —
+    /// and both *would* be accepted on this connection, so a client that
+    /// fell back would get in and the record would show it.
+    FallbackWouldWork,
+    /// No answer until the client's own deadline passes.
+    Stall(Duration),
+}
+
+/// The methods a refused "none" lists for a connection a check runs on.
+const CHECK_OFFERED: &[MethodKind] = &[
+    MethodKind::PublicKey,
+    MethodKind::Password,
+    MethodKind::KeyboardInteractive,
+];
+const KBD_ONLY: &[MethodKind] = &[MethodKind::KeyboardInteractive];
+
+/// An SSH server for public-key checks: connection `0` is the session's own
+/// login (accepted without authentication when `open`), later connections
+/// answer the check's key attempt with `reply`, and every attempt is
+/// recorded as `"<connection>:<method>"` so a test can prove what was never
+/// tried.
+#[derive(Clone)]
+struct CheckServer {
+    index: usize,
+    open: bool,
+    reply: KeyReply,
+    password: bool,
+    record: Arc<Mutex<Vec<String>>>,
+}
+
+impl russh::server::Handler for CheckServer {
+    type Error = russh::Error;
+
+    async fn auth_none(&mut self, _user: &str) -> std::result::Result<Auth, Self::Error> {
+        self.record.lock().push(format!("{}:none", self.index));
+        if self.open {
+            return Ok(Auth::Accept);
+        }
+        Ok(Auth::Reject {
+            proceed_with_methods: Some(MethodSet::from(CHECK_OFFERED)),
+            partial_success: false,
+        })
+    }
+
+    async fn auth_publickey(
+        &mut self,
+        _user: &str,
+        _key: &PublicKey,
+    ) -> std::result::Result<Auth, Self::Error> {
+        self.record.lock().push(format!("{}:publickey", self.index));
+        Ok(match self.reply {
+            KeyReply::Accept => Auth::Accept,
+            KeyReply::FallbackWouldWork => Auth::Reject {
+                proceed_with_methods: Some(MethodSet::from(CHECK_OFFERED)),
+                partial_success: false,
+            },
+            KeyReply::Stall(period) => {
+                tokio::time::sleep(period).await;
+                Auth::Accept
+            }
+        })
+    }
+
+    async fn auth_password(
+        &mut self,
+        _user: &str,
+        password: &str,
+    ) -> std::result::Result<Auth, Self::Error> {
+        self.record
+            .lock()
+            .push(format!("{}:password:{password}", self.index));
+        Ok(if self.password {
+            Auth::Accept
+        } else {
+            Auth::reject()
+        })
+    }
+
+    async fn auth_keyboard_interactive<'a>(
+        &'a mut self,
+        _user: &str,
+        _submethods: &str,
+        _response: Option<Response<'a>>,
+    ) -> std::result::Result<Auth, Self::Error> {
+        self.record
+            .lock()
+            .push(format!("{}:keyboard-interactive", self.index));
+        Ok(Auth::Accept)
+    }
+}
+
+/// A jump host for check tests: no authentication, and every `direct-tcpip`
+/// request is dialled and proxied, the way a `ProxyJump` host's is.
+#[derive(Clone)]
+struct JumpServer {
+    record: Arc<Mutex<Vec<String>>>,
+    proxied: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl russh::server::Handler for JumpServer {
+    type Error = russh::Error;
+
+    async fn auth_none(&mut self, _user: &str) -> std::result::Result<Auth, Self::Error> {
+        self.record.lock().push("none".into());
+        Ok(Auth::Accept)
+    }
+
+    async fn channel_open_direct_tcpip(
+        &mut self,
+        channel: russh::Channel<russh::server::Msg>,
+        host: &str,
+        port: u32,
+        _originator_address: &str,
+        _originator_port: u32,
+        reply: russh::server::ChannelOpenHandle,
+        _session: &mut russh::server::Session,
+    ) -> std::result::Result<(), Self::Error> {
+        let mut target = tokio::net::TcpStream::connect((host, port as u16)).await?;
+        reply.accept().await;
+        self.proxied
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let mut stream = channel.into_stream();
+        tokio::spawn(async move {
+            let _ = tokio::io::copy_bidirectional(&mut stream, &mut target).await;
+        });
+        Ok(())
+    }
+}
+
+/// Runs a server on a loopback port that accepts `count` connections one
+/// after another, handing connection `index` the handler `handler(index)`
+/// returns — the shape a test needs when the first connection is the
+/// session's login and the next one is the check's.
+async fn serve_each<H, F>(count: usize, mut handler: F, preferred: Preferred) -> SocketAddr
+where
+    H: russh::server::Handler + Send + 'static,
+    F: FnMut(usize) -> H + Send + 'static,
+{
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let address = listener.local_addr().expect("local address");
+    let config = Arc::new(russh::server::Config {
+        keys: vec![test_key(1)],
+        auth_rejection_time: Duration::ZERO,
+        preferred,
+        ..Default::default()
+    });
+    tokio::spawn(async move {
+        for index in 0..count {
+            let (stream, _) = listener.accept().await.expect("accept");
+            let server = handler(index);
+            let config = config.clone();
+            tokio::spawn(async move {
+                if let Ok(session) = russh::server::run_stream(config, stream, server).await {
+                    let _ = session.await;
+                }
+            });
+        }
+    });
+    address
+}
+
+/// The profile a check runs: the session's endpoint, public-key auth and the
+/// key under test.
+fn check_profile(address: SocketAddr, key: &SecretKeyFile) -> SessionProfile {
+    let mut profile = profile_for(address);
+    profile.auth = Some(AuthKind::PublicKey);
+    profile.private_key_path = Some(key.path());
+    profile
+}
+
+/// Logs a session in through `jump` to `target` the way a `ProxyJump`
+/// session is opened: the target's handshake runs inside a `direct-tcpip`
+/// channel of the jump, and the live transport keeps the jump as its hop.
+async fn transport_through(
+    jump: SocketAddr,
+    target: SocketAddr,
+    known_hosts: &Path,
+) -> Arc<SharedTransport> {
+    let forwards = Arc::new(crate::port_forward::ForwardRoutes::default());
+    let client = |at: SocketAddr| Client {
+        forwards: forwards.clone(),
+        host: at.ip().to_string(),
+        port: at.port(),
+        legacy: LegacyRecord::default(),
+        known_hosts: Some(known_hosts.to_path_buf()),
+    };
+    let user = Mutex::new(CannedAnswers::default());
+    let mut jump_handle = client::connect(Arc::new(client_config()), jump, client(jump))
+        .await
+        .expect("jump handshake");
+    authenticate(
+        &mut jump_handle,
+        &profile_for(jump),
+        "ops",
+        "127.0.0.1",
+        &AuthPrompter::canned(&user),
+        AuthFlow::Interactive,
+        &request(),
+    )
+    .await
+    .expect("the jump host lets the session in");
+    let tunnel = jump_handle
+        .channel_open_direct_tcpip(
+            target.ip().to_string(),
+            u32::from(target.port()),
+            "127.0.0.1",
+            0,
+        )
+        .await
+        .expect("direct-tcpip to the target");
+    let mut handle = client::connect_stream(
+        Arc::new(client_config()),
+        tunnel.into_stream(),
+        client(target),
+    )
+    .await
+    .expect("target handshake");
+    authenticate(
+        &mut handle,
+        &profile_for(target),
+        "ops",
+        "127.0.0.1",
+        &AuthPrompter::canned(&user),
+        AuthFlow::Interactive,
+        &request(),
+    )
+    .await
+    .expect("the target lets the session in");
+    Arc::new(SharedTransport {
+        forwards,
+        handle: Arc::new(handle),
+        hops: Some(Hops(vec![(jump_handle, jump.to_string())])),
+        legacy: Vec::new(),
+        endpoint: Endpoint::of(&profile_for(target)),
+    })
+}
+
+#[tokio::test]
+async fn a_key_check_opens_its_own_connection_and_accepts_the_key() {
+    let file = KnownHosts::new();
+    let key = SecretKeyFile::new(&test_key(7));
+    let record = Arc::new(Mutex::new(Vec::new()));
+    // Connection 0 is the session's own login, accepted without
+    // authentication. The check's connection has to get in on the key, and a
+    // password would work there — so a fallback would succeed and be
+    // recorded.
+    let address = serve_each(
+        2,
+        {
+            let record = record.clone();
+            move |index| CheckServer {
+                index,
+                open: index == 0,
+                reply: KeyReply::Accept,
+                password: true,
+                record: record.clone(),
+            }
+        },
+        Preferred::default(),
+    )
+    .await;
+    let transport = transport_to(address, file.path()).await;
+
+    let check = key_check(
+        &transport,
+        &check_profile(address, &key),
+        &request(),
+        &Control::default(),
+        Duration::from_secs(5),
+        Some(file.path().to_path_buf()),
+    )
+    .await
+    .expect("the check itself does not fail");
+
+    assert_eq!(check.outcome, KeyCheckOutcome::Ready, "{}", check.message);
+    let entries = record.lock().clone();
+    assert_eq!(
+        entries,
+        ["0:none", "1:none", "1:publickey"],
+        "the key is checked on a connection of its own, after none is refused"
+    );
+    assert!(
+        !transport.is_closed(),
+        "the session's own connection is untouched"
+    );
+}
+
+#[tokio::test]
+async fn a_key_check_never_answers_a_server_that_offers_a_way_in() {
+    let file = KnownHosts::new();
+    let key = SecretKeyFile::new(&test_key(8));
+    let record = Arc::new(Mutex::new(Vec::new()));
+    let address = serve_each(
+        2,
+        {
+            let record = record.clone();
+            move |index| CheckServer {
+                index,
+                open: index == 0,
+                // The key is refused with a password and a keyboard-
+                // interactive prompt suggested, and both would be accepted:
+                // a client that fell back would report a login it never
+                // proved from the key.
+                reply: KeyReply::FallbackWouldWork,
+                password: true,
+                record: record.clone(),
+            }
+        },
+        Preferred::default(),
+    )
+    .await;
+    let transport = transport_to(address, file.path()).await;
+
+    let check = key_check(
+        &transport,
+        &check_profile(address, &key),
+        &request(),
+        &Control::default(),
+        Duration::from_secs(5),
+        Some(file.path().to_path_buf()),
+    )
+    .await
+    .expect("the check itself does not fail");
+
+    assert_eq!(check.outcome, KeyCheckOutcome::Denied, "{}", check.message);
+    let entries = record.lock().clone();
+    assert!(
+        !entries.iter().any(|entry| entry.contains("password")),
+        "a check never sends a password: {entries:?}"
+    );
+    assert!(
+        !entries
+            .iter()
+            .any(|entry| entry.contains("keyboard-interactive")),
+        "a check has nobody to answer a prompt: {entries:?}"
+    );
+}
+
+/// A real server's "your key is good, now the code" answer — the MFA shape
+/// `AuthenticationMethods publickey,keyboard-interactive` produces — is
+/// reported as itself instead of falling into keyboard-interactive, which a
+/// check has nobody to answer.
+///
+/// The verdict is pinned here rather than end to end: russh 0.62.5's server
+/// resets `partial_success` on the publickey path (its `encrypted.rs`), so no
+/// in-process fixture can put that answer on the wire.
+#[test]
+fn a_key_only_attempt_reports_an_accepted_key_that_still_needs_a_factor() {
+    let challenged = key_only_verdict("ops", &MethodSet::from(KBD_ONLY), true)
+        .expect_err("a factor is still missing");
+    assert_eq!(challenged.code, ErrorCode::AdditionalFactorRequired);
+
+    let refused = key_only_verdict("ops", &MethodSet::from(CHECK_OFFERED), false)
+        .expect_err("the key was refused");
+    assert_eq!(refused.code, ErrorCode::AuthenticationDenied);
+    assert!(
+        refused.to_string().contains("public key"),
+        "the refusal names the method: {refused}"
+    );
+}
+
+/// Every answer a check can end on has an outcome of its own, so the dialog
+/// never has to guess from a message.
+#[test]
+fn a_key_check_turns_each_answer_into_an_outcome() {
+    let cases = [
+        (
+            ErrorCode::AdditionalFactorRequired,
+            KeyCheckOutcome::AdditionalFactor,
+        ),
+        (ErrorCode::AuthenticationDenied, KeyCheckOutcome::Denied),
+        (ErrorCode::InvalidInput, KeyCheckOutcome::KeyUnusable),
+        (ErrorCode::PermissionDenied, KeyCheckOutcome::KeyUnusable),
+        (ErrorCode::Timeout, KeyCheckOutcome::Timeout),
+        (ErrorCode::Cancelled, KeyCheckOutcome::Cancelled),
+        (ErrorCode::ConnectionFailed, KeyCheckOutcome::Unreachable),
+        (ErrorCode::Unknown, KeyCheckOutcome::Unreachable),
+    ];
+    for (code, expected) in cases {
+        let check = KeyCheck::from_error(AppError::coded(code, "detail"));
+        assert_eq!(check.outcome, expected, "{code:?}");
+        assert_eq!(check.message, "detail");
+        assert!(check.change.is_none(), "{code:?}");
+    }
+}
+
+#[tokio::test]
+async fn a_key_check_reports_a_login_that_needs_no_authentication() {
+    let file = KnownHosts::new();
+    let key = SecretKeyFile::new(&test_key(12));
+    let record = Arc::new(Mutex::new(Vec::new()));
+    // Both connections accept "none": the server lets this login in without
+    // any credential, so the key is never sent and never proven.
+    let address = serve_each(
+        2,
+        {
+            let record = record.clone();
+            move |index| CheckServer {
+                index,
+                open: true,
+                reply: KeyReply::Accept,
+                password: false,
+                record: record.clone(),
+            }
+        },
+        Preferred::default(),
+    )
+    .await;
+    let transport = transport_to(address, file.path()).await;
+
+    let check = key_check(
+        &transport,
+        &check_profile(address, &key),
+        &request(),
+        &Control::default(),
+        Duration::from_secs(5),
+        Some(file.path().to_path_buf()),
+    )
+    .await
+    .expect("the check itself does not fail");
+
+    assert_eq!(
+        check.outcome,
+        KeyCheckOutcome::NotRequired,
+        "{}",
+        check.message
+    );
+    let entries = record.lock().clone();
+    assert_eq!(
+        entries,
+        ["0:none", "1:none"],
+        "a server that wants nothing never sees the key"
+    );
+}
+
+#[tokio::test]
+async fn a_key_check_refuses_a_profile_the_session_is_not_for() {
+    let file = KnownHosts::new();
+    let key = SecretKeyFile::new(&test_key(13));
+    let record = Arc::new(Mutex::new(Vec::new()));
+    let address = serve_each(
+        1,
+        {
+            let record = record.clone();
+            move |index| CheckServer {
+                index,
+                open: true,
+                reply: KeyReply::Accept,
+                password: false,
+                record: record.clone(),
+            }
+        },
+        Preferred::default(),
+    )
+    .await;
+    let transport = transport_to(address, file.path()).await;
+
+    let mut elsewhere = check_profile(address, &key);
+    elsewhere.host = Some("10.0.0.9".into());
+    let error = key_check(
+        &transport,
+        &elsewhere,
+        &request(),
+        &Control::default(),
+        Duration::from_secs(5),
+        Some(file.path().to_path_buf()),
+    )
+    .await
+    .expect_err("a profile for another server is never checked here");
+    assert!(error.to_string().contains("different server"), "{error}");
+
+    let entries = record.lock().clone();
+    assert_eq!(entries, ["0:none"], "no second connection was dialled");
+}
+
+#[tokio::test]
+async fn a_key_check_reports_a_changed_host_key_before_checking_the_key() {
+    let file = KnownHosts::new();
+    let key = SecretKeyFile::new(&test_key(14));
+    let record = Arc::new(Mutex::new(Vec::new()));
+    let address = serve_each(
+        2,
+        {
+            let record = record.clone();
+            move |index| CheckServer {
+                index,
+                open: index == 0,
+                reply: KeyReply::Accept,
+                password: false,
+                record: record.clone(),
+            }
+        },
+        Preferred::default(),
+    )
+    .await;
+    let transport = transport_to(address, file.path()).await;
+
+    // A scratch known_hosts holding a different key for the address, the
+    // way a reinstalled server looks to the check's dial.
+    let staged = KnownHosts::new();
+    staged.write(&format!(
+        "[{}]:{} {ED25519_B}\n",
+        address.ip(),
+        address.port()
+    ));
+
+    let check = key_check(
+        &transport,
+        &check_profile(address, &key),
+        &request(),
+        &Control::default(),
+        Duration::from_secs(5),
+        Some(staged.path().to_path_buf()),
+    )
+    .await
+    .expect("a changed host key is an outcome, not an error");
+
+    assert_eq!(
+        check.outcome,
+        KeyCheckOutcome::HostKeyChanged,
+        "{}",
+        check.message
+    );
+    assert!(
+        check.change.is_some(),
+        "the change is handed over for the user's decision"
+    );
+    let entries = record.lock().clone();
+    assert_eq!(
+        entries,
+        ["0:none"],
+        "the key is never sent to a host whose identity is in question"
+    );
+}
+
+#[tokio::test]
+async fn a_key_check_times_out_on_a_server_that_never_answers() {
+    let file = KnownHosts::new();
+    let key = SecretKeyFile::new(&test_key(15));
+    let address = serve_each(
+        2,
+        {
+            move |index| CheckServer {
+                index,
+                open: index == 0,
+                reply: KeyReply::Stall(Duration::from_secs(30)),
+                password: false,
+                record: Arc::new(Mutex::new(Vec::new())),
+            }
+        },
+        Preferred::default(),
+    )
+    .await;
+    let transport = transport_to(address, file.path()).await;
+
+    let check = key_check(
+        &transport,
+        &check_profile(address, &key),
+        &request(),
+        &Control::default(),
+        Duration::from_millis(300),
+        Some(file.path().to_path_buf()),
+    )
+    .await
+    .expect("the check itself does not fail");
+
+    assert_eq!(check.outcome, KeyCheckOutcome::Timeout, "{}", check.message);
+}
+
+#[tokio::test]
+async fn a_key_check_stops_when_it_is_cancelled() {
+    let file = KnownHosts::new();
+    let key = SecretKeyFile::new(&test_key(16));
+    let address = serve_each(
+        2,
+        {
+            move |index| CheckServer {
+                index,
+                open: index == 0,
+                reply: KeyReply::Stall(Duration::from_secs(30)),
+                password: false,
+                record: Arc::new(Mutex::new(Vec::new())),
+            }
+        },
+        Preferred::default(),
+    )
+    .await;
+    let transport = transport_to(address, file.path()).await;
+
+    let control = Arc::new(Control::default());
+    let running = tokio::spawn({
+        let transport = transport.clone();
+        let profile = check_profile(address, &key);
+        let control = control.clone();
+        let known_hosts = file.path().to_path_buf();
+        async move {
+            key_check(
+                &transport,
+                &profile,
+                &request(),
+                &control,
+                Duration::from_secs(30),
+                Some(known_hosts),
+            )
+            .await
+        }
+    });
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    control.set(2);
+
+    let check = running
+        .await
+        .expect("the task finishes")
+        .expect("the check itself does not fail");
+    assert_eq!(
+        check.outcome,
+        KeyCheckOutcome::Cancelled,
+        "{}",
+        check.message
+    );
+}
+
+#[tokio::test]
+async fn a_key_check_tunnels_through_the_sessions_own_jump_host() {
+    let file = KnownHosts::new();
+    let key = SecretKeyFile::new(&test_key(17));
+    let jump_record = Arc::new(Mutex::new(Vec::new()));
+    let proxied = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let target_record = Arc::new(Mutex::new(Vec::new()));
+    // The jump host takes the session's one connection; the target takes the
+    // session's login and then the check's own connection.
+    let jump = serve_each(
+        1,
+        {
+            let jump_record = jump_record.clone();
+            let proxied = proxied.clone();
+            move |_| JumpServer {
+                record: jump_record.clone(),
+                proxied: proxied.clone(),
+            }
+        },
+        Preferred::default(),
+    )
+    .await;
+    let target = serve_each(
+        2,
+        {
+            let target_record = target_record.clone();
+            move |index| CheckServer {
+                index,
+                open: index == 0,
+                reply: KeyReply::Accept,
+                password: false,
+                record: target_record.clone(),
+            }
+        },
+        Preferred::default(),
+    )
+    .await;
+
+    let transport = transport_through(jump, target, file.path()).await;
+    let check = key_check(
+        &transport,
+        &check_profile(target, &key),
+        &request(),
+        &Control::default(),
+        Duration::from_secs(5),
+        Some(file.path().to_path_buf()),
+    )
+    .await
+    .expect("the check itself does not fail");
+
+    assert_eq!(check.outcome, KeyCheckOutcome::Ready, "{}", check.message);
+    let logins = jump_record.lock().clone();
+    assert_eq!(
+        logins,
+        ["none"],
+        "the live hop is the path; the jump host is not authenticated again"
+    );
+    assert_eq!(
+        proxied.load(std::sync::atomic::Ordering::SeqCst),
+        2,
+        "the check's handshake rides the session's own hop"
+    );
+    let entries = target_record.lock().clone();
+    assert_eq!(
+        entries,
+        ["0:none", "1:none", "1:publickey"],
+        "the check is a fresh connection to the target"
     );
 }

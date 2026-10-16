@@ -10,6 +10,7 @@ mod file_promise;
 mod file_transfer;
 mod fonts;
 mod fs_local;
+mod key_check;
 mod model;
 mod port_forward;
 // Unix test builds compile it too: the detection is pure, and no CI job
@@ -373,6 +374,7 @@ pub fn run() {
             file_transfers: Default::default(),
             file_diffs: Default::default(),
             resource_monitor: Default::default(),
+            key_checks: Default::default(),
             port_forwards: Default::default(),
             ssh_transports: Default::default(),
         })
@@ -419,6 +421,8 @@ pub fn run() {
             commands::inspect_private_key,
             commands::generate_private_key,
             commands::install_public_key,
+            commands::verify_public_key_login,
+            commands::cancel_key_check,
             commands::open_session,
             commands::accept_host_key,
             commands::answer_auth_prompt,

@@ -2,6 +2,7 @@ use super::*;
 
 use crate::authorized_keys::{self, InstallOutcome, InstallReport, INSTALL_TIMEOUT};
 use crate::diagnostics::Request;
+use crate::session::ssh::KeyCheck;
 use crate::ssh_keys::KeySummary;
 use russh_sftp::client::SftpSession;
 
@@ -123,4 +124,53 @@ async fn install_public_key_inner(
         ),
     }
     Ok(report)
+}
+
+/// Checks that the profile's public key logs in by dialling the target on a
+/// fresh connection of its own — never on the session's connection, and never
+/// through the automatic pool — with the session's own jump path. The flow is
+/// public-key only: no password, no agent, no prompt, no fallback, and a
+/// server that wants more is reported rather than asked. The check ends on
+/// its own timeout, when `cancel_key_check` marks the request id, or when the
+/// session closes.
+#[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
+pub async fn verify_public_key_login(
+    state: State<'_, AppState>,
+    session_id: String,
+    request_id: String,
+    profile: SessionProfile,
+) -> Result<KeyCheck> {
+    let request = Request::begin("verify_public_key_login").with_session(&session_id);
+    let result =
+        verify_public_key_login_inner(&state, &session_id, &request_id, profile, &request).await;
+    request.finish(result)
+}
+
+async fn verify_public_key_login_inner(
+    state: &AppState,
+    session_id: &str,
+    request_id: &str,
+    profile: SessionProfile,
+    request: &Request,
+) -> Result<KeyCheck> {
+    // Register before looking the transport up: closing the session can then
+    // either stop this check or make it fail cleanly before it dials.
+    let checking = state.key_checks.begin(session_id, request_id)?;
+    let transport = state
+        .ssh_transports
+        .get(session_id)
+        .ok_or_else(|| AppError::new("the session is not connected over SSH any more"))?;
+    state
+        .key_checks
+        .check(checking, transport, profile, request)
+        .await
+}
+
+/// Stops the check running under `request_id`, if any. A Cancel that arrives
+/// before its request does is remembered, so a fast dialog still stops it.
+#[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
+pub fn cancel_key_check(state: State<'_, AppState>, request_id: String) {
+    state.key_checks.cancel(&request_id);
 }

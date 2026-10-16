@@ -48,6 +48,8 @@ fn export_bindings() {
             commands::inspect_private_key,
             commands::generate_private_key,
             commands::install_public_key,
+            commands::verify_public_key_login,
+            commands::cancel_key_check,
             commands::accept_host_key,
             commands::answer_auth_prompt,
             commands::close_session,

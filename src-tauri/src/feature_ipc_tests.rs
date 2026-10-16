@@ -60,6 +60,7 @@ async fn real_ssh_diff_monitor_and_forward_cross_tauri_ipc() {
         file_transfers: Default::default(),
         file_diffs: Default::default(),
         resource_monitor: Default::default(),
+        key_checks: Default::default(),
         port_forwards: Default::default(),
         ssh_transports: Default::default(),
     };

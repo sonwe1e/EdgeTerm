@@ -41,7 +41,7 @@ pub async fn connect_sftp(
     prompter: &AuthPrompter<'_>,
     request: &Request,
 ) -> Result<SftpConnectOutcome> {
-    match connect_handle(profile, jumps, prompter, request).await? {
+    match connect_handle(profile, jumps, prompter, Dial::session(), request).await? {
         HandleOutcome::Ready(Transport {
             forwards,
             handle,

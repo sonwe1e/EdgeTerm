@@ -351,12 +351,12 @@ impl SshTransports {
 /// `direct-tcpip` channel of the previous one, and dropping a hop's handle
 /// ends its russh session and with it everything tunnelled through it, so
 /// the hops live exactly as long as the session they carry and are torn
-/// down last hop first.
-pub(super) struct Hops(pub(super) Vec<Handle<Client>>);
+/// down last hop first. Each hop keeps its `host:port` for messages.
+pub(super) struct Hops(pub(super) Vec<(Handle<Client>, String)>);
 
 impl Hops {
     pub(super) async fn disconnect(self) {
-        for hop in self.0.into_iter().rev() {
+        for (hop, _) in self.0.into_iter().rev() {
             let _ = hop
                 .disconnect(russh::Disconnect::ByApplication, "", "en")
                 .await;
@@ -387,16 +387,40 @@ pub(super) enum HandleOutcome {
     HostKeyChanged(HostKeyChange),
 }
 
-/// One hop of a connection: its transport and the legacy algorithms it
-/// connected on, if any, or the host-key decision that stopped the chain
-/// there.
+/// One hop of a connection: its transport, the legacy algorithms it
+/// connected on, if any, what its authentication proved, or the host-key
+/// decision that stopped the chain there.
 pub(super) enum HopOutcome {
-    Ready(
-        Handle<Client>,
-        Option<LegacyAlgorithms>,
-        Arc<crate::port_forward::ForwardRoutes>,
-    ),
+    Ready {
+        handle: Handle<Client>,
+        legacy: Option<LegacyAlgorithms>,
+        forwards: Arc<crate::port_forward::ForwardRoutes>,
+        /// Distinguishes "the credentials got in" from "the server needed
+        /// none at all", which a public-key check reports as itself.
+        auth: AuthOutcome,
+    },
     HostKeyChanged(HostKeyChange),
+}
+
+/// How one dial authenticates and which host keys it checks: what every
+/// session uses, or the key-only shape of a public-key check. `known_hosts`
+/// overrides the user's own file (`None` in production); fixture tests point
+/// it at a scratch file so they never touch `~/.ssh/known_hosts`.
+#[derive(Clone, Copy)]
+pub(super) struct Dial<'a> {
+    pub(super) flow: AuthFlow,
+    pub(super) known_hosts: Option<&'a Path>,
+}
+
+impl Dial<'_> {
+    /// The dial a session uses: interactive authentication, the user's own
+    /// `known_hosts`.
+    pub(super) fn session() -> Dial<'static> {
+        Dial {
+            flow: AuthFlow::Interactive,
+            known_hosts: None,
+        }
+    }
 }
 
 /// Opens the transport and authenticates, applying the trust-on-first-use host
@@ -412,18 +436,23 @@ pub(super) async fn connect_handle(
     profile: &SessionProfile,
     jumps: &[SessionProfile],
     prompter: &AuthPrompter<'_>,
+    dial: Dial<'_>,
     request: &Request,
 ) -> Result<HandleOutcome> {
-    let mut hops: Vec<Handle<Client>> = Vec::with_capacity(jumps.len());
+    let mut hops: Vec<(Handle<Client>, String)> = Vec::with_capacity(jumps.len());
     let mut legacy = Vec::new();
     for (index, jump) in jumps.iter().enumerate() {
         let via = index.checked_sub(1).map(|previous| Via {
-            handle: &hops[previous],
+            handle: &hops[previous].0,
             label: jumps[previous].address(),
         });
-        match connect_hop(jump, via.as_ref(), prompter, request).await? {
-            HopOutcome::Ready(handle, weak, _) => {
-                hops.push(handle);
+        match connect_hop(jump, via.as_ref(), prompter, dial, request).await? {
+            HopOutcome::Ready {
+                handle,
+                legacy: weak,
+                ..
+            } => {
+                hops.push((handle, jump.address()));
                 legacy.extend(weak);
             }
             HopOutcome::HostKeyChanged(change) => {
@@ -432,11 +461,16 @@ pub(super) async fn connect_handle(
         }
     }
     let via = jumps.last().map(|jump| Via {
-        handle: hops.last().expect("one hop per jump host"),
+        handle: &hops.last().expect("one hop per jump host").0,
         label: jump.address(),
     });
-    match connect_hop(profile, via.as_ref(), prompter, request).await? {
-        HopOutcome::Ready(handle, weak, forwards) => {
+    match connect_hop(profile, via.as_ref(), prompter, dial, request).await? {
+        HopOutcome::Ready {
+            handle,
+            legacy: weak,
+            forwards,
+            ..
+        } => {
             legacy.extend(weak);
             Ok(HandleOutcome::Ready(Transport {
                 forwards,
@@ -465,6 +499,7 @@ pub(super) async fn connect_hop(
     profile: &SessionProfile,
     via: Option<&Via<'_>>,
     prompter: &AuthPrompter<'_>,
+    dial: Dial<'_>,
     request: &Request,
 ) -> Result<HopOutcome> {
     let host = profile
@@ -495,7 +530,7 @@ pub(super) async fn connect_hop(
         host: host.clone(),
         port,
         legacy: legacy.clone(),
-        known_hosts: None,
+        known_hosts: dial.known_hosts.map(Path::to_path_buf),
     };
 
     let connected = match via {
@@ -558,8 +593,24 @@ pub(super) async fn connect_hop(
         }
     };
 
-    authenticate(&mut handle, profile, &username, &address, prompter, request).await?;
-    request.info("auth", format!("authenticated {username}@{address}"));
+    let auth = authenticate(
+        &mut handle,
+        profile,
+        &username,
+        &address,
+        prompter,
+        dial.flow,
+        request,
+    )
+    .await?;
+    match auth {
+        AuthOutcome::Authenticated => {
+            request.info("auth", format!("authenticated {username}@{address}"))
+        }
+        // Already logged by `authenticate`; nothing the profile holds was
+        // needed, but the connection is open either way.
+        AuthOutcome::NoneRequired => {}
+    }
     let algorithms = legacy.get();
     if !algorithms.is_empty() {
         request.warn(
@@ -574,7 +625,12 @@ pub(super) async fn connect_hop(
         address: address.clone(),
         algorithms,
     });
-    Ok(HopOutcome::Ready(handle, weak, forwards))
+    Ok(HopOutcome::Ready {
+        handle,
+        legacy: weak,
+        forwards,
+        auth,
+    })
 }
 
 pub async fn connect(
@@ -588,7 +644,7 @@ pub async fn connect(
         handle,
         hops,
         legacy,
-    } = match connect_handle(profile, jumps, prompter, request).await? {
+    } = match connect_handle(profile, jumps, prompter, Dial::session(), request).await? {
         HandleOutcome::Ready(transport) => transport,
         HandleOutcome::HostKeyChanged(change) => {
             return Ok(ConnectOutcome::HostKeyChanged(change));
@@ -682,6 +738,7 @@ pub(crate) async fn test_transport(
         user,
         host,
         &AuthPrompter::canned(&answers),
+        AuthFlow::Interactive,
         &Request::begin("fixture"),
     )
     .await

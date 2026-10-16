@@ -91,6 +91,21 @@ export const commands = {
 	 */
 	installPublicKey: (sessionId: string, privateKeyPath: string, passphrase: string | null, comment: string | null) => __TAURI_INVOKE<InstallReport_Serialize>("install_public_key", { sessionId, privateKeyPath, passphrase, comment }),
 	/**
+	 *  Checks that the profile's public key logs in by dialling the target on a
+	 *  fresh connection of its own — never on the session's connection, and never
+	 *  through the automatic pool — with the session's own jump path. The flow is
+	 *  public-key only: no password, no agent, no prompt, no fallback, and a
+	 *  server that wants more is reported rather than asked. The check ends on
+	 *  its own timeout, when `cancel_key_check` marks the request id, or when the
+	 *  session closes.
+	 */
+	verifyPublicKeyLogin: (sessionId: string, requestId: string, profile: SessionProfile_Deserialize) => __TAURI_INVOKE<KeyCheck_Serialize>("verify_public_key_login", { sessionId, requestId, profile }),
+	/**
+	 *  Stops the check running under `request_id`, if any. A Cancel that arrives
+	 *  before its request does is remembered, so a fast dialog still stops it.
+	 */
+	cancelKeyCheck: (requestId: string) => __TAURI_INVOKE<void>("cancel_key_check", { requestId }),
+	/**
 	 *  Record the key a host now presents, replacing every `known_hosts` entry
 	 *  the file held for it, after the user accepted a reported `HostKeyChange`.
 	 */
@@ -665,6 +680,12 @@ export type ErrorCode =
  *  to ask for a factor EdgeTerm cannot supply here.
  */
 "authenticationDenied" | 
+/**
+ *  The credential was accepted, but the account needs another
+ *  authentication factor and the operation runs where none can be asked
+ *  for — a public-key check, which only ever sends the key.
+ */
+"additionalFactorRequired" | 
 /**  The user cancelled the operation. */
 "cancelled" | 
 /**  A file or directory operation was refused for permissions. */
@@ -836,6 +857,75 @@ export type InstallReport_Serialize = {
 	 *  [`InstallOutcome::PresentRestricted`].
 	 */
 	options?: string | null,
+};
+
+/**  A check's conclusion with the detail the dialog shows next to it. */
+export type KeyCheck = KeyCheck_Serialize | KeyCheck_Deserialize;
+
+/**
+ *  What one public-key check concluded, in the form the setup dialog
+ *  reports. Only [`KeyCheckOutcome::Ready`] proves the key alone logs in.
+ */
+export type KeyCheckOutcome = 
+/**  The server accepted the connection with the key, and nothing else. */
+"ready" | 
+/**
+ *  The key was accepted, but the account also needs another factor
+ *  (a one-time code, a push). A session can answer that interactively;
+ *  a check cannot, so the login is not proven to work from the key
+ *  alone.
+ */
+"additionalFactor" | 
+/**  The server refused the key. */
+"denied" | 
+/**
+ *  The key itself could not be used: unreadable, encrypted with a wrong
+ *  passphrase, or no key path in the profile at all. The server never
+ *  got to judge it.
+ */
+"keyUnusable" | 
+/**
+ *  The server accepts this login without any authentication, so the key
+ *  could not be exercised. Nothing needs to be configured.
+ */
+"notRequired" | 
+/**
+ *  The target could not be reached: the dial, the tunnel through the
+ *  session's jump hosts, or the handshake failed.
+ */
+"unreachable" | 
+/**  The check ran past its deadline. */
+"timeout" | 
+/**
+ *  The host presented a key that differs from the one on file. Nothing
+ *  was checked; the user decides on the host key first.
+ */
+"hostKeyChanged" | 
+/**  The check was cancelled, by the user or by closing the session. */
+"cancelled";
+
+/**  A check's conclusion with the detail the dialog shows next to it. */
+export type KeyCheck_Deserialize = {
+	outcome: KeyCheckOutcome,
+	/**  A human-readable line about this outcome; never a key or a secret. */
+	message: string,
+	/**
+	 *  The host-key decision to put to the user, when the outcome is
+	 *  `hostKeyChanged`.
+	 */
+	change: HostKeyChange | null,
+};
+
+/**  A check's conclusion with the detail the dialog shows next to it. */
+export type KeyCheck_Serialize = {
+	outcome: KeyCheckOutcome,
+	/**  A human-readable line about this outcome; never a key or a secret. */
+	message: string,
+	/**
+	 *  The host-key decision to put to the user, when the outcome is
+	 *  `hostKeyChanged`.
+	 */
+	change?: HostKeyChange | null,
 };
 
 /**

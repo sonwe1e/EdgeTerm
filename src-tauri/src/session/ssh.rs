@@ -47,5 +47,7 @@ mod transport;
 pub use transport::*;
 mod shell;
 pub use shell::*;
+mod verify;
+pub use verify::*;
 #[cfg(test)]
 mod tests;

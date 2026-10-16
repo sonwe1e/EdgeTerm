@@ -13,11 +13,36 @@ pub(super) const PASSWORD_ATTEMPTS: usize = 3;
 /// refused, so a password that was rotated elsewhere reads as the cause.
 pub(super) const SAVED_PASSWORD_REJECTED: &str = "The saved password was rejected.";
 
+/// How much of an authentication flow runs.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum AuthFlow {
+    /// The full flow a session uses: the profile's method, then the
+    /// keyboard-interactive rounds that answer a server asking for more —
+    /// which put questions to the user.
+    Interactive,
+    /// The shape a public-key check uses: the key and nothing else. No
+    /// password, no agent, no prompt, no fallback; a server that wants
+    /// another factor is reported, not asked.
+    PublicKeyOnly,
+}
+
+/// What one completed authentication proved.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum AuthOutcome {
+    /// The profile's own method got through, alone or after the factors a
+    /// session can answer.
+    Authenticated,
+    /// The server accepts this user without authentication; nothing the
+    /// profile holds was needed — or proved.
+    NoneRequired,
+}
+
 /// Authenticates one hop. The profile's own method goes first; a server that
 /// answers it with "not enough, continue with keyboard-interactive" — the
 /// shape every SSH MFA deployment takes, whether the second factor is a TOTP
 /// code, a push, or a menu — is then followed through `keyboard_interactive`,
-/// which asks the user for each round.
+/// which asks the user for each round. [`AuthFlow::PublicKeyOnly`] stops at
+/// the key instead.
 ///
 /// `address` is the `host:port` being authenticated against, which is a jump
 /// host for every hop but the last, so the user can see who is asking.
@@ -27,8 +52,9 @@ pub(super) async fn authenticate<H: client::Handler>(
     username: &str,
     address: &str,
     prompter: &AuthPrompter<'_>,
+    flow: AuthFlow,
     request: &Request,
-) -> Result<()> {
+) -> Result<AuthOutcome> {
     // Every SSH client opens with the "none" method: it is how the server is
     // asked which methods it will accept, and a server that requires no
     // authentication at all answers it with success instead of a method list.
@@ -42,10 +68,15 @@ pub(super) async fn authenticate<H: client::Handler>(
     } = handle.authenticate_none(username).await?
     else {
         request.info("auth", format!("{address} requires no authentication"));
-        return Ok(());
+        return Ok(AuthOutcome::NoneRequired);
     };
 
     let auth = profile.auth.unwrap_or_default();
+    if flow == AuthFlow::PublicKeyOnly && auth != AuthKind::PublicKey {
+        return Err(AppError::invalid_input(
+            "a public-key check only runs the public key method",
+        ));
+    }
     let password = profile
         .password
         .clone()
@@ -99,20 +130,56 @@ pub(super) async fn authenticate<H: client::Handler>(
         partial_success,
     } = result
     else {
-        return Ok(());
+        return Ok(AuthOutcome::Authenticated);
     };
+
+    if flow == AuthFlow::PublicKeyOnly {
+        return key_only_verdict(username, &remaining_methods, partial_success);
+    }
 
     if remaining_methods.contains(&MethodKind::KeyboardInteractive) {
         // Only a password not yet refused answers the server's password
         // question; see `saved_answer`.
-        return keyboard_interactive(handle, username, address, prompter, saved, note, request)
-            .await;
+        keyboard_interactive(handle, username, address, prompter, saved, note, request).await?;
+        return Ok(AuthOutcome::Authenticated);
     }
     Err(auth_failure(
         auth,
         username,
         partial_success,
         &remaining_methods,
+    ))
+}
+
+/// What a key-only attempt makes of a server's refusal. A key the server
+/// accepted as one factor, with another still required, is reported as
+/// itself: a session would answer the server's next question through
+/// keyboard-interactive, a check has nobody to ask. Anything else is an
+/// ordinary refusal of the key.
+///
+/// `partial_success` is what a real server sends for the MFA shape
+/// (`AuthenticationMethods publickey,keyboard-interactive`); russh's own
+/// server cannot present it to a fixture — it resets the flag on the
+/// publickey path — so this verdict is pinned by a unit test.
+pub(super) fn key_only_verdict(
+    username: &str,
+    remaining_methods: &MethodSet,
+    partial_success: bool,
+) -> Result<AuthOutcome> {
+    if partial_success {
+        return Err(AppError::coded(
+            crate::error::ErrorCode::AdditionalFactorRequired,
+            format!(
+                "the public key was accepted for {username}, but the server requires \
+                 another authentication factor"
+            ),
+        ));
+    }
+    Err(auth_failure(
+        AuthKind::PublicKey,
+        username,
+        false,
+        remaining_methods,
     ))
 }
 

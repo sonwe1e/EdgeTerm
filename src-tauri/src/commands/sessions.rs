@@ -308,6 +308,7 @@ pub fn close_session(state: State<'_, AppState>, id: String) -> Result<()> {
     state.file_transfers.forget(&id);
     state.file_diffs.close_session(&id);
     state.resource_monitor.close_session(&id);
+    state.key_checks.close_session(&id);
     state.port_forwards.close_session(&id);
     state.outputs.close_session(&id);
     // Nothing new may be opened on this session's connection once it is

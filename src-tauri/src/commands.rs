@@ -40,6 +40,7 @@ pub struct AppState {
     pub file_transfers: crate::file_transfer::Transfers,
     pub file_diffs: crate::file_diff::FileDiffs,
     pub resource_monitor: crate::resource_monitor::ResourceMonitor,
+    pub key_checks: crate::key_check::KeyChecks,
     pub port_forwards: crate::port_forward::Forwards,
     /// The authenticated SSH transports open sessions run on, so another
     /// session can be opened on one instead of authenticating again; see
