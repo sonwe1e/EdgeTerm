@@ -6,6 +6,9 @@ use crate::commands::{
     read_app_data, zmodem_create_file, zmodem_file_info, zmodem_finish_file, zmodem_read_chunk,
     zmodem_write_chunk,
 };
+use crate::credentials::{
+    legacy_envelope, test_support, CredentialStoreStatus, CredentialStoreStatusReason,
+};
 use crate::fs_local;
 use crate::model::{
     split_command_line, AppData, AuthKind, CommandScope, FileEntry, LineEnding, SavedCommand,
@@ -343,7 +346,7 @@ fn windows_shell_command_line_keeps_backslashes_and_single_quotes() {
 #[test]
 fn store_duplicates_profiles_with_their_credentials() {
     let dir = temp_dir("store-duplicate");
-    let store = Store::load_from(dir.join("sessions.json"));
+    let store = Store::load_from_test(dir.join("sessions.json"));
 
     let mut web = profile(SessionKind::Ssh);
     web.name = "web".into();
@@ -386,7 +389,7 @@ fn store_duplicates_profiles_with_their_credentials() {
 fn store_assigns_ids_and_round_trips_profiles() {
     let dir = temp_dir("store");
     let path = dir.join("sessions.json");
-    let store = Store::load_from(path.clone());
+    let store = Store::load_from_test(path.clone());
 
     let mut p = profile(SessionKind::Ssh);
     p.name = "serverx".into();
@@ -411,7 +414,7 @@ fn store_assigns_ids_and_round_trips_profiles() {
     );
 
     // A fresh store reads back what was persisted.
-    let reloaded = Store::load_from(path);
+    let reloaded = Store::load_from_test(path);
     assert_eq!(reloaded.list().len(), 1);
 
     store.delete(&saved.id).expect("delete");
@@ -423,7 +426,7 @@ fn store_assigns_ids_and_round_trips_profiles() {
 #[test]
 fn store_resolves_jump_host_chains_and_refuses_loops() {
     let dir = temp_dir("jump");
-    let store = Store::load_from(dir.join("sessions.json"));
+    let store = Store::load_from_test(dir.join("sessions.json"));
 
     let mut bastion = profile(SessionKind::Ssh);
     bastion.name = "bastion".into();
@@ -480,7 +483,7 @@ fn store_resolves_jump_host_chains_and_refuses_loops() {
 
     // The reference survives a restart, and a deleted jump host is reported
     // when the dependent session is opened rather than silently bypassed.
-    let reloaded = Store::load_from(dir.join("sessions.json"));
+    let reloaded = Store::load_from_test(dir.join("sessions.json"));
     let node = reloaded.get(&node.id).expect("get").expect("node");
     assert_eq!(node.jump_profile_id.as_deref(), Some(master.id.as_str()));
     reloaded.delete(&master.id).expect("delete master");
@@ -494,7 +497,7 @@ fn store_resolves_jump_host_chains_and_refuses_loops() {
 fn store_persists_sender_commands_across_restarts() {
     let dir = temp_dir("sender-commands");
     let path = dir.join("sessions.json");
-    let store = Store::load_from(path.clone());
+    let store = Store::load_from_test(path.clone());
 
     let saved = store
         .save_sender_command(SavedCommand {
@@ -514,12 +517,12 @@ fn store_persists_sender_commands_across_restarts() {
         .expect("update sender command");
     assert_eq!(store.list_sender_commands(), vec![updated.clone()]);
 
-    let reloaded = Store::load_from(path);
+    let reloaded = Store::load_from_test(path);
     assert_eq!(reloaded.list_sender_commands(), vec![updated]);
     reloaded
         .delete_sender_command(&saved.id)
         .expect("delete sender command");
-    assert!(Store::load_from(dir.join("sessions.json"))
+    assert!(Store::load_from_test(dir.join("sessions.json"))
         .list_sender_commands()
         .is_empty());
 
@@ -539,7 +542,7 @@ fn sender_commands_saved_with_a_format_still_load() {
             {"id":"b","name":"ls","text":"ls","format":"text","ending":"lf","scope":{"type":"kind","kind":"ssh"}}]"#,
     )
     .expect("write legacy file");
-    let commands = Store::load_from(dir.join("sessions.json")).list_sender_commands();
+    let commands = Store::load_from_test(dir.join("sessions.json")).list_sender_commands();
     assert_eq!(commands.len(), 2);
     assert_eq!(commands[0].text, "DE AD");
     assert_eq!(commands[0].ending, LineEnding::Crlf);
@@ -557,13 +560,13 @@ fn sender_commands_saved_with_a_format_still_load() {
 fn recording_settings_round_trip_and_default_to_off() {
     let dir = temp_dir("recording");
     let path = dir.join("sessions.json");
-    let store = Store::load_from(path.clone());
+    let store = Store::load_from_test(path.clone());
 
     let mut recorded = profile(SessionKind::Ssh);
     recorded.record = true;
     recorded.record_dir = Some("/tmp/rec".into());
     let recorded = store.save(recorded).expect("save");
-    let back = Store::load_from(path.clone())
+    let back = Store::load_from_test(path.clone())
         .get(&recorded.id)
         .expect("get")
         .expect("saved profile");
@@ -578,7 +581,7 @@ fn recording_settings_round_trip_and_default_to_off() {
     let json = std::fs::read_to_string(&path).expect("read sessions.json");
     assert_eq!(json.matches("\"record\"").count(), 1, "{json}");
     assert_eq!(json.matches("\"recordDir\"").count(), 1, "{json}");
-    let plain = Store::load_from(path)
+    let plain = Store::load_from_test(path)
         .get(&plain.id)
         .expect("get")
         .expect("plain profile");
@@ -609,7 +612,7 @@ fn scoped(name: &str, scope: CommandScope) -> SavedCommand {
 fn sender_command_scopes_fall_back_and_follow_their_targets() {
     let dir = temp_dir("scopes");
     let path = dir.join("sessions.json");
-    let store = Store::load_from(path.clone());
+    let store = Store::load_from_test(path.clone());
 
     // Files written before scopes existed load as global.
     let legacy: SavedCommand =
@@ -706,7 +709,7 @@ fn sender_command_scopes_fall_back_and_follow_their_targets() {
     assert!(ids(&store).contains(&dangling.id));
 
     // The removals were persisted.
-    let reloaded = Store::load_from(path);
+    let reloaded = Store::load_from_test(path);
     let remaining = ids(&reloaded);
     assert!(!remaining.contains(&on_ssh.id));
     assert!(!remaining.contains(&on_parent.id));
@@ -752,7 +755,7 @@ fn sender_command_scopes_fall_back_and_follow_their_targets() {
 #[test]
 fn store_snapshot_never_carries_credentials() {
     let dir = temp_dir("export");
-    let store = Store::load_from(dir.join("sessions.json"));
+    let store = Store::load_from_test(dir.join("sessions.json"));
 
     let mut ssh = profile(SessionKind::Ssh);
     ssh.auth = Some(AuthKind::Password);
@@ -802,7 +805,7 @@ fn store_snapshot_never_carries_credentials() {
 fn store_import_merges_by_id_and_drops_secrets_and_bad_links() {
     let dir = temp_dir("import");
     let path = dir.join("sessions.json");
-    let store = Store::load_from(path.clone());
+    let store = Store::load_from_test(path.clone());
 
     let mut local = profile(SessionKind::Ssh);
     local.name = "before".into();
@@ -934,7 +937,7 @@ fn store_import_merges_by_id_and_drops_secrets_and_bad_links() {
     assert_eq!(commands[1].name, "New");
 
     // Everything was persisted, and reopening is safe.
-    let reloaded = Store::load_from(path);
+    let reloaded = Store::load_from_test(path);
     assert_eq!(reloaded.list().len(), 4);
     assert_eq!(reloaded.list_groups().len(), 5);
     assert_eq!(reloaded.list_sender_commands().len(), 2);
@@ -945,7 +948,7 @@ fn store_import_merges_by_id_and_drops_secrets_and_bad_links() {
 #[test]
 fn store_import_refuses_foreign_or_newer_files() {
     let dir = temp_dir("import-refuse");
-    let store = Store::load_from(dir.join("sessions.json"));
+    let store = Store::load_from_test(dir.join("sessions.json"));
     let mut data = store.snapshot();
     data.app = "Other".into();
     assert!(store.import_data(data.clone()).is_err());
@@ -967,7 +970,7 @@ fn data_files_are_recognised_by_extension_and_contents() {
     assert!(!is_data_file_path(Path::new("backup.edgeterm.json")));
 
     let dir = temp_dir("data-file");
-    let store = Store::load_from(dir.join("sessions.json"));
+    let store = Store::load_from_test(dir.join("sessions.json"));
     let mut ssh = profile(SessionKind::Ssh);
     ssh.auth = Some(AuthKind::Password);
     ssh.password = Some("hunter2".into());
@@ -1007,7 +1010,7 @@ fn data_files_are_recognised_by_extension_and_contents() {
 fn store_merges_and_persists_command_history() {
     let dir = temp_dir("history");
     let path = dir.join("sessions.json");
-    let store = Store::load_from(path.clone());
+    let store = Store::load_from_test(path.clone());
 
     store.record_command("ls -la", "ssh:db:22").unwrap();
     store.record_command("ls -la", "ssh:db:22").unwrap();
@@ -1033,12 +1036,12 @@ fn store_merges_and_persists_command_history() {
         "trailing whitespace is trimmed before storing"
     );
 
-    let reloaded = Store::load_from(path.clone());
+    let reloaded = Store::load_from_test(path.clone());
     assert_eq!(reloaded.list_command_history().len(), 2);
 
     reloaded.record_command("ls -la", "shell:/bin/zsh").unwrap();
     reloaded.delete_command_history("ls -la").unwrap();
-    let remaining = Store::load_from(path).list_command_history();
+    let remaining = Store::load_from_test(path).list_command_history();
     assert_eq!(
         remaining
             .iter()
@@ -1058,7 +1061,7 @@ fn store_merges_and_persists_command_history() {
 fn store_persists_secrets_separately_for_restart_reconnects() {
     let dir = temp_dir("secrets");
     let path = dir.join("sessions.json");
-    let store = Store::load_from(path.clone());
+    let store = Store::load_from_test(path.clone());
 
     let mut p = profile(SessionKind::Ssh);
     p.host = Some("10.0.0.1".into());
@@ -1099,7 +1102,7 @@ fn store_persists_secrets_separately_for_restart_reconnects() {
 
     // A fresh Store instance hydrates the app-local credentials without using
     // the OS credential vault, which models reopening after a restart.
-    let reloaded = Store::load_from(path);
+    let reloaded = Store::load_from_test(path);
     assert_eq!(
         reloaded
             .get(&saved_password.id)
@@ -1127,7 +1130,7 @@ fn store_persists_secrets_separately_for_restart_reconnects() {
 fn store_persists_ftp_password_separately() {
     let dir = temp_dir("ftp-secrets");
     let path = dir.join("sessions.json");
-    let store = Store::load_from(path.clone());
+    let store = Store::load_from_test(path.clone());
 
     let mut ftp = profile(SessionKind::Ftp);
     ftp.name = "file-server".into();
@@ -1140,7 +1143,7 @@ fn store_persists_ftp_password_separately() {
     assert!(!raw.contains("ftp-secret"));
     assert!(saved.password.is_none());
 
-    let reloaded = Store::load_from(path);
+    let reloaded = Store::load_from_test(path);
     assert_eq!(
         reloaded
             .get(&saved.id)
@@ -1156,7 +1159,7 @@ fn store_persists_ftp_password_separately() {
 fn store_persists_sftp_secrets_like_ssh() {
     let dir = temp_dir("sftp-secrets");
     let path = dir.join("sessions.json");
-    let store = Store::load_from(path.clone());
+    let store = Store::load_from_test(path.clone());
 
     // SFTP rides an SSH transport, so it stores credentials by auth kind like
     // SSH: a password for password auth, a passphrase for public-key auth.
@@ -1181,7 +1184,7 @@ fn store_persists_sftp_secrets_like_ssh() {
     assert!(saved_password.password.is_none());
     assert!(saved_key.passphrase.is_none());
 
-    let reloaded = Store::load_from(path);
+    let reloaded = Store::load_from_test(path);
     assert_eq!(
         reloaded
             .get(&saved_password.id)
@@ -1207,7 +1210,7 @@ fn store_files_are_owner_readable_only() {
 
     let dir = temp_dir("perms");
     let path = dir.join("sessions.json");
-    let store = Store::load_from(path.clone());
+    let store = Store::load_from_test(path.clone());
     let mut saved = profile(SessionKind::Ssh);
     saved.password = Some("private".into());
     store.save(saved).expect("save");
@@ -1332,7 +1335,7 @@ async fn zmodem_file_io_uses_bounded_chunks_and_preserves_offsets() {
 fn store_round_trips_session_groups_and_profile_membership() {
     let dir = temp_dir("groups");
     let path = dir.join("sessions.json");
-    let store = Store::load_from(path.clone());
+    let store = Store::load_from_test(path.clone());
 
     let prod = store
         .save_group(group("  prod  ", SessionKind::Ssh, None))
@@ -1357,7 +1360,7 @@ fn store_round_trips_session_groups_and_profile_membership() {
     assert_eq!(stray.group_id, None);
 
     // Everything survives a reload from disk.
-    let reloaded = Store::load_from(path);
+    let reloaded = Store::load_from_test(path);
     let groups = reloaded.list_groups();
     assert_eq!(groups.len(), 2);
     assert!(groups
@@ -1382,7 +1385,7 @@ fn store_round_trips_session_groups_and_profile_membership() {
 fn ftp_and_sftp_share_one_group_namespace() {
     let dir = temp_dir("ftp-sftp-groups");
     let path = dir.join("sessions.json");
-    let store = Store::load_from(path.clone());
+    let store = Store::load_from_test(path.clone());
 
     // A group in the shared "(S)FTP" section is stored under the canonical FTP
     // kind; it holds servers of either protocol.
@@ -1409,7 +1412,7 @@ fn ftp_and_sftp_share_one_group_namespace() {
     assert_eq!(ssh.group_id, None);
 
     // Membership survives a reload from disk.
-    let reloaded = Store::load_from(path);
+    let reloaded = Store::load_from_test(path);
     let saved_sftp = reloaded
         .list()
         .into_iter()
@@ -1424,7 +1427,7 @@ fn ftp_and_sftp_share_one_group_namespace() {
 fn telnet_shares_the_ssh_groups_and_keeps_its_own_password() {
     let dir = temp_dir("telnet-groups");
     let path = dir.join("sessions.json");
-    let store = Store::load_from(path.clone());
+    let store = Store::load_from_test(path.clone());
 
     let site = store
         .save_group(group("site", SessionKind::Ssh, None))
@@ -1482,7 +1485,7 @@ fn telnet_shares_the_ssh_groups_and_keeps_its_own_password() {
         None
     );
 
-    let reloaded = Store::load_from(path);
+    let reloaded = Store::load_from_test(path);
     let persisted = reloaded
         .list()
         .into_iter()
@@ -1497,7 +1500,7 @@ fn telnet_shares_the_ssh_groups_and_keeps_its_own_password() {
 #[test]
 fn store_rejects_invalid_group_shapes() {
     let dir = temp_dir("groups-invalid");
-    let store = Store::load_from(dir.join("sessions.json"));
+    let store = Store::load_from_test(dir.join("sessions.json"));
 
     assert!(store
         .save_group(group("   ", SessionKind::Ssh, None))
@@ -1543,7 +1546,7 @@ fn store_rejects_invalid_group_shapes() {
 fn deleting_a_group_removes_everything_in_it() {
     let dir = temp_dir("groups-delete");
     let path = dir.join("sessions.json");
-    let store = Store::load_from(path.clone());
+    let store = Store::load_from_test(path.clone());
 
     let root = store
         .save_group(group("root", SessionKind::Ssh, None))
@@ -1630,7 +1633,7 @@ fn deleting_a_group_removes_everything_in_it() {
     // Deleting the top-level group empties the tree, and the result is what
     // a fresh process reads back.
     store.delete_group(&root.id).expect("delete root");
-    let reloaded = Store::load_from(path);
+    let reloaded = Store::load_from_test(path);
     assert!(reloaded.list_groups().is_empty());
     assert!(reloaded.list().is_empty());
     assert_eq!(
@@ -1669,7 +1672,7 @@ fn credentials_are_sealed_on_disk_and_readable_after_restart() {
     let credentials_path = dir.join("credentials.json");
     let read_credentials = || std::fs::read_to_string(&credentials_path).expect("credentials");
 
-    let store = Store::load_from(path.clone());
+    let store = Store::load_from_test(path.clone());
     let saved = store
         .save(password_profile("10.0.0.1", "s3cret"))
         .expect("save");
@@ -1685,7 +1688,7 @@ fn credentials_are_sealed_on_disk_and_readable_after_restart() {
     );
 
     // The same machine and account open it again without any prompt.
-    let reloaded = Store::load_from(path.clone());
+    let reloaded = Store::load_from_test(path.clone());
     assert_eq!(
         stored_password(&reloaded, &saved.id).as_deref(),
         Some("s3cret")
@@ -1702,7 +1705,7 @@ fn credentials_are_sealed_on_disk_and_readable_after_restart() {
         format!("{{\"{}\": {{\"password\": \"legacy\"}}}}", saved.id),
     )
     .expect("write legacy file");
-    let upgraded = Store::load_from(path.clone());
+    let upgraded = Store::load_from_test(path.clone());
     assert_eq!(
         stored_password(&upgraded, &saved.id).as_deref(),
         Some("legacy")
@@ -1716,14 +1719,289 @@ fn credentials_are_sealed_on_disk_and_readable_after_restart() {
         serde_json::from_str(&read_credentials()).expect("envelope json");
     envelope["salt"] = serde_json::Value::String(B64.encode([7u8; 16]));
     std::fs::write(&credentials_path, envelope.to_string()).expect("write foreign file");
-    let foreign = Store::load_from(path.clone());
+    let foreign = Store::load_from_test(path.clone());
     assert_eq!(stored_password(&foreign, &saved.id), None);
     let mut renewed = password_profile("10.0.0.1", "again");
     renewed.id = saved.id.clone();
     foreign.save(renewed).expect("save after foreign file");
     assert_eq!(
-        stored_password(&Store::load_from(path), &saved.id).as_deref(),
+        stored_password(&Store::load_from_test(path), &saved.id).as_deref(),
         Some("again")
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// Writes `sessions.json` with one SSH profile under `id`, so `Store::get`
+/// has a profile to merge the stored secret into (a credential entry alone is
+/// not reachable through the public API).
+fn stage_password_profile(path: &Path, id: &str, host: &str) {
+    let mut profile = password_profile(host, "");
+    profile.id = id.into();
+    profile.password = None;
+    std::fs::write(
+        path,
+        serde_json::to_string_pretty(&vec![profile]).expect("json"),
+    )
+    .expect("write profiles");
+}
+
+#[test]
+fn credentials_move_to_the_os_credential_store_with_a_backup_of_the_old_file() {
+    let dir = temp_dir("vault-key-store");
+    let path = dir.join("sessions.json");
+    let credentials_path = dir.join("credentials.json");
+    stage_password_profile(&path, "p1", "10.0.0.1");
+    let legacy = legacy_envelope(r#"{"p1": {"password": "s3cret"}}"#);
+    std::fs::write(&credentials_path, &legacy).expect("stage legacy file");
+
+    let store = Store::load_from_test(path.clone());
+    assert_eq!(
+        store.credential_store_status(),
+        CredentialStoreStatus {
+            persistent: true,
+            reason: None,
+        }
+    );
+    // The file now names the new key source and no longer the machine key.
+    let sealed = std::fs::read_to_string(&credentials_path).expect("credentials");
+    assert!(sealed.contains("\"version\": 2"));
+    assert!(sealed.contains("\"keySource\": \"osKeyStore\""));
+    assert!(!sealed.contains("s3cret"));
+    // The machine-bound file is kept next to it as a backup.
+    assert_eq!(
+        std::fs::read_to_string(credentials_path.with_file_name("credentials.json.bak"))
+            .expect("backup"),
+        legacy
+    );
+    assert_eq!(stored_password(&store, "p1").as_deref(), Some("s3cret"));
+
+    // Later launches read the rewritten file with the stored master key.
+    let reloaded = Store::load_from_test(path);
+    assert_eq!(stored_password(&reloaded, "p1").as_deref(), Some("s3cret"));
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn an_interrupted_key_store_move_keeps_the_machine_bound_file_readable() {
+    let dir = temp_dir("vault-interrupt-write");
+    let path = dir.join("sessions.json");
+    let credentials_path = dir.join("credentials.json");
+    stage_password_profile(&path, "p1", "10.0.0.1");
+    let legacy = legacy_envelope(r#"{"p1": {"password": "s3cret"}}"#);
+    std::fs::write(&credentials_path, &legacy).expect("stage legacy file");
+    // The rewrite cannot even be staged: the temporary path is occupied.
+    std::fs::create_dir(credentials_path.with_file_name("credentials.json.tmp")).expect("temp dir");
+
+    let store = Store::load_from_test(path.clone());
+    assert_eq!(stored_password(&store, "p1").as_deref(), Some("s3cret"));
+    assert_eq!(
+        std::fs::read_to_string(&credentials_path).expect("credentials"),
+        legacy
+    );
+
+    // Writes in this run keep the machine-bound layout, so nothing is lost
+    // while the move keeps failing.
+    let mut renewed = password_profile("10.0.0.1", "again");
+    renewed.id = "p1".into();
+    store.save(renewed).expect("save");
+    let sealed = std::fs::read_to_string(&credentials_path).expect("credentials");
+    assert!(!sealed.contains("again"));
+    assert_eq!(
+        stored_password(&Store::load_from_test(path), "p1").as_deref(),
+        Some("again")
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn a_failed_key_store_move_leaves_no_temporary_file_behind() {
+    let dir = temp_dir("vault-interrupt-commit");
+    let path = dir.join("sessions.json");
+    let credentials_path = dir.join("credentials.json");
+    stage_password_profile(&path, "p1", "10.0.0.1");
+    let legacy = legacy_envelope(r#"{"p1": {"password": "s3cret"}}"#);
+    std::fs::write(&credentials_path, &legacy).expect("stage legacy file");
+    // The old file cannot be moved aside: the backup path is occupied.
+    std::fs::create_dir(credentials_path.with_file_name("credentials.json.bak"))
+        .expect("backup dir");
+
+    let store = Store::load_from_test(path.clone());
+    assert_eq!(stored_password(&store, "p1").as_deref(), Some("s3cret"));
+    assert_eq!(
+        std::fs::read_to_string(&credentials_path).expect("credentials"),
+        legacy
+    );
+    assert!(!credentials_path
+        .with_file_name("credentials.json.tmp")
+        .exists());
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn an_unreachable_credential_store_keeps_secrets_for_the_run_only() {
+    let dir = temp_dir("vault-unavailable");
+    let path = dir.join("sessions.json");
+    let credentials_path = dir.join("credentials.json");
+    test_support::set_available(&credentials_path, false);
+
+    let store = Store::load_from_test(path.clone());
+    assert_eq!(
+        store.credential_store_status(),
+        CredentialStoreStatus {
+            persistent: false,
+            reason: Some(CredentialStoreStatusReason::KeyStoreUnavailable),
+        }
+    );
+    let saved = store
+        .save(password_profile("10.0.0.1", "s3cret"))
+        .expect("save");
+    // Usable while the app runs ...
+    assert_eq!(
+        stored_password(&store, &saved.id).as_deref(),
+        Some("s3cret")
+    );
+    // ... but nothing reached disk, not even a sealed envelope.
+    assert!(!credentials_path.exists());
+    assert!(!std::fs::read_to_string(&path)
+        .expect("profiles")
+        .contains("s3cret"));
+
+    // With a working store the next launch has to ask again: nothing was kept.
+    test_support::set_available(&credentials_path, true);
+    let reloaded = Store::load_from_test(path);
+    assert_eq!(stored_password(&reloaded, &saved.id), None);
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn sealed_credentials_are_left_untouched_without_the_credential_store() {
+    let dir = temp_dir("vault-sealed-offline");
+    let path = dir.join("sessions.json");
+    let credentials_path = dir.join("credentials.json");
+    let store = Store::load_from_test(path.clone());
+    let saved = store
+        .save(password_profile("10.0.0.1", "s3cret"))
+        .expect("save");
+    let sealed = std::fs::read_to_string(&credentials_path).expect("credentials");
+    assert!(sealed.contains("\"version\": 2"));
+
+    test_support::set_available(&credentials_path, false);
+    let offline = Store::load_from_test(path.clone());
+    assert_eq!(stored_password(&offline, &saved.id), None);
+    let mut renewed = password_profile("10.0.0.1", "again");
+    renewed.id = saved.id.clone();
+    offline.save(renewed).expect("save");
+    assert_eq!(
+        std::fs::read_to_string(&credentials_path).expect("credentials"),
+        sealed
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn a_deleted_master_key_starts_over_instead_of_refusing_to_run() {
+    let dir = temp_dir("vault-lost-key");
+    let path = dir.join("sessions.json");
+    let credentials_path = dir.join("credentials.json");
+    let store = Store::load_from_test(path.clone());
+    let saved = store
+        .save(password_profile("10.0.0.1", "s3cret"))
+        .expect("save");
+
+    test_support::forget_key(&credentials_path);
+    let reloaded = Store::load_from_test(path.clone());
+    assert_eq!(stored_password(&reloaded, &saved.id), None);
+
+    let mut renewed = password_profile("10.0.0.1", "again");
+    renewed.id = saved.id.clone();
+    reloaded.save(renewed).expect("save");
+    assert_eq!(
+        stored_password(&Store::load_from_test(path), &saved.id).as_deref(),
+        Some("again")
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn portable_mode_keeps_secrets_in_memory_only_and_says_so() {
+    let dir = temp_dir("vault-portable-run");
+    let path = dir.join("sessions.json");
+    let credentials_path = dir.join("credentials.json");
+    stage_password_profile(&path, "p1", "10.0.0.1");
+    let legacy = legacy_envelope(r#"{"p1": {"password": "s3cret"}}"#);
+    std::fs::write(&credentials_path, &legacy).expect("stage legacy file");
+
+    // `load_with(None)` is what `load()` uses in portable mode.
+    let store = Store::load_with(path.clone(), None);
+    assert_eq!(
+        store.credential_store_status(),
+        CredentialStoreStatus {
+            persistent: false,
+            reason: Some(CredentialStoreStatusReason::Portable),
+        }
+    );
+    // A machine-bound file still opens for this run ...
+    assert_eq!(stored_password(&store, "p1").as_deref(), Some("s3cret"));
+    // ... and a save changes nothing on disk: a portable copy never writes
+    // secrets on whatever machine it happens to run.
+    let mut renewed = password_profile("10.0.0.1", "again");
+    renewed.id = "p1".into();
+    store.save(renewed).expect("save");
+    assert_eq!(
+        std::fs::read_to_string(&credentials_path).expect("credentials"),
+        legacy
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn a_clear_text_credentials_file_is_sealed_without_a_plain_backup() {
+    let dir = temp_dir("vault-plaintext");
+    let path = dir.join("sessions.json");
+    let credentials_path = dir.join("credentials.json");
+    stage_password_profile(&path, "p1", "10.0.0.1");
+    std::fs::write(&credentials_path, r#"{"p1": {"password": "s3cret"}}"#)
+        .expect("write plain file");
+
+    let store = Store::load_from_test(path.clone());
+    assert_eq!(stored_password(&store, "p1").as_deref(), Some("s3cret"));
+    let sealed = std::fs::read_to_string(&credentials_path).expect("credentials");
+    assert!(!sealed.contains("s3cret"));
+    assert!(sealed.contains("\"keySource\": \"osKeyStore\""));
+    // The clear text is gone without a clear-text backup.
+    assert!(!credentials_path
+        .with_file_name("credentials.json.bak")
+        .exists());
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn a_credentials_file_from_a_newer_release_is_not_read() {
+    let dir = temp_dir("vault-newer");
+    let path = dir.join("sessions.json");
+    let credentials_path = dir.join("credentials.json");
+    stage_password_profile(&path, "p1", "10.0.0.1");
+    let mut envelope: serde_json::Value =
+        serde_json::from_str(&legacy_envelope(r#"{"p1": {"password": "s3cret"}}"#))
+            .expect("envelope json");
+    envelope["version"] = serde_json::Value::from(3);
+    let staged = envelope.to_string();
+    std::fs::write(&credentials_path, &staged).expect("write newer file");
+
+    let store = Store::load_from_test(path);
+    assert_eq!(stored_password(&store, "p1"), None);
+    assert_eq!(
+        std::fs::read_to_string(&credentials_path).expect("credentials"),
+        staged
     );
 
     std::fs::remove_dir_all(&dir).ok();
@@ -2009,7 +2287,7 @@ fn ssh_config_includes_files_in_place_and_offers_the_default_identity() {
 #[test]
 fn ssh_config_import_links_a_single_jump_host_and_updates_saved_sessions() {
     let dir = temp_dir("ssh-import");
-    let store = Store::load_from(dir.join("sessions.json"));
+    let store = Store::load_from_test(dir.join("sessions.json"));
     let context = ssh_context(&dir);
     let group = store
         .save_group(group("Imported", SessionKind::Ssh, None))
@@ -2133,7 +2411,7 @@ fn ssh_config_import_drops_a_multi_hop_proxy_jump() {
     // jump host cannot hold a chain, and writing db's chain onto bastion would
     // reroute web too, so db's ProxyJump is dropped rather than guessed at.
     let dir = temp_dir("ssh-multi-hop");
-    let store = Store::load_from(dir.join("sessions.json"));
+    let store = Store::load_from_test(dir.join("sessions.json"));
     let context = ssh_context(&dir);
     let text = "\
 Host bastion

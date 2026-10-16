@@ -54,7 +54,7 @@ async fn real_ssh_diff_monitor_and_forward_cross_tauri_ipc() {
     let state = AppState {
         sessions: Default::default(),
         outputs: Default::default(),
-        store: crate::store::Store::load_from(scratch.join("profiles.json")),
+        store: crate::store::Store::load_from_test(scratch.join("profiles.json")),
         remote_edits: Default::default(),
         auth_prompts: Default::default(),
         file_transfers: Default::default(),

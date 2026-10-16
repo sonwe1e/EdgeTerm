@@ -1,10 +1,13 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
-use crate::credentials::{CredentialStore, StoredSecrets};
+use crate::credentials::{
+    system_key_store, CredentialStore, CredentialStoreStatus, KeyStore, StoredSecrets,
+};
 use crate::error::{AppError, Result};
 use crate::model::{
     AppData, AuthKind, CommandHistoryEntry, CommandScope, DataSummary, SavedCommand, SessionGroup,
@@ -20,11 +23,12 @@ const MAX_HISTORY_COMMAND_LEN: usize = 500;
 /// in the application config directory.
 ///
 /// `sessions.json` never contains credentials and is safe to return to the UI.
-/// `credentials.json` is readable only by the current OS user, is sealed with
-/// a key bound to this machine and account (`VaultKey`) and is consulted
-/// solely while opening a saved session.  Keeping credentials app-local avoids
-/// the macOS Keychain authorization dialog that otherwise reappears when an
-/// unsigned development build changes identity between restarts.
+/// `credentials.json` is readable only by the current OS user and is sealed
+/// with ChaCha20-Poly1305 under a random master key kept in the OS credential
+/// store (Windows Credential Manager, macOS Keychain, the Linux Secret
+/// Service). A portable copy, or a machine without a reachable credential
+/// store, keeps secrets for the run only and writes nothing to disk. The
+/// credential file is consulted solely while opening a saved session.
 /// `session_groups.json` holds the user-defined folders of the Session panel;
 /// it is a separate file so older builds keep reading `sessions.json` as a
 /// plain profile list.
@@ -45,12 +49,35 @@ pub struct Store {
 
 impl Store {
     pub fn load() -> Self {
-        Self::load_from(config_path())
+        // A portable copy travels between machines: the OS credential store
+        // of whatever machine it happens to run on is meaningless for it, so
+        // secrets are kept for the run only (see `CredentialStore`).
+        if portable_data_dir().is_some() {
+            Self::load_with(config_path(), None)
+        } else {
+            Self::load_from(config_path())
+        }
     }
 
     pub fn load_from(path: PathBuf) -> Self {
+        Self::load_with(path, Some(system_key_store()))
+    }
+
+    /// The test counterpart of `load_from`: a process-local key store keyed
+    /// by the credentials path, so `cargo test` never touches (or needs) the
+    /// real OS credential store.
+    #[cfg(test)]
+    pub(crate) fn load_from_test(path: PathBuf) -> Self {
+        let key_store = crate::credentials::test_support::key_store(&credentials_path_for(&path));
+        Self::load_with(path, Some(key_store))
+    }
+
+    /// `key_store` is the OS credential store, or `None` in portable mode;
+    /// tests pass a process-local store so `cargo test` never touches the
+    /// real credential store (see `load_from_test`).
+    pub(crate) fn load_with(path: PathBuf, key_store: Option<Arc<dyn KeyStore>>) -> Self {
         let mut profiles: Vec<SessionProfile> = read_json(&path).unwrap_or_default();
-        let credentials = CredentialStore::load(credentials_path_for(&path));
+        let credentials = CredentialStore::load(credentials_path_for(&path), key_store.as_deref());
         let groups_path = groups_path_for(&path);
         let groups = read_json(&groups_path).unwrap_or_default();
         let sender_commands_path = sender_commands_path_for(&path);
@@ -94,6 +121,12 @@ impl Store {
 
     pub fn list(&self) -> Vec<SessionProfile> {
         self.profiles.lock().clone()
+    }
+
+    /// Whether saved passwords survive a restart right now, and why not when
+    /// they do not; see `credential_store_status`.
+    pub fn credential_store_status(&self) -> CredentialStoreStatus {
+        self.credentials.status()
     }
 
     pub fn get(&self, id: &str) -> Result<Option<SessionProfile>> {

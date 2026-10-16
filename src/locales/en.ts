@@ -392,6 +392,12 @@ export const en = {
   "session.authAgent": "SSH agent",
   "session.privateKey": "Private key",
   "session.passphrase": "Passphrase",
+  // Shown where a password or passphrase is typed when it will not survive a
+  // restart (see `credentialStoreHintKey`).
+  "session.secretsRunOnlyPortable":
+    "Portable mode keeps passwords for this run only: they are not written to disk.",
+  "session.secretsRunOnlyNoKeyStore":
+    "The system credential store is unavailable: passwords are kept for this run only, not written to disk.",
   "session.jumpHost": "Jump host",
   "session.jumpNone": "None — connect directly",
   "session.jumpDeleted": "(deleted session)",

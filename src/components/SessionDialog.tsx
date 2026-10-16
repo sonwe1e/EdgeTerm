@@ -4,6 +4,11 @@ import { errorText } from "../errorInfo";
 import { openSession } from "../actions";
 import * as api from "../api";
 import {
+  credentialStoreHintKey,
+  fetchCredentialStoreStatus,
+  type CredentialHintKey,
+} from "../credentialStatus";
+import {
   encodingLabel,
   DEFAULT_ENCODING,
   LOCALE_NAME,
@@ -235,6 +240,12 @@ export function SessionDialog({ initial, onClose }: Props) {
   const [defaultRecordDir, setDefaultRecordDir] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The note to show where a password is typed when it will not survive a
+  // restart (portable mode, an unreachable OS credential store); null shows
+  // nothing.
+  const [secretsHint, setSecretsHint] = useState<CredentialHintKey | null>(
+    null,
+  );
 
   const upsertProfile = useStore((s) => s.upsertProfile);
   const groups = useStore((s) => s.groups);
@@ -254,6 +265,12 @@ export function SessionDialog({ initial, onClose }: Props) {
 
   useEffect(() => {
     api.defaultRecordingDir().then(setDefaultRecordDir).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    void fetchCredentialStoreStatus().then((status) =>
+      setSecretsHint(credentialStoreHintKey(status)),
+    );
   }, []);
 
   const patch = (fields: Partial<SessionProfile>) =>
@@ -501,6 +518,16 @@ export function SessionDialog({ initial, onClose }: Props) {
     </>
   );
 
+  // One note, wherever a password or passphrase is typed, when it will not be
+  // kept across restarts.
+  const renderSecretsHint = () =>
+    secretsHint ? (
+      <div className="session-note is-wide">
+        <Icon name="info" />
+        <span>{t(secretsHint)}</span>
+      </div>
+    ) : null;
+
   // The authentication block shared by SSH and SFTP: they ride the same
   // transport, so both offer password, public-key, and ssh-agent auth with the
   // exact same inputs.
@@ -523,19 +550,23 @@ export function SessionDialog({ initial, onClose }: Props) {
       </label>
 
       {profile.auth === "password" && (
-        <label className="session-field is-wide">
-          <span className="session-field-label">{t("session.password")}</span>
-          <input
-            {...RAW_TEXT_INPUT}
-            type="password"
-            value={profile.password ?? ""}
-            // Left empty, the password is asked for at each connection (issue
-            // #88). Only a new session can say so: a saved password never
-            // reaches this dialog, so an existing one's empty field may hold one.
-            placeholder={initial?.id ? undefined : t("session.askOnConnect")}
-            onChange={(event) => patch({ password: event.target.value })}
-          />
-        </label>
+        <>
+          <label className="session-field is-wide">
+            <span className="session-field-label">{t("session.password")}</span>
+            <input
+              {...RAW_TEXT_INPUT}
+              type="password"
+              value={profile.password ?? ""}
+              // Left empty, the password is asked for at each connection
+              // (issue #88). Only a new session can say so: a saved password
+              // never reaches this dialog, so an existing one's empty field
+              // may hold one.
+              placeholder={initial?.id ? undefined : t("session.askOnConnect")}
+              onChange={(event) => patch({ password: event.target.value })}
+            />
+          </label>
+          {renderSecretsHint()}
+        </>
       )}
 
       {profile.auth === "publicKey" && (
@@ -562,6 +593,7 @@ export function SessionDialog({ initial, onClose }: Props) {
               onChange={(event) => patch({ passphrase: event.target.value })}
             />
           </label>
+          {renderSecretsHint()}
         </>
       )}
     </>
@@ -930,6 +962,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                         }
                       />
                     </label>
+                    {renderSecretsHint()}
                     <div className="session-note is-wide">
                       <Icon name="info" />
                       <span>{t("session.telnetLoginNote")}</span>
@@ -1051,6 +1084,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                         }
                       />
                     </label>
+                    {renderSecretsHint()}
 
                     <div className="session-note is-warning is-wide">
                       <Icon name="warning" />

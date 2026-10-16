@@ -6,6 +6,12 @@ import * as __TAURI_EVENT from "@tauri-apps/api/event";
 /** Commands */
 export const commands = {
 	listProfiles: () => __TAURI_INVOKE<SessionProfile_Serialize[]>("list_profiles"),
+	/**
+	 *  How saved passwords are protected right now: whether they survive a
+	 *  restart, and if not, why. The session editor says so where a password is
+	 *  typed.
+	 */
+	credentialStoreStatus: () => __TAURI_INVOKE<CredentialStoreStatus>("credential_store_status"),
 	saveProfile: (profile: SessionProfile_Deserialize) => __TAURI_INVOKE<SessionProfile_Serialize>("save_profile", { profile }),
 	/**  Saves a copy of a saved session, stored credentials included. */
 	duplicateProfile: (id: string) => __TAURI_INVOKE<SessionProfile_Serialize>("duplicate_profile", { id }),
@@ -546,6 +552,27 @@ export type CommandHistoryEntry = {
 export type CommandScope = { type: "global" } | { type: "kind"; kind: SessionKind } | { type: "group"; id: string } | { type: "profile"; id: string };
 
 export type ComparisonStatus = "identical" | "different" | "notCompared";
+
+/**
+ *  How saved passwords are protected right now; `credential_store_status`
+ *  reports it to the UI, which says where a password is typed when it will
+ *  not survive a restart.
+ */
+export type CredentialStoreStatus = {
+	/**  Whether secrets saved now survive an application restart. */
+	persistent: boolean,
+	/**  Why they do not, when they do not. */
+	reason: CredentialStoreStatusReason | null,
+};
+
+export type CredentialStoreStatusReason = 
+/**
+ *  Portable mode: a copy must not depend on (or write to) the machine it
+ *  happens to run on.
+ */
+"portable" | 
+/**  The OS credential store could not be reached (absent, locked, …). */
+"keyStoreUnavailable";
 
 /**  How many entries an export wrote or an import merged. */
 export type DataSummary = {

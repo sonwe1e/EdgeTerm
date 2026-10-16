@@ -342,6 +342,11 @@ export const zhCN: Catalog = {
   "session.authAgent": "SSH agent",
   "session.privateKey": "私钥",
   "session.passphrase": "口令",
+  // 密码/口令不会在重启后保留时，显示在输入框旁（见 `credentialStoreHintKey`）。
+  "session.secretsRunOnlyPortable":
+    "便携模式下密码仅在本次运行内有效，不会写入磁盘。",
+  "session.secretsRunOnlyNoKeyStore":
+    "系统凭据库不可用：密码仅在本次运行内有效，不会写入磁盘。",
   "session.jumpHost": "跳板机",
   "session.jumpNone": "无 —— 直接连接",
   "session.jumpDeleted": "（已删除的会话）",

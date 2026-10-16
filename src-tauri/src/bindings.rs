@@ -25,6 +25,7 @@ fn export_bindings() {
     let builder = tauri_specta::Builder::<tauri::Wry>::new()
         .commands(tauri_specta::collect_commands![
             commands::list_profiles,
+            commands::credential_store_status,
             commands::save_profile,
             commands::duplicate_profile,
             commands::delete_profile,

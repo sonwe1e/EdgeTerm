@@ -1,9 +1,20 @@
 use super::*;
 
+use crate::credentials::CredentialStoreStatus;
+
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
 pub fn list_profiles(state: State<'_, AppState>) -> Vec<SessionProfile> {
     state.store.list()
+}
+
+/// How saved passwords are protected right now: whether they survive a
+/// restart, and if not, why. The session editor says so where a password is
+/// typed.
+#[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
+pub fn credential_store_status(state: State<'_, AppState>) -> CredentialStoreStatus {
+    state.store.credential_store_status()
 }
 
 #[tauri::command]
