@@ -66,12 +66,9 @@ function bg(controller: TerminalController, row: number, col: number): string | 
 
 /** Lets the backlog pass run: it waits for output to pause, then slices. */
 async function settle(controller: TerminalController) {
-  const internals = controller as unknown as {
-    backlogTimer: number | null;
-    visible: boolean;
-  };
-  internals.visible = true;
-  (controller as unknown as { scheduleBacklog: () => void }).scheduleBacklog();
+  const internals = (controller as unknown as { semantic: { backlogTimer: number | null; scheduleBacklog(): void } }).semantic;
+  controller.setVisible(true);
+  internals.scheduleBacklog();
   for (let i = 0; i < 200 && internals.backlogTimer !== null; i += 1) {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
@@ -83,7 +80,7 @@ const IP_COLOR_REF = "#5fd7c0";
 
 describe("resize and the semantic colors", () => {
   const backlogPending = (controller: TerminalController) =>
-    (controller as unknown as { backlogTimer: number | null }).backlogTimer !== null;
+    (controller as unknown as { semantic: { backlogTimer: number | null } }).semantic.backlogTimer !== null;
 
   it("does not recolor the history when only the height changes", async () => {
     const controller = createController();

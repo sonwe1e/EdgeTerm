@@ -38,7 +38,7 @@ function row(controller: TerminalController, index: number): string {
 
 /** The gutter's line metadata (private; the number of buffer line 0 and the per-line times). */
 function lineMetadata(controller: TerminalController) {
-  const internals = controller as unknown as {
+  const internals = (controller as unknown as { lineGutter: unknown }).lineGutter as {
     firstLineNumber: number;
     lineTimes: number[];
     lineTimesStart: number;

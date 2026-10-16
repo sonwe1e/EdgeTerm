@@ -33,7 +33,17 @@ function createController() {
     100,
   );
   controllers.push(controller);
-  const popup = controller as unknown as PopupState;
+  const { commands, keyboard } = controller as unknown as {
+    commands: Pick<PopupState, "candidates" | "popupIndex">;
+    keyboard: Pick<PopupState, "filterKey">;
+  };
+  const popup: PopupState = {
+    get candidates() { return commands.candidates; },
+    set candidates(value) { commands.candidates = value; },
+    get popupIndex() { return commands.popupIndex; },
+    set popupIndex(value) { commands.popupIndex = value; },
+    filterKey: event => keyboard.filterKey(event),
+  };
   popup.candidates = [
     { command: "git status", matchStart: 0 },
     { command: "gti status", matchStart: 0 },

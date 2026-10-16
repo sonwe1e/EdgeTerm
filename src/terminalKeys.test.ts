@@ -13,6 +13,7 @@ import {
 } from "./shortcuts";
 import { TerminalController } from "./terminal";
 
+const clipboard = (controller: TerminalController) => (controller as unknown as { clipboard: { copySelection(): boolean; pasteFromClipboard(): void; selectionChanged: boolean } }).clipboard;
 const controllers: TerminalController[] = [];
 
 function createController() {
@@ -32,8 +33,8 @@ function createController() {
   );
   controllers.push(controller);
   // The clipboard is not there in jsdom, and a paste would call into Tauri.
-  vi.spyOn(controller, "copySelection").mockReturnValue(true);
-  vi.spyOn(controller, "pasteFromClipboard").mockImplementation(() => {});
+  vi.spyOn(clipboard(controller), "copySelection").mockReturnValue(true);
+  vi.spyOn(clipboard(controller), "pasteFromClipboard").mockImplementation(() => {});
   vi.spyOn(controller.term, "selectAll").mockImplementation(() => {});
   return controller;
 }
@@ -80,8 +81,8 @@ const bind = (overrides: Partial<ShortcutBindings>) =>
 
 const filter = (controller: TerminalController, event: KeyboardEvent) =>
   (
-    controller as unknown as { filterKey(event: KeyboardEvent): boolean }
-  ).filterKey(event);
+    controller as unknown as { keyboard: { filterKey(event: KeyboardEvent): boolean } }
+  ).keyboard.filterKey(event);
 
 afterEach(() => {
   setActiveShortcuts(defaultShortcuts());
@@ -96,12 +97,12 @@ describe("copy, paste and select all keys", () => {
     const copy = press("KeyC", { metaKey: true });
     expect(filter(controller, copy)).toBe(false);
     expect(copy.preventDefault).toHaveBeenCalled();
-    expect(controller.copySelection).toHaveBeenCalledTimes(1);
+    expect(clipboard(controller).copySelection).toHaveBeenCalledTimes(1);
 
     const paste = press("KeyV", { metaKey: true });
     expect(filter(controller, paste)).toBe(false);
     expect(paste.preventDefault).toHaveBeenCalled();
-    expect(controller.pasteFromClipboard).toHaveBeenCalledTimes(1);
+    expect(clipboard(controller).pasteFromClipboard).toHaveBeenCalledTimes(1);
 
     const all = press("KeyA", { metaKey: true });
     expect(filter(controller, all)).toBe(false);
@@ -118,14 +119,14 @@ describe("copy, paste and select all keys", () => {
     const paste = press("Insert", { shiftKey: true });
     expect(filter(controller, paste)).toBe(false);
     expect(paste.preventDefault).toHaveBeenCalled();
-    expect(controller.pasteFromClipboard).toHaveBeenCalledTimes(1);
+    expect(clipboard(controller).pasteFromClipboard).toHaveBeenCalledTimes(1);
 
     // Ctrl+Insert with nothing selected is consumed: it has no shell meaning
     // to preserve, and the copy itself is a no-op.
     const copy = press("Insert", { ctrlKey: true });
     expect(filter(controller, copy)).toBe(false);
     expect(copy.preventDefault).toHaveBeenCalled();
-    expect(controller.copySelection).toHaveBeenCalledTimes(1);
+    expect(clipboard(controller).copySelection).toHaveBeenCalledTimes(1);
   });
 
   it("swallows the macOS keys WebKit and xterm would otherwise still answer", () => {
@@ -139,7 +140,7 @@ describe("copy, paste and select all keys", () => {
     const paste = press("KeyV", { metaKey: true });
     expect(filter(controller, paste)).toBe(false);
     expect(paste.preventDefault).toHaveBeenCalled();
-    expect(controller.pasteFromClipboard).not.toHaveBeenCalled();
+    expect(clipboard(controller).pasteFromClipboard).not.toHaveBeenCalled();
 
     // Likewise xterm's built-in ⌘A select-all.
     const all = press("KeyA", { metaKey: true });
@@ -150,7 +151,7 @@ describe("copy, paste and select all keys", () => {
     // The new key works.
     const moved = press("KeyV", { metaKey: true, shiftKey: true });
     expect(filter(controller, moved)).toBe(false);
-    expect(controller.pasteFromClipboard).toHaveBeenCalledTimes(1);
+    expect(clipboard(controller).pasteFromClipboard).toHaveBeenCalledTimes(1);
   });
 
   it("lets a plain Ctrl+letter copy key reach the shell when nothing is selected", () => {
@@ -164,12 +165,12 @@ describe("copy, paste and select all keys", () => {
     const interrupt = press("KeyC", { ctrlKey: true });
     expect(filter(controller, interrupt)).toBe(true);
     expect(interrupt.preventDefault).not.toHaveBeenCalled();
-    expect(controller.copySelection).not.toHaveBeenCalled();
+    expect(clipboard(controller).copySelection).not.toHaveBeenCalled();
 
     hasSelection.mockReturnValue(true);
     const copy = press("KeyC", { ctrlKey: true });
     expect(filter(controller, copy)).toBe(false);
-    expect(controller.copySelection).toHaveBeenCalledTimes(1);
+    expect(clipboard(controller).copySelection).toHaveBeenCalledTimes(1);
   });
 
   it("consumes Ctrl+Shift+C without a selection rather than sending a stray ^C", () => {

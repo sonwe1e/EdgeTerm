@@ -7,6 +7,7 @@ vi.mock("./platform", () => ({
 
 import { TerminalController } from "./terminal";
 
+const clipboard = (controller: TerminalController) => (controller as unknown as { clipboard: { copySelection(): boolean; pasteFromClipboard(): void; selectionChanged: boolean } }).clipboard;
 const controllers: TerminalController[] = [];
 const hosts: HTMLElement[] = [];
 
@@ -27,7 +28,7 @@ function createController() {
   );
   controllers.push(controller);
   // The clipboard is not there in jsdom; the copy itself is covered elsewhere.
-  vi.spyOn(controller, "copySelection").mockReturnValue(true);
+  vi.spyOn(clipboard(controller), "copySelection").mockReturnValue(true);
   // The terminal is not opened here, so stand in for the element xterm would
   // be drawn into: it is what the mouse handlers check a press against.
   const host = document.createElement("div");
@@ -39,7 +40,7 @@ function createController() {
 
 /** What xterm reports while the pointer drags across the screen. */
 function selectionChanges(controller: TerminalController) {
-  (controller as unknown as { selectionChanged: boolean }).selectionChanged =
+  clipboard(controller).selectionChanged =
     true;
 }
 
@@ -73,7 +74,7 @@ describe("copy on select", () => {
     selectionChanges(controller);
     release(host);
 
-    expect(controller.copySelection).not.toHaveBeenCalled();
+    expect(clipboard(controller).copySelection).not.toHaveBeenCalled();
   });
 
   it("copies a selection the mouse made, once the button comes up", () => {
@@ -82,14 +83,14 @@ describe("copy on select", () => {
 
     press(host);
     selectionChanges(controller);
-    expect(controller.copySelection).not.toHaveBeenCalled();
+    expect(clipboard(controller).copySelection).not.toHaveBeenCalled();
 
     release(host);
-    expect(controller.copySelection).toHaveBeenCalledTimes(1);
+    expect(clipboard(controller).copySelection).toHaveBeenCalledTimes(1);
 
     // A second release without a new selection must not copy again.
     release(host);
-    expect(controller.copySelection).toHaveBeenCalledTimes(1);
+    expect(clipboard(controller).copySelection).toHaveBeenCalledTimes(1);
   });
 
   it("copies a selection xterm reports only as the button comes up", () => {
@@ -100,7 +101,7 @@ describe("copy on select", () => {
     selectionChangesOnRelease(controller);
     release(host);
 
-    expect(controller.copySelection).toHaveBeenCalledTimes(1);
+    expect(clipboard(controller).copySelection).toHaveBeenCalledTimes(1);
   });
 
   it("copies a drag that ends outside the terminal", () => {
@@ -111,7 +112,7 @@ describe("copy on select", () => {
     selectionChanges(controller);
     release(document.body);
 
-    expect(controller.copySelection).toHaveBeenCalledTimes(1);
+    expect(clipboard(controller).copySelection).toHaveBeenCalledTimes(1);
   });
 
   it("leaves a right click alone", () => {
@@ -124,7 +125,7 @@ describe("copy on select", () => {
     selectionChanges(controller);
     release(host, 2);
 
-    expect(controller.copySelection).not.toHaveBeenCalled();
+    expect(clipboard(controller).copySelection).not.toHaveBeenCalled();
   });
 
   it("leaves a selection the mouse had no part in alone", () => {
@@ -136,7 +137,7 @@ describe("copy on select", () => {
     selectionChanges(controller);
     release(host);
 
-    expect(controller.copySelection).not.toHaveBeenCalled();
+    expect(clipboard(controller).copySelection).not.toHaveBeenCalled();
   });
 
   it("ignores a press in another terminal", () => {
@@ -148,7 +149,7 @@ describe("copy on select", () => {
     selectionChanges(controller);
     release(other.host);
 
-    expect(controller.copySelection).not.toHaveBeenCalled();
+    expect(clipboard(controller).copySelection).not.toHaveBeenCalled();
   });
 
   it("lets go of the document once disposed", () => {
@@ -160,6 +161,6 @@ describe("copy on select", () => {
     selectionChanges(controller);
     release(host);
 
-    expect(controller.copySelection).not.toHaveBeenCalled();
+    expect(clipboard(controller).copySelection).not.toHaveBeenCalled();
   });
 });

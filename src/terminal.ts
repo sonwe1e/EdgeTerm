@@ -1,397 +1,41 @@
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { FitAddon } from "@xterm/addon-fit";
-import { SearchAddon, type ISearchOptions } from "@xterm/addon-search";
+import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
-import { WebglAddon } from "@xterm/addon-webgl";
+import { Terminal } from "@xterm/xterm";
+import { TerminalClipboard } from "./terminalClipboard";
+import { TerminalCommands } from "./terminalCommands";
+import { TerminalGpuRenderer } from "./terminalGpuRenderer";
+import { TerminalKeyboard } from "./terminalKeyboard";
+import { TerminalLineGutter } from "./terminalLineGutter";
+import { TerminalSearchController } from "./terminalSearchController";
+import { TerminalSemanticRenderer } from "./terminalSemanticRenderer";
 import {
-  Terminal,
-  type IBuffer,
-  type IBufferCell,
-  type IBufferLine,
-  type IMarker,
-  type ITheme,
-} from "@xterm/xterm";
+  Callbacks,
+  CursorStyle,
+  GutterMode,
+  ReportedCwd,
+  RightClickAction,
+  XTERM_THEMES,
+  openTerminalWebLink,
+  parseOsc1337,
+  parseOsc7,
+  parseOsc9,
+} from "./terminalShared";
+import { TerminalViewport } from "./terminalViewport";
+export { parseOsc1337, parseOsc7, parseOsc9 } from "./terminalShared";
+export type { CursorStyle, GutterMode, ReportedCwd, RightClickAction } from "./terminalShared";
 
-import closeIcon from "@vscode/codicons/src/icons/close.svg?raw";
-import { isAiSessionCommand } from "./aiTools";
-import { readClipboardText, writeClipboardText } from "./api";
 import { createOutputDecoder } from "./encodings";
 import { MONO_FONT_FAMILY } from "./fonts";
-import type { CommandSuggestion } from "./history";
 import { patchImeInput } from "./imePatch";
 import { parseOsc52, type ProgramClipboardMode } from "./osc52";
-import { IS_MAC, IS_WINDOWS } from "./platform";
-import { matchAppShortcut } from "./shortcuts";
-import { SEARCH_HIGHLIGHT_LIMIT, type SearchOptions } from "./terminalSearch";
-import { isWebglEnabled } from "./terminalRegistry";
-import {
-  isShellPrompt,
-  semanticLine,
-  setSemanticColorTheme,
-  shellPromptEnd,
-} from "./semanticColors";
-import {
-  canPaint,
-  internalLine,
-  paintable,
-  paintBackground,
-  paintForeground,
-  rgb,
-  rowIsBlank,
-  rowSignature,
-  unpaint,
-  type PaintLine,
-} from "./semanticPaint";
-import { needsPasteWarning } from "./terminalPaste";
-import { errorMessage, type TransferNoticeKind } from "./terminalTransfer";
+import { setSemanticColorTheme } from "./semanticColors";
+import { type SearchOptions } from "./terminalSearch";
+import { type TransferNoticeKind } from "./terminalTransfer";
 import type { BackspaceKey, ThemeMode } from "./types";
 import { XmodemController, type XmodemBlockSize } from "./xmodem";
 import { ZmodemController } from "./zmodem";
-
-export type GutterMode = "off" | "line" | "time" | "both";
-
-/**
- * What a right click in the terminal does, when no program has taken over
- * the mouse. `menu` opens the app's context menu (the word under the
- * pointer is selected first, as in VS Code); `copyPaste` is the Windows
- * console convention — copy the selection if there is one, otherwise paste,
- * or with Copy on Select, which has copied it already, always paste (PuTTY).
- * macOS is always `menu`; the setting is Windows / Linux only.
- */
-export type RightClickAction = "menu" | "copyPaste";
-
-/** The cursor's shape; `cursorBlink` in the store says whether it blinks. */
-export type CursorStyle = "block" | "underline" | "bar";
-
-/** The xterm-owned inputs to a gutter paint; see `gutterPainted`. */
-type GutterView = {
-  viewportY: number;
-  cursorIndex: number;
-  contentEnd: number;
-  rows: number;
-  alternate: boolean;
-};
-
-type PaintRecord = { signature: number; cursor: boolean };
-
-/**
- * How many terminals hold a WebGL renderer at once, most recently shown
- * first. WebKit allows 16 live WebGL contexts per page and, on the 17th,
- * takes the oldest one away; with one context per tab, opening enough tabs
- * stranded the earliest ones on the DOM renderer for good, where a
- * selection drag crawls (issue #14). A hidden tab has no use for the fast
- * renderer and every context pins a window-sized GPU surface, so the least
- * recently shown terminals give theirs up and load it again when shown.
- * Six covers the tabs someone actually cycles through, keeps GPU memory to
- * a few hundred megabytes and stays well clear of the limit.
- */
-const WEBGL_MAX_TERMINALS = 6;
-/**
- * A lost context (WKWebView reclaims them under memory pressure or after a
- * long stay in the background) is recreated after a pause, a few times per
- * window at most; a GPU that keeps dropping it leaves the terminal on the
- * DOM renderer. Losses further apart than the window are separate incidents
- * with a fresh budget.
- */
-const WEBGL_RECOVERY_DELAY_MS = 2000;
-const WEBGL_RECOVERY_LIMIT = 3;
-const WEBGL_RECOVERY_WINDOW_MS = 60_000;
-
-/** Terminals holding a WebGL renderer, most recently shown first. */
-const webglTerminals: TerminalController[] = [];
-
-/**
- * How long an agentic CLI has to stay silent before its turn counts as
- * finished. Comfortably above the repaint rate of every one of them — they
- * animate a spinner and an elapsed-time counter for as long as they work,
- * tool calls included — and short enough that the tab reports back while the
- * answer is still on screen.
- */
-const AI_QUIET_MS = 2000;
-
-/**
- * How many trimmed line times may sit in front of the live ones before the
- * array is copied down (see `lineTimesStart`). The copy moves the live
- * entries once every `LINE_TIME_SLACK` dropped lines, which on a full
- * 20 000-line scrollback works out at about five moves per line of output —
- * against 20 000 for splicing the front off on every one of them.
- */
-const LINE_TIME_SLACK = 4096;
-
-/**
- * How long output must pause before the backlog pass colors the rows a
- * flood scrolled past (see `scheduleBacklog`), and how long one slice of
- * that pass may run before yielding to input and rendering.
- */
-const BACKLOG_QUIET_MS = 200;
-const BACKLOG_SLICE_MS = 8;
-/**
- * Column changes can reflow scrollback. For normal buffers of at least
- * 200 lines, wait until the last width change has settled for this long.
- * Rows always update immediately, including during a diagonal drag;
- * Buffer._reflow returns when the column count is unchanged.
- */
-const FIT_SETTLE_MS = 100;
-const FIT_BUFFER_THRESHOLD = 200;
-
-/**
- * Data xterm sends back on the terminal's own behalf rather than the user's:
- * answers to what a program asked it (device attributes, cursor position,
- * colors, mode state), focus notifications, and mouse tracking. They travel
- * the same path as keystrokes and must reach the program, but they say
- * nothing about what the user is doing — a TUI queries the terminal the
- * moment it starts and is told about every focus change, so counting them as
- * input opened an agentic CLI's turn for a tool nobody had typed into.
- */
-const TERMINAL_REPORT =
-  /^(?:\x1b\[[?>]?[0-9;]*(?:[cnRtIO]|\$y)|\x1b\[<[0-9;]*[Mm]|\x1b\[M[\s\S]{3}|\x1b\][0-9]+;[\s\S]*?(?:\x07|\x1b\\)|\x1bP[\s\S]*?\x1b\\)$/;
-
-/** A working directory the shell announced with an OSC sequence. */
-export interface ReportedCwd {
-  /** Host part of an OSC 7 URL; "" when the sequence carried none. */
-  host: string;
-  path: string;
-}
-
-/** OSC 7 payload `file://host/path` (Terminal.app, WezTerm, fish, …). */
-export function parseOsc7(data: string): ReportedCwd | null {
-  const match = /^file:\/\/([^/]*)(\/.*)$/s.exec(data);
-  if (!match) return null;
-  let path = match[2];
-  try {
-    path = decodeURIComponent(path);
-  } catch {
-    // Not percent-encoded (many prompt snippets write $PWD raw): as is.
-  }
-  return { host: match[1], path };
-}
-
-/** OSC 1337 payload `CurrentDir=path` (iTerm2 shell integration). */
-export function parseOsc1337(data: string): ReportedCwd | null {
-  const match = /^CurrentDir=(.+)$/s.exec(data);
-  return match ? { host: "", path: match[1] } : null;
-}
-
-/** OSC 9 payload `9;path` (ConEmu / Windows Terminal), quotes optional. */
-export function parseOsc9(data: string): ReportedCwd | null {
-  if (!data.startsWith("9;")) return null;
-  let path = data.slice(2);
-  if (path.length >= 2 && path.startsWith('"') && path.endsWith('"')) {
-    path = path.slice(1, -1);
-  }
-  return path ? { host: "", path } : null;
-}
-
-function openTerminalWebLink(event: MouseEvent, uri: string) {
-  // Opening terminal output on an unmodified click makes accidental launches
-  // too easy. Match native terminal behavior on macOS and other platforms.
-  if (!event.metaKey && !event.ctrlKey) return;
-
-  event.preventDefault();
-  void openUrl(uri).catch((error) => {
-    console.error(`Failed to open terminal link ${uri}`, error);
-  });
-}
-
-/** Plain Ctrl+letter: a control character to the shell (^C, ^W, ^D …). */
-const isControlLetter = (event: KeyboardEvent): boolean =>
-  event.ctrlKey &&
-  !event.altKey &&
-  !event.metaKey &&
-  !event.shiftKey &&
-  /^[a-z]$/i.test(event.key);
-
-/**
- * What Alt+arrow sends, by `event.key` in lower case: what xterm 5 sent for
- * the same keys (see the handler in the constructor).
- */
-const ALT_ARROW_SEQUENCES: Record<string, string | undefined> = IS_MAC
-  ? { arrowleft: "\x1bb", arrowright: "\x1bf" }
-  : {
-      arrowleft: "\x1b[1;5D",
-      arrowright: "\x1b[1;5C",
-      arrowup: "\x1b[1;5A",
-      arrowdown: "\x1b[1;5B",
-    };
-
-/**
- * VS Code's terminal palettes, one per theme, on the matching editor
- * backgrounds (kept in sync with --bg-terminal in styles.css). xterm.js
- * supplies the remaining 240 entries of the xterm-256color cube and grayscale
- * ramp automatically, and the enforced minimum contrast ratio keeps
- * low-contrast entries legible, as VS Code does.
- */
-const XTERM_THEMES: Record<ThemeMode, ITheme> = {
-  dark: {
-    background: "#1f1f1f",
-    foreground: "#cccccc",
-    cursor: "#aeafad",
-    cursorAccent: "#1f1f1f",
-    selectionBackground: "#264f78",
-    selectionInactiveBackground: "#22374c",
-    black: "#000000",
-    red: "#cd3131",
-    green: "#0dbc79",
-    yellow: "#e5e510",
-    blue: "#2472c8",
-    magenta: "#bc3fbc",
-    cyan: "#11a8cd",
-    white: "#e5e5e5",
-    brightBlack: "#666666",
-    brightRed: "#f14c4c",
-    brightGreen: "#23d18b",
-    brightYellow: "#f5f543",
-    brightBlue: "#3b8eea",
-    brightMagenta: "#d670d6",
-    brightCyan: "#29b8db",
-    brightWhite: "#e5e5e5",
-  },
-  light: {
-    background: "#ffffff",
-    foreground: "#3b3b3b",
-    cursor: "#005fb8",
-    cursorAccent: "#ffffff",
-    selectionBackground: "#add6ff",
-    selectionInactiveBackground: "#e5ebf1",
-    black: "#000000",
-    red: "#cd3131",
-    green: "#107c10",
-    yellow: "#949800",
-    blue: "#0451a5",
-    magenta: "#bc05bc",
-    cyan: "#0598bc",
-    white: "#555555",
-    brightBlack: "#666666",
-    brightRed: "#cd3131",
-    brightGreen: "#14ce14",
-    brightYellow: "#b5ba00",
-    brightBlue: "#0451a5",
-    brightMagenta: "#bc05bc",
-    brightCyan: "#0598bc",
-    brightWhite: "#a5a5a5",
-  },
-  // serialX's own terminal palettes (its TerminalPalette::DARK / ::LIGHT).
-  // Its plain red, green and yellow are the workbench's danger, success and
-  // warning, so device colours and chrome agree; on white "bright" cannot
-  // mean lighter or it would vanish, so the bright eight are the plain ones
-  // lifted a little instead.
-  "serialx-dark": {
-    background: "#0b0d11",
-    foreground: "#b2b8c4",
-    cursor: "#8b87ff",
-    cursorAccent: "#0b0d11",
-    selectionBackground: "#34365e",
-    selectionInactiveBackground: "#262a45",
-    black: "#1b1f27",
-    red: "#ef8a83",
-    green: "#4fc38a",
-    yellow: "#e0b070",
-    blue: "#7aa2f7",
-    magenta: "#c792ea",
-    cyan: "#5fd1d8",
-    white: "#b2b8c4",
-    brightBlack: "#767d8c",
-    brightRed: "#ff9f98",
-    brightGreen: "#6ee0a2",
-    brightYellow: "#f0c88a",
-    brightBlue: "#99b8ff",
-    brightMagenta: "#d8aaff",
-    brightCyan: "#7fe6ec",
-    brightWhite: "#edf0f5",
-  },
-  "serialx-light": {
-    background: "#ffffff",
-    foreground: "#3b3b42",
-    cursor: "#5b57d8",
-    cursorAccent: "#ffffff",
-    selectionBackground: "#c4c2f2",
-    selectionInactiveBackground: "#e2e1f8",
-    black: "#17171b",
-    red: "#cb4b40",
-    green: "#2f8a5b",
-    yellow: "#a8730f",
-    blue: "#2f6fd6",
-    magenta: "#8e44ad",
-    cyan: "#1a8a96",
-    white: "#3b3b42",
-    brightBlack: "#86868f",
-    brightRed: "#e0665b",
-    brightGreen: "#3aa66f",
-    brightYellow: "#c08a2a",
-    brightBlue: "#4f89e8",
-    brightMagenta: "#a85ec8",
-    brightCyan: "#2aa3b1",
-    brightWhite: "#5c5c66",
-  },
-};
-
-type SearchDecorations = NonNullable<ISearchOptions["decorations"]>;
-
-/**
- * Find-in-buffer highlights, per theme. Enabling decorations is also what
- * makes the search addon report the match index / count.
- */
-const DARK_SEARCH_DECORATIONS: SearchDecorations = {
-  matchBackground: "#623315",
-  matchOverviewRuler: "#d18616",
-  activeMatchBackground: "#9e6a03",
-  activeMatchColorOverviewRuler: "#ffb700",
-};
-
-const LIGHT_SEARCH_DECORATIONS: SearchDecorations = {
-  matchBackground: "#f5d3b0",
-  matchOverviewRuler: "#d18616",
-  activeMatchBackground: "#a8ac94",
-  activeMatchColorOverviewRuler: "#ffb700",
-};
-
-const SEARCH_DECORATIONS: Record<ThemeMode, SearchDecorations> = {
-  dark: DARK_SEARCH_DECORATIONS,
-  light: LIGHT_SEARCH_DECORATIONS,
-  // The amber wash reads the same on serialX's two canvases, which differ
-  // from these only in how deep the dark one is.
-  "serialx-dark": DARK_SEARCH_DECORATIONS,
-  "serialx-light": LIGHT_SEARCH_DECORATIONS,
-};
-
-interface Callbacks {
-  onData: (data: string) => void;
-  onResize: (cols: number, rows: number) => void;
-  onStatus: (message: string, error?: boolean) => void;
-  /**
-   * Enter pressed while the session is dead and the terminal locked: the
-   * one keystroke a dead session still answers, reconnecting it the way
-   * WindTerm does.
-   */
-  onReconnect?: () => void;
-  /** An executed command line, captured from the buffer after Enter. */
-  onCommand: (command: string) => void;
-  /**
-   * Drives the background tab's running and unread-completion treatments.
-   * `kind` says what the state is about: the submitted command, or one turn
-   * of an agentic CLI that holds the terminal for a whole session.
-   */
-  onCommandState: (
-    state: "idle" | "running" | "complete",
-    kind: "command" | "ai",
-  ) => void;
-  /** Ranked history completions for the current input; [] when none. */
-  suggest: (input: string) => CommandSuggestion[];
-  /** Removes a command from the history behind `suggest`. */
-  forgetSuggestion: (command: string) => void;
-}
-
-/**
- * Where the user's typing begins on the prompt line. Captured on the first
- * keystroke after a fresh prompt, before the shell has echoed anything, so the
- * cursor still sits at the prompt's end. The marker tracks the row across
- * scrolling; the column is fixed because prompts do not move.
- */
-interface InputAnchor {
-  marker: IMarker;
-  col: number;
-}
 
 /**
  * Owns one xterm.js instance plus the WindTerm-style gutter that runs down the
@@ -401,15 +45,124 @@ interface InputAnchor {
  * state, because it changes on every frame of scrolling output.
  */
 export class TerminalController {
+  private readonly keyboard: TerminalKeyboard;
+
+  private readonly searchController: TerminalSearchController;
+
+  get searchAddon(): SearchAddon {
+    return this.searchController.searchAddon;
+  }
+
+  get onSearchResults() {
+    return this.searchController.onSearchResults;
+  }
+
+  search(query: string, forward = true, incremental = false, searchOptions: SearchOptions = {}) {
+    return this.searchController.search(query, forward, incremental, searchOptions);
+  }
+
+  clearSearch() {
+    return this.searchController.clearSearch();
+  }
+
+  private readonly clipboard: TerminalClipboard;
+
+  hasSelection(): boolean {
+    return this.clipboard.hasSelection();
+  }
+
+  copySelection(): boolean {
+    return this.clipboard.copySelection();
+  }
+
+  selectAll() {
+    return this.clipboard.selectAll();
+  }
+
+  clearSelection() {
+    return this.clipboard.clearSelection();
+  }
+
+  setRightClickAction(action: RightClickAction) {
+    return this.clipboard.setRightClickAction(action);
+  }
+
+  pasteFromClipboard() {
+    return this.clipboard.pasteFromClipboard();
+  }
+
+  paste(text: string) {
+    return this.clipboard.paste(text);
+  }
+
+  writePaste(text: string) {
+    return this.clipboard.writePaste(text);
+  }
+
+  setPasteWarning(enabled: boolean) {
+    return this.clipboard.setPasteWarning(enabled);
+  }
+
+  setCopyOnSelect(enabled: boolean) {
+    return this.clipboard.setCopyOnSelect(enabled);
+  }
+
+  setProgramClipboard(mode: ProgramClipboardMode) {
+    return this.clipboard.setProgramClipboard(mode);
+  }
+
+  onConfirmClipboardWrite(confirm: (text: string) => void) {
+    return this.clipboard.onConfirmClipboardWrite(confirm);
+  }
+
+  allowProgramClipboard(text: string) {
+    return this.clipboard.allowProgramClipboard(text);
+  }
+
+  onConfirmPaste(confirm: (text: string) => void) {
+    return this.clipboard.onConfirmPaste(confirm);
+  }
+
+  isMouseTracked(): boolean {
+    return this.clipboard.isMouseTracked();
+  }
+
+  private readonly commands: TerminalCommands;
+
+  noteCommandSent(command?: string) {
+    return this.commands.noteCommandSent(command);
+  }
+
+  waitForCommand(timeoutMs: number): Promise<void> {
+    return this.commands.waitForCommand(timeoutMs);
+  }
+
+  cancelCommandSent() {
+    return this.commands.cancelCommandSent();
+  }
+
+  private readonly lineGutter: TerminalLineGutter;
+
+  private readonly viewport: TerminalViewport;
+
+  fit(immediate = false): { cols: number; rows: number } | null {
+    return this.viewport.fit(immediate);
+  }
+
+  scheduleFit() {
+    return this.viewport.scheduleFit();
+  }
+
+  private readonly gpu: TerminalGpuRenderer;
+
+  refreshWebgl() {
+    return this.gpu.refreshWebgl();
+  }
+
+  private readonly semantic: TerminalSemanticRenderer;
+
   readonly term: Terminal;
   readonly fitAddon = new FitAddon();
-  readonly searchAddon = new SearchAddon({
-    highlightLimit: SEARCH_HIGHLIGHT_LIMIT,
-  });
-  /** Fires after every search and whenever buffer changes shift the matches. */
-  readonly onSearchResults = this.searchAddon.onDidChangeResults;
-  private lastSearch: string | null = null;
-  private lastSearchOptions: SearchOptions = {};
   private readonly zmodem: ZmodemController;
   private readonly xmodem: XmodemController;
   /**
@@ -421,12 +174,6 @@ export class TerminalController {
   private erase = "\x7f";
   private readonly transferNotice: HTMLElement;
   private transferNoticeTimer: number | null = null;
-  /** Only large-buffer column changes wait for the width to settle. */
-  private fitTimer: number | null = null;
-  /** A post-resize re-measure awaiting xterm's settled screen; see scheduleCellMeasure. */
-  private pendingCellMeasure: number | null = null;
-  /** One deferred proposal for a renderer that has not measured yet; see fit. */
-  private pendingProposeRetry: number | null = null;
   /**
    * A font change made while the pane was display:none, landed at the show
    * boundary where the renderer can measure it; see setFontSize.
@@ -443,23 +190,6 @@ export class TerminalController {
   private root: HTMLElement | null = null;
   private host: HTMLElement | null = null;
   private gutter: HTMLElement | null = null;
-  private rowPool: HTMLElement[] = [];
-
-  /** Wall-clock time each buffer line was produced, parallel to buffer lines. */
-  private lineTimes: number[] = [];
-  /**
-   * Where buffer line 0 sits in `lineTimes`. Lines xterm has trimmed are
-   * skipped rather than spliced off the front, which on a full 20 000-line
-   * scrollback would move the whole array once per line of output; the slack
-   * is compacted away in batches instead.
-   */
-  private lineTimesStart = 0;
-  /** Absolute line number of buffer line 0; grows as scrollback is trimmed. */
-  private firstLineNumber = 1;
-  /** Parked in the buffer to measure the trimming; see `followTrimmedLines`. */
-  private trimMarker: IMarker | null = null;
-  /** The line `trimMarker` was last seen on. */
-  private trimMarkerLine = 0;
   /** Set by an ED 3 until its write chunk ends; see the CSI J handler. */
   private shellClearing = false;
 
@@ -469,90 +199,15 @@ export class TerminalController {
   private locked = false;
   /** Command history capture + completion popup. Opt-in via the Edit menu. */
   private suggestionsOn = false;
-  /** Edit → Warn Before Multi-line Paste; see `paste`. */
-  private pasteWarning = true;
-  /** Edit → Copy on Select; see `onSelectionMouseUp`. */
-  private copyOnSelect = false;
-  /** A left button is down on this terminal, so a selection is being made. */
-  private selecting = false;
-  /** The selection changed since that button went down. */
-  private selectionChanged = false;
-  private confirmPaste: ((text: string) => void) | null = null;
-  /** Edit → Programs Can Set Clipboard; see `programClipboardWrite`. */
-  private programClipboard: ProgramClipboardMode = "ask";
-  /** The user allowed this session's OSC 52 writes when asked. */
-  private programClipboardAllowed = false;
-  private confirmClipboardWrite: ((text: string) => void) | null = null;
-  private inputAnchor: InputAnchor | null = null;
-  /** Marker and prompt signature for detecting when the submitted command returns. */
-  private commandMarker: IMarker | null = null;
-  private commandPrompt = "";
-  private commandPromptRecognized = false;
-  private commandOutputAdvanced = false;
-  private commandRunning = false;
-  /** Callers waiting for the running command to return; see `waitForCommand`. */
-  private commandWaiters: (() => void)[] = [];
-  /** Set while an agentic CLI (see `aiTools.ts`) owns the terminal. */
-  private aiSession = false;
-  /** Open from the user's input until the assistant goes quiet again. */
-  private aiTurn = false;
-  private aiOutputAt = 0;
-  private aiQuietTimer: number | null = null;
-  private readonly popup: HTMLElement;
-  /** Rows currently displayed; [] while the popup is hidden. */
-  private candidates: CommandSuggestion[] = [];
-  /** Selected row, or -1 while the popup is passive (keys pass through). */
-  private popupIndex = -1;
-  /** The input the current candidates were computed for. */
-  private popupInput = "";
-  /** Input the user dismissed the popup for (Esc / accept); "" = none. */
-  private dismissedInput = "";
-  private popupSyncScheduled = false;
   /** A viewport pass is queued for the end of the current task; see onScroll. */
   private viewportSyncQueued = false;
-  /**
-   * Each visited row's signature and cursor state, keyed by xterm's line
-   * object (see refreshSemanticColors). A WeakMap lets trimmed rows take
-   * their records with them.
-   */
-  private paintRecords = new WeakMap<PaintLine, PaintRecord>();
-  /** Whether xterm's buffer layout allows painting; null until checked. */
-  private paintSupported: boolean | null = null;
   /** Width at the last resize, to tell a reflow from a height-only change. */
   private lastCols = 0;
-  /** The backlog pass's next slice or its quiet wait; see scheduleBacklog. */
-  private backlogTimer: number | null = null;
-  /** Where the backlog walk resumes, walking up; null starts at the bottom. */
-  private backlogRow: number | null = null;
-  /** Reused cell for buffer walks, to avoid per-cell allocation. */
-  private workCell: IBufferCell | undefined;
   /** The shell's latest OSC directory report; see `reportedCwd`. */
   private reported: ReportedCwd | null = null;
   private disposed = false;
-  /** The WebGL addon driving the terminal; null on the DOM renderer. */
-  private webgl: WebglAddon | null = null;
   /** True while the pane is on screen; see setVisible. */
   private visible = false;
-  private webglWarned = false;
-  /** Recoveries used in the current window; see WEBGL_RECOVERY_LIMIT. */
-  private webglRecoveries = 0;
-  private webglLastLoss = 0;
-  private webglTimer: number | null = null;
-  /**
-   * Cached so the per-frame gutter sync never reads layout. Recomputed only on
-   * fit/resize, which is the only time it can change.
-   */
-  private cellHeight = 0;
-  /**
-   * The xterm-owned state the gutter rows were last painted for. A paint
-   * that matches it is skipped: a selection drag re-renders every frame
-   * without moving the viewport or cursor. This class's own inputs to the
-   * rows (line times, line numbering, mode) are covered by `invalidateGutter`
-   * at their mutation sites instead of being compared here.
-   */
-  private gutterPainted: GutterView | null = null;
-  /** Output may have changed the last nonblank screen row without moving the cursor. */
-  private gutterContentDirty = true;
 
   constructor(
     readonly sessionId: string,
@@ -562,6 +217,7 @@ export class TerminalController {
     theme: ThemeMode = "dark",
     fontFamily: string = MONO_FONT_FAMILY,
   ) {
+    const owner = this;
     this.scrollback = scrollback;
     this.themeMode = theme;
     // The semantic palette and the engine that reads a line are module-level
@@ -589,15 +245,200 @@ export class TerminalController {
       // only the menu mode wants the word under the pointer selected first.
       rightClickSelectsWord: true,
     });
+    this.keyboard = new TerminalKeyboard({
+      get commands() {
+        return owner.commands;
+      },
+
+      get term() {
+        return owner.term;
+      },
+
+      get erase() {
+        return owner.erase;
+      },
+
+      get clipboard() {
+        return owner.clipboard;
+      },
+    });
+
+    this.searchController = new TerminalSearchController({
+      get themeMode() {
+        return owner.themeMode;
+      },
+    });
+
+    this.clipboard = new TerminalClipboard({
+      get host() {
+        return owner.host;
+      },
+
+      get disposed() {
+        return owner.disposed;
+      },
+
+      get term() {
+        return owner.term;
+      },
+
+      get showTransferNotice() {
+        return (...args: Parameters<typeof owner.showTransferNotice>) =>
+          owner.showTransferNotice(...args);
+      },
+    });
+
+    this.commands = new TerminalCommands({
+      get disposed() {
+        return owner.disposed;
+      },
+
+      get locked() {
+        return owner.locked;
+      },
+
+      get isTransferActive() {
+        return (...args: Parameters<typeof owner.isTransferActive>) =>
+          owner.isTransferActive(...args);
+      },
+      get term() {
+        return owner.term;
+      },
+
+      get callbacks() {
+        return owner.callbacks;
+      },
+
+      get suggestionsOn() {
+        return owner.suggestionsOn;
+      },
+
+      get host() {
+        return owner.host;
+      },
+
+      get lineGutter() {
+        return owner.lineGutter;
+      },
+
+      get erase() {
+        return owner.erase;
+      },
+    });
+
+    this.lineGutter = new TerminalLineGutter({
+      get gutter() {
+        return owner.gutter;
+      },
+
+      get gutterMode() {
+        return owner.gutterMode;
+      },
+
+      get term() {
+        return owner.term;
+      },
+
+      get scrollback() {
+        return owner.scrollback;
+      },
+
+      get host() {
+        return owner.host;
+      },
+    });
+
+    this.viewport = new TerminalViewport({
+      get disposed() {
+        return owner.disposed;
+      },
+
+      get visible() {
+        return owner.visible;
+      },
+
+      get host() {
+        return owner.host;
+      },
+
+      get fitAddon() {
+        return owner.fitAddon;
+      },
+
+      get term() {
+        return owner.term;
+      },
+
+      get cellHeight() {
+        return owner.lineGutter.cellHeight;
+      },
+
+      get measureCell() {
+        return (...args: Parameters<typeof owner.lineGutter.measureCell>) =>
+          owner.lineGutter.measureCell(...args);
+      },
+      get invalidateGutter() {
+        return (...args: Parameters<typeof owner.lineGutter.invalidateGutter>) =>
+          owner.lineGutter.invalidateGutter(...args);
+      },
+      get syncGutter() {
+        return (...args: Parameters<typeof owner.lineGutter.syncGutter>) =>
+          owner.lineGutter.syncGutter(...args);
+      },
+      get inputAnchor() {
+        return owner.commands.inputAnchor;
+      },
+
+      get candidates() {
+        return owner.commands.candidates;
+      },
+
+      get schedulePopupSync() {
+        return (...args: Parameters<typeof owner.commands.schedulePopupSync>) =>
+          owner.commands.schedulePopupSync(...args);
+      },
+    });
+
+    this.gpu = new TerminalGpuRenderer({
+      get disposed() {
+        return owner.disposed;
+      },
+
+      get host() {
+        return owner.host;
+      },
+
+      get term() {
+        return owner.term;
+      },
+
+      get sessionId() {
+        return owner.sessionId;
+      },
+
+      get visible() {
+        return owner.visible;
+      },
+    });
+
+    this.semantic = new TerminalSemanticRenderer({
+      get term() {
+        return owner.term;
+      },
+
+      get visible() {
+        return owner.visible;
+      },
+
+      get disposed() {
+        return owner.disposed;
+      },
+    });
 
     this.transferNotice = document.createElement("div");
     this.transferNotice.className = "transfer-notice is-hidden";
     this.transferNotice.setAttribute("role", "status");
     this.transferNotice.setAttribute("aria-live", "polite");
-
-    this.popup = document.createElement("div");
-    this.popup.className = "term-suggest is-hidden";
-    this.popup.setAttribute("role", "listbox");
 
     const transferCallbacks = {
       toTerminal: (bytes: Uint8Array) => this.feed(bytes),
@@ -609,7 +450,7 @@ export class TerminalController {
     this.xmodem = new XmodemController(sessionId, transferCallbacks);
 
     this.term.loadAddon(this.fitAddon);
-    this.term.loadAddon(this.searchAddon);
+    this.term.loadAddon(this.searchController.searchAddon);
     this.term.loadAddon(new WebLinksAddon(openTerminalWebLink));
     const unicode = new Unicode11Addon();
     this.term.loadAddon(unicode);
@@ -622,18 +463,17 @@ export class TerminalController {
     // directory at every prompt. Only the latest report is kept: it answers
     // "Reveal Working Directory in Filer" exactly, nested shells and sudo
     // included, wherever the OS or the server cannot be asked.
-    const report =
-      (parse: (data: string) => ReportedCwd | null) => (data: string) => {
-        const cwd = parse(data);
-        if (cwd) {
-          this.reported = cwd;
-          // These reports are conventionally emitted by a prompt hook. They
-          // also cover visually empty/custom prompts that cannot be matched
-          // from buffer text alone.
-          this.finishCommand();
-        }
-        return cwd !== null;
-      };
+    const report = (parse: (data: string) => ReportedCwd | null) => (data: string) => {
+      const cwd = parse(data);
+      if (cwd) {
+        this.reported = cwd;
+        // These reports are conventionally emitted by a prompt hook. They
+        // also cover visually empty/custom prompts that cannot be matched
+        // from buffer text alone.
+        this.commands.finishCommand();
+      }
+      return cwd !== null;
+    };
     this.term.parser.registerOscHandler(7, report(parseOsc7));
     this.term.parser.registerOscHandler(1337, report(parseOsc1337));
     this.term.parser.registerOscHandler(9, report(parseOsc9));
@@ -642,7 +482,7 @@ export class TerminalController {
     // passed on to anything else.
     this.term.parser.registerOscHandler(52, (data) => {
       const text = parseOsc52(data);
-      if (text !== null) this.programClipboardWrite(text);
+      if (text !== null) this.clipboard.programClipboardWrite(text);
       return true;
     });
     // FinalTerm/iTerm shell integration brackets commands with OSC 133. It
@@ -650,8 +490,8 @@ export class TerminalController {
     // below covers ordinary bash/zsh/fish/cmd/PowerShell installations.
     this.term.parser.registerOscHandler(133, (data) => {
       const marker = data.split(";", 1)[0];
-      if (marker === "C" && !this.commandRunning) this.beginCommand();
-      else if (marker === "D" || marker === "A") this.finishCommand();
+      if (marker === "C" && !this.commands.commandRunning) this.commands.beginCommand();
+      else if (marker === "D" || marker === "A") this.commands.finishCommand();
       return marker === "A" || marker === "B" || marker === "C" || marker === "D";
     });
     // A shell's `clear` restarts the line numbering and drops the scrollback,
@@ -701,14 +541,14 @@ export class TerminalController {
       // `setVisible(true)` colors it before the first frame. Command tracking
       // still runs, since a background tab's busy / done state depends on it.
       if (this.visible) {
-        this.refreshSemanticColors();
-        this.scheduleBacklog();
+        this.semantic.refreshSemanticColors();
+        this.semantic.scheduleBacklog();
       }
-      this.gutterContentDirty = true;
-      this.detectReturnedPrompt();
+      this.lineGutter.gutterContentDirty = true;
+      this.commands.detectReturnedPrompt();
       // The shell's echo of a keystroke lands here; recompute the suggestions
       // from the buffer only while the user is composing a command.
-      if (this.inputAnchor) this.schedulePopupSync();
+      if (this.commands.inputAnchor) this.commands.schedulePopupSync();
       // `clear` sends its two erases in one chunk; a later ED 2 is somebody
       // else's redraw and keeps the scrollback.
       this.shellClearing = false;
@@ -723,29 +563,29 @@ export class TerminalController {
       // so the painted rows stay as they are.
       const widthChanged = cols !== this.lastCols;
       this.lastCols = cols;
-      if (widthChanged) this.recolorAll();
+      if (widthChanged) this.semantic.recolorAll();
       // Reflow moves lines between rows; the parked marker's count means
       // nothing across it, so the next pass starts from a fresh one.
-      this.resetTrimMarker();
-      this.trimLineMetadata();
-      this.measureCell();
-      this.invalidateGutter();
-      this.syncGutter();
+      this.lineGutter.resetTrimMarker();
+      this.lineGutter.trimLineMetadata();
+      this.lineGutter.measureCell();
+      this.lineGutter.invalidateGutter();
+      this.lineGutter.syncGutter();
       // onResize runs before xterm has laid the resized screen out; the
       // read above can be stale and the re-measure at the boundary corrects
       // it.
-      this.scheduleCellMeasure();
+      this.viewport.scheduleCellMeasure();
     });
 
-    this.term.onLineFeed(() => this.recordLine());
+    this.term.onLineFeed(() => this.lineGutter.recordLine());
     this.term.onRender(() => {
       if (!this.visible) return;
       // Catch-all for rows the write and scroll hooks did not see (resize
       // rebuilds, the cursor leaving a line, a second parse slice in the
       // same frame). Runs after the paint, so anything it colors shows up a
       // frame late; in the steady state it finds nothing to do.
-      this.refreshSemanticColors();
-      this.syncGutter();
+      this.semantic.refreshSemanticColors();
+      this.lineGutter.syncGutter();
     });
     this.term.onScroll(() => {
       // Fires synchronously while xterm handles the scroll (wheel, scrollbar
@@ -759,11 +599,12 @@ export class TerminalController {
       // by the `onRender` pass. New output is handled by the `onWriteParsed`
       // hook.
       this.queueViewportSync();
-      if (this.inputAnchor || this.candidates.length) this.schedulePopupSync();
+      if (this.commands.inputAnchor || this.commands.candidates.length)
+        this.commands.schedulePopupSync();
     });
-    this.term.attachCustomKeyEventHandler((event) => this.filterKey(event));
+    this.term.attachCustomKeyEventHandler((event) => this.keyboard.filterKey(event));
     this.term.onSelectionChange(() => {
-      this.selectionChanged = true;
+      this.clipboard.selectionChanged = true;
     });
     // Copy on select (see `onSelectionMouseUp`). The buttons are watched
     // above the host: a selection drag routinely ends outside the terminal,
@@ -774,200 +615,10 @@ export class TerminalController {
     // document ours ran first, saw no selection yet and never copied
     // (issue #70). The window hears the bubbling event after every document
     // listener.
-    document.addEventListener("mousedown", this.onSelectionMouseDown);
-    window.addEventListener("mouseup", this.onSelectionMouseUp);
+    document.addEventListener("mousedown", this.clipboard.onSelectionMouseDown);
+    window.addEventListener("mouseup", this.clipboard.onSelectionMouseUp);
 
-    this.lineTimes.push(Date.now());
-  }
-
-  private readonly onSelectionMouseDown = (event: MouseEvent) => {
-    // Only the left button makes a selection to copy. The right one selects
-    // the word under the pointer in menu mode, and putting that on the
-    // clipboard for merely opening the menu is not what was asked for.
-    const target = event.target;
-    this.selecting =
-      event.button === 0 &&
-      !!this.host &&
-      target instanceof Node &&
-      this.host.contains(target);
-    this.selectionChanged = false;
-  };
-
-  /**
-   * Copy on select, the X11 / PuTTY / Xshell habit that Windows Terminal
-   * calls `copyOnSelect`: a selection made with the mouse is on the
-   * clipboard the moment the button comes up, with no Copy in between.
-   *
-   * The copy waits for the button rather than running from
-   * `onSelectionChange`, for two reasons: a selection is only finished once
-   * the drag is, and WebKit lets a page write the clipboard only from inside
-   * a user gesture, which a mid-drag selection event is not. A selection the
-   * mouse had no part in (Select All from a key or a menu) is left alone —
-   * it would replace the clipboard with the whole scrollback behind the
-   * user's back.
-   */
-  private readonly onSelectionMouseUp = () => {
-    const made = this.selecting && this.selectionChanged;
-    this.selecting = false;
-    this.selectionChanged = false;
-    if (!made || !this.copyOnSelect || this.disposed) return;
-    this.copySelection();
-  };
-
-  /**
-   * xterm's key filter. True hands the key to xterm; false keeps it from
-   * xterm, and unless it is cancelled here as well the window-level
-   * shortcut handler still receives it.
-   */
-  private filterKey(event: KeyboardEvent): boolean {
-    if (event.type !== "keydown") return true;
-    const key = event.key.toLowerCase();
-
-    // IDE-style completion popup. While it is *passive* every key still
-    // reaches the shell (so ↑ history, Tab completion and a remote shell's
-    // own → autosuggest keep working); only ↓ (step into the list) and Esc
-    // (dismiss) are taken. Once a row is selected the list owns ↑/↓ and
-    // Enter/Tab accept — the user opted in by stepping into it.
-    // Shift+Delete on a selected row forgets it, as in browser and IDE
-    // completion lists; on macOS also Shift+⌫, since laptops have no
-    // forward Delete key.
-    if (
-      this.popupIndex >= 0 &&
-      event.shiftKey &&
-      !event.ctrlKey &&
-      !event.altKey &&
-      !event.metaKey &&
-      !event.isComposing &&
-      (key === "delete" || (IS_MAC && key === "backspace"))
-    ) {
-      event.preventDefault();
-      this.forgetSuggestion(this.popupIndex);
-      return false;
-    }
-    if (
-      this.candidates.length > 0 &&
-      !event.isComposing &&
-      !event.ctrlKey &&
-      !event.altKey &&
-      !event.metaKey &&
-      !event.shiftKey
-    ) {
-      if (key === "escape") {
-        event.preventDefault();
-        this.dismissedInput = this.popupInput;
-        this.hidePopup();
-        return false;
-      }
-      if (key === "arrowdown") {
-        event.preventDefault();
-        this.setPopupIndex(
-          this.popupIndex >= this.candidates.length - 1
-            ? this.candidates.length - 1
-            : this.popupIndex + 1,
-        );
-        return false;
-      }
-      if (this.popupIndex >= 0) {
-        if (key === "arrowup") {
-          event.preventDefault();
-          this.setPopupIndex(this.popupIndex - 1);
-          return false;
-        }
-        if (key === "enter" || key === "tab") {
-          event.preventDefault();
-          this.acceptSuggestion(this.popupIndex);
-          return false;
-        }
-      }
-    }
-
-    // Alt+arrow word jumps. xterm 5 rewrote Alt+←/→ into the readline
-    // word-motion keys (ESC b / ESC f on macOS, Ctrl+arrow elsewhere) and
-    // Alt+↑/↓ into Ctrl+↑/↓ off macOS; xterm 6 dropped that (#5346) and
-    // sends the plain Alt-modified sequences, which zsh and bash leave
-    // unbound. Kept here so the keys behave as they did in 0.6.x.
-    if (
-      event.altKey &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !event.shiftKey &&
-      !event.isComposing
-    ) {
-      const sequence = ALT_ARROW_SEQUENCES[key];
-      if (sequence) {
-        event.preventDefault();
-        this.term.input(sequence, true);
-        return false;
-      }
-    }
-
-    // Backspace sends ^H where the profile asks for it (#89). xterm has no
-    // option for this, and sends ^? for Backspace and ^H for Ctrl+Backspace,
-    // so in ^H mode the two trade places, leaving ^? one chord away. Alt
-    // keeps its ESC prefix, as xterm gives Alt+Backspace.
-    if (
-      this.erase === "\x08" &&
-      key === "backspace" &&
-      !event.metaKey &&
-      !event.isComposing
-    ) {
-      event.preventDefault();
-      this.term.input(
-        (event.altKey ? "\x1b" : "") + (event.ctrlKey ? "\x7f" : "\x08"),
-        true,
-      );
-      return false;
-    }
-
-    // The shortcut table, copy / paste / select all included (#47). Those
-    // three are the terminal's own and run right here; every other match
-    // is left unhandled — not cancelled — so the window-level handler
-    // receives it instead of xterm turning it into input. Plain
-    // Ctrl+letter and Alt+letter are never matched unless the user bound
-    // them: they are the shell's control characters and readline's Meta
-    // layer.
-    const shortcut = matchAppShortcut(event);
-    if (shortcut) {
-      switch (shortcut.kind) {
-        case "copy":
-          // A copy key that is plain Ctrl+letter is a shell key as well
-          // (Ctrl+C interrupts), so with nothing selected it goes on to the
-          // shell, as in Windows Terminal. Any other chord is consumed even
-          // then: Ctrl+Shift+C would otherwise arrive as a stray ^C.
-          if (!this.term.hasSelection() && isControlLetter(event)) return true;
-          event.preventDefault();
-          this.copySelection();
-          return false;
-        case "paste":
-          event.preventDefault();
-          this.pasteFromClipboard();
-          return false;
-        case "selectAll":
-          event.preventDefault();
-          this.term.selectAll();
-          return false;
-        default:
-          return false;
-      }
-    }
-
-    // WebKit answers plain ⌘C / ⌘V itself (its copy and paste editing
-    // commands fire on xterm's textarea) and xterm maps ⌘A to select-all,
-    // so once the user has moved those commands to other keys these have
-    // to be swallowed, or the old bindings would go on working beside the
-    // new ones. ⌘ never reaches the shell, so nothing is lost.
-    if (
-      IS_MAC &&
-      event.metaKey &&
-      !event.ctrlKey &&
-      !event.altKey &&
-      !event.shiftKey &&
-      (key === "c" || key === "v" || key === "a")
-    ) {
-      event.preventDefault();
-      return false;
-    }
-    return true;
+    this.lineGutter.lineTimes.push(Date.now());
   }
 
   attach(root: HTMLElement) {
@@ -978,7 +629,7 @@ export class TerminalController {
     if (this.root && this.gutter && this.host) {
       root.replaceChildren(this.gutter, this.host, this.transferNotice);
       this.root = root;
-      this.fit();
+      this.viewport.fit();
       return;
     }
 
@@ -993,7 +644,7 @@ export class TerminalController {
     this.hostResize = new ResizeObserver(() => {
       // The entry-level contract: a hidden terminal is never asked to fit
       // (the show path refits explicitly).
-      if (this.visible) this.scheduleFit();
+      if (this.visible) this.viewport.scheduleFit();
     });
     this.hostResize.observe(this.host);
 
@@ -1008,14 +659,14 @@ export class TerminalController {
     // Inside the host (not the root) so the completion popup positions
     // against the terminal content, past the gutter, and survives
     // re-parenting above.
-    this.host.appendChild(this.popup);
+    this.host.appendChild(this.commands.popup);
 
     // WebGL comes with being shown (setVisible); it needs the host, so a
     // terminal that was shown before it was attached loads it here.
-    if (this.visible) this.loadWebgl();
+    if (this.visible) this.gpu.loadWebgl();
 
-    this.fit();
-    this.applyGutterMode();
+    this.viewport.fit();
+    this.lineGutter.applyGutterMode();
   }
 
   /**
@@ -1040,245 +691,16 @@ export class TerminalController {
         this.term.options.fontFamily = pending.family;
         this.refreshFontMetrics();
       }
-      this.loadWebgl();
+      this.gpu.loadWebgl();
       // Output that arrived while hidden was not painted; do the viewport now,
       // ahead of the first frame, and the rest in the backlog.
-      this.refreshSemanticColors();
-      this.syncGutter();
-      this.scheduleBacklog();
+      this.semantic.refreshSemanticColors();
+      this.lineGutter.syncGutter();
+      this.semantic.scheduleBacklog();
     } else {
-      this.cancelFit();
-      this.stopBacklog();
+      this.viewport.cancelFit();
+      this.semantic.stopBacklog();
     }
-  }
-
-  /**
-   * WebGL is a large win on heavy output but is unavailable in some
-   * environments; the DOM renderer remains a working fallback. The fallback
-   * should not be permanent, so a lost context is recreated on the recovery
-   * budget. Semantic colors live in the buffer cells and render on either.
-   */
-  private loadWebgl() {
-    if (!isWebglEnabled() || this.disposed || !this.host) return;
-    if (this.webgl) {
-      this.promoteWebgl();
-      return;
-    }
-    try {
-      const webgl = new WebglAddon();
-      webgl.onContextLoss(() => this.handleWebglLoss(webgl));
-      this.term.loadAddon(webgl);
-      this.setWebgl(webgl);
-    } catch (error) {
-      if (!this.webglWarned) {
-        this.webglWarned = true;
-        console.warn(
-          `terminal ${this.sessionId}: WebGL unavailable, using the DOM renderer`,
-          error,
-        );
-      }
-      // The GPU process may still be restarting after a loss; retry on
-      // that budget. A cold failure means no WebGL at all: no point.
-      if (Date.now() - this.webglLastLoss <= WEBGL_RECOVERY_WINDOW_MS) {
-        this.scheduleWebglRecovery();
-      }
-    }
-  }
-
-  private unloadWebgl() {
-    const webgl = this.webgl;
-    if (!webgl) return;
-    // The addon only detaches its canvas; the GPU context behind it (and
-    // its window-sized surface) lives on until garbage collection and keeps
-    // counting against WebKit's limit meanwhile. Lose it explicitly.
-    const canvas = this.webglCanvas();
-    webgl.dispose();
-    canvas
-      ?.getContext("webgl2")
-      ?.getExtension("WEBGL_lose_context")
-      ?.loseContext();
-    this.setWebgl(null);
-  }
-
-  /** Brings this terminal onto the current renderer preference, if it can. */
-  refreshWebgl() {
-    if (!isWebglEnabled()) this.unloadWebgl();
-    else if (this.visible) this.loadWebgl();
-  }
-
-  /** The addon's canvas: the one in the screen without a render-layer class. */
-  private webglCanvas(): HTMLCanvasElement | null {
-    const screen = this.term.element?.querySelector(".xterm-screen");
-    if (!screen) return null;
-    for (const canvas of screen.querySelectorAll(":scope > canvas")) {
-      if (!canvas.className) return canvas as HTMLCanvasElement;
-    }
-    return null;
-  }
-
-  private handleWebglLoss(webgl: WebglAddon) {
-    // The addon reports the loss 3 s after the event; it may have been
-    // unloaded in between.
-    if (this.webgl !== webgl) return;
-    webgl.dispose();
-    this.setWebgl(null);
-    console.warn(`terminal ${this.sessionId}: WebGL context lost`);
-    const now = Date.now();
-    if (now - this.webglLastLoss > WEBGL_RECOVERY_WINDOW_MS) {
-      this.webglRecoveries = 0;
-    }
-    this.webglLastLoss = now;
-    this.scheduleWebglRecovery();
-  }
-
-  private scheduleWebglRecovery() {
-    // A hidden terminal simply loads WebGL again when it is shown.
-    if (this.disposed || !this.visible || this.webglTimer !== null) return;
-    if (this.webglRecoveries >= WEBGL_RECOVERY_LIMIT) {
-      console.warn(
-        `terminal ${this.sessionId}: WebGL did not come back after ` +
-          `${WEBGL_RECOVERY_LIMIT} attempts within a minute, staying on the DOM renderer`,
-      );
-      return;
-    }
-    this.webglRecoveries += 1;
-    this.webglTimer = window.setTimeout(() => {
-      this.webglTimer = null;
-      this.loadWebgl();
-    }, WEBGL_RECOVERY_DELAY_MS);
-  }
-
-  /** Records a renderer switch. */
-  private setWebgl(webgl: WebglAddon | null) {
-    this.webgl = webgl;
-    if (webgl) {
-      this.promoteWebgl();
-    } else {
-      const index = webglTerminals.indexOf(this);
-      if (index >= 0) webglTerminals.splice(index, 1);
-    }
-  }
-
-  /** Moves this terminal to the front of the holders, evicting past the limit. */
-  private promoteWebgl() {
-    const index = webglTerminals.indexOf(this);
-    if (index >= 0) webglTerminals.splice(index, 1);
-    webglTerminals.unshift(this);
-    while (webglTerminals.length > WEBGL_MAX_TERMINALS) {
-      webglTerminals.pop()?.unloadWebgl();
-    }
-  }
-
-  fit(immediate = false): { cols: number; rows: number } | null {
-    if (this.disposed || !this.visible || !this.host || this.host.clientWidth === 0) return null;
-    const proposal = this.tryPropose();
-    if (!proposal) {
-      // A pane mounted while hidden opened xterm before any pixel existed,
-      // and the renderer measures on its first post-visibility render. One
-      // retry at that boundary keeps the show-fits contract; giving up here
-      // left the terminal at its open-time size (observed as 80x24 with a
-      // screen taller than the host).
-      this.scheduleProposeRetry(immediate);
-      return null;
-    }
-    return this.applyProposal(proposal, immediate);
-  }
-
-  private tryPropose(): { cols: number; rows: number } | null {
-    try {
-      const proposal = this.fitAddon.proposeDimensions() ?? null;
-      if (proposal && Number.isFinite(proposal.cols) && Number.isFinite(proposal.rows)) {
-        return { cols: proposal.cols, rows: proposal.rows };
-      }
-    } catch {
-      // The renderer has nothing measured yet; the retry handles it.
-    }
-    return null;
-  }
-
-  private applyProposal(
-    proposal: { cols: number; rows: number },
-    immediate: boolean,
-  ): { cols: number; rows: number } | null {
-    this.cancelFit();
-    if (immediate || this.term.buffer.normal.length < FIT_BUFFER_THRESHOLD || proposal.cols === this.term.cols) {
-      return this.applyFit();
-    }
-    // A diagonal drag must update rows immediately, preserving the current
-    // columns until the expensive reflow is due.
-    if (proposal.rows !== this.term.rows) {
-      this.term.resize(this.term.cols, proposal.rows);
-      this.syncFitMetrics();
-    }
-    this.fitTimer = window.setTimeout(() => {
-      this.fitTimer = null;
-      this.applyFit();
-    }, FIT_SETTLE_MS);
-    return { cols: this.term.cols, rows: this.term.rows };
-  }
-
-  private scheduleProposeRetry(immediate: boolean): void {
-    if (this.disposed || !this.visible || this.pendingProposeRetry !== null) return;
-    this.pendingProposeRetry = window.requestAnimationFrame(() => {
-      this.pendingProposeRetry = null;
-      if (this.disposed || !this.visible || !this.host || this.host.clientWidth === 0) return;
-      const proposal = this.tryPropose();
-      if (proposal) this.applyProposal(proposal, immediate);
-    });
-  }
-
-  /**
-   * One layout read per resize, at its completion boundary: xterm lays the
-   * resized screen out on the animation frame after onResize, and reading
-   * earlier divides the old screen height by the new row count. That stale
-   * ratio poisoned the gutter pitch until something else refitted (a
-   * hidden-resize-show measured 400px/26 rows = 15.34px against 21px text
-   * and stayed wrong). Never runs per output render.
-   */
-  private scheduleCellMeasure(): void {
-    if (this.disposed || this.pendingCellMeasure !== null) return;
-    this.pendingCellMeasure = window.requestAnimationFrame(() => {
-      this.pendingCellMeasure = null;
-      if (this.disposed) return;
-      const previous = this.cellHeight;
-      this.measureCell();
-      if (this.cellHeight !== previous) {
-        this.invalidateGutter();
-        this.syncGutter();
-      }
-    });
-  }
-
-  private cancelFit() {
-    if (this.fitTimer !== null) window.clearTimeout(this.fitTimer);
-    this.fitTimer = null;
-  }
-
-  private applyFit(): { cols: number; rows: number } | null {
-    if (this.disposed || !this.visible || !this.host || this.host.clientWidth === 0) return null;
-    try {
-      this.fitAddon.fit();
-    } catch {
-      return null;
-    }
-    this.syncFitMetrics();
-    return { cols: this.term.cols, rows: this.term.rows };
-  }
-
-  private syncFitMetrics() {
-    this.measureCell();
-    this.syncGutter();
-    this.scheduleCellMeasure();
-    if (this.inputAnchor || this.candidates.length) this.schedulePopupSync();
-  }
-
-  /** ResizeObserver entry point; uses the same settle policy as explicit fits. */
-  scheduleFit() {
-    // A hidden terminal never fits (the show path refits explicitly), so the
-    // entry point itself is a no-op there — the host observer and any other
-    // caller share this one guard.
-    if (this.disposed || !this.visible) return;
-    this.fit();
   }
 
   write(data: Uint8Array, consumed?: () => void) {
@@ -1288,7 +710,7 @@ export class TerminalController {
     }
     // Cheap enough for the byte path: one timestamp, only while a turn is
     // open, and the quiet timer reads it instead of being re-armed here.
-    if (this.aiTurn) this.aiOutputAt = Date.now();
+    if (this.commands.aiTurn) this.commands.aiOutputAt = Date.now();
     // XMODEM is started by the user and takes the whole stream while it
     // runs; otherwise the ZMODEM sentry watches for its handshake and
     // passes ordinary output through to xterm.
@@ -1339,49 +761,6 @@ export class TerminalController {
   }
 
   /**
-   * Records a command sent outside xterm's keyboard path (the Sender panel).
-   * Call immediately before writing it so the current prompt can be used as
-   * the completion signature.
-   */
-  noteCommandSent(command?: string) {
-    // Text sent into an agentic CLI already holding the terminal is a turn
-    // for it, not a command line the shell will answer with a prompt.
-    if (this.aiSession) {
-      this.noteAiInput();
-      return false;
-    }
-    return this.beginCommand(undefined, command);
-  }
-
-  /**
-   * Resolves once the command in progress has returned to its prompt — the
-   * Sender waits for that before the next line of a script — or after
-   * `timeoutMs`, and at once while nothing is running. The end of the
-   * session ends the wait as well, since locking resets the tracking.
-   */
-  waitForCommand(timeoutMs: number): Promise<void> {
-    if (!this.commandRunning) return Promise.resolve();
-    return new Promise((resolve) => {
-      const done = () => {
-        window.clearTimeout(timer);
-        resolve();
-      };
-      const timer = window.setTimeout(() => {
-        this.commandWaiters = this.commandWaiters.filter((w) => w !== done);
-        resolve();
-      }, timeoutMs);
-      this.commandWaiters.push(done);
-    });
-  }
-
-  /** Rolls back `noteCommandSent` when the IPC write itself was rejected. */
-  cancelCommandSent() {
-    if (!this.commandRunning) return;
-    this.resetCommandTracking();
-    this.emitCommandState("idle");
-  }
-
-  /**
    * Locks the terminal once its session has ended: keystrokes and paste
    * stay local — except Enter, which asks `onReconnect` to bring the
    * session back — and the cursor is hidden so the pane does not look
@@ -1393,8 +772,8 @@ export class TerminalController {
     this.locked = locked;
     this.term.write(locked ? "\x1b[?25l" : "\x1b[?25h");
     if (locked) {
-      this.hidePopup();
-      this.resetCommandTracking();
+      this.commands.hidePopup();
+      this.commands.resetCommandTracking();
       // A reconnected shell starts over in its home directory; the old
       // report must not outlive the session it described.
       this.reported = null;
@@ -1416,7 +795,7 @@ export class TerminalController {
       if (data === "\r") this.callbacks.onReconnect?.();
       return;
     }
-    this.trackInput(data);
+    this.commands.trackInput(data);
     this.callbacks.onData(data);
   }
 
@@ -1465,192 +844,6 @@ export class TerminalController {
     this.term.focus();
   }
 
-  hasSelection(): boolean {
-    return this.term.hasSelection();
-  }
-
-  /**
-   * Copies the selection to the clipboard; false when there is none. A write
-   * that fails is reported in the pane rather than swallowed: with Copy on
-   * Select there is no other sign that nothing was copied.
-   */
-  copySelection(): boolean {
-    if (!this.term.hasSelection()) return false;
-    this.writeClipboard(this.term.getSelection());
-    return true;
-  }
-
-  selectAll() {
-    this.term.selectAll();
-  }
-
-  clearSelection() {
-    this.term.clearSelection();
-  }
-
-  /**
-   * `rightClickSelectsWord` follows the right-click mode: in "menu" mode a
-   * right click selects the word under the pointer so the menu's Copy has
-   * something to copy (VS Code); in "copyPaste" mode it must stay off, or a
-   * right click meant to paste would select a word and copy it instead.
-   */
-  setRightClickAction(action: RightClickAction) {
-    this.term.options.rightClickSelectsWord = action === "menu";
-  }
-
-  /**
-   * Pastes the clipboard as typed input — from the paste key, the Edit menu,
-   * the terminal's own menu, a right click in copy-or-paste mode and the
-   * middle button, so everything that pastes passes the check below. A read
-   * that fails is reported in the pane rather than swallowed, which is how
-   * #45 looked: a paste that did nothing at all.
-   */
-  pasteFromClipboard() {
-    void this.readClipboard().then(
-      (text) => {
-        if (text) this.paste(text);
-      },
-      (error: unknown) => {
-        this.showTransferNotice(`Paste failed: ${errorMessage(error)}`, "error");
-      },
-    );
-  }
-
-  /**
-   * Hands text to the terminal as if it were typed. xterm applies bracketed
-   * paste; a locked terminal keeps it out of `onData` (see `setLocked`).
-   *
-   * A paste the shell would run as several commands is confirmed first
-   * (issue #63): the lines after the first are executed the moment they
-   * arrive, so a stray clipboard is a handful of commands on a production
-   * host before anything can be read. Confirming is the terminal's
-   * convention — Windows Terminal, iTerm2 and Xshell all do it — and
-   * `pasteWarning` turns it off. `confirmPaste` shows the dialog and calls
-   * back here; without a confirmer (a test, a pane still wiring up) the text
-   * goes through, since refusing to paste would be worse than pasting.
-   */
-  paste(text: string) {
-    if (this.pasteWarning && this.confirmPaste && needsPasteWarning(text)) {
-      this.confirmPaste(text);
-      return;
-    }
-    this.writePaste(text);
-  }
-
-  /**
-   * Pastes without asking — what the confirmation dialog calls once the user
-   * has said yes, and the only path that may skip the check.
-   */
-  writePaste(text: string) {
-    this.term.paste(text);
-  }
-
-  /** Edit → Warn Before Multi-line Paste. */
-  setPasteWarning(enabled: boolean) {
-    this.pasteWarning = enabled;
-  }
-
-  /** Edit → Copy on Select; see `onSelectionMouseUp`. */
-  setCopyOnSelect(enabled: boolean) {
-    this.copyOnSelect = enabled;
-  }
-
-  /** Edit → Programs Can Set Clipboard. */
-  setProgramClipboard(mode: ProgramClipboardMode) {
-    this.programClipboard = mode;
-  }
-
-  /**
-   * Where an OSC 52 write that needs the user's yes goes; the dialog calls
-   * `allowProgramClipboard` once it is given.
-   */
-  onConfirmClipboardWrite(confirm: (text: string) => void) {
-    this.confirmClipboardWrite = confirm;
-  }
-
-  /**
-   * The user said yes to this session's program setting the clipboard:
-   * writes the text that asked and lets later writes through without asking
-   * again, since a program that copies once (an agent, tmux) copies on every
-   * selection and one prompt each time would be unusable.
-   */
-  allowProgramClipboard(text: string) {
-    this.programClipboardAllowed = true;
-    this.writeClipboard(text);
-  }
-
-  /**
-   * A program's OSC 52 write. In "ask" mode the first one of the session
-   * waits for the user; without a confirmer (a test, a pane still wiring up)
-   * it is dropped, since the clipboard is the user's and a program has no
-   * claim on it that has not been granted.
-   */
-  private programClipboardWrite(text: string) {
-    if (this.disposed || this.programClipboard === "deny") return;
-    if (this.programClipboard === "allow" || this.programClipboardAllowed) {
-      this.writeClipboard(text);
-    } else {
-      this.confirmClipboardWrite?.(text);
-    }
-  }
-
-  /**
-   * Puts text on the clipboard. On macOS and Windows the process does it
-   * (`write_clipboard_text`): a program's OSC 52 write arrives with its
-   * output, outside any user gesture, and WKWebView does not count the mouse
-   * up that ends a selection drag as one either, so Copy on Select copied
-   * nothing on macOS (issue #63). WebKitGTK lets the page write it (see
-   * `enable_clipboard_access`).
-   */
-  private writeClipboard(text: string) {
-    const write =
-      IS_MAC || IS_WINDOWS
-        ? writeClipboardText(text)
-        : navigator.clipboard.writeText(text);
-    void write.catch((error: unknown) => {
-      this.showTransferNotice(`Copy failed: ${errorMessage(error)}`, "error");
-    });
-  }
-
-  /**
-   * Where a paste that needs confirming goes; the dialog calls `paste` back
-   * with the same text once the user has said yes.
-   */
-  onConfirmPaste(confirm: (text: string) => void) {
-    this.confirmPaste = confirm;
-  }
-
-  /**
-   * The clipboard's text. On macOS the process reads it
-   * (`read_clipboard_text`): WebKit lets a page read the pasteboard only from
-   * inside its own paste command (⌘V, Edit → Paste on the system menu) and
-   * answers any other gesture with a "Paste" confirmation menu the user has
-   * to click, which a rebindable paste key cannot live with. Elsewhere the
-   * page reads it, which WebView2 gates behind the clipboard-read permission
-   * (granted through `enable_clipboard_access` in lib.rs). A profile that
-   * refused the prompt before the app granted it keeps refusing, and the
-   * prompt is not raised again, so on Windows the process reads it as well
-   * when the page cannot.
-   */
-  private async readClipboard(): Promise<string> {
-    if (IS_MAC) return readClipboardText();
-    try {
-      return await navigator.clipboard.readText();
-    } catch (error) {
-      if (!IS_WINDOWS) throw error;
-      return readClipboardText();
-    }
-  }
-
-  /**
-   * True while a program in the terminal (vim, tmux, htop…) has enabled
-   * mouse reporting, in which case clicks belong to it rather than to the
-   * app's copy / paste handling.
-   */
-  isMouseTracked(): boolean {
-    return this.term.modes.mouseTrackingMode !== "none";
-  }
-
   clear() {
     this.clearBufferAndMetadata();
   }
@@ -1661,13 +854,13 @@ export class TerminalController {
    * to push the screen into the scrollback rather than wipe it.
    */
   private screenCleared() {
-    if (this.commandRunning) this.commandOutputAdvanced = true;
+    if (this.commands.commandRunning) this.commands.commandOutputAdvanced = true;
     if (this.shellClearing) {
       this.clearBufferAndMetadata();
       return;
     }
     // The typed input is about to leave the screen with everything else.
-    this.dropAnchor();
+    this.commands.dropAnchor();
     this.followScrollTrim();
   }
 
@@ -1684,8 +877,8 @@ export class TerminalController {
     const buf = this.term.buffer.active;
     // A screen's worth of headroom left: nothing can be trimmed.
     if (buf.length <= this.scrollback) return;
-    this.followTrimmedLines();
-    const work = (this.workCell ??= buf.getNullCell());
+    this.lineGutter.followTrimmedLines();
+    const work = (this.semantic.workCell ??= buf.getNullCell());
     let scrolled = 0;
     for (let row = this.term.rows - 1; row >= 0 && scrolled === 0; row -= 1) {
       const line = buf.getLine(buf.baseY + row);
@@ -1697,8 +890,8 @@ export class TerminalController {
         }
       }
     }
-    this.dropLeadingLines(buf.length + scrolled - (this.term.rows + this.scrollback));
-    this.resetTrimMarker();
+    this.lineGutter.dropLeadingLines(buf.length + scrolled - (this.term.rows + this.scrollback));
+    this.lineGutter.resetTrimMarker();
   }
 
   /**
@@ -1709,43 +902,43 @@ export class TerminalController {
   private scrollbackErased() {
     const dropped = this.term.buffer.active.length - this.term.rows;
     if (dropped <= 0) return;
-    this.followTrimmedLines();
-    this.dropLeadingLines(dropped);
-    this.resetTrimMarker();
-    this.firstLineNumber = 1;
+    this.lineGutter.followTrimmedLines();
+    this.lineGutter.dropLeadingLines(dropped);
+    this.lineGutter.resetTrimMarker();
+    this.lineGutter.firstLineNumber = 1;
     // `clear` on Linux erases the screen first, so its rows are among the
     // ones just dropped; the prompt that follows lands on line 1.
-    if (this.lineCount === 0) this.setLineTimes([Date.now()]);
-    this.invalidateGutter();
+    if (this.lineGutter.lineCount === 0) this.lineGutter.setLineTimes([Date.now()]);
+    this.lineGutter.invalidateGutter();
   }
 
   private clearBufferAndMetadata() {
-    this.dropAnchor();
+    this.commands.dropAnchor();
     this.term.clear();
     this.resetLineMetadata();
   }
 
   private resetLineMetadata() {
-    this.setLineTimes([Date.now()]);
-    this.firstLineNumber = 1;
-    this.resetTrimMarker();
-    this.invalidateGutter();
-    this.syncGutter();
+    this.lineGutter.setLineTimes([Date.now()]);
+    this.lineGutter.firstLineNumber = 1;
+    this.lineGutter.resetTrimMarker();
+    this.lineGutter.invalidateGutter();
+    this.lineGutter.syncGutter();
   }
 
   setGutterMode(mode: GutterMode) {
     this.gutterMode = mode;
-    this.applyGutterMode();
-    this.invalidateGutter();
-    this.syncGutter();
+    this.lineGutter.applyGutterMode();
+    this.lineGutter.invalidateGutter();
+    this.lineGutter.syncGutter();
   }
 
   setSuggestions(enabled: boolean) {
     if (this.suggestionsOn === enabled) return;
     this.suggestionsOn = enabled;
     if (!enabled) {
-      this.dismissedInput = "";
-      this.hidePopup();
+      this.commands.dismissedInput = "";
+      this.commands.hidePopup();
     }
   }
 
@@ -1788,8 +981,8 @@ export class TerminalController {
 
   /** The cell size follows the font. */
   private refreshFontMetrics() {
-    this.cellHeight = 0;
-    this.fit(true);
+    this.lineGutter.cellHeight = 0;
+    this.viewport.fit(true);
   }
 
   setTheme(theme: ThemeMode) {
@@ -1799,8 +992,8 @@ export class TerminalController {
     this.term.options.theme = XTERM_THEMES[theme];
     // The cells hold the previous palette's colors (and, between WindTerm and
     // serialX, the other engine's spans).
-    this.recolorAll();
-    this.refreshSearch();
+    this.semantic.recolorAll();
+    this.searchController.refreshSearch();
     if (this.term.rows > 0) this.term.refresh(0, this.term.rows - 1);
   }
 
@@ -1809,134 +1002,39 @@ export class TerminalController {
     this.scrollback = scrollback;
     this.term.options.scrollback = scrollback;
     // A smaller scrollback makes xterm drop the excess right away.
-    this.resetTrimMarker();
-    this.trimLineMetadata();
-    this.syncGutter();
-  }
-
-  /**
-   * Find `query` in the buffer and highlight every match. `incremental`
-   * keeps the current match selected while the query is still being typed,
-   * instead of jumping to the next one.
-   */
-  search(
-    query: string,
-    forward = true,
-    incremental = false,
-    searchOptions: SearchOptions = {},
-  ) {
-    if (!query) {
-      this.clearSearch();
-      return;
-    }
-    const optionsChanged =
-      Boolean(this.lastSearchOptions.caseSensitive) !==
-        Boolean(searchOptions.caseSensitive) ||
-      Boolean(this.lastSearchOptions.wholeWord) !==
-        Boolean(searchOptions.wholeWord) ||
-      Boolean(this.lastSearchOptions.regex) !== Boolean(searchOptions.regex);
-    if (optionsChanged) {
-      // SearchAddon 0.16.0 assigns `_state.lastSearchOptions = searchOptions`
-      // before `shouldUpdateHighlighting` compares them, so an option change
-      // on the same term never re-highlights unless the cache is cleared first.
-      this.searchAddon.clearDecorations();
-    }
-    this.lastSearch = query;
-    this.lastSearchOptions = searchOptions;
-    const options: ISearchOptions = {
-      incremental,
-      caseSensitive: searchOptions.caseSensitive,
-      wholeWord: searchOptions.wholeWord,
-      regex: searchOptions.regex,
-      decorations: SEARCH_DECORATIONS[this.themeMode],
-    };
-    if (searchOptions.regex) {
-      try {
-        new RegExp(query, searchOptions.caseSensitive ? "g" : "gi");
-      } catch {
-        this.searchAddon.findNext("(?!)", { ...options, regex: true });
-        this.searchAddon.clearDecorations();
-        return;
-      }
-    }
-    if (forward) this.searchAddon.findNext(query, options);
-    else this.searchAddon.findPrevious(query, options);
-  }
-
-  /** Drop the match highlights; also stops re-searching on every write. */
-  clearSearch() {
-    this.lastSearch = null;
-    this.lastSearchOptions = {};
-    this.searchAddon.clearDecorations();
-  }
-
-  /**
-   * Re-run the last search so highlights pick up the current theme colors.
-   * The addon only re-highlights when the term or matching options change,
-   * so the decorations are cleared first.
-   */
-  private refreshSearch() {
-    if (this.lastSearch === null) return;
-    this.searchAddon.clearDecorations();
-    if (this.lastSearchOptions.regex) {
-      try {
-        new RegExp(
-          this.lastSearch,
-          this.lastSearchOptions.caseSensitive ? "g" : "gi",
-        );
-      } catch {
-        return;
-      }
-    }
-    this.searchAddon.findPrevious(this.lastSearch, {
-      incremental: true,
-      caseSensitive: this.lastSearchOptions.caseSensitive,
-      wholeWord: this.lastSearchOptions.wholeWord,
-      regex: this.lastSearchOptions.regex,
-      decorations: SEARCH_DECORATIONS[this.themeMode],
-    });
+    this.lineGutter.resetTrimMarker();
+    this.lineGutter.trimLineMetadata();
+    this.lineGutter.syncGutter();
   }
 
   scrollToLine(absoluteLine: number) {
-    this.followTrimmedLines();
-    this.term.scrollToLine(Math.max(0, absoluteLine - this.firstLineNumber));
+    this.lineGutter.followTrimmedLines();
+    this.term.scrollToLine(Math.max(0, absoluteLine - this.lineGutter.firstLineNumber));
   }
 
   dispose() {
     this.disposed = true;
-    document.removeEventListener("mousedown", this.onSelectionMouseDown);
-    window.removeEventListener("mouseup", this.onSelectionMouseUp);
-    this.dropAnchor();
-    this.resetTrimMarker();
-    this.resetCommandTracking();
+    document.removeEventListener("mousedown", this.clipboard.onSelectionMouseDown);
+    window.removeEventListener("mouseup", this.clipboard.onSelectionMouseUp);
+    this.commands.dropAnchor();
+    this.lineGutter.resetTrimMarker();
+    this.commands.resetCommandTracking();
     if (this.transferNoticeTimer !== null) {
       window.clearTimeout(this.transferNoticeTimer);
       this.transferNoticeTimer = null;
     }
-    this.cancelFit();
-    if (this.pendingCellMeasure !== null) {
-      window.cancelAnimationFrame(this.pendingCellMeasure);
-      this.pendingCellMeasure = null;
-    }
-    if (this.pendingProposeRetry !== null) {
-      window.cancelAnimationFrame(this.pendingProposeRetry);
-      this.pendingProposeRetry = null;
-    }
+    this.viewport.dispose();
     this.hostResize?.disconnect();
     this.hostResize = null;
-    if (this.webglTimer !== null) {
-      window.clearTimeout(this.webglTimer);
-      this.webglTimer = null;
-    }
-    this.unloadWebgl();
+    this.gpu.dispose();
     this.zmodem.dispose();
     this.xmodem.dispose();
     this.term.dispose();
     this.root = null;
     this.host = null;
     this.gutter = null;
-    this.rowPool = [];
-    this.stopBacklog();
+    this.lineGutter.rowPool = [];
+    this.semantic.stopBacklog();
   }
 
   // --- internals ------------------------------------------------------------
@@ -1961,338 +1059,6 @@ export class TerminalController {
     }
   }
 
-  // --- command history & inline suggestions --------------------------------
-
-  /**
-   * Begins (or replaces) the command currently represented by this tab.
-   * `sent` carries the command line when it was not typed here (the Sender
-   * panel), where the buffer only holds the prompt it is about to follow.
-   */
-  private beginCommand(anchor?: InputAnchor, sent?: string) {
-    if (
-      this.disposed ||
-      this.locked ||
-      this.commandRunning ||
-      this.isTransferActive() ||
-      this.term.buffer.active.type !== "normal"
-    ) {
-      return false;
-    }
-
-    const buf = this.term.buffer.active;
-    const cursorRow = buf.baseY + buf.cursorY;
-    const anchored = anchor !== undefined && this.anchorOnCursorLine(anchor);
-
-    let prompt: string;
-    if (anchor && !anchored) {
-      // The anchor no longer marks where the prompt ends, so read the
-      // boundary off the submitted line itself. Without a recognizable
-      // prompt there is no signature to wait for, and claiming a command
-      // that can never complete is worse than tracking none.
-      const text = this.cursorLine()?.text ?? "";
-      const end = shellPromptEnd(text);
-      if (end < 0) return false;
-      prompt = text.slice(0, end);
-    } else {
-      const row = anchored ? anchor.marker.line : cursorRow;
-      const col = anchored ? anchor.col : buf.cursorX;
-      prompt = buf.getLine(row)?.translateToString(false, 0, col) ?? "";
-    }
-
-    this.commandMarker?.dispose();
-    this.commandMarker = this.term.registerMarker(0);
-    this.commandPrompt = prompt;
-    // Appending a space lets a compact bare prompt such as `$` satisfy the
-    // same look-ahead rule as `$ command` in semantic coloring.
-    this.commandPromptRecognized = isShellPrompt(`${prompt} `);
-    this.commandOutputAdvanced = false;
-    this.commandRunning = true;
-    this.aiSession = isAiSessionCommand(sent ?? this.submittedCommand(prompt));
-    // An agentic CLI runs until the user quits it, so reporting its whole
-    // session as one running command would say nothing. The tab stays quiet
-    // until the assistant itself is working.
-    this.emitCommandState(this.aiSession ? "idle" : "running");
-    return true;
-  }
-
-  /**
-   * The command just submitted, read back from the line it was typed on.
-   * The prompt is cut off by its recognized end where there is one, so a
-   * shell-integration start (OSC 133 C, which arrives with the whole line
-   * already echoed) reads the same as a typed one.
-   */
-  private submittedCommand(prompt: string): string {
-    const text = this.cursorLine()?.text ?? "";
-    const end = shellPromptEnd(text);
-    return text.slice(end >= 0 ? end : prompt.length).trim();
-  }
-
-  /**
-   * True while the anchor still sits on the line the cursor is editing, the
-   * only case in which it says anything about that line. Keystrokes a
-   * foreground program consumed leave one behind pointing into the screen
-   * that program painted — `q` to leave Linux top, which runs in the normal
-   * buffer and never sees an Enter — and a scrollback trim retires its
-   * marker outright. A prompt read from there is never printed again, so the
-   * command would stay "running" for the rest of the session, and so would
-   * every command after it, because a running one blocks the next.
-   */
-  private anchorOnCursorLine(anchor: InputAnchor): boolean {
-    if (anchor.marker.isDisposed) return false;
-    const buf = this.term.buffer.active;
-    const cursorRow = buf.baseY + buf.cursorY;
-    const first = this.cursorLine()?.first ?? cursorRow;
-    return anchor.marker.line >= first && anchor.marker.line <= cursorRow;
-  }
-
-  /** Current logical line up to the cursor, including soft-wrapped rows. */
-  private cursorLine(): { first: number; text: string } | null {
-    const buf = this.term.buffer.active;
-    if (buf.type !== "normal") return null;
-    const cursor = buf.baseY + buf.cursorY;
-    let first = cursor;
-    while (first > 0 && buf.getLine(first)?.isWrapped) first -= 1;
-
-    let text = "";
-    for (let row = first; row <= cursor; row += 1) {
-      const line = buf.getLine(row);
-      if (!line) return null;
-      text += line.translateToString(false, 0, row === cursor ? buf.cursorX : undefined);
-    }
-    return { first, text };
-  }
-
-  /** Completes once a fresh prompt appears below the submitted command. */
-  private detectReturnedPrompt() {
-    if (!this.commandRunning) return;
-    const current = this.cursorLine();
-    if (!current) return;
-
-    const markerLine = this.commandMarker?.line ?? -1;
-    if (markerLine >= 0) {
-      if (current.first <= markerLine) return;
-      this.commandOutputAdvanced = true;
-    } else if (!this.commandOutputAdvanced) {
-      return;
-    }
-
-    const samePrompt =
-      this.commandPrompt.trim().length > 0 &&
-      current.text.startsWith(this.commandPrompt);
-    const knownPrompt =
-      this.commandPromptRecognized && isShellPrompt(`${current.text} `);
-    if (samePrompt || knownPrompt) this.finishCommand();
-  }
-
-  private finishCommand() {
-    if (!this.commandRunning) return;
-    // Keystrokes sent while the command owned the terminal (`q` to leave
-    // top, a pager's keys, an answer to a question) belonged to it, not to
-    // the next command line. The anchor they left points at a row the
-    // program painted, which history would then record as a command.
-    this.dropAnchor();
-    const kind = this.aiSession ? "ai" : "command";
-    this.resetCommandTracking();
-    if (!this.disposed) this.callbacks.onCommandState("complete", kind);
-  }
-
-  private resetCommandTracking() {
-    this.commandMarker?.dispose();
-    this.commandMarker = null;
-    this.commandPrompt = "";
-    this.commandPromptRecognized = false;
-    this.commandOutputAdvanced = false;
-    this.commandRunning = false;
-    this.endAiSession();
-    const waiters = this.commandWaiters;
-    this.commandWaiters = [];
-    for (const waiter of waiters) waiter();
-  }
-
-  private emitCommandState(state: "idle" | "running" | "complete") {
-    if (!this.disposed) {
-      this.callbacks.onCommandState(state, this.aiSession ? "ai" : "command");
-    }
-  }
-
-  /**
-   * A keystroke inside an agentic CLI opens a turn, and the tool's own
-   * repainting keeps it open: every one of them animates a spinner and an
-   * elapsed time while it works, and goes quiet the moment it wants the user
-   * back — quiet is the end of the turn. Output alone never opens one, or an
-   * idle tool's occasional repaint would announce work that never happened.
-   */
-  private noteAiInput() {
-    this.aiOutputAt = Date.now();
-    if (!this.aiTurn) {
-      this.aiTurn = true;
-      this.emitCommandState("running");
-    }
-    this.armAiQuiet(AI_QUIET_MS);
-  }
-
-  private armAiQuiet(delay: number) {
-    if (this.aiQuietTimer !== null) return;
-    this.aiQuietTimer = window.setTimeout(() => {
-      this.aiQuietTimer = null;
-      if (this.disposed || !this.aiTurn) return;
-      const quiet = Date.now() - this.aiOutputAt;
-      if (quiet < AI_QUIET_MS) {
-        this.armAiQuiet(AI_QUIET_MS - quiet);
-        return;
-      }
-      this.aiTurn = false;
-      this.emitCommandState("complete");
-    }, delay);
-  }
-
-  private endAiSession() {
-    if (this.aiQuietTimer !== null) {
-      window.clearTimeout(this.aiQuietTimer);
-      this.aiQuietTimer = null;
-    }
-    this.aiSession = false;
-    this.aiTurn = false;
-  }
-
-  /**
-   * Follows the user's keystrokes to delimit the command being composed.
-   * Keystroke echo comes back from the shell, so the buffer — not the raw
-   * input — is the source of truth for the command text; this only decides
-   * *where* that text starts and *when* it was submitted.
-   */
-  private trackInput(data: string) {
-    // Terminal reports come through here as well; nothing below is about
-    // them (see `TERMINAL_REPORT`).
-    if (TERMINAL_REPORT.test(data)) return;
-    // Before the alternate-screen check below: an agentic CLI may hold
-    // either buffer, and its turns are driven by these keystrokes.
-    if (this.aiSession) this.noteAiInput();
-    const buf = this.term.buffer.active;
-    if (buf.type !== "normal") {
-      this.dropAnchor();
-      return;
-    }
-    if (data === "\r") {
-      // The anchor exists as soon as the user starts editing the prompt. It
-      // is a better signal than the buffer text here because the last remote
-      // echo may still be in flight when Enter arrives.
-      if (this.commandRunning) {
-        // Input requested by the foreground command (sudo password, a REPL,
-        // an installer question) is not another shell command and must not
-        // replace the prompt signature we are waiting to see again.
-        this.dropAnchor();
-      } else {
-        if (this.inputAnchor) this.beginCommand(this.inputAnchor);
-        this.captureCommand();
-      }
-    } else if (data === "\x03") {
-      // Ctrl+C abandons the line.
-      this.dropAnchor();
-    } else if (data.includes("\r") || data.includes("\n")) {
-      // A multi-line paste executed commands we did not watch being typed;
-      // the anchor no longer describes anything real.
-      if (
-        !this.commandRunning &&
-        (/[^\s\r\n]/.test(data) || this.inputAnchor)
-      ) {
-        this.beginCommand();
-      }
-      this.dropAnchor();
-    } else if (!this.inputAnchor) {
-      const marker = this.term.registerMarker(0);
-      if (marker) this.inputAnchor = { marker, col: buf.cursorX };
-    }
-    this.schedulePopupSync();
-  }
-
-  /**
-   * Reads the command submitted with Enter. The buffer is read again after a
-   * short delay so echoes still in flight from the remote (the last
-   * keystrokes of a fast typist, or a shell erasing its own autosuggestion)
-   * have settled; the immediate snapshot is the fallback in case the line is
-   * gone by then (e.g. a `clear` in the executed command's output).
-   */
-  private captureCommand() {
-    const anchor = this.inputAnchor;
-    this.inputAnchor = null;
-    this.dismissedInput = "";
-    this.hidePopup();
-    if (!anchor) return;
-    if (!this.anchorOnCursorLine(anchor)) {
-      // Not the line being submitted: whatever it points at is output, not
-      // something the user typed here.
-      anchor.marker.dispose();
-      return;
-    }
-
-    const snapshot = this.readInput(anchor);
-    window.setTimeout(() => {
-      const settled = this.disposed ? null : this.readInput(anchor);
-      anchor.marker.dispose();
-      const command = (settled ?? snapshot ?? "")
-        // A zsh-style right prompt shares the input row, separated from the
-        // command by a run of padding spaces; cut it off. Three-plus literal
-        // spaces inside a real command line are vanishingly rare.
-        .replace(/ {3,}\S.*$/, "")
-        .trimEnd();
-      // A leading space opts out of history, mirroring the shells'
-      // `ignorespace` convention. Length guards against captured output.
-      if (!command || command.startsWith(" ") || command.length > 500) return;
-      if (!this.disposed && this.suggestionsOn) this.callbacks.onCommand(command);
-    }, 150);
-  }
-
-  /**
-   * The typed text: anchor column to the end of the (soft-wrapped) line, or
-   * to `end` (a buffer position, normally the cursor) when given. The popup
-   * passes the cursor so trailing spaces the user typed survive (right-
-   * trimming would corrupt the accepted remainder), a zsh-style right prompt
-   * on the same row is never read as input, and a remote shell's own inline
-   * autosuggestion after the cursor is ignored. Returns null when `end` does
-   * not lie on the anchor's logical line.
-   */
-  private readInput(
-    anchor: InputAnchor,
-    end?: { row: number; col: number },
-  ): string | null {
-    if (anchor.marker.isDisposed) return null;
-    const buf = this.term.buffer.active;
-    if (buf.type !== "normal") return null;
-    let row = anchor.marker.line;
-    const first = buf.getLine(row);
-    if (!first) return null;
-
-    const lines: { line: IBufferLine; start: number }[] = [
-      { line: first, start: anchor.col },
-    ];
-    let next = buf.getLine(row + 1);
-    while (next?.isWrapped && lines.length <= 10) {
-      lines.push({ line: next, start: 0 });
-      row += 1;
-      next = buf.getLine(row + 1);
-    }
-
-    const lastIndex = end
-      ? end.row - anchor.marker.line
-      : lines.length - 1;
-    if (lastIndex < 0 || lastIndex >= lines.length) return null;
-
-    let text = "";
-    for (let i = 0; i <= lastIndex; i += 1) {
-      const { line, start } = lines[i];
-      if (i < lastIndex) {
-        // A wrapped row is filled edge to edge; every cell is content.
-        text += line.translateToString(false, start);
-      } else if (end) {
-        text += line.translateToString(false, start, Math.max(end.col, start));
-      } else {
-        text += line.translateToString(true, start);
-      }
-    }
-    return text;
-  }
-
   /** Recolors and re-numbers the viewport once the current task is done. */
   private queueViewportSync() {
     if (this.viewportSyncQueued || this.disposed) return;
@@ -2300,640 +1066,8 @@ export class TerminalController {
     queueMicrotask(() => {
       this.viewportSyncQueued = false;
       if (this.disposed) return;
-      this.refreshSemanticColors();
-      this.syncGutter();
+      this.semantic.refreshSemanticColors();
+      this.lineGutter.syncGutter();
     });
   }
-
-  private schedulePopupSync() {
-    if (this.popupSyncScheduled || this.disposed) return;
-    this.popupSyncScheduled = true;
-    requestAnimationFrame(() => {
-      this.popupSyncScheduled = false;
-      if (!this.disposed) this.syncPopup();
-    });
-  }
-
-  /**
-   * Shows history matches for the typed input as a floating completion list
-   * anchored to the cursor, IDE-style. The input is read up to the cursor
-   * only, so a remote shell's own inline autosuggestion (fish,
-   * zsh-autosuggestions) after the cursor never feeds back into ours.
-   */
-  private syncPopup() {
-    const anchor = this.inputAnchor;
-    if (!this.suggestionsOn || !anchor || !this.host) {
-      this.hidePopup();
-      return;
-    }
-    const buf = this.term.buffer.active;
-    if (buf.type !== "normal" || anchor.marker.isDisposed) {
-      this.hidePopup();
-      return;
-    }
-
-    const cursorRow = buf.baseY + buf.cursorY;
-    const input = this.readInput(anchor, {
-      row: cursorRow,
-      col: buf.cursorX,
-    });
-    if (!input || input === this.dismissedInput) {
-      this.hidePopup();
-      return;
-    }
-
-    const candidates = this.callbacks.suggest(input);
-    if (candidates.length === 0) {
-      this.hidePopup();
-      return;
-    }
-
-    const viewRow = cursorRow - buf.viewportY;
-    const screen = this.host.querySelector<HTMLElement>(".xterm-screen");
-    if (
-      viewRow < 0 ||
-      viewRow >= this.term.rows ||
-      !screen ||
-      this.term.cols === 0
-    ) {
-      this.hidePopup();
-      return;
-    }
-    if (this.cellHeight <= 0) this.measureCell();
-    if (this.cellHeight <= 0) {
-      this.hidePopup();
-      return;
-    }
-
-    const inputChanged = input !== this.popupInput;
-    this.popupInput = input;
-    this.candidates = candidates;
-    // New input returns the popup to passive so stray navigation state never
-    // survives a keystroke; stepping into the list is always deliberate.
-    if (inputChanged) this.popupIndex = -1;
-    else if (this.popupIndex >= candidates.length) {
-      this.popupIndex = candidates.length - 1;
-    }
-    this.renderPopup();
-
-    // Horizontally at the input's start (IDE convention), vertically under
-    // the cursor row, flipped above when there is no room below.
-    const screenRect = screen.getBoundingClientRect();
-    const hostRect = this.host.getBoundingClientRect();
-    const cellWidth = screenRect.width / this.term.cols;
-    const anchorCol = cursorRow === anchor.marker.line ? anchor.col : 0;
-    const screenLeft = screenRect.left - hostRect.left;
-    const screenTop = screenRect.top - hostRect.top;
-
-    this.popup.classList.remove("is-hidden");
-    this.popup.style.maxWidth = `${Math.max(120, hostRect.width - 12)}px`;
-    const width = this.popup.offsetWidth;
-    const height = this.popup.offsetHeight;
-    const left = Math.max(
-      0,
-      Math.min(screenLeft + anchorCol * cellWidth, hostRect.width - width - 6),
-    );
-    let top = screenTop + (viewRow + 1) * this.cellHeight + 2;
-    if (top + height > hostRect.height) {
-      const above = screenTop + viewRow * this.cellHeight - height - 2;
-      if (above >= 0) top = above;
-    }
-    this.popup.style.left = `${left}px`;
-    this.popup.style.top = `${top}px`;
-  }
-
-  private renderPopup() {
-    this.popup.replaceChildren();
-    this.candidates.forEach((candidate, index) => {
-      const row = document.createElement("div");
-      row.className = `term-suggest-item${
-        index === this.popupIndex ? " is-selected" : ""
-      }`;
-      row.setAttribute("role", "option");
-
-      const { command, matchStart } = candidate;
-      const matchEnd = matchStart + this.popupInput.length;
-      const pre = document.createElement("span");
-      pre.textContent = command.slice(0, matchStart);
-      const match = document.createElement("span");
-      match.className = "term-suggest-match";
-      match.textContent = command.slice(matchStart, matchEnd);
-      const post = document.createElement("span");
-      post.textContent = command.slice(matchEnd);
-      const text = document.createElement("span");
-      text.className = "term-suggest-text";
-      text.append(pre, match, post);
-
-      const remove = document.createElement("span");
-      remove.className = "term-suggest-remove";
-      remove.title = `Remove from History (${IS_MAC ? "⇧⌫" : "Shift+Delete"})`;
-      remove.innerHTML = closeIcon;
-      remove.addEventListener("mousedown", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        this.forgetSuggestion(index);
-      });
-      row.append(text, remove);
-
-      row.addEventListener("mousedown", (event) => {
-        // preventDefault keeps focus in the terminal.
-        event.preventDefault();
-        this.acceptSuggestion(index);
-      });
-      this.popup.appendChild(row);
-    });
-  }
-
-  private setPopupIndex(index: number) {
-    this.popupIndex = Math.max(
-      -1,
-      Math.min(index, this.candidates.length - 1),
-    );
-    const rows = this.popup.children;
-    for (let i = 0; i < rows.length; i += 1) {
-      rows[i].classList.toggle("is-selected", i === this.popupIndex);
-    }
-  }
-
-  private acceptSuggestion(index: number) {
-    const candidate = this.candidates[index] ?? this.candidates[0];
-    if (!candidate) return;
-    const input = this.popupInput;
-    // A prefix match completes in place. Any other match erases the typed
-    // input first — one backspace per code point, so the shell edits its own
-    // line — then sends the full command.
-    const data = candidate.command.startsWith(input)
-      ? candidate.command.slice(input.length)
-      : this.erase.repeat([...input].length) + candidate.command;
-    this.dismissedInput = candidate.command;
-    this.hidePopup();
-    if (data && !this.locked && !this.isTransferActive()) {
-      this.callbacks.onData(data);
-    }
-  }
-
-  /** Drops a row from the history and redraws the list for the same input. */
-  private forgetSuggestion(index: number) {
-    const candidate = this.candidates[index];
-    if (!candidate) return;
-    this.callbacks.forgetSuggestion(candidate.command);
-    this.syncPopup();
-  }
-
-  private hidePopup() {
-    if (this.candidates.length === 0) return;
-    this.candidates = [];
-    this.popupIndex = -1;
-    this.popup.replaceChildren();
-    this.popup.classList.add("is-hidden");
-  }
-
-  private dropAnchor() {
-    this.inputAnchor?.marker.dispose();
-    this.inputAnchor = null;
-    this.dismissedInput = "";
-    this.hidePopup();
-  }
-
-  private applyGutterMode() {
-    if (!this.gutter) return;
-    this.gutter.classList.toggle("is-hidden", this.gutterMode === "off");
-    this.gutter.classList.toggle(
-      "no-time",
-      this.gutterMode === "line" || this.gutterMode === "off",
-    );
-    this.gutter.classList.toggle(
-      "no-line",
-      this.gutterMode === "time" || this.gutterMode === "off",
-    );
-  }
-
-  private recordLine() {
-    // The line feed that produced this row may have been the one that dropped
-    // the oldest, which moves every index the times are keyed by.
-    this.followTrimmedLines();
-    const buf = this.term.buffer.active;
-    const at = this.lineTimesStart + buf.baseY + buf.cursorY;
-    const now = Date.now();
-    while (this.lineTimes.length <= at) this.lineTimes.push(now);
-    this.lineTimes[at] = now;
-    this.invalidateGutter();
-    this.trimLineMetadata();
-  }
-
-  /** Line times held, i.e. how many buffer lines from the top have one. */
-  private get lineCount(): number {
-    return this.lineTimes.length - this.lineTimesStart;
-  }
-
-  private setLineTimes(times: number[]) {
-    this.lineTimes = times;
-    this.lineTimesStart = 0;
-  }
-
-  private trimLineMetadata() {
-    const max = this.term.rows + this.scrollback;
-    this.dropLeadingLines(this.lineCount - max);
-  }
-
-  /** xterm dropped `count` lines off the top; carry them into the numbering. */
-  private dropLeadingLines(count: number) {
-    if (count <= 0) return;
-    this.lineTimesStart = Math.min(this.lineTimes.length, this.lineTimesStart + count);
-    this.firstLineNumber += count;
-    // Compact in batches so the copy costs a few elements per dropped line.
-    if (this.lineTimesStart >= LINE_TIME_SLACK) {
-      this.setLineTimes(this.lineTimes.slice(this.lineTimesStart));
-    }
-    this.invalidateGutter();
-  }
-
-  /**
-   * Once the buffer is full every line xterm appends drops the oldest one,
-   * and nothing reports it: a line feed at the bottom recycles the top line
-   * instead of growing the buffer, so `recordLine` keeps landing on the same
-   * index and the numbering would freeze at the line the scrollback filled up
-   * on. A marker parked in the buffer measures the drop exactly — markers
-   * ride down with the trim — so everything that reads or writes the line
-   * metadata starts here. It is re-parked as the trim catches up with it,
-   * and dropped by the erases and resizes that account for their own.
-   */
-  private followTrimmedLines() {
-    const buf = this.term.buffer.active;
-    if (buf.type !== "normal") return;
-    const marker = this.trimMarker;
-    if (marker && !marker.isDisposed) {
-      this.dropLeadingLines(this.trimMarkerLine - marker.line);
-      this.trimMarkerLine = marker.line;
-      // Still above the trim; the next line it drops keeps it valid.
-      if (marker.line > 0) return;
-      marker.dispose();
-    }
-    // Nothing can be trimmed while a screenful still fits: no marker needed
-    // yet, and parking one per line would cost more than it measures.
-    if (buf.length <= this.scrollback) {
-      this.trimMarker = null;
-      return;
-    }
-    this.trimMarker = this.term.registerMarker(0);
-    this.trimMarkerLine = this.trimMarker?.line ?? 0;
-  }
-
-  /** Park a fresh marker: the caller has accounted for the trim itself. */
-  private resetTrimMarker() {
-    this.trimMarker?.dispose();
-    this.trimMarker = null;
-  }
-
-  /**
-   * WindTerm-style semantic coloring for output that did not set its own ANSI
-   * colors, painted into the buffer cells (see semanticPaint.ts) so a row
-   * keeps its colors into the scrollback, through trimming and reflow, on
-   * either renderer (issue #80). `paintRecords` holds each row's signature
-   * and cursor state, keyed by xterm's line object, so a row is only read
-   * again once its text, paint or cursor state has changed.
-   *
-   * This pass covers the viewport and runs from the write, scroll and render
-   * hooks, each timed before the paint it affects; an idle screen costs one
-   * signature per row. Rows an output flood scrolls away before they are
-   * ever on screen are left to the backlog pass (`scheduleBacklog`).
-   */
-  private refreshSemanticColors() {
-    if (this.term.rows === 0 || !this.semanticPaintReady()) return;
-    const buf = this.term.buffer.active;
-    const top = buf.viewportY;
-    const bottom = Math.min(top + this.term.rows - 1, buf.length - 1);
-    let first = Infinity;
-    let last = -Infinity;
-    let row = top;
-    while (row <= bottom) {
-      const [lo, hi] = this.logicalLine(buf, row);
-      row = hi + 1;
-      if (this.paintLogicalLine(buf, lo, hi)) {
-        first = Math.min(first, lo);
-        last = Math.max(last, hi);
-      }
-    }
-    this.refreshPaintedRows(first, last);
-  }
-
-  /**
-   * Cell writes do not mark rows dirty, so painted rows in view are queued
-   * for a repaint (debounced by xterm to the next frame).
-   */
-  private refreshPaintedRows(first: number, last: number) {
-    const top = this.term.buffer.active.viewportY;
-    const start = Math.max(first - top, 0);
-    const end = Math.min(last - top, this.term.rows - 1);
-    if (start <= end) this.term.refresh(start, end);
-  }
-
-  /** Rows [first, last] of the logical line through `row`, across soft wraps. */
-  private logicalLine(buf: IBuffer, row: number): [number, number] {
-    let first = row;
-    while (first > 0 && buf.getLine(first)?.isWrapped) first -= 1;
-    let last = row;
-    while (buf.getLine(last + 1)?.isWrapped) last += 1;
-    return [first, last];
-  }
-
-  /**
-   * Recolors one logical line if any of its rows changed since it was last
-   * colored; returns whether any cell changed.
-   */
-  private paintLogicalLine(buf: IBuffer, first: number, last: number): boolean {
-    const lines: PaintLine[] = [];
-    const cursor = buf.baseY + buf.cursorY;
-    const onCursorLine = first <= cursor && cursor <= last;
-    let changed = false;
-    for (let row = first; row <= last; row += 1) {
-      const line = internalLine(buf.getLine(row));
-      if (!line) return false;
-      lines.push(line);
-      if (!changed) {
-        const recorded = this.paintRecords.get(line);
-        changed = recorded === undefined
-          ? onCursorLine || !rowIsBlank(line)
-          : recorded.cursor !== onCursorLine || recorded.signature !== rowSignature(line);
-      }
-    }
-    if (!changed) return false;
-
-    let cleared = 0;
-    for (const line of lines) {
-      cleared += unpaint(line);
-    }
-    // A live shell prompt has a stable prefix worth coloring. Other cursor
-    // lines (echoed input, progress bars, full-screen redraws) stay plain.
-    const painted = this.colorLogicalLine(buf, first, last, lines, onCursorLine);
-    for (const line of lines) {
-      this.paintRecords.set(line, { signature: rowSignature(line), cursor: onCursorLine });
-    }
-    return cleared > 0 || painted;
-  }
-
-  /**
-   * Paints one logical line (rows [first..last] joined across soft wraps).
-   * The text is rebuilt from cells with a string-index → column map so spans
-   * align across wide (CJK) glyphs and wrapped rows instead of assuming one
-   * column per code unit.
-   */
-  private colorLogicalLine(
-    buf: IBuffer,
-    first: number,
-    last: number,
-    lines: PaintLine[],
-    onCursorLine: boolean,
-  ): boolean {
-    const work = (this.workCell ??= buf.getNullCell());
-
-    let text = "";
-    const rows: number[] = [];
-    const cols: number[] = [];
-    const widths: number[] = [];
-    for (let row = first; row <= last && text.length <= 4000; row += 1) {
-      const line = buf.getLine(row);
-      if (!line) break;
-      for (let col = 0; col < line.length; ) {
-        const cell = line.getCell(col, work);
-        if (!cell) break;
-        const width = cell.getWidth();
-        if (width === 0) {
-          col += 1;
-          continue;
-        }
-        const chars = cell.getChars() || " ";
-        for (let i = 0; i < chars.length; i += 1) {
-          rows.push(row);
-          cols.push(col);
-          widths.push(width);
-        }
-        text += chars;
-        col += width;
-      }
-    }
-    text = text.replace(/\s+$/, "");
-    // Pathological logical lines (minified assets, base64 blobs) are not
-    // worth the regex cost; they are still recorded so they are not
-    // examined again.
-    if (!text || text.length > 4000) return false;
-    if (onCursorLine) {
-      const promptEnd = shellPromptEnd(text);
-      if (promptEnd < 0) return false;
-      text = text.slice(0, promptEnd);
-    }
-    const { ranges, band } = semanticLine(text);
-
-    // A line band tints whole rows that carry no styling of their own. Not
-    // on the alternate screen: a full-screen program lays out its own rows,
-    // and a band behind one of them reads as part of its UI.
-    if (band && !onCursorLine && buf.type === "normal") {
-      const color = rgb(band);
-      for (const line of lines) {
-        if (canPaint(line, 0, line.length)) {
-          paintBackground(line, 0, line.length, color);
-        }
-      }
-    }
-
-    for (const range of ranges) {
-      // A range that crosses a soft wrap is painted row by row.
-      let start = range.start;
-      while (start < range.end) {
-        const row = rows[start];
-        let end = start;
-        while (end < range.end && rows[end] === row) end += 1;
-        const startCol = cols[start];
-        const endCol = cols[end - 1] + widths[end - 1];
-        start = end;
-
-        const line = lines[row - first];
-        if (!line || !canPaint(line, startCol, endCol)) continue;
-        // A pill's ground (serialX's HTTP methods).
-        if (range.background) {
-          paintBackground(line, startCol, endCol, rgb(range.background));
-        }
-        paintForeground(line, startCol, endCol, rgb(range.color), !!range.underline);
-      }
-    }
-    return ranges.length > 0 || !!band;
-  }
-
-  /** Whether cells can be painted on this xterm; checked once. */
-  private semanticPaintReady(): boolean {
-    if (this.paintSupported === null) {
-      this.paintSupported = paintable(this.term);
-      if (!this.paintSupported) {
-        console.warn("xterm's buffer layout changed; semantic coloring is off");
-      }
-    }
-    return this.paintSupported;
-  }
-
-  /**
-   * Drops every row's record, so every row is colored again: after a theme
-   * switch (new palette) or a resize (reflow rebuilds rows, and a band ends
-   * at the old width). The viewport is redone now, the rest in the backlog.
-   */
-  private recolorAll() {
-    this.paintRecords = new WeakMap();
-    // A hidden terminal repaints when it is shown (see setVisible).
-    if (this.visible) this.refreshSemanticColors();
-    this.scheduleBacklog();
-  }
-
-  /**
-   * Colors the rest of the normal buffer once output has been quiet for
-   * BACKLOG_QUIET_MS: walking up from the newest row in slices of
-   * BACKLOG_SLICE_MS, so it never holds up input or rendering. Any new output
-   * restarts the walk from the bottom — rows already colored cost one
-   * signature each, so the restart only repeats the cheap part. Only a
-   * visible terminal runs it; showing one starts it.
-   */
-  private scheduleBacklog() {
-    this.backlogRow = null;
-    if (this.backlogTimer !== null) window.clearTimeout(this.backlogTimer);
-    this.backlogTimer = null;
-    if (this.disposed || !this.visible) return;
-    this.backlogTimer = window.setTimeout(() => this.runBacklog(), BACKLOG_QUIET_MS);
-  }
-
-  private runBacklog() {
-    this.backlogTimer = null;
-    if (this.disposed || !this.visible || !this.semanticPaintReady()) return;
-    const buf = this.term.buffer.normal;
-    const deadline = performance.now() + BACKLOG_SLICE_MS;
-    let row = Math.min(this.backlogRow ?? Infinity, buf.length - 1);
-    let first = Infinity;
-    let last = -Infinity;
-    while (row >= 0 && performance.now() < deadline) {
-      const [lo, hi] = this.logicalLine(buf, row);
-      if (this.paintLogicalLine(buf, lo, hi)) {
-        first = Math.min(first, lo);
-        last = Math.max(last, hi);
-      }
-      row = lo - 1;
-    }
-    if (this.term.buffer.active.type === "normal") this.refreshPaintedRows(first, last);
-    if (row < 0) {
-      this.backlogRow = null;
-      return;
-    }
-    this.backlogRow = row;
-    this.backlogTimer = window.setTimeout(() => this.runBacklog(), 0);
-  }
-
-  private stopBacklog() {
-    if (this.backlogTimer !== null) window.clearTimeout(this.backlogTimer);
-    this.backlogTimer = null;
-    this.backlogRow = null;
-  }
-
-  /**
-   * `.xterm-screen` spans exactly `rows` cells, so its height divided by the
-   * row count is the exact cell height — no reaching into xterm's renderer.
-   */
-  private measureCell() {
-    const screen = this.host?.querySelector<HTMLElement>(".xterm-screen");
-    if (!screen || this.term.rows === 0) return;
-    const height = screen.clientHeight / this.term.rows;
-    if (Number.isFinite(height) && height > 0 && height !== this.cellHeight) {
-      this.cellHeight = height;
-      // Rows size themselves from this, so a height change costs one style
-      // write here instead of two per row on every sync.
-      this.gutter?.style.setProperty("--gutter-cell", `${height}px`);
-    }
-  }
-
-  /** Marks the gutter rows stale; the next sync repaints unconditionally. */
-  private invalidateGutter() {
-    this.gutterPainted = null;
-  }
-
-  private syncGutter() {
-    // Output that scrolled without a line feed (a full-screen program's erase)
-    // may have trimmed the buffer since the last pass.
-    this.followTrimmedLines();
-    if (!this.gutter || !this.host || this.gutterMode === "off") return;
-    if (this.cellHeight <= 0) this.measureCell();
-    if (this.cellHeight <= 0) return;
-
-    const buf = this.term.buffer.active;
-    const viewportY = buf.viewportY;
-    const cursorIndex = buf.baseY + buf.cursorY;
-    const rows = this.term.rows;
-    // Full-screen programs (vim, top) paint into the alternate buffer, where
-    // line numbers and produced-at times are meaningless.
-    const alternate = buf.type === "alternate";
-    const painted = this.gutterPainted;
-    const sameView = !!(
-      painted &&
-      painted.viewportY === viewportY &&
-      painted.cursorIndex === cursorIndex &&
-      painted.rows === rows &&
-      painted.alternate === alternate
-    );
-    if (sameView && !this.gutterContentDirty) return;
-    this.gutterContentDirty = false;
-
-    // A line feed can fill the timestamp array across untouched blank rows,
-    // and a program can move the cursor back after visiting a lower row.
-    // Keep meaningful blank lines inside the history, but hide only the
-    // blank suffix below both the cursor and the last visible text.
-    let contentEnd = cursorIndex;
-    if (!alternate) {
-      for (let index = buf.baseY + rows - 1; index > cursorIndex; index -= 1) {
-        if (buf.getLine(index)?.translateToString(true).length) {
-          contentEnd = index;
-          break;
-        }
-      }
-    }
-    if (sameView && painted?.contentEnd === contentEnd) return;
-    this.gutterPainted = { viewportY, cursorIndex, contentEnd, rows, alternate };
-
-    while (this.rowPool.length < rows) {
-      const row = document.createElement("div");
-      row.className = "gutter-row";
-      const time = document.createElement("span");
-      time.className = "gutter-time";
-      const line = document.createElement("span");
-      line.className = "gutter-line";
-      row.append(time, line);
-      this.gutter.appendChild(row);
-      this.rowPool.push(row);
-    }
-    while (this.rowPool.length > rows) {
-      this.rowPool.pop()?.remove();
-    }
-
-    for (let i = 0; i < rows; i++) {
-      const row = this.rowPool[i];
-      const index = viewportY + i;
-
-      // `buf.length` spans the viewport, and line feeds can put timestamps
-      // on padding rows. The content limit keeps that blank suffix hidden.
-      const written = !alternate && index < this.lineCount && index <= contentEnd;
-      row.classList.toggle("is-empty", !written);
-      row.classList.toggle("is-cursor", written && index === cursorIndex);
-
-      const time = row.children[0] as HTMLElement;
-      const line = row.children[1] as HTMLElement;
-      if (written) {
-        time.textContent = formatTime(this.lineTimes[this.lineTimesStart + index]);
-        line.textContent = String(this.firstLineNumber + index);
-      } else {
-        time.textContent = "";
-        line.textContent = "";
-      }
-    }
-  }
-}
-
-function formatTime(epochMs: number | undefined): string {
-  if (!epochMs) return "[--:--:--.---]";
-  const d = new Date(epochMs);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const milliseconds = String(d.getMilliseconds()).padStart(3, "0");
-  return `[${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${milliseconds}]`;
 }

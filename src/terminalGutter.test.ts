@@ -41,13 +41,12 @@ function gutterRows(controller: TerminalController): HTMLElement[] {
   const internals = controller as unknown as {
     gutter: HTMLElement | null;
     host: HTMLElement | null;
-    cellHeight: number;
-    syncGutter: () => void;
+    lineGutter: { cellHeight: number; syncGutter: () => void };
   };
   internals.gutter ??= document.createElement("div");
   internals.host ??= document.createElement("div");
-  internals.cellHeight = 16;
-  internals.syncGutter();
+  internals.lineGutter.cellHeight = 16;
+  internals.lineGutter.syncGutter();
   return Array.from(internals.gutter.querySelectorAll<HTMLElement>(".gutter-row"));
 }
 
@@ -64,7 +63,7 @@ function lines(from: number, to: number): string {
 
 /** The gutter's line metadata (private). */
 function metadata(controller: TerminalController) {
-  const internals = controller as unknown as {
+  const internals = (controller as unknown as { lineGutter: unknown }).lineGutter as {
     firstLineNumber: number;
     lineTimes: number[];
     lineTimesStart: number;
