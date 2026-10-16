@@ -232,8 +232,7 @@ mod drives {
         GetDriveTypeW, GetLogicalDrives, GetVolumeInformationW,
     };
     use windows_sys::Win32::System::WindowsProgramming::{
-        DRIVE_CDROM, DRIVE_FIXED, DRIVE_NO_ROOT_DIR, DRIVE_RAMDISK, DRIVE_REMOTE,
-        DRIVE_REMOVABLE,
+        DRIVE_CDROM, DRIVE_FIXED, DRIVE_NO_ROOT_DIR, DRIVE_RAMDISK, DRIVE_REMOTE, DRIVE_REMOVABLE,
     };
 
     use crate::model::FileEntry;
@@ -589,7 +588,14 @@ mod local_tests {
         for root in ["C:", "C:\\", "c:/", "\\\\?\\D:\\"] {
             assert!(is_drive_root(root), "{root}");
         }
-        for not_root in ["C:\\Users", "/", "/home", "This PC", "\\\\server\\share", "1:"] {
+        for not_root in [
+            "C:\\Users",
+            "/",
+            "/home",
+            "This PC",
+            "\\\\server\\share",
+            "1:",
+        ] {
             assert!(!is_drive_root(not_root), "{not_root}");
         }
     }
@@ -597,7 +603,10 @@ mod local_tests {
     #[test]
     fn strips_extended_length_prefixes_from_canonical_paths() {
         let plain = |text: &str| strip_verbatim_prefix(PathBuf::from(text));
-        assert_eq!(plain("\\\\?\\C:\\Users\\me"), PathBuf::from("C:\\Users\\me"));
+        assert_eq!(
+            plain("\\\\?\\C:\\Users\\me"),
+            PathBuf::from("C:\\Users\\me")
+        );
         assert_eq!(
             plain("\\\\?\\UNC\\nas\\share"),
             PathBuf::from("\\\\nas\\share")
