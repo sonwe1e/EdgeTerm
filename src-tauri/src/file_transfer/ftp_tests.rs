@@ -729,6 +729,91 @@ fn ftp_queue_is_pausable_and_cancellable_while_waiting() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// Two download jobs hold the endpoint slots; later jobs remain visible and
+/// cancellable, then advance automatically when a running download leaves.
+#[test]
+fn ftp_download_queue_advances_when_a_slot_is_released() {
+    let expected = b"queued download content".to_vec();
+    let f = Fixture::new(Server {
+        files: HashMap::from([
+            ("/hold-a".into(), vec![7; 256 * 1024]),
+            ("/hold-b".into(), vec![9; 256 * 1024]),
+            ("/waiting".into(), expected.clone()),
+            ("/cancelled".into(), b"must not arrive".to_vec()),
+        ]),
+        ..Server::default()
+    });
+    let root = f.root.join("journals");
+    std::fs::create_dir_all(&root).unwrap();
+    let (manager, _) = manager_for(&root, f.address.port());
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut jobs = Vec::new();
+        for (index, name) in ["hold-a", "hold-b", "waiting", "cancelled"]
+            .iter()
+            .enumerate()
+        {
+            let job = manager
+                .start(
+                    None,
+                    "session".into(),
+                    vec![Item {
+                        local: f.root.join(name).to_string_lossy().into(),
+                        remote: format!("/{name}"),
+                        upload: false,
+                        directory: false,
+                    }],
+                    None,
+                    Options {
+                        rate_limit_bps: if index < 2 { 1024 } else { 0 },
+                        ..Options::default()
+                    },
+                    sink(),
+                )
+                .unwrap();
+            if index < 2 {
+                assert_eq!(
+                    poll_status(&manager, &job.id, Duration::from_secs(3), "running"),
+                    "running"
+                );
+            }
+            jobs.push(job);
+        }
+        // Require the queue to remain queued across worker scheduling, rather
+        // than accepting only the initial snapshot before workers have run.
+        for _ in 0..10 {
+            let states = manager.snapshots();
+            assert_eq!(states.iter().filter(|s| s.status == "running").count(), 2);
+            assert_eq!(states.iter().filter(|s| s.status == "queued").count(), 2);
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        manager.control(&jobs[3].id, "cancel").unwrap();
+        assert_eq!(
+            poll_status(&manager, &jobs[3].id, Duration::from_secs(3), "cancelled"),
+            "cancelled"
+        );
+        assert!(!f.root.join("cancelled").exists());
+        manager.cancel(&jobs[0].id);
+        assert_eq!(
+            poll_status(&manager, &jobs[2].id, Duration::from_secs(3), "complete"),
+            "complete"
+        );
+        assert_eq!(std::fs::read(f.root.join("waiting")).unwrap(), expected);
+        assert_eq!(jobs[1].snapshot.lock().status, "running");
+    }));
+    // Leave no paced workers behind, including when an assertion panics.
+    for job in manager.snapshots() {
+        if !matches!(job.status.as_str(), "complete" | "cancelled" | "error") {
+            manager.cancel(&job.id);
+            let _ = poll_status(&manager, &job.id, Duration::from_secs(3), "cancelled");
+        }
+    }
+    result.unwrap();
+    assert!(manager
+        .snapshots()
+        .iter()
+        .all(|job| matches!(job.status.as_str(), "complete" | "cancelled" | "error")));
+}
+
 /// An interrupted FTP directory upload survives a restart of the manager:
 /// the journal is discovered, adopted on the matching endpoint, and the
 /// resume verifies the confirmed prefix before finishing — every file
