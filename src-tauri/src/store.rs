@@ -1215,14 +1215,22 @@ pub(crate) fn portable_data_dir_in(exe_dir: &Path) -> Option<PathBuf> {
     dir.is_dir().then_some(dir)
 }
 
-fn config_path() -> PathBuf {
+/// The directory the application keeps its configuration and logs in: the
+/// portable `data` directory when one ships next to the executable, the OS
+/// configuration directory (`%APPDATA%\EdgeTerm`, the Application Support
+/// folder, `~/.config/EdgeTerm`) otherwise. Diagnostics live in `logs/` under
+/// it (see `diagnostics::logs_dir`).
+pub fn data_dir() -> PathBuf {
     match portable_data_dir() {
-        Some(dir) => dir.join("sessions.json"),
+        Some(dir) => dir,
         None => dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("EdgeTerm")
-            .join("sessions.json"),
+            .join("EdgeTerm"),
     }
+}
+
+fn config_path() -> PathBuf {
+    data_dir().join("sessions.json")
 }
 
 fn write_owner_only(path: &Path, contents: &str) -> Result<()> {

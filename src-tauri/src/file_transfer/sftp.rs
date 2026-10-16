@@ -17,6 +17,7 @@ use tokio::sync::Semaphore;
 
 use super::{local, Checkpoint, Control, Failure, Item, Job, TransferResult};
 use crate::commands::AppState;
+use crate::diagnostics::Request;
 use crate::session::{
     auth::AuthPrompter,
     ssh::{connect_sftp, SftpConnectOutcome, SharedTransport},
@@ -80,10 +81,13 @@ impl Remote {
             Some(t) => t,
             None => {
                 let prompt = AuthPrompter::background();
+                let request = Request::begin("transfer_connect")
+                    .with_session(&job.session_id)
+                    .with_transfer(&job.id);
                 let conn = job
                     .control
                     .run(async {
-                        connect_sftp(&job.profile, &job.jumps, &prompt)
+                        connect_sftp(&job.profile, &job.jumps, &prompt, &request)
                             .await
                             .map_err(Failure::connection)
                     })

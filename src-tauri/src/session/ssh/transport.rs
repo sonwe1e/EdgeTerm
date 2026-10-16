@@ -408,6 +408,7 @@ pub(super) async fn connect_handle(
     profile: &SessionProfile,
     jumps: &[SessionProfile],
     prompter: &AuthPrompter<'_>,
+    request: &Request,
 ) -> Result<HandleOutcome> {
     let mut hops: Vec<Handle<Client>> = Vec::with_capacity(jumps.len());
     let mut legacy = Vec::new();
@@ -416,7 +417,7 @@ pub(super) async fn connect_handle(
             handle: &hops[previous],
             label: jumps[previous].address(),
         });
-        match connect_hop(jump, via.as_ref(), prompter).await? {
+        match connect_hop(jump, via.as_ref(), prompter, request).await? {
             HopOutcome::Ready(handle, weak, _) => {
                 hops.push(handle);
                 legacy.extend(weak);
@@ -430,7 +431,7 @@ pub(super) async fn connect_handle(
         handle: hops.last().expect("one hop per jump host"),
         label: jump.address(),
     });
-    match connect_hop(profile, via.as_ref(), prompter).await? {
+    match connect_hop(profile, via.as_ref(), prompter, request).await? {
         HopOutcome::Ready(handle, weak, forwards) => {
             legacy.extend(weak);
             Ok(HandleOutcome::Ready(Transport {
@@ -460,6 +461,7 @@ pub(super) async fn connect_hop(
     profile: &SessionProfile,
     via: Option<&Via<'_>>,
     prompter: &AuthPrompter<'_>,
+    request: &Request,
 ) -> Result<HopOutcome> {
     let host = profile
         .host
@@ -472,6 +474,14 @@ pub(super) async fn connect_hop(
         .clone()
         .filter(|u| !u.is_empty())
         .ok_or_else(|| AppError::new("session is missing a username"))?;
+    let address = format!("{host}:{port}");
+    match via {
+        None => request.info("connect", format!("dialling {address}")),
+        Some(via) => request.info(
+            "connect",
+            format!("dialling {address} through {}", via.label),
+        ),
+    }
 
     let config = Arc::new(client_config());
     let legacy = LegacyRecord::default();
@@ -511,6 +521,10 @@ pub(super) async fn connect_hop(
             line,
             key,
         }) => {
+            request.warn(
+                "host-key",
+                format!("{address} presented a changed host key; waiting for the user's decision"),
+            );
             return Ok(HopOutcome::HostKeyChanged(describe_host_key_change(
                 &host,
                 port,
@@ -521,6 +535,15 @@ pub(super) async fn connect_hop(
         }
         Err(HandshakeError::Ssh(e)) => {
             let reason = handshake_failure(&e);
+            request.warn(
+                "connect",
+                match via {
+                    None => format!("cannot reach {host}:{port}: {reason}"),
+                    Some(via) => {
+                        format!("cannot reach {host}:{port} through {}: {reason}", via.label)
+                    }
+                },
+            );
             return Err(AppError::new(match via {
                 None => format!("cannot reach {host}:{port}: {reason}"),
                 Some(via) => format!("cannot reach {host}:{port} via {}: {reason}", via.label),
@@ -528,17 +551,20 @@ pub(super) async fn connect_hop(
         }
     };
 
-    authenticate(
-        &mut handle,
-        profile,
-        &username,
-        &format!("{host}:{port}"),
-        prompter,
-    )
-    .await?;
+    authenticate(&mut handle, profile, &username, &address, prompter, request).await?;
+    request.info("auth", format!("authenticated {username}@{address}"));
     let algorithms = legacy.get();
+    if !algorithms.is_empty() {
+        request.warn(
+            "algorithms",
+            format!(
+                "{address} connected on legacy algorithms: {}",
+                algorithms.join(", ")
+            ),
+        );
+    }
     let weak = (!algorithms.is_empty()).then(|| LegacyAlgorithms {
-        address: format!("{host}:{port}"),
+        address: address.clone(),
         algorithms,
     });
     Ok(HopOutcome::Ready(handle, weak, forwards))
@@ -548,13 +574,14 @@ pub async fn connect(
     profile: &SessionProfile,
     jumps: &[SessionProfile],
     prompter: &AuthPrompter<'_>,
+    request: &Request,
 ) -> Result<ConnectOutcome> {
     let Transport {
         forwards,
         handle,
         hops,
         legacy,
-    } = match connect_handle(profile, jumps, prompter).await? {
+    } = match connect_handle(profile, jumps, prompter, request).await? {
         HandleOutcome::Ready(transport) => transport,
         HandleOutcome::HostKeyChanged(change) => {
             return Ok(ConnectOutcome::HostKeyChanged(change));
@@ -648,6 +675,7 @@ pub(crate) async fn test_transport(
         user,
         host,
         &AuthPrompter::canned(&answers),
+        &Request::begin("fixture"),
     )
     .await
     .expect("key login");

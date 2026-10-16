@@ -6,7 +6,7 @@ use super::{
     auth_failure, authenticate, client_config, connect, connect_on, connect_sftp, ensure_sftp,
     handshake_failure, legacy_choices, open_shell, replace_host_key, run_sftp, saved_answer,
     verify_host_key, AuthPrompter, Client, ConnectOutcome, Endpoint, Handle, HandshakeError, Hops,
-    LegacyRecord, Prompt, SftpConnectOutcome, SftpRequest, SftpResponse, SharedTransport,
+    LegacyRecord, Prompt, Request, SftpConnectOutcome, SftpRequest, SftpResponse, SharedTransport,
     SshTransports, SAVED_PASSWORD_REJECTED,
 };
 use crate::model::{AuthKind, AuthPromptField, SessionKind, SessionProfile};
@@ -36,6 +36,12 @@ const ECDSA_A: &str = "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIb
 
 fn key(openssh: &str) -> PublicKey {
     PublicKey::from_openssh(openssh).expect("valid test key")
+}
+
+/// A throwaway request for code paths exercising something other than the
+/// diagnostics themselves; nothing installed here is asserted on.
+fn request() -> Request {
+    Request::begin("fixture")
 }
 
 /// A known_hosts path inside a private temporary directory that is
@@ -120,7 +126,7 @@ async fn shell_and_sftp_open_through_a_jump_host() {
 
     // A shell through the tunnel: what the shell prints comes back. The
     // marker is computed so the echoed command line cannot match it.
-    let mut conn = match connect(&target, std::slice::from_ref(&jump), &prompter)
+    let mut conn = match connect(&target, std::slice::from_ref(&jump), &prompter, &request())
         .await
         .expect("connect through the jump host")
     {
@@ -156,7 +162,7 @@ async fn shell_and_sftp_open_through_a_jump_host() {
     drop(conn);
 
     // SFTP through the same kind of tunnel.
-    let sftp = match connect_sftp(&target, std::slice::from_ref(&jump), &prompter)
+    let sftp = match connect_sftp(&target, std::slice::from_ref(&jump), &prompter, &request())
         .await
         .expect("sftp through the jump host")
     {
@@ -190,10 +196,15 @@ async fn shell_and_sftp_open_through_a_jump_host() {
     // A target the jump host cannot reach is reported as such.
     let mut unreachable = target.clone();
     unreachable.port = Some(1);
-    let error = connect(&unreachable, std::slice::from_ref(&jump), &prompter)
-        .await
-        .err()
-        .expect("port 1 is closed");
+    let error = connect(
+        &unreachable,
+        std::slice::from_ref(&jump),
+        &prompter,
+        &request(),
+    )
+    .await
+    .err()
+    .expect("port 1 is closed");
     assert!(error.to_string().contains("jump host"), "{error}");
 }
 
@@ -420,6 +431,7 @@ async fn transport_to(address: SocketAddr, known_hosts: &Path) -> Arc<SharedTran
         "ops",
         "127.0.0.1",
         &AuthPrompter::canned(&user),
+        &request(),
     )
     .await
     .expect("the server lets the session in");
@@ -1119,6 +1131,7 @@ async fn a_public_key_that_needs_a_verification_code_finishes_the_login() {
         "alice",
         "mfa.example:22",
         &AuthPrompter::canned(&user),
+        &request(),
     )
     .await
     .expect("the second factor completes the login");
@@ -1166,6 +1179,7 @@ async fn a_server_that_asks_for_nothing_logs_straight_in() {
         "root",
         "192.168.1.1:22",
         &AuthPrompter::canned(&user),
+        &request(),
     )
     .await
     .expect("a server that asks for nothing lets the session in");
@@ -1198,6 +1212,7 @@ async fn a_refused_public_key_is_reported_as_a_refused_key() {
         "alice",
         "mfa.example:22",
         &AuthPrompter::canned(&user),
+        &request(),
     )
     .await
     .expect_err("the server refuses the key");
@@ -1270,6 +1285,7 @@ async fn a_password_round_is_answered_from_the_profile_but_a_code_is_not() {
         "alice",
         "mfa.example:22",
         &AuthPrompter::canned(&user),
+        &request(),
     )
     .await
     .expect("password plus code completes the login");
@@ -1324,6 +1340,7 @@ async fn a_password_only_server_gets_the_password_asked_for() {
         "alice",
         "switch.example:22",
         &AuthPrompter::canned(&user),
+        &request(),
     )
     .await
     .expect("the typed password logs in");
@@ -1359,6 +1376,7 @@ async fn asking_for_a_password_stops_after_three_tries_or_a_cancel() {
         "alice",
         "switch.example:22",
         &AuthPrompter::canned(&user),
+        &request(),
     )
     .await
     .expect_err("every password is refused");
@@ -1380,6 +1398,7 @@ async fn asking_for_a_password_stops_after_three_tries_or_a_cancel() {
         "alice",
         "switch.example:22",
         &AuthPrompter::canned(&user),
+        &request(),
     )
     .await
     .expect_err("the user cancelled");
@@ -1408,6 +1427,7 @@ async fn a_refused_saved_password_is_asked_for_rather_than_resent() {
         "alice",
         "switch.example:22",
         &AuthPrompter::canned(&user),
+        &request(),
     )
     .await
     .expect("the new password logs in");
@@ -1446,6 +1466,7 @@ async fn a_refused_saved_password_is_not_resent_to_keyboard_interactive() {
         "alice",
         "pam.example:22",
         &AuthPrompter::canned(&user),
+        &request(),
     )
     .await
     .expect("the new password logs in");
@@ -1482,6 +1503,7 @@ async fn with_nothing_saved_a_pam_server_asks_for_the_password_itself() {
         "alice",
         "pam.example:22",
         &AuthPrompter::canned(&user),
+        &request(),
     )
     .await
     .expect("the password typed into the server's round logs in");

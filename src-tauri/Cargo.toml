@@ -67,6 +67,13 @@ dirs = "6"
 ring = "0.17"
 notify = "8"
 futures-util = "0.3"
+
+# Structured diagnostics: a request-scoped, rotating file log behind "export
+# diagnostics" (see `diagnostics.rs`). Writes go through a non-blocking
+# channel, so a slow disk never sits on a connection.
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
 # Anchors the file comparison on line text across whole files (git's
 # histogram alignment), replacing the bounded 64-line lookahead.
 imara-diff = "0.2"

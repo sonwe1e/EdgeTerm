@@ -1,6 +1,7 @@
 #[cfg(all(test, feature = "bindings"))]
 mod bindings;
 mod commands;
+mod diagnostics;
 mod error;
 mod file_diff;
 mod file_promise;
@@ -308,6 +309,9 @@ fn install_menu(app: &tauri::App) -> tauri::Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // First, so every later failure has somewhere to land. Logging is
+    // best-effort: a directory that cannot be created only disables it.
+    diagnostics::init();
     // In portable mode the WebView2 profile must travel with the data
     // directory as well — localStorage holds the frontend preferences.  The
     // WebView2 loader reads this variable and it takes precedence over the
@@ -495,6 +499,8 @@ pub fn run() {
                 // Copies of remote files opened in local editors have no one
                 // to sync them once the app is gone.
                 app.state::<AppState>().remote_edits.stop_all(app);
+                // Flush the diagnostic writer's queue before the process ends.
+                diagnostics::shutdown();
             }
             _ => {}
         });

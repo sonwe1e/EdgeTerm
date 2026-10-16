@@ -1,10 +1,11 @@
 use super::*;
+use crate::diagnostics::Request;
 
 /// The SSH connection a new session asked to share, when the session named
 /// still has one and it is still up. `None` means the session opens its own:
 /// a connection that went down in the meantime has nothing left to share.
 pub(super) fn reuse(
-    state: &State<'_, AppState>,
+    state: &AppState,
     session_id: &Option<String>,
 ) -> Option<Arc<session::ssh::SharedTransport>> {
     state.ssh_transports.get(session_id.as_deref()?)
@@ -31,6 +32,42 @@ pub async fn open_session(
     on_output: Channel<InvokeResponseBody>,
     output_token: String,
 ) -> Result<OpenSessionOutcome> {
+    let id = if session_id.is_empty() {
+        uuid::Uuid::new_v4().to_string()
+    } else {
+        session_id
+    };
+    // One request per open: its id ties the dial, authentication and channel
+    // stages together in the diagnostics log, and ends in the outcome.
+    let request = Request::begin("open_session").with_session(&id);
+    let result = open_session_inner(
+        app,
+        &state,
+        profile,
+        id,
+        reuse_session_id,
+        auto_reuse,
+        on_output,
+        output_token,
+        &request,
+    )
+    .await;
+    request.finish(result)
+}
+
+/// The body of `open_session`, under the diagnostics request bracketing it.
+#[allow(clippy::too_many_arguments)]
+async fn open_session_inner(
+    app: AppHandle,
+    state: &AppState,
+    profile: SessionProfile,
+    id: String,
+    reuse_session_id: Option<String>,
+    auto_reuse: Option<bool>,
+    on_output: Channel<InvokeResponseBody>,
+    output_token: String,
+    request: &Request,
+) -> Result<OpenSessionOutcome> {
     // A profile may arrive by id (from the tree) or inline (quick connect).
     let profile = if !profile.id.is_empty() {
         match state.store.get(&profile.id)? {
@@ -42,11 +79,6 @@ pub async fn open_session(
         profile
     };
 
-    let id = if session_id.is_empty() {
-        uuid::Uuid::new_v4().to_string()
-    } else {
-        session_id
-    };
     let (tx, rx) = mpsc::unbounded_channel();
     // Reconnects reuse the tab id, but must retire the old generation even
     // when it ended naturally with some final ACKs still in flight.
@@ -114,17 +146,23 @@ pub async fn open_session(
             // A live one that will not take another channel is an error, not
             // a cue to log in again: the user asked for no second login, and
             // behind MFA a surprise login costs another code.
-            let shared = match reuse(&state, &reuse_session_id) {
-                Some(transport) => Some(
-                    session::ssh::connect_on(transport, &profile)
-                        .await
-                        .map_err(|e| {
-                            AppError::new(format!(
-                                "the server refused another channel on this connection \
-                                 (sshd limits them with MaxSessions, 10 by default): {e}"
-                            ))
-                        })?,
-                ),
+            let shared = match reuse(state, &reuse_session_id) {
+                Some(transport) => {
+                    request.info(
+                        "reuse",
+                        "opening another shell channel on the shared connection",
+                    );
+                    Some(
+                        session::ssh::connect_on(transport, &profile)
+                            .await
+                            .map_err(|e| {
+                                AppError::new(format!(
+                                    "the server refused another channel on this connection \
+                                     (sshd limits them with MaxSessions, 10 by default): {e}"
+                                ))
+                            })?,
+                    )
+                }
                 None => None,
             };
             info.shared_connection = shared.is_some();
@@ -137,7 +175,7 @@ pub async fn open_session(
                         match state
                             .ssh_transports
                             .automatic
-                            .connect(&profile, &jumps, &prompter)
+                            .connect(&profile, &jumps, &prompter, request)
                             .await?
                         {
                             session::reuse::TransportOutcome::Ready(transport, reused) => {
@@ -153,6 +191,7 @@ pub async fn open_session(
                             &profile,
                             &state.store.jump_chain(&profile)?,
                             &prompter,
+                            request,
                         )
                         .await?
                         {
@@ -174,8 +213,14 @@ pub async fn open_session(
             None
         }
         SessionKind::Sftp => {
-            let shared = match reuse(&state, &reuse_session_id) {
-                Some(transport) => Some(session::ssh::connect_sftp_on(transport, &profile)?),
+            let shared = match reuse(state, &reuse_session_id) {
+                Some(transport) => {
+                    request.info(
+                        "reuse",
+                        "opening another sftp session on the shared connection",
+                    );
+                    Some(session::ssh::connect_sftp_on(transport, &profile)?)
+                }
                 None => None,
             };
             info.shared_connection = shared.is_some();
@@ -188,7 +233,7 @@ pub async fn open_session(
                         match state
                             .ssh_transports
                             .automatic
-                            .connect(&profile, &jumps, &prompter)
+                            .connect(&profile, &jumps, &prompter, request)
                             .await?
                         {
                             session::reuse::TransportOutcome::Ready(transport, reused) => {
@@ -204,6 +249,7 @@ pub async fn open_session(
                             &profile,
                             &state.store.jump_chain(&profile)?,
                             &prompter,
+                            request,
                         )
                         .await?
                         {

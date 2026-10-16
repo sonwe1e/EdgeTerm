@@ -27,6 +27,7 @@ pub(super) async fn authenticate<H: client::Handler>(
     username: &str,
     address: &str,
     prompter: &AuthPrompter<'_>,
+    request: &Request,
 ) -> Result<()> {
     // Every SSH client opens with the "none" method: it is how the server is
     // asked which methods it will accept, and a server that requires no
@@ -40,6 +41,7 @@ pub(super) async fn authenticate<H: client::Handler>(
         ..
     } = handle.authenticate_none(username).await?
     else {
+        request.info("auth", format!("{address} requires no authentication"));
         return Ok(());
     };
 
@@ -54,13 +56,17 @@ pub(super) async fn authenticate<H: client::Handler>(
     let mut note = "";
     let result = match auth {
         AuthKind::Password => {
-            let outcome =
-                password_method(handle, username, address, prompter, &offered, password).await?;
+            request.info("auth", format!("trying the password method for {username}"));
+            let outcome = password_method(
+                handle, username, address, prompter, &offered, password, request,
+            )
+            .await?;
             saved = outcome.saved;
             note = outcome.note;
             outcome.result
         }
         AuthKind::PublicKey => {
+            request.info("auth", format!("trying public-key auth for {username}"));
             let path = profile
                 .private_key_path
                 .clone()
@@ -68,6 +74,9 @@ pub(super) async fn authenticate<H: client::Handler>(
                 .ok_or_else(|| AppError::new("public-key auth needs a private key path"))?;
             let path = expand_tilde(&path);
             let passphrase = profile.passphrase.as_deref().filter(|p| !p.is_empty());
+            // The path is diagnosis material; its contents and passphrase are
+            // never logged.
+            request.info("auth", format!("loading the private key from {path}"));
             let key = russh::keys::load_secret_key(&path, passphrase)
                 .map_err(|e| AppError::new(format!("cannot load {path}: {e}")))?;
             // Modern servers reject SHA-1 RSA signatures; ask the server which
@@ -77,7 +86,10 @@ pub(super) async fn authenticate<H: client::Handler>(
                 .authenticate_publickey(username, PrivateKeyWithHashAlg::new(Arc::new(key), hash))
                 .await?
         }
-        AuthKind::Agent => authenticate_agent(handle, username).await?,
+        AuthKind::Agent => {
+            request.info("auth", format!("trying the ssh agent for {username}"));
+            authenticate_agent(handle, username).await?
+        }
     };
 
     let AuthResult::Failure {
@@ -91,7 +103,8 @@ pub(super) async fn authenticate<H: client::Handler>(
     if remaining_methods.contains(&MethodKind::KeyboardInteractive) {
         // Only a password not yet refused answers the server's password
         // question; see `saved_answer`.
-        return keyboard_interactive(handle, username, address, prompter, saved, note).await;
+        return keyboard_interactive(handle, username, address, prompter, saved, note, request)
+            .await;
     }
     Err(auth_failure(
         auth,
@@ -126,6 +139,7 @@ pub(super) async fn password_method<H: client::Handler>(
     prompter: &AuthPrompter<'_>,
     offered: &MethodSet,
     password: Option<String>,
+    request: &Request,
 ) -> Result<PasswordOutcome> {
     let interactive = |methods: &MethodSet| methods.contains(&MethodKind::KeyboardInteractive);
     if !offered.contains(&MethodKind::Password) {
@@ -190,6 +204,10 @@ pub(super) async fn password_method<H: client::Handler>(
             }],
         };
         let Some(answers) = prompter.ask(challenge).await? else {
+            request.warn(
+                "auth",
+                format!("the password prompt for {username} was cancelled"),
+            );
             return Err(AppError::new(format!(
                 "authentication for {username} was cancelled"
             )));
@@ -268,6 +286,7 @@ pub(super) async fn keyboard_interactive<H: client::Handler>(
     prompter: &AuthPrompter<'_>,
     mut saved_password: Option<String>,
     note: &str,
+    request: &Request,
 ) -> Result<()> {
     let mut reply = handle
         .authenticate_keyboard_interactive_start(username, None)
@@ -275,7 +294,7 @@ pub(super) async fn keyboard_interactive<H: client::Handler>(
     // A round with nothing to answer only carries text ("a push was sent").
     // Keep it for the next round that does ask, so the user still reads it.
     let mut carried = note.to_string();
-    for _ in 0..MAX_AUTH_ROUNDS {
+    for round in 0..MAX_AUTH_ROUNDS {
         let (name, instructions, prompts) = match reply {
             KeyboardInteractiveAuthResponse::Success => return Ok(()),
             KeyboardInteractiveAuthResponse::Failure { .. } => {
@@ -310,9 +329,26 @@ pub(super) async fn keyboard_interactive<H: client::Handler>(
                     .collect(),
             };
             carried.clear();
+            // Prompt text is server-supplied and may repeat anything; the log
+            // records only how many questions were put to the user.
+            request.info(
+                "auth",
+                format!(
+                    "round {}: {address} asked {username} {} question(s)",
+                    round + 1,
+                    challenge.prompts.len()
+                ),
+            );
             match prompter.ask(challenge).await? {
                 Some(answers) => answers,
                 None => {
+                    request.warn(
+                        "auth",
+                        format!(
+                            "authentication for {username} was cancelled at round {}",
+                            round + 1
+                        ),
+                    );
                     return Err(AppError::new(format!(
                         "authentication for {username} was cancelled"
                     )));

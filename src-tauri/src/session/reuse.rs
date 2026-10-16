@@ -4,6 +4,7 @@ use super::{
     ssh::{self, SftpConnectOutcome, SharedTransport},
 };
 use crate::{
+    diagnostics::Request,
     error::{AppError, Result},
     model::{HostKeyChange, SessionProfile},
 };
@@ -94,15 +95,22 @@ impl ConnectionPool {
         profile: &SessionProfile,
         jumps: &[SessionProfile],
         prompt: &AuthPrompter<'_>,
+        request: &Request,
     ) -> Result<TransportOutcome> {
-        self.get_checked(profile, jumps, ssh::connect_sftp(profile, jumps, prompt))
-            .await
+        self.get_checked(
+            profile,
+            jumps,
+            ssh::connect_sftp(profile, jumps, prompt, request),
+            request,
+        )
+        .await
     }
     async fn get_checked(
         &self,
         profile: &SessionProfile,
         jumps: &[SessionProfile],
         dial: impl Future<Output = Result<SftpConnectOutcome>>,
+        request: &Request,
     ) -> Result<TransportOutcome> {
         let key = ReuseKey::of(profile, jumps)?;
         let expected = key.clone();
@@ -113,18 +121,20 @@ impl ConnectionPool {
             // under the identity captured before the handshake.
             if matches!(&outcome,SftpConnectOutcome::Ready(_))&&ReuseKey::of(profile,jumps)?!=expected{return Err(AppError::new("SSH authentication configuration changed while connecting; retry the connection"));}
             Ok(outcome)
-        }).await
+        }, request).await
     }
     async fn get(
         &self,
         key: ReuseKey,
         dial: impl Future<Output = Result<SftpConnectOutcome>>,
+        request: &Request,
     ) -> Result<TransportOutcome> {
         let (mut waiting, sender) = {
             let mut slots = self.0.lock();
             slots.retain(|_, slot| slot.flight.is_some() || slot.transport.strong_count() > 0);
             if let Some(slot) = slots.get(&key) {
                 if let Some(transport) = slot.transport.upgrade().filter(|t| !t.is_closed()) {
+                    request.info("reuse", "found an authenticated connection for this login");
                     return Ok(TransportOutcome::Ready(transport, true));
                 }
                 if let Some(flight) = &slot.flight {
@@ -143,6 +153,7 @@ impl ConnectionPool {
             let mut slots = self.0.lock();
             if let Some(slot) = slots.get(&key) {
                 if let Some(transport) = slot.transport.upgrade().filter(|t| !t.is_closed()) {
+                    request.info("reuse", "another session opened this login first");
                     return Ok(TransportOutcome::Ready(transport, true));
                 }
                 if let Some(flight) = &slot.flight {
@@ -171,7 +182,7 @@ impl ConnectionPool {
                 if let Some(answer) = answer {
                     return match answer {
                         Flight::Ready(weak) => weak.upgrade().filter(|t| !t.is_closed())
-                            .map(|t| TransportOutcome::Ready(t,true)).ok_or_else(|| AppError::new("the authenticated connection closed before another channel could open")),
+                            .map(|t| { request.info("reuse", "another session finished authenticating this login"); TransportOutcome::Ready(t,true)}).ok_or_else(|| AppError::new("the authenticated connection closed before another channel could open")),
                         Flight::Changed(change) => Ok(TransportOutcome::HostKeyChanged(change)),
                         Flight::Failed(error) => Err(AppError::new(error)),
                     };
@@ -259,10 +270,12 @@ mod tests {
     async fn cancelling_a_leader_releases_waiters_and_allows_a_new_attempt() {
         let pool = ConnectionPool::default();
         let key = ReuseKey([1; 32]);
+        let request = Request::begin("fixture");
         let first = tokio::spawn({
             let pool = pool.clone();
             let key = key.clone();
-            async move { pool.get(key, std::future::pending()).await }
+            let request = request.clone();
+            async move { pool.get(key, std::future::pending(), &request).await }
         });
         tokio::time::timeout(std::time::Duration::from_secs(1), async {
             while pool.0.lock().get(&key).is_none() {
@@ -274,9 +287,14 @@ mod tests {
         let waiter = tokio::spawn({
             let pool = pool.clone();
             let key = key.clone();
+            let request = request.clone();
             async move {
-                pool.get(key, async { panic!("waiter must not authenticate again") })
-                    .await
+                pool.get(
+                    key,
+                    async { panic!("waiter must not authenticate again") },
+                    &request,
+                )
+                .await
             }
         });
         tokio::time::timeout(std::time::Duration::from_secs(1), async {
@@ -312,7 +330,7 @@ mod tests {
         assert!(error.to_string().contains("cancelled"));
         assert!(pool.0.lock().is_empty());
         assert!(pool
-            .get(key, async { Err(AppError::new("new dial")) })
+            .get(key, async { Err(AppError::new("new dial")) }, &request)
             .await
             .is_err());
     }
@@ -381,13 +399,19 @@ mod tests {
         profile.private_key_path = Some(key_file.clone());
         profile.password = None;
         let pool = ConnectionPool::default();
+        let request = Request::begin("fixture");
         let first = ready(
-            pool.get_checked(&profile, &[], async {
-                Ok(SftpConnectOutcome::Ready(ssh::connect_sftp_on(
-                    ssh::test_transport(host, port, &user, &key_file, &known).await,
-                    &profile,
-                )?))
-            })
+            pool.get_checked(
+                &profile,
+                &[],
+                async {
+                    Ok(SftpConnectOutcome::Ready(ssh::connect_sftp_on(
+                        ssh::test_transport(host, port, &user, &key_file, &known).await,
+                        &profile,
+                    )?))
+                },
+                &request,
+            )
             .await
             .unwrap(),
         );
@@ -400,12 +424,17 @@ mod tests {
         .await
         .unwrap();
         let second = ready(
-            pool.get_checked(&profile, &[], async {
-                Ok(SftpConnectOutcome::Ready(ssh::connect_sftp_on(
-                    ssh::test_transport(host, port, &user, &key_file, &known).await,
-                    &profile,
-                )?))
-            })
+            pool.get_checked(
+                &profile,
+                &[],
+                async {
+                    Ok(SftpConnectOutcome::Ready(ssh::connect_sftp_on(
+                        ssh::test_transport(host, port, &user, &key_file, &known).await,
+                        &profile,
+                    )?))
+                },
+                &request,
+            )
             .await
             .unwrap(),
         );
@@ -449,23 +478,29 @@ mod tests {
         profile.password = None;
         let before = ReuseKey::of(&profile, &[]).unwrap();
         let pool = ConnectionPool::default();
+        let request = Request::begin("fixture");
         let result = pool
-            .get_checked(&profile, &[], async {
-                let transport = ssh::test_transport(
-                    host,
-                    port,
-                    &user,
-                    key_path.to_str().unwrap(),
-                    &scratch.join("known_hosts"),
-                )
-                .await;
-                // Actual public-key authentication is complete; change only this
-                // test's own key file before the production cache admission step.
-                std::fs::write(&key_path, b"rotated fixture key").unwrap();
-                Ok(SftpConnectOutcome::Ready(ssh::connect_sftp_on(
-                    transport, &profile,
-                )?))
-            })
+            .get_checked(
+                &profile,
+                &[],
+                async {
+                    let transport = ssh::test_transport(
+                        host,
+                        port,
+                        &user,
+                        key_path.to_str().unwrap(),
+                        &scratch.join("known_hosts"),
+                    )
+                    .await;
+                    // Actual public-key authentication is complete; change only this
+                    // test's own key file before the production cache admission step.
+                    std::fs::write(&key_path, b"rotated fixture key").unwrap();
+                    Ok(SftpConnectOutcome::Ready(ssh::connect_sftp_on(
+                        transport, &profile,
+                    )?))
+                },
+                &request,
+            )
             .await;
         let error = match result {
             Err(error) => error,
@@ -499,6 +534,7 @@ mod tests {
         profile.password = None;
         let key = ReuseKey::of(&profile, &[]).unwrap();
         let pool = ConnectionPool::default();
+        let request = Request::begin("fixture");
         let dial = async {
             Ok(SftpConnectOutcome::Ready(ssh::connect_sftp_on(
                 ssh::test_transport(host, port, &user, &key_file, &known_hosts).await,
@@ -511,8 +547,10 @@ mod tests {
                 &profile,
             )?))
         };
-        let (first, second) =
-            tokio::join!(pool.get(key.clone(), dial), pool.get(key.clone(), dial2));
+        let (first, second) = tokio::join!(
+            pool.get(key.clone(), dial, &request),
+            pool.get(key.clone(), dial2, &request)
+        );
         let first = ready(first.unwrap());
         let second = ready(second.unwrap());
         assert!(Arc::ptr_eq(&first, &second));
@@ -536,9 +574,13 @@ mod tests {
         assert!(!raw.realpath(".").await.unwrap().files.is_empty());
         raw.close_session().unwrap();
         let third = ready(
-            pool.get(key, async { panic!("serial reuse must not authenticate") })
-                .await
-                .unwrap(),
+            pool.get(
+                key,
+                async { panic!("serial reuse must not authenticate") },
+                &request,
+            )
+            .await
+            .unwrap(),
         );
         assert!(Arc::ptr_eq(&third, &second));
         drop(third);

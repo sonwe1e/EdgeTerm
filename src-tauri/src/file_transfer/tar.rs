@@ -35,6 +35,7 @@ use russh::{Channel, ChannelMsg};
 use tokio::io::{AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use super::{Control, Failure, Item, Job, TransferResult};
+use crate::diagnostics::Request;
 use crate::model::SessionKind;
 use crate::session::auth::AuthPrompter;
 use crate::session::ssh::{connect_sftp, SftpConnectOutcome, SharedTransport};
@@ -645,10 +646,13 @@ async fn connect(job: &Arc<Job>) -> TransferResult<Arc<SharedTransport>> {
         Some(transport) => transport,
         None => {
             let prompt = AuthPrompter::background();
+            let request = Request::begin("transfer_connect")
+                .with_session(&job.session_id)
+                .with_transfer(&job.id);
             let conn = job
                 .control
                 .run(async {
-                    connect_sftp(&job.profile, &job.jumps, &prompt)
+                    connect_sftp(&job.profile, &job.jumps, &prompt, &request)
                         .await
                         .map_err(Failure::connection)
                 })

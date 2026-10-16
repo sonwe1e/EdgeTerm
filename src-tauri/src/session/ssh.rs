@@ -28,6 +28,7 @@ use super::{
     emit_state, join_remote, locale, sort_entries, OutputPump, SessionCommand, SftpRequest,
     SftpResponse,
 };
+use crate::diagnostics::Request;
 use crate::error::{AppError, Result};
 use crate::model::{
     AuthKind, AuthPromptField, DirListing, FileEntry, HostKeyChange, LegacyAlgorithms,
