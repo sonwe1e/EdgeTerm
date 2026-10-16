@@ -4357,6 +4357,12 @@ dialog.dialog-backdrop.is-fallback[open] {
   overflow-wrap: anywhere;
 }
 
+.confirm-dialog-target.is-multiple {
+  white-space: pre-wrap;
+  max-height: 180px;
+  overflow: auto;
+}
+
 .confirm-dialog-hint {
   color: var(--fg-faint);
 }

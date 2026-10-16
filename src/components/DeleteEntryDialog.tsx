@@ -6,6 +6,7 @@ import { ModalDialog } from "./ModalDialog";
 
 interface Props {
   entry: FileEntry;
+  entries?: readonly FileEntry[];
   /** Where the entry lives, shown next to its path: "local" or the session name. */
   location: string;
   onConfirm: () => void;
@@ -20,11 +21,13 @@ interface Props {
  */
 export function DeleteEntryDialog({
   entry,
+  entries,
   location,
   onConfirm,
   onCancel,
 }: Props) {
   const t = useT();
+  const multiple = entries && entries.length > 1;
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDialogElement>) => {
     if (event.key === "Enter") {
@@ -67,17 +70,19 @@ export function DeleteEntryDialog({
       onKeyDown={onKeyDown}
     >
       <div className="dialog-header" id="delete-entry-title">
-        {title}
+        {multiple ? t("deleteEntry.titleMany", { count: entries.length }) : title}
       </div>
       <div className="dialog-body confirm-dialog-body">
         <span>
-          {t("deleteEntry.delete")} {kindWord} <strong>{entry.name}</strong>
-          {t("common.question")}
+          {multiple ? t("deleteEntry.confirmMany", { count: entries.length }) : <>
+            {t("deleteEntry.delete")} {kindWord} <strong>{entry.name}</strong>
+            {t("common.question")}
+          </>}
         </span>
-        <span className="confirm-dialog-target">
-          {location} · {entry.path}
+        <span className={`confirm-dialog-target${multiple ? " is-multiple" : ""}`}>
+          {location} · {multiple ? entries.map((item) => item.path).join("\n") : entry.path}
         </span>
-        <span className="confirm-dialog-hint">{hint}</span>
+        <span className="confirm-dialog-hint">{multiple ? t("deleteEntry.hintMany") : hint}</span>
       </div>
       <div className="dialog-footer confirm-dialog-footer">
         <span className="confirm-dialog-keys">

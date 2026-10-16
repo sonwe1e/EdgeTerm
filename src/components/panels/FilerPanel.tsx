@@ -26,6 +26,7 @@ import { FILER_OPEN_WITH_KEY } from "../../persistKeys";
 import { chordLabel } from "../../shortcuts";
 import { tabTitle, useActiveTab, useStore } from "../../store";
 import { useStableCallback } from "../../useStableCallback";
+import { useFileSelection } from "../../useFileSelection";
 import { useT } from "../../useT";
 import { ContextMenu, type MenuItem } from "../ContextMenu";
 import { DeleteEntryDialog } from "../DeleteEntryDialog";
@@ -212,7 +213,10 @@ function FilerPanelBase() {
   // preference once at mount and drifting apart.
   const sort = useStore((s) => s.filerSort);
   const setFilerSort = useStore((s) => s.setFilerSort);
-  const [selected, setSelected] = useState<string | null>(null);
+  const sortedEntries = useMemo(() => sortFileEntries(entries, sort), [entries, sort]);
+  const selection = useFileSelection(sortedEntries);
+  const { paths: selected, selectedEntries, clear: clearSelection, select: selectEntry } = selection;
+  const collapseSelection = useRef<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState<NewEntryDraft | null>(null);
@@ -224,7 +228,8 @@ function FilerPanelBase() {
   // was open so the button toggles instead of reopening.
   const uploadMenuWasOpen = useRef(false);
   const [menu, setMenu] = useState<MenuState | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<FileEntry | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<readonly FileEntry[] | null>(null);
+  useEffect(() => setPendingDelete(null), [remoteId, path]);
   const [openWithApps, setOpenWithApps] = useState<string[]>(loadOpenWithApps);
   const preferencesRevision = useStore((s) => s.panelPreferencesRevision);
   useEffect(() => setOpenWithApps(loadOpenWithApps()), [preferencesRevision]);
@@ -400,6 +405,8 @@ function FilerPanelBase() {
     async (target: string, quiet = false, resume = false): Promise<boolean> => {
       if (offline || remoteIdRef.current !== remoteId) return false;
       const request = ++listRequest.current;
+      clearSelection();
+      collapseSelection.current = null;
       setBusy(true);
       setError(null);
       // Only when coming back to a session: a refresh after a rename, delete
@@ -411,7 +418,6 @@ function FilerPanelBase() {
         setPath(target);
         setDraft(target);
         setEntries(cached);
-        setSelected(null);
       }
       try {
         const listing = remoteId
@@ -425,7 +431,6 @@ function FilerPanelBase() {
         // Same rows as the cached ones already on screen: keep that array, so
         // nothing re-sorts or re-renders for an unchanged directory.
         setEntries(cached && sameListing(cached, listing.entries) ? cached : listing.entries);
-        setSelected(null);
         if (remoteId) rememberListing(remoteId, target, listing.path, listing.entries);
         rememberPath(remoteId ?? LOCAL_SOURCE, listing.path);
         return true;
@@ -436,7 +441,7 @@ function FilerPanelBase() {
         if (request === listRequest.current && remoteIdRef.current === remoteId) setBusy(false);
       }
     },
-    [remoteId, offline],
+    [remoteId, offline, clearSelection],
   );
 
   /**
@@ -457,7 +462,7 @@ function FilerPanelBase() {
       setPath("");
       setDraft("");
       setEntries([]);
-      setSelected(null);
+      clearSelection();
       setCreating(null);
       setError(null);
       return;
@@ -488,7 +493,7 @@ function FilerPanelBase() {
     return () => {
       cancelled = true;
     };
-  }, [remoteId, offline, load]);
+  }, [remoteId, offline, load, clearSelection]);
 
   useEffect(() => {
     const target = claimTarget();
@@ -552,6 +557,28 @@ function FilerPanelBase() {
       failTransfer(e, transfer);
     } finally {
       if (ownsTransfer(transfer)) setBusy(false);
+    }
+  };
+
+  const downloadEntries = async (chosen: readonly FileEntry[]) => {
+    if (chosen.length === 1) return download(chosen[0]);
+    const sessionId = remoteId;
+    if (!sessionId || chosen.length === 0 || busyRef.current) return;
+    const parent = await openDialog({ directory: true, multiple: false, title: t("filer.saveSelectedInto") });
+    if (typeof parent !== "string" || remoteIdRef.current !== sessionId || busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    setError(null);
+    const transfer = beginTransfer("download", t("filer.selectedCount", { count: chosen.length }), true);
+    try {
+      await api.transferFiles(sessionId, chosen.map((entry) => ({
+        local: joinLocal(parent, entry.name), remote: entry.path, upload: false, directory: entry.isDir,
+      })), progressFor(transfer), transfer);
+      finishTransfer("complete", transfer);
+    } catch (e) {
+      failTransfer(e, transfer);
+    } finally {
+      if (ownsTransfer(transfer)) { busyRef.current = false; setBusy(false); }
     }
   };
 
@@ -787,19 +814,19 @@ function FilerPanelBase() {
 
   /**
    * Drags `entry` out of the window. A local entry is already a file the
-   * system can take. A remote one is promised on macOS (see
-   * `promiseToSystem`); Windows and Linux have no way to promise a file the
-   * drop target fetches later, so there it is downloaded into the staging
-   * folder first, and a large one has to finish while the button is held.
+   * system can take. One remote entry is promised on macOS. Other remote
+   * gestures stage the complete selection before handing it to the system,
+   * so the downloads must finish while the button is held.
    */
   const beginDragOut = async (entry: FileEntry) => {
     if (busyRef.current || dragOutRef.current || atDrivesRoot) return;
+    const chosen = selected.has(entry.path) ? selectedEntries : [entry];
     const sessionId = remoteIdRef.current;
     if (!sessionId) {
-      await handToSystem(entry, [entry.path]);
+      await handToSystem(entry, chosen.map((item) => item.path));
       return;
     }
-    if (IS_MAC) {
+    if (IS_MAC && chosen.length === 1) {
       await promiseToSystem(sessionId, entry);
       return;
     }
@@ -808,14 +835,20 @@ function FilerPanelBase() {
     busyRef.current = true;
     setBusy(true);
     setError(null);
-    const transfer = beginTransfer("stage", entry.name, true);
+    const transfer = beginTransfer("stage", chosen.length === 1 ? entry.name
+      : t("filer.selectedCount", { count: chosen.length }), true);
     try {
-      const staged = await api.dragStagingPath(entry.name);
-      if (entry.isDir) {
+      const staged = await Promise.all(chosen.map(async (item) => ({
+        local: await api.dragStagingPath(item.name), remote: item.path,
+        upload: false, directory: item.isDir,
+      })));
+      if (chosen.length > 1) {
+        await api.transferFiles(sessionId, staged, progressFor(transfer), transfer);
+      } else if (entry.isDir) {
         await api.sftpDownloadDirectory(
           sessionId,
           entry.path,
-          staged,
+          staged[0].local,
           progressFor(transfer),
           transfer,
         );
@@ -823,14 +856,14 @@ function FilerPanelBase() {
         await api.sftpDownload(
           sessionId,
           entry.path,
-          staged,
+          staged[0].local,
           progressFor(transfer),
           transfer,
         );
       }
       finishTransfer("complete", transfer);
       if (pointerHeld.current) {
-        await handToSystem(entry, [staged]);
+        await handToSystem(entry, staged.map((item) => item.local));
       } else {
         // The release cancels a copy still running (see `release`); this is
         // the copy that finished just before the release was seen.
@@ -850,7 +883,7 @@ function FilerPanelBase() {
     entry: FileEntry,
     event: ReactPointerEvent<HTMLDivElement>,
   ) => {
-    if (event.button !== 0) return;
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey) return;
     pointerHeld.current = true;
     dragPress.current = {
       pointerId: event.pointerId,
@@ -873,6 +906,7 @@ function FilerPanelBase() {
       return;
     }
     dragPress.current = null;
+    collapseSelection.current = null;
     // The system drag needs the pointer itself; a capture would keep every
     // event inside the webview.
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
@@ -884,7 +918,11 @@ function FilerPanelBase() {
   // The release may land anywhere — outside the row, outside the window —
   // and staging needs to know whether the gesture is still alive.
   useEffect(() => {
-    const release = () => {
+    const release = (event: Event) => {
+      if (event.type === "pointerup" && collapseSelection.current && dragPress.current) {
+        selectEntry(collapseSelection.current);
+      }
+      collapseSelection.current = null;
       pointerHeld.current = false;
       dragPress.current = null;
       // A drag that ends while its copy is still downloading was never
@@ -905,7 +943,7 @@ function FilerPanelBase() {
       window.removeEventListener("pointerup", release);
       window.removeEventListener("pointercancel", release);
     };
-  }, []);
+  }, [selectEntry]);
 
   // Progress of remote files edited locally, whichever tab is active: the
   // footer shows the save going out, and a failure lands in the error line.
@@ -1003,17 +1041,33 @@ function FilerPanelBase() {
     await uploadPaths(pickedPaths(picked));
   };
 
-  const removeEntry = async (entry: FileEntry) => {
+  const removeEntries = async (chosen: readonly FileEntry[]) => {
     setPendingDelete(null);
+    const sessionId = remoteId;
+    const destination = path;
+    busyRef.current = true;
     setBusy(true);
+    setError(null);
+    const failed: { entry: FileEntry; error: unknown }[] = [];
     try {
-      if (remoteId) await api.sftpRemove(remoteId, entry.path, entry.isDir);
-      else await api.localRemove(entry.path, entry.isDir);
-      await load(path);
-    } catch (e) {
-      setError(String(e));
+      for (const entry of chosen) {
+        try {
+          if (sessionId) await api.sftpRemove(sessionId, entry.path, entry.isDir);
+          else await api.localRemove(entry.path, entry.isDir);
+        } catch (error) {
+          failed.push({ entry, error });
+        }
+      }
+      if (remoteIdRef.current === sessionId && pathRef.current === destination) await load(destination);
+      if (remoteIdRef.current === sessionId && pathRef.current === destination && failed.length) {
+        selection.replace(failed.map(({ entry }) => entry.path));
+        setError(failed.map(({ entry, error }) => `${entry.name}: ${String(error)}`).join("\n"));
+      }
     } finally {
-      setBusy(false);
+      if (remoteIdRef.current === sessionId && pathRef.current === destination) {
+        busyRef.current = false;
+        setBusy(false);
+      }
     }
   };
 
@@ -1128,40 +1182,40 @@ function FilerPanelBase() {
     };
   };
 
-  const entryMenu = (entry: FileEntry): MenuItem[] => [
-    entry.isDir
+  const entryMenu = (entry: FileEntry, chosen: readonly FileEntry[]): MenuItem[] => [
+    ...(chosen.length > 1 ? [] : [entry.isDir
       ? {
           label: t("filer.open"),
-          icon: "folder-opened",
+          icon: "folder-opened" as const,
           action: () => void load(entry.path),
         }
       : {
           label: t("filer.open"),
-          icon: "go-to-file",
+          icon: "go-to-file" as const,
           disabled: busy,
           action: () => void openEntry(entry),
         },
-    ...(entry.isDir ? [] : [openWithMenu(entry)]),
+      ...(entry.isDir ? [] : [openWithMenu(entry)])]),
     ...(remote
       ? [
           {
             label: t("filer.downloadEllipsis"),
             icon: "cloud-download" as const,
             disabled: busy,
-            action: () => void download(entry),
+            action: () => void downloadEntries(chosen),
           },
         ]
       : []),
     "separator",
-    { label: t("filer.copyPath"), icon: "copy", action: () => copyText(entry.path) },
-    { label: t("filer.copyName"), icon: "tag", action: () => copyText(entry.name) },
+    { label: t("filer.copyPath"), icon: "copy", action: () => copyText(chosen.map((item) => item.path).join("\n")) },
+    { label: t("filer.copyName"), icon: "tag", action: () => copyText(chosen.map((item) => item.name).join("\n")) },
     "separator",
     {
       label: t("panel.deleteEllipsis"),
       icon: "trash",
       danger: true,
       disabled: busy || atDrivesRoot,
-      action: () => setPendingDelete(entry),
+      action: () => setPendingDelete(chosen),
     },
   ];
 
@@ -1260,15 +1314,7 @@ function FilerPanelBase() {
   // The Windows drive list is virtual: drives can be opened but not created,
   // deleted or navigated above.
   const atDrivesRoot = !remoteId && path === api.LOCAL_DRIVES_ROOT;
-  const selectedEntry = useMemo(
-    () => entries.find((e) => e.path === selected) ?? null,
-    [entries, selected],
-  );
   const panelFontSize = useStore((s) => s.panelFontSize);
-  const sortedEntries = useMemo(
-    () => sortFileEntries(entries, sort),
-    [entries, sort],
-  );
   // The footer walks every entry; a large directory must not pay that on
   // each of the app's re-renders.
   const entrySummary = useMemo(() => formatEntrySummary(entries), [entries]);
@@ -1281,7 +1327,17 @@ function FilerPanelBase() {
   // The row callbacks go through stable identities (see useStableCallback)
   // so a re-render of this panel — a transfer tick, a drag-over change, a
   // selection elsewhere — leaves the memoised rows' props equal and skipped.
-  const rowSelect = useStableCallback((path: string) => setSelected(path));
+  const rowSelect = useStableCallback((path: string, event: MouseEvent) => {
+    if (event.button !== 0 || busy) return;
+    event.currentTarget.closest<HTMLElement>(".filer-list")?.focus({ preventScroll: true });
+    const toggle = IS_MAC ? event.metaKey : event.ctrlKey;
+    if (!toggle && !event.shiftKey && selected.size > 1 && selected.has(path)) {
+      collapseSelection.current = path;
+      return;
+    }
+    collapseSelection.current = null;
+    selectEntry(path, { toggle, range: event.shiftKey });
+  });
   const rowActivate = useStableCallback((entry: FileEntry) => activate(entry));
   const rowPointerDown = useStableCallback(
     (entry: FileEntry, event: ReactPointerEvent<HTMLDivElement>) =>
@@ -1292,8 +1348,10 @@ function FilerPanelBase() {
   );
   const rowContextMenu = useStableCallback(
     (event: MouseEvent, entry: FileEntry) => {
-      setSelected(entry.path);
-      openMenu(event, entryMenu(entry));
+      collapseSelection.current = null;
+      const chosen = selected.has(entry.path) ? selectedEntries : [entry];
+      if (!selected.has(entry.path)) selectEntry(entry.path);
+      openMenu(event, entryMenu(entry, chosen));
     },
   );
 
@@ -1353,10 +1411,10 @@ function FilerPanelBase() {
         </button>
         <button
           className="panel-action filer-action"
-          onClick={() => selectedEntry && void download(selectedEntry)}
+          onClick={() => void downloadEntries(selectedEntries)}
           title={remoteTitle(t("filer.downloadFileOrFolder"))}
           aria-label={t("filer.downloadFileOrFolder")}
-          disabled={!remote || !selected || busy}
+          disabled={!remote || selectedEntries.length === 0 || busy}
         >
           <Icon name="cloud-download" />
         </button>
@@ -1371,10 +1429,10 @@ function FilerPanelBase() {
         </button>
         <button
           className="panel-action filer-action filer-action-danger"
-          onClick={() => selectedEntry && setPendingDelete(selectedEntry)}
+          onClick={() => setPendingDelete(selectedEntries)}
           title={t("common.delete")}
           aria-label={t("common.delete")}
-          disabled={!selected || busy || atDrivesRoot}
+          disabled={selectedEntries.length === 0 || busy || atDrivesRoot}
         >
           <Icon name="trash" />
         </button>
@@ -1451,6 +1509,23 @@ function FilerPanelBase() {
 
       <div
         className="panel-body filer-list"
+        role="listbox"
+        aria-multiselectable="true"
+        tabIndex={0}
+        onMouseDown={(event) => {
+          if (event.button === 0 && !(event.target as HTMLElement).closest(".filer-entry, .filer-new-entry")) {
+            clearSelection();
+          }
+        }}
+        onKeyDown={(event) => {
+          if (busy) return;
+          if ((event.target as HTMLElement).closest("input, textarea, [contenteditable=true]")) return;
+          if ((IS_MAC ? event.metaKey : event.ctrlKey) && event.key.toLowerCase() === "a") {
+            event.preventDefault(); event.stopPropagation(); selection.selectAll();
+          } else if (event.key === "Escape") {
+            event.preventDefault(); event.stopPropagation(); clearSelection();
+          }
+        }}
         onContextMenu={(event) => openMenu(event, folderMenu())}
         aria-label={
           remote
@@ -1499,7 +1574,7 @@ function FilerPanelBase() {
             <FilerRow
               key={entry.path}
               entry={entry}
-              selected={entry.path === selected}
+              selected={selected.has(entry.path)}
               draggingOut={dragOut?.path === entry.path}
               theme={theme}
               onSelect={rowSelect}
@@ -1522,9 +1597,10 @@ function FilerPanelBase() {
       )}
       {pendingDelete && (
         <DeleteEntryDialog
-          entry={pendingDelete}
+          entry={pendingDelete[0]}
+          entries={pendingDelete}
           location={remote ? (tab ? tabTitle(tab) : t("filer.remote")) : t("filer.local")}
-          onConfirm={() => void removeEntry(pendingDelete)}
+          onConfirm={() => void removeEntries(pendingDelete)}
           onCancel={() => setPendingDelete(null)}
         />
       )}
@@ -1618,6 +1694,7 @@ function FilerPanelBase() {
         ) : (
           <>
             <span>{entrySummary}</span>
+            {selectedEntries.length > 0 && <span>{t("filer.selectedCount", { count: selectedEntries.length })}</span>}
             {busy && <span>{t("filer.working")}</span>}
           </>
         )}
@@ -1689,7 +1766,7 @@ const FilerRow = memo(function FilerRow({
   selected: boolean;
   draggingOut: boolean;
   theme: ThemeMode;
-  onSelect: (path: string) => void;
+  onSelect: (path: string, event: MouseEvent) => void;
   onActivate: (entry: FileEntry) => void;
   onPointerDown: (
     entry: FileEntry,
@@ -1702,7 +1779,9 @@ const FilerRow = memo(function FilerRow({
   return (
     <div
       className={`row filer-entry is-${kind}${selected ? " is-active" : ""}${draggingOut ? " is-dragging-out" : ""}`}
-      onMouseDown={() => onSelect(entry.path)}
+      role="option"
+      aria-selected={selected}
+      onMouseDown={(event) => onSelect(entry.path, event)}
       onPointerDown={(event) => onPointerDown(entry, event)}
       onPointerMove={onPointerMove}
       onDoubleClick={() => onActivate(entry)}
