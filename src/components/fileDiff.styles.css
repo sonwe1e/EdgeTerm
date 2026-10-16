@@ -1,0 +1,221 @@
+.file-diff-dialog {
+  width: min(1200px, 96vw);
+  height: min(800px, 90vh);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--bg-panel, var(--bg-app));
+  color: var(--fg, inherit);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.file-diff-heading, .file-diff-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.file-diff-heading {
+  justify-content: space-between;
+}
+.file-diff-dialog button {
+  color: inherit;
+  background: var(--bg-app);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+.file-diff-dialog button:disabled {
+  opacity: .45;
+  cursor: default;
+}
+.file-diff-paths, .file-diff-metadata {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+  gap: 12px;
+  font-size: 12px;
+}
+.file-diff-paths > div {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-diff-metadata small {
+  display: block;
+  opacity: .7;
+}
+.file-diff-notice, .file-diff-dialog p {
+  margin: 0;
+  font-size: 12px;
+}
+.file-diff-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.file-diff-view .file-diff-toolbar {
+  gap: 6px;
+  font-size: 12px;
+}
+.file-diff-view button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.file-diff-view button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.file-diff-wrap {
+  margin-left: auto;
+}
+.file-diff-count {
+  min-width: 100px;
+  color: var(--fg-dim);
+}
+.file-diff-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--fg-dim);
+}
+.file-diff-legend .is-deleted {
+  color: var(--red);
+}
+.file-diff-legend .is-added {
+  color: var(--green);
+}
+.file-diff-legend .is-modified {
+  color: var(--yellow);
+}
+.file-diff-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  border: 1px solid var(--border);
+}
+.file-diff-rows {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overflow-anchor: none;
+}
+.file-diff-rows.is-wrapped {
+  overflow-x: hidden;
+}
+.file-diff-spacer {
+  position: relative;
+}
+.file-diff-row {
+  position: absolute;
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+  min-height: 28px;
+  font: 12px/20px var(--terminal-font-family, monospace);
+}
+.file-diff-cell {
+  display: flex;
+  min-width: 0;
+  padding: 4px 8px;
+  gap: 8px;
+  border-right: 1px solid var(--border);
+}
+.file-diff-number {
+  flex: 0 0 44px;
+  text-align: right;
+  opacity: .55;
+  user-select: none;
+}
+.file-diff-code {
+  white-space: pre;
+  tab-size: 4;
+  flex: 1;
+  min-width: 0;
+  user-select: text;
+}
+.is-wrapped .file-diff-code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.file-diff-ending {
+  opacity: .5;
+  flex: 0 0 30px;
+  font-size: 10px;
+  user-select: none;
+}
+.file-diff-row.is-added .file-diff-cell:last-child {
+  background: color-mix(in srgb, var(--green) 14%, transparent);
+  box-shadow: inset 3px 0 var(--green);
+}
+.file-diff-row.is-deleted .file-diff-cell:first-child {
+  background: color-mix(in srgb, var(--red) 14%, transparent);
+  box-shadow: inset 3px 0 var(--red);
+}
+.file-diff-row.is-modified .file-diff-cell:first-child {
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+  box-shadow: inset 3px 0 var(--red);
+}
+.file-diff-row.is-modified .file-diff-cell:last-child {
+  background: color-mix(in srgb, var(--green) 12%, transparent);
+  box-shadow: inset 3px 0 var(--green);
+}
+.file-diff-overview {
+  position: relative;
+  flex: 0 0 22px;
+  overflow: hidden;
+  background: var(--bg-panel-alt);
+  border-left: 1px solid var(--border);
+  cursor: pointer;
+  touch-action: none;
+}
+.file-diff-overview:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.file-diff-marker {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  min-height: 3px;
+  pointer-events: none;
+}
+.file-diff-marker.is-added {
+  background: var(--green);
+  left: 10px;
+}
+.file-diff-marker.is-deleted {
+  background: var(--red);
+  right: 10px;
+}
+.file-diff-marker.is-modified {
+  background: var(--yellow);
+}
+.file-diff-overview-window {
+  position: absolute;
+  inset-inline: 0;
+  min-height: 8px;
+  background: color-mix(in srgb, var(--fg) 15%, transparent);
+  border: 1px solid var(--fg-dim);
+  pointer-events: none;
+}
+.file-diff-empty {
+  overflow: auto;
+  font: 12px/1.6 monospace;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 700px) {
+  .file-diff-dialog {
+    padding: 10px;
+  }
+  .file-diff-paths, .file-diff-metadata {
+    grid-template-columns: minmax(0,1fr);
+    gap: 4px;
+  }
+}
