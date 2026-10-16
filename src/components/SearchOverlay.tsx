@@ -13,6 +13,7 @@ import { matchAppShortcut } from "../shortcuts";
 import { useActiveTab, useStore } from "../store";
 import {
   SEARCH_HIGHLIGHT_LIMIT,
+  type SearchOptions,
   type SearchResults,
 } from "../terminalSearch";
 import { getController } from "../terminalRegistry";
@@ -74,6 +75,9 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
     const activeId = useStore((s) => s.activeId);
     const t = useT();
     const [query, setQuery] = useState(() => selectedText(activeId));
+    const [caseSensitive, setCaseSensitive] = useState(false);
+    const [wholeWord, setWholeWord] = useState(false);
+    const [regex, setRegex] = useState(false);
     const [results, setResults] = useState<SearchResults | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     // The session whose buffer currently carries match highlights, so they
@@ -98,15 +102,35 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
       setResults(null);
     });
 
-    const runSearch = useStableCallback((forward: boolean, incremental: boolean = false, term: string = query) => {
-      if (!activeId) return;
-      if (!term) {
-        clearSearch();
-        return;
-      }
-      if (searchedRef.current !== activeId) clearSearch();
-      searchedRef.current = activeId;
-      getController(activeId)?.search(term, forward, incremental);
+    const runSearch = useStableCallback(
+      (
+        forward: boolean,
+        incremental: boolean = false,
+        term: string = query,
+        options: SearchOptions = { caseSensitive, wholeWord, regex },
+      ) => {
+        if (!activeId) return;
+        if (!term) {
+          clearSearch();
+          return;
+        }
+        if (searchedRef.current !== activeId) clearSearch();
+        searchedRef.current = activeId;
+        getController(activeId)?.search(term, forward, incremental, options);
+      },
+    );
+
+    const toggleOption = useStableCallback((next: SearchOptions) => {
+      const merged: SearchOptions = {
+        caseSensitive,
+        wholeWord,
+        regex,
+        ...next,
+      };
+      if (next.caseSensitive !== undefined) setCaseSensitive(next.caseSensitive);
+      if (next.wholeWord !== undefined) setWholeWord(next.wholeWord);
+      if (next.regex !== undefined) setRegex(next.regex);
+      if (query) runSearch(true, true, query, merged);
     });
 
     // Highlights and the counter belong to one session; switching tabs ends
@@ -197,6 +221,36 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
             }
           }}
         />
+        <button
+          type="button"
+          className={`panel-action search-option${caseSensitive ? " is-active" : ""}`}
+          aria-pressed={caseSensitive}
+          onClick={() => toggleOption({ caseSensitive: !caseSensitive })}
+          title={t("search.matchCase")}
+          aria-label={t("search.matchCase")}
+        >
+          <Icon name="case-sensitive" />
+        </button>
+        <button
+          type="button"
+          className={`panel-action search-option${wholeWord ? " is-active" : ""}`}
+          aria-pressed={wholeWord}
+          onClick={() => toggleOption({ wholeWord: !wholeWord })}
+          title={t("search.wholeWord")}
+          aria-label={t("search.wholeWord")}
+        >
+          <Icon name="whole-word" />
+        </button>
+        <button
+          type="button"
+          className={`panel-action search-option${regex ? " is-active" : ""}`}
+          aria-pressed={regex}
+          onClick={() => toggleOption({ regex: !regex })}
+          title={t("search.regex")}
+          aria-label={t("search.regex")}
+        >
+          <Icon name="regex" />
+        </button>
         <span
           className={`search-count${
             results?.resultCount === 0 ? " is-empty" : ""

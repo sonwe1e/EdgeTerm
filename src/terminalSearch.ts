@@ -13,3 +13,9 @@ export interface SearchResults {
   /** Highlighted match count, capped at SEARCH_HIGHLIGHT_LIMIT. */
   resultCount: number;
 }
+
+export interface SearchOptions {
+  caseSensitive?: boolean;
+  wholeWord?: boolean;
+  regex?: boolean;
+}

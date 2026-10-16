@@ -1686,6 +1686,11 @@ textarea:focus {
   color: var(--red);
 }
 
+.terminal-search .search-option.is-active {
+  color: var(--accent-bright);
+  background: var(--accent-soft);
+}
+
 /* --- terminal ------------------------------------------------------------- */
 
 /*

@@ -325,6 +325,9 @@ const en = {
   // SearchOverlay
   "search.noResults": "No results",
   "search.placeholder": "Find in buffer",
+  "search.matchCase": "Match Case",
+  "search.wholeWord": "Match Whole Word",
+  "search.regex": "Use Regular Expression",
   "search.previous": "Previous match",
   "search.next": "Next match",
   "search.close": "Close search",
@@ -1281,6 +1284,9 @@ const zhCN: Catalog = {
 
   "search.noResults": "无结果",
   "search.placeholder": "在缓冲区中查找",
+  "search.matchCase": "区分大小写",
+  "search.wholeWord": "全字匹配",
+  "search.regex": "使用正则表达式",
   "search.previous": "上一个匹配",
   "search.next": "下一个匹配",
   "search.close": "关闭查找",

@@ -23,7 +23,7 @@ import { patchImeInput } from "./imePatch";
 import { parseOsc52, type ProgramClipboardMode } from "./osc52";
 import { IS_MAC, IS_WINDOWS } from "./platform";
 import { matchAppShortcut } from "./shortcuts";
-import { SEARCH_HIGHLIGHT_LIMIT } from "./terminalSearch";
+import { SEARCH_HIGHLIGHT_LIMIT, type SearchOptions } from "./terminalSearch";
 import { isWebglEnabled } from "./terminalRegistry";
 import {
   isShellPrompt,
@@ -409,6 +409,7 @@ export class TerminalController {
   /** Fires after every search and whenever buffer changes shift the matches. */
   readonly onSearchResults = this.searchAddon.onDidChangeResults;
   private lastSearch: string | null = null;
+  private lastSearchOptions: SearchOptions = {};
   private readonly zmodem: ZmodemController;
   private readonly xmodem: XmodemController;
   /**
@@ -1818,16 +1819,46 @@ export class TerminalController {
    * keeps the current match selected while the query is still being typed,
    * instead of jumping to the next one.
    */
-  search(query: string, forward = true, incremental = false) {
+  search(
+    query: string,
+    forward = true,
+    incremental = false,
+    searchOptions: SearchOptions = {},
+  ) {
     if (!query) {
       this.clearSearch();
       return;
     }
+    const optionsChanged =
+      Boolean(this.lastSearchOptions.caseSensitive) !==
+        Boolean(searchOptions.caseSensitive) ||
+      Boolean(this.lastSearchOptions.wholeWord) !==
+        Boolean(searchOptions.wholeWord) ||
+      Boolean(this.lastSearchOptions.regex) !== Boolean(searchOptions.regex);
+    if (optionsChanged) {
+      // SearchAddon 0.16.0 assigns `_state.lastSearchOptions = searchOptions`
+      // before `shouldUpdateHighlighting` compares them, so an option change
+      // on the same term never re-highlights unless the cache is cleared first.
+      this.searchAddon.clearDecorations();
+    }
     this.lastSearch = query;
+    this.lastSearchOptions = searchOptions;
     const options: ISearchOptions = {
       incremental,
+      caseSensitive: searchOptions.caseSensitive,
+      wholeWord: searchOptions.wholeWord,
+      regex: searchOptions.regex,
       decorations: SEARCH_DECORATIONS[this.themeMode],
     };
+    if (searchOptions.regex) {
+      try {
+        new RegExp(query, searchOptions.caseSensitive ? "g" : "gi");
+      } catch {
+        this.searchAddon.findNext("(?!)", { ...options, regex: true });
+        this.searchAddon.clearDecorations();
+        return;
+      }
+    }
     if (forward) this.searchAddon.findNext(query, options);
     else this.searchAddon.findPrevious(query, options);
   }
@@ -1835,6 +1866,7 @@ export class TerminalController {
   /** Drop the match highlights; also stops re-searching on every write. */
   clearSearch() {
     this.lastSearch = null;
+    this.lastSearchOptions = {};
     this.searchAddon.clearDecorations();
   }
 
@@ -1846,8 +1878,21 @@ export class TerminalController {
   private refreshSearch() {
     if (this.lastSearch === null) return;
     this.searchAddon.clearDecorations();
+    if (this.lastSearchOptions.regex) {
+      try {
+        new RegExp(
+          this.lastSearch,
+          this.lastSearchOptions.caseSensitive ? "g" : "gi",
+        );
+      } catch {
+        return;
+      }
+    }
     this.searchAddon.findPrevious(this.lastSearch, {
       incremental: true,
+      caseSensitive: this.lastSearchOptions.caseSensitive,
+      wholeWord: this.lastSearchOptions.wholeWord,
+      regex: this.lastSearchOptions.regex,
       decorations: SEARCH_DECORATIONS[this.themeMode],
     });
   }
