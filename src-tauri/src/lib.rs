@@ -1,6 +1,7 @@
 #[cfg(all(test, feature = "bindings"))]
 mod bindings;
 mod commands;
+mod credentials;
 mod diagnostics;
 mod error;
 mod file_diff;
