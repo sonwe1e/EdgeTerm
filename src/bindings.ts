@@ -71,6 +71,17 @@ export const commands = {
 	 */
 	importSshConfig: (path: string, aliases: string[], groupId: string | null) => __TAURI_INVOKE<SshImportSummary>("import_ssh_config", { path, aliases, groupId }),
 	/**
+	 *  Reads a private key file for the public-key login setup: its type, the
+	 *  public `authorized_keys` line, and the SHA-256 fingerprint. An encrypted
+	 *  file needs its passphrase.
+	 */
+	inspectPrivateKey: (path: string, passphrase: string | null) => __TAURI_INVOKE<KeySummary>("inspect_private_key", { path, passphrase }),
+	/**
+	 *  Creates a new Ed25519 key at `path` (which must not exist yet), with
+	 *  owner-only permissions and an optional passphrase.
+	 */
+	generatePrivateKey: (path: string, passphrase: string | null) => __TAURI_INVOKE<KeySummary>("generate_private_key", { path, passphrase }),
+	/**
 	 *  Record the key a host now presents, replacing every `known_hosts` entry
 	 *  the file held for it, after the user accepted a reported `HostKeyChange`.
 	 */
@@ -777,6 +788,21 @@ export type HostKeyChange = {
 	line: number,
 	/**  One-line explanation for the terminal and status bar. */
 	message: string,
+};
+
+/**
+ *  What a private key file holds, in the form the setup dialog shows before
+ *  anything is installed on a server.
+ */
+export type KeySummary = {
+	/**  The key type as in an `authorized_keys` line, e.g. `ssh-ed25519`. */
+	keyType: string,
+	/**  The public key as an `authorized_keys` field: type and base64 data. */
+	publicKey: string,
+	/**  The SHA-256 fingerprint in OpenSSH form, e.g. `SHA256:AbC…`. */
+	fingerprint: string,
+	/**  Whether the private key file is encrypted with a passphrase. */
+	encrypted: boolean,
 };
 
 /**

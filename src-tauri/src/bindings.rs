@@ -45,6 +45,8 @@ fn export_bindings() {
             commands::default_ssh_config_path,
             commands::read_ssh_config,
             commands::import_ssh_config,
+            commands::inspect_private_key,
+            commands::generate_private_key,
             commands::accept_host_key,
             commands::answer_auth_prompt,
             commands::close_session,

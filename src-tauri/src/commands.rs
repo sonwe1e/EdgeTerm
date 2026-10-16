@@ -79,6 +79,8 @@ mod profiles;
 pub use profiles::*;
 mod sessions;
 pub use sessions::*;
+mod keys;
+pub use keys::*;
 mod binary_transfer;
 pub use binary_transfer::*;
 mod transfers;

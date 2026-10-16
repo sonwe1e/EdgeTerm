@@ -19,6 +19,7 @@ mod remote_edit;
 mod resource_monitor;
 mod session;
 mod ssh_config;
+mod ssh_keys;
 mod store;
 mod window_state;
 
@@ -414,6 +415,8 @@ pub fn run() {
             commands::default_ssh_config_path,
             commands::read_ssh_config,
             commands::import_ssh_config,
+            commands::inspect_private_key,
+            commands::generate_private_key,
             commands::open_session,
             commands::accept_host_key,
             commands::answer_auth_prompt,
