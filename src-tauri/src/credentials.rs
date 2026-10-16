@@ -858,3 +858,27 @@ pub(crate) mod test_support {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    /// The one test allowed to touch the real OS credential store: it proves
+    /// the native backend works on this machine (Windows Credential Manager,
+    /// macOS Keychain, the Linux Secret Service). Ignored by default, since
+    /// it writes an entry while it runs; it deletes it again on success, and
+    /// uses a name of its own, so the app's own entry is never touched.
+    ///
+    /// `cargo test --lib os_credential_store_round_trips -- --ignored`
+    #[test]
+    #[ignore = "writes to the real OS credential store; run explicitly"]
+    fn os_credential_store_round_trips() {
+        let entry = keyring::Entry::new("EdgeTerm", "credential-store round-trip test")
+            .expect("open the OS credential store");
+        entry.set_password("probe").expect("store a probe secret");
+        assert_eq!(
+            entry.get_password().expect("read the probe secret"),
+            "probe"
+        );
+        entry.delete_credential().expect("delete the probe secret");
+        assert!(matches!(entry.get_password(), Err(keyring::Error::NoEntry)));
+    }
+}
