@@ -1,0 +1,327 @@
+/* --- panels --------------------------------------------------------------- */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.panel + .panel {
+  border-top: 1px solid var(--border);
+}
+
+/* Panel headers: a small-caps title with a line icon on the left (the VS
+   Code / Termius section-label idiom) and quiet icon buttons on the right. */
+.panel-header {
+  flex: 0 0 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px 0 12px;
+  color: var(--fg-dim);
+  background: var(--bg-panel);
+}
+
+.panel-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fg-dim);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.panel-title > .icon {
+  color: var(--fg-faint);
+}
+
+/* Collect UI's compact navigation pills translate well to a terminal's
+   dense chrome: colour identifies the workspace without tinting its data. */
+.panel-title:is(.is-session, .is-sender, .is-filer) {
+  flex: 0 1 auto;
+  height: 24px;
+  margin-right: auto;
+  padding: 0 8px;
+  border-radius: 8px;
+  letter-spacing: 0.035em;
+}
+
+.panel-title.is-session {
+  color: var(--panel-session);
+  background: color-mix(in srgb, var(--panel-session) 12%, transparent);
+}
+
+.panel-title.is-sender {
+  color: var(--panel-sender);
+  background: color-mix(in srgb, var(--panel-sender) 12%, transparent);
+}
+
+.panel-title.is-filer {
+  color: var(--panel-filer);
+  background: color-mix(in srgb, var(--panel-filer) 12%, transparent);
+}
+
+.panel-title:is(.is-session, .is-sender, .is-filer) > .icon {
+  color: currentColor;
+}
+
+/* Secondary word beside a title ("local", "ssh"): a lowercase pill. */
+.panel-badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fg) 9%, transparent);
+  color: var(--fg-faint);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.panel-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 7px;
+  color: var(--fg-faint);
+  line-height: 1;
+  transition:
+    background-color 80ms ease,
+    color 80ms ease;
+}
+
+.panel-action:hover {
+  color: var(--fg);
+  background: var(--bg-hover);
+}
+
+/* Green while the active session is live ("powered on"); an ended session
+   keeps a neutral icon so its colour never reads as "connected". */
+.panel-power.is-connected {
+  color: var(--green);
+}
+
+.panel-power.is-connected:hover {
+  color: var(--green);
+}
+
+.panel-power:disabled {
+  opacity: 0.35;
+  cursor: default;
+  background: none;
+  color: var(--fg-faint);
+}
+
+.panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.panel-filter {
+  position: relative;
+  padding: 2px 10px 8px;
+}
+
+.panel-filter input {
+  width: 100%;
+  height: 28px;
+  padding: 0 8px 0 30px;
+  border-color: transparent;
+  border-radius: 8px;
+  background: var(--bg-field);
+}
+
+.panel-filter input:hover {
+  border-color: var(--border-strong);
+}
+
+.panel-filter input:focus {
+  border-color: var(--accent);
+}
+
+.panel-filter-icon {
+  position: absolute;
+  top: 2px;
+  left: 17px;
+  display: flex;
+  align-items: center;
+  height: 28px;
+  color: var(--fg-faint);
+  pointer-events: none;
+}
+
+.panel-empty {
+  padding: 12px;
+  color: var(--fg-faint);
+  text-align: center;
+  line-height: 1.6;
+}
+
+/* --- tree / list rows ----------------------------------------------------- */
+
+/* Rows are inset from the panel edge with rounded hover / selection (the
+   Zed / Linear list idiom) rather than full-bleed bars. */
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--row-h);
+  margin: 1px 6px;
+  padding: 0 6px;
+  border-radius: 6px;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.row:hover {
+  background: var(--bg-hover);
+}
+
+.row.is-active {
+  background: var(--bg-active);
+}
+
+/* Per-row buttons (edit / delete) only show for the pointed or selected row. */
+.row > .panel-action {
+  opacity: 0;
+}
+
+.row:hover > .panel-action,
+.row.is-active > .panel-action,
+.row > .panel-action:focus-visible {
+  opacity: 1;
+}
+
+/* Kind headings of the session tree. */
+.row.is-section .row-label {
+  color: var(--fg-dim);
+  font-weight: 600;
+}
+
+.row-dot {
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+}
+
+.row-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row-meta {
+  color: var(--fg-faint);
+  font-size: calc(var(--panel-font-size) - 1px);
+}
+
+.row-caret {
+  flex: 0 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-faint);
+}
+
+.row-caret .icon {
+  transition: transform 120ms ease;
+}
+
+.row-caret.is-open .icon {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row-caret .icon {
+    transition: none;
+  }
+}
+
+.row-indent {
+  display: inline-block;
+}
+
+/* Groups: the folder glyph marks them; the label matches a section heading. */
+.row.is-group .row-label {
+  color: var(--fg-dim);
+}
+
+.row-folder {
+  color: var(--fg-dim);
+}
+
+/* --- context menu --------------------------------------------------------- */
+
+/* Anchored at the pointer rather than under a menubar title; the inline
+   left / top come from ContextMenu after it has clamped itself on screen. */
+.context-menu {
+  position: fixed;
+  z-index: 150;
+  min-width: 200px;
+}
+
+/* Hanging off a button at the right edge: it grows out of that corner. */
+.context-menu.is-right {
+  transform-origin: top right;
+}
+
+.context-menu .menu-submenu {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+/* Near the right edge (where the Filer lives) submenus open leftwards. */
+.context-menu.is-flipped .menu-submenu {
+  left: auto;
+  right: calc(100% + var(--submenu-gap));
+  transform-origin: top right;
+}
+
+.context-menu.is-flipped .menu-submenu-entry.is-open::after {
+  left: auto;
+  right: 100%;
+}
+
+.menu-entry.is-danger {
+  color: var(--red);
+}
+
+.menu-entry.is-danger .menu-icon {
+  color: inherit;
+}
+
+.menu-entry.is-danger:hover,
+.menu-entry.is-danger:focus-visible {
+  background: var(--red);
+  color: #ffffff;
+}
+
+.menu-entry:disabled {
+  color: var(--fg-faint);
+  cursor: default;
+}
+
+.menu-entry:disabled .menu-icon {
+  color: inherit;
+}
+
+.menu-entry:disabled .menu-check {
+  opacity: 0.55;
+}
+
+.menu-entry:disabled:hover {
+  background: transparent;
+  color: var(--fg-faint);
+}
+

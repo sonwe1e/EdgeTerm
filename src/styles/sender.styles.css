@@ -1,0 +1,717 @@
+/* --- sender --------------------------------------------------------------- */
+
+/* A saved-command toolbar for the bottom dock; the composer opens on demand. */
+.sender-quickbar {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: auto;
+  padding: 0 8px;
+  background: var(--bg-panel);
+}
+
+.sender-quickbar .sender-quick-title {
+  flex: none;
+  margin-right: 0;
+}
+
+.sender-quick-tags {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.sender-quick-tags::-webkit-scrollbar {
+  display: none;
+}
+
+.sender-quick-empty {
+  overflow: hidden;
+  color: var(--fg-faint);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sender-quick-tag {
+  flex: none;
+  max-width: 225px;
+  height: 26px;
+  border-radius: 6px;
+}
+
+.sender-quick-tag .sender-command-load {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 190px;
+  padding: 0 7px;
+}
+
+.sender-quick-tag .sender-command-load > .icon {
+  flex: none;
+  color: var(--panel-sender);
+}
+
+.sender-quick-tag .sender-command-load > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sender-quick-options {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 100%;
+  color: var(--fg-faint);
+}
+
+.sender-quick-options:hover {
+  color: var(--fg);
+  background: var(--bg-hover);
+}
+
+.sender-quick-button,
+.sender-collapse {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--fg-dim);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.sender-quick-button:hover,
+.sender-collapse:hover {
+  color: var(--fg);
+  background: var(--bg-hover);
+}
+
+.sender-quick-button.is-primary {
+  color: var(--panel-sender);
+  border-color: color-mix(in srgb, var(--panel-sender) 40%, var(--border-strong));
+}
+
+.sender-quick-button.is-running {
+  color: var(--green);
+}
+
+.sender-quick-button.is-stop {
+  color: var(--red);
+}
+
+.sender-quick-button.is-icon {
+  width: 26px;
+  padding: 0;
+}
+
+.sender-quick-count {
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.sender-quick-target {
+  flex: none;
+}
+
+.sender-quick-target .select {
+  max-width: 152px;
+}
+
+.sender-collapse {
+  width: 26px;
+  padding: 0;
+}
+
+.sender-more-menu {
+  position: fixed;
+  z-index: 190;
+  display: flex;
+  flex-direction: column;
+  width: 340px;
+  max-height: min(340px, calc(100vh - 24px));
+  padding: 6px;
+  border: 1px solid var(--border-menu);
+  border-radius: 8px;
+  background: var(--bg-app);
+  box-shadow: var(--shadow-pop);
+}
+
+.sender-more-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  color: var(--fg-faint);
+}
+
+.sender-more-search input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  outline: none;
+}
+
+.sender-more-list {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.sender-more-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 5px;
+  color: var(--fg);
+  text-align: left;
+}
+
+.sender-more-item:hover:not(:disabled),
+.sender-more-item:focus-visible {
+  background: var(--bg-hover);
+}
+
+.sender-more-item:disabled {
+  opacity: 0.4;
+}
+
+.sender-more-item > .icon {
+  flex: none;
+  color: var(--panel-sender);
+}
+
+.sender-more-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sender-more-scope {
+  max-width: 100px;
+  overflow: hidden;
+  color: var(--fg-faint);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sender-more-empty,
+.sender-more-foot {
+  padding: 8px;
+  color: var(--fg-faint);
+  font-size: 11px;
+}
+
+/* Three rows: the panel header carries the send options on its right (line
+   ending, targets); the compose row is the command field with its Send
+   button and, set apart, the tag name and Save; the library below lists the
+   saved commands as chips. */
+.sender-header {
+  border-bottom: 1px solid var(--border);
+}
+
+.sender-header .panel-title.is-sender {
+  margin-right: 10px;
+}
+
+.sender-options {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-right: auto;
+  padding-right: 4px;
+}
+
+.sender-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fg-faint);
+  font-size: 11px;
+}
+
+/* Compact select: the native control with its chrome stripped and our own
+   chevron laid over it, so the popup stays native and accessible. */
+.select-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.select {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 24px;
+  padding: 0 24px 0 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: var(--bg-field);
+  color: var(--fg);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.select:hover {
+  border-color: var(--border-strong);
+}
+
+.select:focus {
+  border-color: var(--accent);
+}
+
+.icon.select-chevron {
+  position: absolute;
+  right: 5px;
+  width: 14px;
+  height: 14px;
+  color: var(--fg-faint);
+}
+
+.sender-compose {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  background: color-mix(in srgb, var(--bg-panel-alt) 42%, transparent);
+}
+
+.sender-command {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 160px;
+  display: flex;
+  align-items: center;
+}
+
+.sender-command textarea {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  max-height: 116px;
+  padding: 4px 32px 4px 10px;
+  border-color: transparent;
+  border-radius: 8px;
+  background: var(--bg-field);
+  font-family: var(--font-mono);
+  line-height: 18px;
+  resize: none;
+  overflow-y: auto;
+}
+
+.sender-command textarea:hover,
+.sender-label-input:hover {
+  border-color: var(--border-strong);
+}
+
+.sender-command textarea:focus,
+.sender-label-input:focus {
+  border-color: var(--accent);
+}
+
+.sender-clear {
+  position: absolute;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: var(--fg-faint);
+}
+
+.sender-clear:hover {
+  color: var(--fg);
+  background: var(--bg-hover);
+}
+
+.sender-send {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--green) 42%, transparent);
+  border-radius: 6px;
+  color: var(--green);
+  background: color-mix(in srgb, var(--green) 9%, transparent);
+}
+
+.sender-send:hover:not(:disabled) {
+  border-color: var(--green);
+  background: color-mix(in srgb, var(--green) 17%, transparent);
+}
+
+.sender-send:disabled {
+  opacity: 0.35;
+  cursor: default;
+  filter: none;
+}
+
+.sender-send.is-stop {
+  border-color: color-mix(in srgb, var(--red) 42%, transparent);
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 9%, transparent);
+}
+
+.sender-send.is-stop:hover:not(:disabled) {
+  border-color: var(--red);
+  background: color-mix(in srgb, var(--red) 17%, transparent);
+}
+
+.sender-repeat-toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--fg-faint);
+}
+
+.sender-repeat-toggle:hover {
+  color: var(--fg);
+  background: var(--bg-hover);
+}
+
+.sender-repeat-toggle.is-active {
+  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
+.sender-repeat-toggle.is-running {
+  border-color: color-mix(in srgb, var(--green) 42%, transparent);
+  color: var(--green);
+  background: color-mix(in srgb, var(--green) 9%, transparent);
+}
+
+.sender-repeat {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-panel-alt) 42%, transparent);
+  color: var(--fg-dim);
+  font-size: 11px;
+}
+
+.sender-repeat > .icon {
+  flex: none;
+  color: var(--fg-faint);
+}
+
+.sender-repeat.is-running > .icon {
+  color: var(--green);
+}
+
+.sender-repeat-number {
+  width: 64px;
+  height: 24px;
+  padding: 0 6px;
+  border-color: transparent;
+  border-radius: 6px;
+  background: var(--bg-field);
+  font-variant-numeric: tabular-nums;
+}
+
+.sender-repeat-number:hover {
+  border-color: var(--border-strong);
+}
+
+.sender-repeat-number:focus {
+  border-color: var(--accent);
+}
+
+.sender-repeat-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.sender-repeat-text code {
+  color: var(--fg);
+  font-family: var(--font-mono);
+}
+
+.sender-repeat-hint {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-faint);
+}
+
+.sender-repeat .sender-save-btn {
+  height: 24px;
+  min-width: 52px;
+  padding: 0 10px;
+}
+
+.sender-compose-divider {
+  flex: none;
+  width: 1px;
+  height: 18px;
+  margin: 0 2px;
+  background: var(--border-strong);
+}
+
+.sender-label-input {
+  flex: 0 1 170px;
+  min-width: 90px;
+  height: 28px;
+  border-color: transparent;
+  border-radius: 8px;
+  background: var(--bg-field);
+}
+
+.sender-save-btn {
+  flex: 0 0 auto;
+  min-width: 56px;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  color: var(--fg);
+  background: var(--bg-panel-alt);
+  font-weight: 500;
+}
+
+.sender-save-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--fg-faint);
+}
+
+.sender-save-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.sender-save-btn.is-secondary {
+  border-color: transparent;
+  background: transparent;
+  color: var(--fg-dim);
+}
+
+.sender-library {
+  min-height: 0;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  padding: 0 10px 10px;
+  border-top: 1px solid var(--border);
+}
+
+.sender-library-head {
+  flex: 0 0 26px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--fg-faint);
+  font-size: 11px;
+}
+
+.sender-pagination {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sender-pagination span {
+  padding: 0 6px;
+  color: var(--fg-dim);
+}
+
+.sender-pagination button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 20px;
+  border-radius: 4px;
+  color: var(--fg-dim);
+}
+
+.sender-pagination button:hover:not(:disabled) {
+  color: var(--fg);
+  background: var(--bg-hover);
+}
+
+.sender-pagination button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.sender-library-empty {
+  padding: 10px 0;
+  color: var(--fg-faint);
+  font-size: 11px;
+}
+
+.sender-command-tags {
+  min-height: 0;
+  display: flex;
+  align-content: flex-start;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding-top: 8px;
+  overflow-y: auto;
+}
+
+.sender-library-head + .sender-command-tags {
+  padding-top: 0;
+}
+
+.sender-command-tag {
+  display: flex;
+  align-items: center;
+  max-width: 360px;
+  height: 26px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-panel-alt);
+  overflow: hidden;
+  transition:
+    border-color 100ms ease,
+    background-color 100ms ease,
+    transform 100ms ease;
+}
+
+.sender-command-tag:hover {
+  border-color: var(--fg-faint);
+  background: var(--bg-hover);
+  transform: translateY(-1px);
+}
+
+/* The tag whose contents are loaded in the inputs (right-click → Edit). */
+.sender-command-tag.is-editing {
+  border-style: dashed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sender-command-tag {
+    transition: none;
+  }
+}
+
+.sender-command-load {
+  min-width: 40px;
+  max-width: 200px;
+  height: 100%;
+  padding: 0 10px;
+  overflow: hidden;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sender-command-load:disabled {
+  cursor: default;
+}
+
+.sender-command-tooltip {
+  position: fixed;
+  z-index: 220;
+  max-width: 420px;
+  padding: 7px 9px;
+  transform: translateY(-100%);
+  border: 1px solid var(--border-menu);
+  border-radius: 6px;
+  color: var(--fg);
+  background: var(--bg-app);
+  box-shadow: var(--shadow-pop);
+  font-family: var(--font-mono);
+  font-size: calc(var(--panel-font-size) - 1px);
+  pointer-events: none;
+}
+
+/* One line, cut with an ellipsis: a hover hint, not a place to read code. */
+.sender-command-tooltip div {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sender-command-tooltip span {
+  display: block;
+  margin-top: 4px;
+  color: var(--fg-faint);
+  font-family: var(--font-ui);
+  font-size: calc(var(--panel-font-size) - 2px);
+}
+
+/* Full text of a label cut with an ellipsis (overflowTooltip.ts). Wraps
+   anywhere: the long ones are paths and host names without spaces. */
+.overflow-tooltip {
+  position: fixed;
+  z-index: 300;
+  display: none;
+  max-width: min(520px, calc(100vw - 16px));
+  padding: 5px 8px;
+  border: 1px solid var(--border-menu);
+  border-radius: 6px;
+  color: var(--fg);
+  background: var(--bg-app);
+  box-shadow: var(--shadow-pop);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
+.overflow-tooltip.is-visible {
+  display: block;
+}
+
+.overflow-tooltip span {
+  display: block;
+  margin-top: 2px;
+  color: var(--fg-faint);
+  font-size: 11px;
+}
+

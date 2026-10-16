@@ -1,0 +1,150 @@
+/* --- status bar ----------------------------------------------------------- */
+
+.statusbar {
+  flex: 0 0 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 12px;
+  background: var(--bg-app);
+  border-top: 1px solid var(--border);
+  color: var(--fg-dim);
+  font-size: 11px;
+}
+
+.status-spacer {
+  flex: 1;
+}
+
+.status-item {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.status-item.is-error {
+  color: var(--red);
+}
+.statusbar > .status-item:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.statusbar .resource-monitor, .statusbar .forward-center, .statusbar .transfer-center { flex-shrink: 0; }
+
+/* The active session is being recorded to a file; the button opens the
+   folder. The dot is the Codicon, tinted the recording red. */
+.status-recording {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 4px;
+  border-radius: 4px;
+  color: var(--fg);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+.status-recording .icon {
+  color: var(--red);
+}
+.status-recording:hover {
+  background: var(--bg-hover);
+}
+
+/* The active SSH session only connected on algorithms kept for old devices;
+   the tooltip names them. */
+.status-legacy {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  cursor: default;
+}
+.status-legacy .icon {
+  color: var(--yellow);
+}
+
+/* --- splitters ------------------------------------------------------------ */
+
+/* The splitter is the 1px divider itself; an 11px hit area (`::after`)
+   straddles it, and a 3px accent line (`::before`) lights up as soon as the
+   pointer enters that area.
+
+   Two details keep the boundary from feeling dead. The resize cursor sits on
+   the element itself, not only on `::after`: WebKit reports a hit on a
+   pseudo-element as a hit on its host element, so with the cursor declared on
+   `::after` alone the arrow stays up while the pointer is over the hit area.
+   And the accent line fades in with no delay — VS Code's sashes wait 300ms,
+   but there an editor border is already drawn to aim at, whereas here the
+   line lighting up is the only sign the 1px boundary can be grabbed. */
+.splitter {
+  position: relative;
+  z-index: 5;
+  flex: 0 0 1px;
+  background: var(--border);
+}
+
+.splitter::before,
+.splitter::after {
+  content: "";
+  position: absolute;
+}
+
+.splitter.is-vertical,
+.splitter.is-vertical::after {
+  cursor: col-resize;
+}
+
+.splitter.is-horizontal,
+.splitter.is-horizontal::after {
+  cursor: row-resize;
+}
+
+.splitter.is-vertical::after {
+  top: 0;
+  bottom: 0;
+  left: -5px;
+  width: 11px;
+}
+
+.splitter.is-horizontal::after {
+  left: 0;
+  right: 0;
+  top: -5px;
+  height: 11px;
+}
+
+.splitter::before {
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 80ms ease;
+  pointer-events: none;
+}
+
+.splitter.is-vertical::before {
+  top: 0;
+  bottom: 0;
+  left: -1px;
+  width: 3px;
+}
+
+.splitter.is-horizontal::before {
+  left: 0;
+  right: 0;
+  top: -1px;
+  height: 3px;
+}
+
+.splitter:hover::before,
+.splitter.is-dragging::before {
+  opacity: 1;
+}
+
+/* While a drag is on, the resize cursor holds over whatever the pointer
+   crosses (the terminal would otherwise show its text cursor). */
+.app:has(.splitter.is-vertical.is-dragging),
+.app:has(.splitter.is-vertical.is-dragging) * {
+  cursor: col-resize !important;
+}
+
+.app:has(.splitter.is-horizontal.is-dragging),
+.app:has(.splitter.is-horizontal.is-dragging) * {
+  cursor: row-resize !important;
+}
+

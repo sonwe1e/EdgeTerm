@@ -1,0 +1,748 @@
+/* --- FTP workspace -------------------------------------------------------- */
+
+.ftp-workspace {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  background: var(--bg-terminal);
+}
+
+.ftp-workspace.is-hidden {
+  visibility: hidden;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.ftp-session-state {
+  display: grid;
+  flex: 1;
+  place-content: center;
+  gap: 7px;
+  text-align: center;
+  color: var(--fg-dim);
+}
+
+.ftp-session-state strong {
+  color: var(--fg);
+  font-size: 14px;
+}
+
+.ftp-session-state.is-error strong {
+  color: var(--red);
+}
+
+.ftp-dual-pane {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  grid-template-columns: minmax(280px, 1fr) 104px minmax(280px, 1fr);
+  background: var(--bg-app);
+}
+
+.ftp-file-browser {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.ftp-browser-header {
+  display: flex;
+  flex: 0 0 48px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 10px;
+  background: var(--bg-panel-alt);
+  border-bottom: 1px solid var(--border);
+}
+
+.ftp-browser-header > div:first-child {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.ftp-browser-header strong,
+.ftp-browser-header span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ftp-browser-header strong {
+  color: var(--fg);
+  font-size: 13px;
+}
+
+.ftp-browser-header > div:first-child > span {
+  color: var(--fg-faint);
+  font-size: 10px;
+}
+
+.ftp-browser-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+}
+
+.ftp-tool-button {
+  display: inline-flex;
+  width: 25px;
+  height: 25px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 3px;
+  color: var(--fg-dim);
+}
+
+.ftp-tool-button:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.ftp-tool-button.is-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+  color: var(--red);
+}
+
+.ftp-tool-button:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.ftp-browser-path {
+  display: flex;
+  flex: 0 0 35px;
+  align-items: center;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ftp-browser-path input {
+  width: 100%;
+  min-width: 0;
+  background: var(--bg-field);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.ftp-browser-columns,
+.ftp-file-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 76px 130px;
+}
+
+.ftp-browser-columns {
+  flex: 0 0 24px;
+  align-items: center;
+  padding: 0 9px;
+  border-bottom: 1px solid var(--border);
+  color: var(--fg-faint);
+  font-size: 10px;
+}
+
+.ftp-browser-columns > :nth-child(n + 2),
+.ftp-file-row > span:nth-child(n + 2) {
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Column captions are buttons so they can sort the list; they restyle to the
+   span look they replaced. Text aligns left like the first column under it —
+   a button's own default is centered, and only the later columns go right. */
+.ftp-browser-columns button {
+  display: block;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ftp-browser-columns button:hover,
+.ftp-browser-columns button.is-sorted {
+  color: var(--fg);
+}
+
+.ftp-browser-columns button:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.ftp-browser-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.ftp-file-row {
+  min-height: 29px;
+  height: 29px;
+  align-items: center;
+  padding: 3px 9px;
+  border-bottom: 1px solid var(--row-separator);
+  color: var(--fg-dim);
+  font-size: 11px;
+  cursor: default;
+}
+
+.ftp-file-row:hover {
+  background: var(--bg-hover);
+}
+
+.ftp-file-row.is-selected {
+  background: var(--bg-active);
+  color: var(--fg);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* Drag-and-drop in the dual-pane browser. An icon must not start its own
+   native image drag under a row's pointer drag, and the pointer travel
+   before a drag starts must not begin a text selection. */
+.ftp-file-row {
+  user-select: none;
+}
+
+.ftp-file-row img {
+  -webkit-user-drag: none;
+}
+
+.ftp-dual-pane.is-dragging,
+.ftp-dual-pane.is-dragging .ftp-file-row {
+  cursor: grabbing;
+}
+
+.ftp-file-row.is-drag-source {
+  opacity: 0.5;
+}
+
+/* The folder row, or the pane background, a drag is over. */
+.ftp-file-row.is-drop-target {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.ftp-browser-list.is-drop-target {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.ftp-file-row.is-directory .ftp-file-name {
+  color: var(--dir-label);
+  font-weight: 600;
+}
+
+.ftp-file-name {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+}
+
+.ftp-file-name > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ftp-file-icon {
+  display: inline-flex;
+  flex: 0 0 16px;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+
+.ftp-file-icon img {
+  display: block;
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+  user-select: none;
+}
+
+.ftp-browser-message {
+  padding: 18px 12px;
+  color: var(--fg-faint);
+  text-align: center;
+  white-space: pre-wrap;
+}
+
+.ftp-browser-message.is-error {
+  color: var(--red);
+}
+
+.ftp-browser-footer {
+  display: flex;
+  flex: 0 0 25px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 9px;
+  border-top: 1px solid var(--border);
+  color: var(--fg-faint);
+  font-size: 10px;
+}
+
+.ftp-browser-footer span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ftp-transfer-rail {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-app);
+}
+
+.ftp-transfer-button {
+  display: flex;
+  width: 84px;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--bg-panel-alt);
+  color: var(--fg);
+  font-size: 11px;
+}
+
+.ftp-transfer-button:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.ftp-transfer-button:disabled {
+  color: var(--fg-faint);
+  cursor: default;
+  opacity: 0.45;
+}
+
+.ftp-transfer-status {
+  display: flex;
+  flex: 0 0 28px;
+  align-items: center;
+  padding: 0 10px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-panel-alt);
+  color: var(--fg-faint);
+  font-size: 10px;
+}
+
+.ftp-transfer-status.has-transfer {
+  display: block;
+  flex-basis: auto;
+  min-height: 49px;
+  padding: 6px 10px;
+}
+
+.ftp-transfer-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--fg-dim);
+}
+
+.ftp-transfer-summary span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ftp-transfer-summary span:last-child {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+}
+
+.ftp-transfer-progress {
+  height: 5px;
+  margin-top: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--border-strong);
+}
+
+.ftp-transfer-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 80ms linear;
+}
+
+.ftp-transfer-progress > span.is-indeterminate {
+  width: 35%;
+  animation: ftp-transfer-indeterminate 1.2s ease-in-out infinite alternate;
+}
+
+.ftp-transfer-error {
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--red);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes ftp-transfer-indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(285%);
+  }
+}
+
+@media (max-width: 800px) {
+  .ftp-dual-pane {
+    grid-template-columns: minmax(220px, 1fr) 74px minmax(220px, 1fr);
+  }
+
+  .ftp-transfer-rail {
+    padding: 6px;
+  }
+
+  .ftp-transfer-button {
+    width: 62px;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .ftp-browser-columns,
+  .ftp-file-row {
+    grid-template-columns: minmax(0, 1fr) 64px;
+  }
+
+  /* The captions are buttons, not spans (see the sorting feature); the row
+     cells remain spans. */
+  .ftp-browser-columns > :last-child,
+  .ftp-file-row > span:last-child {
+    display: none;
+  }
+}
+
+.term-gutter {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 0 8px 0 6px;
+  background: var(--bg-terminal);
+  border-right: 1px solid var(--gutter-border);
+  font-family: var(--font-mono);
+  font-size: max(8px, calc(var(--buffer-font-size) - 1px));
+  color: var(--fg-faint);
+  user-select: none;
+  overflow: hidden;
+}
+
+.term-gutter.is-hidden {
+  display: none;
+}
+
+.gutter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* Set on .term-gutter by TerminalController.measureCell. */
+  height: var(--gutter-cell);
+  line-height: var(--gutter-cell);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.gutter-row.is-cursor {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent-bright);
+}
+
+.gutter-time {
+  color: var(--gutter-time-fg);
+}
+
+.gutter-line {
+  min-width: 32px;
+  text-align: right;
+  color: var(--gutter-line-fg);
+}
+
+.gutter-row.is-cursor .gutter-time,
+.gutter-row.is-cursor .gutter-line {
+  color: var(--accent-bright);
+}
+
+.term-gutter.no-time .gutter-time {
+  display: none;
+}
+
+.term-gutter.no-line .gutter-line {
+  display: none;
+}
+
+.term-host {
+  position: relative; /* anchors the completion popup */
+  flex: 1;
+  min-width: 0;
+  padding-left: 6px;
+}
+
+/* IDE-style completion popup: history commands matching the typed input,
+   floated under the cursor row. Position is set from the terminal's cell
+   metrics. Translucent panel (60% of its own color, which equals the
+   terminal background, so what shows through is the output underneath) with
+   a 1px backdrop blur — without it the rows and the same-size monospace
+   glyphs underneath fight each other, at 1px both stay readable. The
+   selected row is an accent wash fading left to right, no rail: an inset
+   bar follows the row's rounded corners and reads as a stray blob. Chosen
+   from six treatments compared side by side in both palettes. */
+.term-suggest {
+  position: absolute;
+  z-index: 7;
+  min-width: 180px;
+  padding: 3px;
+  overflow: hidden;
+  background: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--fg) 5%, var(--bg-panel-alt)) 60%,
+    transparent
+  );
+  border: 1px solid color-mix(in srgb, var(--border-strong) 70%, transparent);
+  border-radius: 6px;
+  -webkit-backdrop-filter: blur(1px);
+  backdrop-filter: blur(1px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  animation: term-suggest-in 120ms ease-out;
+}
+
+@keyframes term-suggest-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .term-suggest {
+    animation: none;
+  }
+}
+
+.term-suggest.is-hidden {
+  display: none;
+}
+
+.term-suggest-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px 3px 10px;
+  border-radius: 4px;
+  color: var(--fg);
+  cursor: pointer;
+  /* Glow in the panel color separates the row text from the output showing
+     through, without opaquing the panel. */
+  text-shadow:
+    0 0 2px var(--bg-panel-alt),
+    0 0 4px var(--bg-panel-alt);
+  transition: background-color 80ms ease-out;
+}
+
+.term-suggest-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+/* Kept in the layout while hidden so rows do not reflow on hover. */
+.term-suggest-remove {
+  display: flex;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  color: var(--fg-dim);
+  visibility: hidden;
+}
+
+.term-suggest-remove svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.term-suggest-item:hover .term-suggest-remove,
+.term-suggest-item.is-selected .term-suggest-remove {
+  visibility: visible;
+}
+
+.term-suggest-remove:hover {
+  background: color-mix(in srgb, var(--fg) 14%, transparent);
+  color: var(--fg);
+}
+
+.term-suggest-item:hover {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+
+.term-suggest-item.is-selected {
+  /* An even wash from the left edge to nothing at the right edge: no box
+     outline, no corner, just the accent bloom trailing off. */
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 20%, transparent),
+    transparent
+  );
+}
+
+.term-suggest-match {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.term-suggest-item.is-selected .term-suggest-match {
+  color: var(--accent-bright);
+}
+
+.term-host .xterm {
+  height: 100%;
+}
+
+/* xterm's stylesheet gives the viewport a hard-coded black background.
+   When the available height is not an exact multiple of a cell, that colour
+   shows below the last canvas row as a dark gap above the Sender splitter. */
+.term-host .xterm-viewport {
+  background-color: var(--bg-terminal);
+}
+
+/* Buffer scrollbar. xterm 6 draws its own (VS Code's scrollable element)
+   in a 14px track and themes the slider from an injected stylesheet; these
+   rules win on specificity. The thumb is inset with rounded ends like the
+   app's other scrollbars, and grows and brightens under the pointer. */
+.term-host .xterm .xterm-scrollable-element > .scrollbar > .slider {
+  box-sizing: border-box;
+  background: var(--scrollbar-thumb);
+  border: 3px solid transparent;
+  border-radius: 7px;
+  background-clip: content-box;
+}
+
+.term-host .xterm .xterm-scrollable-element > .scrollbar > .slider:hover,
+.term-host .xterm .xterm-scrollable-element > .scrollbar > .slider.active {
+  background: var(--term-scrollbar-thumb-hover);
+  border-width: 2px;
+  background-clip: content-box;
+}
+
+.transfer-notice {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 8;
+  max-width: min(520px, calc(100% - 32px));
+  overflow: hidden;
+  padding: 7px 11px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  border-radius: 5px;
+  background: var(--notice-info-bg);
+  box-shadow: var(--shadow-notice);
+  color: var(--notice-info-fg);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  pointer-events: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transfer-notice.is-hidden {
+  display: none;
+}
+
+.transfer-notice.is-success {
+  border-color: color-mix(in srgb, var(--green) 60%, transparent);
+  background: var(--notice-success-bg);
+  color: var(--notice-success-fg);
+}
+
+.transfer-notice.is-error {
+  border-color: color-mix(in srgb, var(--red) 65%, transparent);
+  background: var(--notice-error-bg);
+  color: var(--notice-error-fg);
+}
+
+.term-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  color: var(--fg-faint);
+}
+
+.term-empty-icon {
+  width: 64px;
+  height: 64px;
+}
+
+.term-empty h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--fg-dim);
+  letter-spacing: 0.5px;
+}
+
+.term-empty-hint {
+  margin: 0;
+  line-height: 1.7;
+  text-align: center;
+}
+
+.term-empty kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  background: var(--bg-panel-alt);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+

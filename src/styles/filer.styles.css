@@ -1,0 +1,442 @@
+/* --- filer ---------------------------------------------------------------- */
+
+.filer-toolbar {
+  flex: 0 0 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 30px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.filer-action {
+  display: inline-flex;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--fg-dim);
+}
+
+.filer-action:hover:not(:disabled) {
+  color: var(--fg);
+  background: var(--bg-hover);
+}
+
+.filer-action:active:not(:disabled),
+.filer-action.is-open {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.filer-action:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.filer-action:disabled {
+  color: var(--fg-faint);
+  cursor: default;
+  opacity: 0.45;
+}
+
+.filer-action-danger:hover:not(:disabled) {
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+}
+
+.filer-path {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 8px 5px 6px;
+}
+
+.filer-path input {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  margin-left: 2px;
+  border-color: transparent;
+  border-radius: 5px;
+  background: var(--bg-field);
+  font-family: var(--font-mono);
+  font-size: calc(var(--panel-font-size) - 1px);
+  user-select: text;
+}
+
+.filer-path input:hover {
+  border-color: var(--border-strong);
+}
+
+.filer-path input:focus {
+  border-color: var(--accent);
+}
+
+/* Column captions, aligned with the row content (6px inset + 6px padding). */
+.filer-columns {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--fg-faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* The whole panel is the drop target, so the ring goes around all of it and
+   the list underneath only tints. */
+.filer-panel {
+  transition: box-shadow 100ms ease;
+}
+
+.filer-panel.is-drag-over {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.filer-list {
+  transition: background-color 100ms ease;
+}
+
+.filer-panel.is-drag-over .filer-list {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+/* Over the panel but nothing to upload to: the ring still says the panel is
+   the target, the footer says why the drop will not be taken. */
+.filer-panel.is-drag-blocked {
+  box-shadow: inset 0 0 0 2px var(--border-strong);
+}
+
+.filer-drop-message {
+  color: var(--accent);
+}
+
+.filer-drop-blocked {
+  overflow: hidden;
+  color: var(--fg-dim);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The entry the system is carrying out of the window, or the one whose copy
+   is still being fetched for it. */
+.filer-entry.is-dragging-out {
+  opacity: 0.5;
+}
+
+.filer-col-name {
+  flex: 1;
+  /* Left like the names under it: a button's own default is centered. */
+  text-align: left;
+}
+
+.filer-col-date {
+  width: 74px;
+  text-align: right;
+  padding-left: 8px;
+}
+
+/* Column captions are buttons so they can sort the list; they restyle to the
+   span look they replaced. */
+.filer-columns button {
+  display: block;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+  user-select: none;
+}
+
+.filer-columns button:hover,
+.filer-columns button.is-sorted {
+  color: var(--fg);
+}
+
+.filer-columns button:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.filer-icon {
+  display: inline-flex;
+  flex: 0 0 16px;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+
+.filer-icon img {
+  display: block;
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+  user-select: none;
+}
+
+.filer-new-entry {
+  gap: 7px;
+}
+
+.filer-new-entry input {
+  min-width: 0;
+}
+
+.filer-entry {
+  gap: 7px;
+  height: max(24px, calc(var(--panel-font-size) + 10px));
+}
+
+.filer-entry .row-label {
+  color: var(--fg);
+}
+
+.filer-entry.is-symlink .row-label {
+  color: var(--symlink-label);
+}
+
+.filer-entry .filer-col-date {
+  flex: 0 0 74px;
+  font-size: calc(var(--panel-font-size) - 2px);
+  font-variant-numeric: tabular-nums;
+}
+
+.filer-footer {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 24px;
+  padding: 0 12px;
+  border-top: 1px solid var(--border);
+  color: var(--fg-faint);
+  font-size: calc(var(--panel-font-size) - 1px);
+}
+
+.filer-transfer-summary {
+  flex-shrink: 0;
+  padding: 5px 10px;
+  border-top: 1px solid var(--border);
+}
+.filer-transfer-summary button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  color: var(--fg-dim);
+  text-align: left;
+}
+.filer-transfer-summary button:hover {
+  color: var(--fg);
+}
+.filer-transfer-summary [role="status"] {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filer-footer.has-transfer {
+  display: block;
+  min-height: 59px;
+  padding: 6px 12px 7px;
+  background: var(--bg-panel-alt);
+}
+
+.filer-transfer-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.filer-transfer-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg-dim);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filer-transfer-value {
+  flex: 0 0 auto;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.filer-transfer-track {
+  position: relative;
+  height: 5px;
+  margin-top: 7px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--border-strong);
+}
+
+.filer-transfer-bar {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 80ms linear;
+}
+
+.filer-transfer-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  font-size: calc(var(--panel-font-size) - 2px);
+  font-variant-numeric: tabular-nums;
+}
+
+.filer-transfer.is-complete .filer-transfer-name,
+.filer-transfer.is-complete .filer-transfer-value {
+  color: var(--green);
+}
+
+.filer-transfer.is-complete .filer-transfer-bar {
+  background: var(--green);
+}
+
+.filer-transfer.is-error .filer-transfer-name,
+.filer-transfer.is-error .filer-transfer-value {
+  color: var(--red);
+}
+
+.filer-transfer.is-error .filer-transfer-bar {
+  background: var(--red);
+}
+
+.filer-transfer.is-cancelled .filer-transfer-name,
+.filer-transfer.is-cancelled .filer-transfer-value {
+  color: var(--fg-faint);
+}
+
+.filer-transfer.is-cancelled .filer-transfer-bar {
+  background: var(--fg-faint);
+}
+
+/* Sits in the label row without making it taller than the text. */
+.filer-transfer-cancel {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  margin: -3px -4px -3px 0;
+}
+
+.filer-transfer-track.is-indeterminate .filer-transfer-bar {
+  width: 35%;
+  animation: filer-transfer-indeterminate 1s ease-in-out infinite;
+}
+
+@keyframes filer-transfer-indeterminate {
+  from {
+    transform: translateX(-110%);
+  }
+
+  to {
+    transform: translateX(300%);
+  }
+}
+
+.about-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.about-link:hover {
+  color: var(--fg);
+}
+:root .transfer-center { position: relative; }
+.transfer-center-popover { position: fixed; bottom: 32px; right: 12px; width: min(560px, 90vw); max-height: 70vh; overflow: auto; z-index: 1000; padding: 14px; background: var(--bg-panel, var(--bg-app)); color: var(--fg, inherit); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 8px 32px #0005; font-size: 12px; }
+.ssh-connection-options { padding: 6px 10px; font-size: 11px; border-bottom: 1px solid var(--border); }
+.resource-monitor { position: relative; min-width: 0; }
+.resource-summary { max-width: 650px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: inherit; background: none; border: 0; cursor: pointer; font-size: inherit; }
+.resource-summary.is-stale { opacity: .65; }
+.resource-compact { display: none; }
+.resource-popover { position: fixed; right: 12px; bottom: 30px; width: min(480px, 90vw); max-height: 75vh; overflow: auto; z-index: 1000; padding: 14px; background: var(--bg-panel); color: var(--fg, inherit); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 8px 32px #0005; font-size: 12px; }
+.resource-popover button, .resource-popover input, .resource-popover select { color: inherit; background: var(--bg-app); border: 1px solid var(--border); border-radius: 3px; padding: 4px 6px; }
+.resource-popover label { display: flex; align-items: center; gap: 6px; margin: 8px 0; }
+.resource-popover input[type=number] { width: 55px; }
+.resource-popover dl { display: grid; grid-template-columns: minmax(85px,auto) minmax(0,1fr); gap: 8px 12px; }
+.resource-popover dd { margin: 0; overflow-wrap: anywhere; }
+.resource-popover dt { opacity: .7; }
+.resource-popover select { display: block; max-width: 100%; margin: 5px 0; }
+.resource-popover p { line-height: 1.5; opacity: .7; }
+.resource-heading { display: flex; justify-content: space-between; gap: 10px; overflow-wrap: anywhere; }
+@media(max-width:1100px) { .resource-wide { display: none; } .resource-compact { display: inline; } }
+.ssh-connection-options summary { cursor: pointer; }
+.ssh-reuse-setting { padding-top: 8px; }
+.ssh-reuse-setting label { display: flex; align-items: center; gap: 6px; }
+.ssh-reuse-setting p { margin: 6px 0; line-height: 1.5; opacity: .7; }
+.transfer-center-heading, .transfer-job-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.transfer-center-popover p { line-height: 1.5; opacity: .8; white-space: normal; }
+.transfer-center-jobs { max-height: 384px; overflow: auto; position: relative; }
+.transfer-center-jobs .transfer-job { height: 192px; box-sizing: border-box; overflow: hidden; }
+.transfer-recovery-rows { max-height: 224px; overflow: auto; position: relative; }
+.transfer-recovery-rows .transfer-job { height: 112px; box-sizing: border-box; overflow: hidden; }
+.transfer-job-message { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.transfer-failure-button { margin-top: 5px; font: inherit; color: var(--fg); background: var(--bg-field); border: 1px solid var(--border); padding: 3px 6px; cursor: pointer; }
+.transfer-failures { border-top: 1px solid var(--border); margin-top: 10px; padding-top: 10px; }
+.transfer-failures strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.transfer-failure-rows { max-height: 200px; overflow: auto; position: relative; }
+.transfer-failure-row { height: 40px; box-sizing: border-box; padding: 4px 0; color: var(--red); overflow: hidden; overflow-wrap: anywhere; white-space: normal; }
+.transfer-job { border-top: 1px solid var(--border); padding-top: 10px; }
+.transfer-job-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.transfer-job-details { margin: 6px 0; opacity: .8; white-space: normal; }
+.transfer-job progress { display: block; width: 100%; height: 5px; accent-color: var(--accent); }
+.transfer-job-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.transfer-durable { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.transfer-center-popover button { padding: 3px 8px; color: inherit; background: var(--bg-app); border: 1px solid var(--border); border-radius: 3px; cursor: pointer; }
+.transfer-job-error { color: var(--danger, #e66); margin-top: 6px; white-space: normal; overflow-wrap: anywhere; }
+.transfer-job details { margin-top: 6px; white-space: normal; }
+.transfer-settings { margin-bottom: 12px; white-space: normal; }
+.transfer-settings label { display: flex; align-items: center; gap: 5px; }
+.transfer-settings input { width: 54px; color: inherit; background: var(--bg-app); border: 1px solid var(--border); padding: 3px; border-radius: 3px; }
+.forward-center { position: relative; }
+.forward-popover { position: fixed; z-index: 1000; right: 12px; bottom: 30px; width: min(540px, calc(100vw - 32px)); max-height: calc(100vh - 70px); overflow: auto; padding: 16px; background: var(--bg-panel); color: var(--fg); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 30px #0004; font-size: 12px; }
+.forward-popover p { white-space: normal; line-height: 1.5; color: var(--fg-dim); }
+.forward-popover h4 { margin: 16px 0 8px; }
+.forward-popover button, .forward-popover input, .forward-popover select { font: inherit; color: inherit; background: var(--bg-field); border: 1px solid var(--border); border-radius: 3px; padding: 4px 6px; }
+.forward-popover button { cursor: pointer; }
+.forward-popover button:disabled { opacity: .5; cursor: default; }
+.forward-fields { display: grid; grid-template-columns: minmax(0, 1fr) 100px; gap: 12px; margin: 12px 0; }
+.forward-fields label { min-width: 0; }
+.forward-fields input { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; }
+.forward-list { overflow: auto; position: relative; }
+.forward-discovery { max-height: 190px; }
+.forward-jobs { max-height: 408px; }
+.forward-listener { height: 38px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); }
+.forward-listener > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.forward-listener small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--fg-dim); }
+.forward-job { height: 136px; box-sizing: border-box; padding: 8px 0; border-bottom: 1px solid var(--border); overflow: hidden; }
+.forward-job small { display: block; color: var(--fg-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.forward-route { display: flex; gap: 10px; padding: 3px 0; }
+.forward-route span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.forward-error { color: var(--red); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.forward-job button { margin-top: 3px; }
+.forward-popover .is-warning { color: var(--yellow); }
+
+.about-dialog { width: 380px; }

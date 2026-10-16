@@ -1,0 +1,538 @@
+/* --- icons ---------------------------------------------------------------- */
+
+/* Codicons (see components/icons.tsx): 16px boxes, coloured by the parent. */
+.icon {
+  display: inline-flex;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+
+.icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* --- shell ---------------------------------------------------------------- */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.menubar {
+  height: 28px;
+  flex: 0 0 28px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  background: var(--bg-app);
+  border-bottom: 1px solid var(--border);
+}
+
+/* VS Code's title bar split: the left (icon + menus) and right (window
+   controls) parts share the same flex basis and growth, so the centre part
+   sits in the middle of the window for as long as the menus fit their share;
+   the centre only ever takes the width of its text. On macOS there is no
+   centre or right part and the left part simply fills the bar. */
+.menubar-left {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  gap: 2px;
+  flex: 2 1 20%;
+}
+
+.menubar-center {
+  display: flex;
+  justify-content: center;
+  flex: 0 1 60%;
+  max-width: fit-content;
+  min-width: 0;
+  margin: 0 10px;
+}
+
+.menubar-title {
+  font-size: 12px;
+  color: var(--fg-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+
+/* macOS: the traffic lights sit ~2px below the bar's midline, so nudge the
+   menu titles down onto their centre line. */
+.menubar.is-mac {
+  padding-top: 4px;
+}
+
+/* Leave room for the macOS traffic lights drawn over the overlay title bar
+   (the class is dropped in native fullscreen, where macOS hides them). */
+.menubar.has-traffic-lights {
+  padding-left: 78px;
+}
+
+/* Windows and Linux: the window is undecorated, so the menubar carries the
+   app icon, the window title and the caption buttons (see MenuBar.tsx). */
+.menubar-icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  flex: none;
+}
+
+/* The bar's right third: the layout buttons, then (Windows / Linux) the window controls. */
+.menubar-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  align-self: stretch;
+  flex: 2 1 20%;
+  min-width: min-content;
+}
+
+.layout-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0 4px;
+}
+
+.layout-actions .panel-action:disabled {
+  color: var(--fg-faint);
+  opacity: 0.5;
+  background: none;
+  cursor: default;
+}
+
+.window-controls {
+  display: flex;
+  justify-content: flex-end;
+  align-self: stretch;
+  flex: none;
+  min-width: min-content;
+  margin-right: -8px; /* flush with the window edge despite the bar padding */
+}
+
+.window-control {
+  width: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0;
+  color: var(--fg);
+}
+
+.window-control svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+.window-control:hover {
+  background: var(--bg-hover);
+}
+
+.window-control.is-close:hover {
+  background: #c42b1c;
+  color: #fff;
+}
+
+.menu-item {
+  position: relative;
+  padding: 3px 9px;
+  border-radius: 4px;
+  color: var(--fg);
+  white-space: nowrap;
+  transition: background-color 80ms ease;
+}
+
+.menu-item:hover,
+.menu-item.is-open {
+  background: var(--bg-hover);
+}
+
+/* Dropdowns follow the macOS / VS Code menu idiom: a raised, slightly
+   translucent panel with rounded rows, the pointed row filled with the
+   accent and white text, a short settle-in animation. Context menus
+   (ContextMenu.tsx) share every rule here. */
+.menu-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 100;
+  min-width: 220px;
+  padding: 6px;
+  background: var(--bg-menu);
+  border: 1px solid var(--border-menu);
+  border-radius: 10px;
+  box-shadow:
+    inset 0 1px 0 var(--menu-highlight),
+    var(--shadow-menu);
+  transform-origin: top left;
+  animation: menu-in 120ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Where the engine can blur what lies behind, the panel lets a hint of the
+   terminal through, the way native menus do; elsewhere it stays opaque. */
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .menu-dropdown {
+    background: var(--bg-menu-glass);
+    -webkit-backdrop-filter: blur(28px) saturate(1.6);
+    backdrop-filter: blur(28px) saturate(1.6);
+  }
+}
+
+/* The menubar's dropdowns share one fixed, narrow width so the panels do
+   not step in and out as the pointer moves along the bar; a label that does
+   not fit is cut with an ellipsis (the shortcut stays whole). Submenus and
+   context menus stay content-sized. */
+.menu-item > .menu-dropdown {
+  width: 224px;
+  min-width: 0;
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-dropdown {
+    animation: none;
+  }
+}
+
+.menu-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 28px;
+  padding: 0 10px 0 8px;
+  border-radius: 6px;
+  color: var(--fg);
+  text-align: left;
+  white-space: nowrap;
+}
+
+/* A submenu's parent row stays lit while its submenu is open; what opens and
+   keeps it open is in submenuHover.ts. */
+.menu-entry:hover,
+.menu-entry:focus-visible,
+.menu-submenu-entry.is-open > .menu-entry {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  outline: none;
+}
+
+.menu-submenu-entry {
+  position: relative;
+  --submenu-gap: 4px;
+}
+
+.menu-submenu-entry > .menu-entry {
+  cursor: default;
+}
+
+/* The gap before the submenu belongs to the row, so a pointer crossing it
+   slowly never leaves. */
+.menu-submenu-entry.is-open::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 100%;
+  width: var(--submenu-gap);
+}
+
+.menu-submenu-arrow {
+  display: inline-flex;
+  margin-left: 16px;
+  margin-right: -4px;
+  color: var(--fg-faint);
+}
+
+.menu-entry:hover .menu-submenu-arrow,
+.menu-submenu-entry.is-open > .menu-entry .menu-submenu-arrow {
+  color: inherit;
+}
+
+.menu-submenu {
+  top: -7px;
+  left: calc(100% + var(--submenu-gap));
+  display: none;
+}
+
+/* Opened by the pointer (submenuHover.ts) or by keyboard focus inside it. */
+.menu-submenu-entry.is-open > .menu-submenu,
+.menu-submenu-entry:focus-within > .menu-submenu {
+  display: block;
+}
+
+/* The leading column holds a command's icon or a choice's check mark. An
+   explicit width rather than a flex-basis: a blank check span has no
+   content, so a basis alone contributes nothing to the dropdown's
+   shrink-to-fit width and the widest row's shortcut overflows. */
+.menu-icon,
+.menu-check {
+  display: inline-flex;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-left: -1px;
+  align-items: center;
+  justify-content: center;
+}
+
+.menu-icon {
+  color: var(--fg-dim);
+}
+
+.menu-check {
+  color: var(--accent);
+}
+
+/* A checkable entry always draws its control, on or off, so a dropdown says
+   which of its rows are choices before anything is picked: a rounded box for
+   an independent setting, a circle for one choice out of a set. Rows that are
+   plain commands keep the blank of the same width. */
+.menu-check.is-check,
+.menu-check.is-radio {
+  position: relative;
+  border: 1px solid var(--menu-mark);
+  transition:
+    background-color 100ms ease,
+    border-color 100ms ease;
+}
+
+.menu-check.is-check {
+  border-radius: 5px;
+}
+
+.menu-check.is-radio {
+  border-radius: 50%;
+}
+
+/* The codicon keeps its own 16px box, centred over the smaller control. */
+.menu-check.is-check .icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.menu-check.is-check.is-checked {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.menu-check.is-radio.is-checked {
+  border-color: var(--accent);
+}
+
+.menu-check.is-radio.is-checked::after {
+  content: "";
+  position: absolute;
+  inset: 3.5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.menu-entry:hover .menu-icon,
+.menu-entry:hover .menu-check,
+.menu-entry:focus-visible .menu-icon,
+.menu-entry:focus-visible .menu-check,
+.menu-submenu-entry.is-open > .menu-entry .menu-icon {
+  color: inherit;
+}
+
+/* On the pointed row the accent is the background, so the control inverts:
+   the frame and the filled state are drawn in the row's own text colour. */
+.menu-entry:hover .menu-check.is-check,
+.menu-entry:hover .menu-check.is-radio,
+.menu-entry:focus-visible .menu-check.is-check,
+.menu-entry:focus-visible .menu-check.is-radio {
+  border-color: color-mix(in srgb, var(--accent-contrast) 70%, transparent);
+}
+
+.menu-entry:hover .menu-check.is-check.is-checked,
+.menu-entry:focus-visible .menu-check.is-check.is-checked {
+  background: var(--accent-contrast);
+  border-color: var(--accent-contrast);
+  color: var(--accent);
+}
+
+.menu-entry:hover .menu-check.is-radio.is-checked,
+.menu-entry:focus-visible .menu-check.is-radio.is-checked {
+  border-color: var(--accent-contrast);
+}
+
+.menu-entry:hover .menu-check.is-radio.is-checked::after,
+.menu-entry:focus-visible .menu-check.is-radio.is-checked::after {
+  background: var(--accent-contrast);
+}
+
+.menu-entry-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu-shortcut {
+  margin-left: 24px;
+  color: var(--fg-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.menu-entry:hover .menu-shortcut,
+.menu-entry:focus-visible .menu-shortcut {
+  color: inherit;
+  opacity: 0.75;
+}
+
+/* A caption over a run of choices, set apart by size and tone rather than
+   by a disabled row. */
+.menu-heading {
+  padding: 6px 10px 3px;
+  color: var(--fg-faint);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.menu-separator {
+  height: 1px;
+  margin: 5px 8px;
+  background: var(--menu-separator);
+}
+
+.main {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.center {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--bg-terminal);
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  min-height: 0;
+  font-size: var(--panel-font-size);
+}
+
+/* The terminal area with the docks around it; the drop overlay of a panel
+   drag is measured against it. */
+.app-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* The sidebars and the dock draw no edge of their own: the splitter between
+   them and the centre is the 1px divider (see the splitters section). Panels
+   sharing a dock are stacked in a side dock and side by side in the bottom
+   one, each in a slot divided off by a splitter of its own. */
+.bottom-dock {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg-panel);
+  font-size: var(--panel-font-size);
+}
+
+.dock-slot {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* A panel is moved by dragging its header (see PanelDocks.tsx). */
+.dock-slot.is-dragging {
+  opacity: 0.55;
+}
+
+.app:has(.dock-slot.is-dragging),
+.app:has(.dock-slot.is-dragging) * {
+  cursor: grabbing !important;
+}
+
+.panel-drop-area,
+.panel-drop-line {
+  position: fixed;
+  z-index: 120;
+  pointer-events: none;
+}
+
+.panel-drop-area {
+  border: 1px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.panel-drop-line {
+  background: var(--accent);
+}
+
+/* Sender laid out for a narrow side dock: its rows wrap instead of running
+   off the edge. */
+.sidebar .sender-header {
+  flex: 0 0 auto;
+  height: auto;
+  min-height: 36px;
+  flex-wrap: wrap;
+  row-gap: 4px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.sidebar .sender-options {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+.sidebar .sender-compose {
+  flex-wrap: wrap;
+}
+
+.sidebar .sender-compose-divider {
+  display: none;
+}
+
+.sidebar .sender-command {
+  flex-basis: 100%;
+  min-width: 0;
+}
+

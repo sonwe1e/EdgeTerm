@@ -1,0 +1,361 @@
+@import "@xterm/xterm/css/xterm.css";
+
+/* The dark palette follows VS Code Dark Modern: the editor surface (#1f1f1f)
+   inside one neutral chrome gray (#181818) with #2b2b2b borders, #313131
+   input fields, a single blue accent (#0078d4) with white-on-blue primaries,
+   the classic blue list selection (#04395e), and quiet gray hover states. */
+:root {
+  color-scheme: dark;
+
+  --bg-app: #181818;
+  --bg-panel: #181818;
+  --bg-panel-alt: #1f1f1f;
+  --bg-terminal: #1f1f1f;
+  --bg-field: #313131;
+  --bg-active: #04395e;
+  --bg-hover: #2a2d2e;
+  --border: #2b2b2b;
+  --border-strong: #3c3c3c;
+  --fg: #cccccc;
+  --fg-dim: #9d9d9d;
+  --fg-faint: #6e7681;
+  --accent: #0078d4;
+  /* --accent on its own tint is muddy here; the suggestion list's match
+     highlight uses this lifted twin instead. Palettes whose accent stays
+     readable on the tint set it to --accent. */
+  --accent-bright: #75beff;
+  --accent-soft: #04395e;
+  --accent-contrast: #ffffff;
+  --panel-session: #6ea8fe;
+  --panel-sender: #ff9f66;
+  --panel-filer: #59d6b2;
+  --green: #89d185;
+  --yellow: #cca700;
+  --red: #f85149;
+
+  --scrollbar-thumb: #424242;
+  --scrollbar-thumb-hover: #4f4f4f;
+  --term-scrollbar-thumb-hover: #7a7a7a;
+  --row-separator: rgba(255, 255, 255, 0.07);
+  --swatch-ring: rgba(255, 255, 255, 0.1);
+
+  /* Menus float above the chrome: a step lighter than the panels, with a
+     border that still reads against the editor surface. Segmented controls
+     sit a knob on a sunken track. */
+  --bg-menu: #202020;
+  --bg-menu-glass: rgba(32, 32, 32, 0.86);
+  --border-menu: #3f3f3f;
+  --menu-highlight: rgba(255, 255, 255, 0.06);
+  --menu-separator: rgba(255, 255, 255, 0.09);
+  --menu-mark: rgba(255, 255, 255, 0.32);
+  --bg-track: #2d2d2d;
+  --bg-knob: #4b4b4b;
+  --shadow-knob: 0 1px 2px rgba(0, 0, 0, 0.4);
+
+  --dir-label: #9cdcfe;
+  --symlink-label: #c586c0;
+
+  --gutter-border: #2b2b2b;
+  --gutter-time-fg: #5a5d63;
+  --gutter-line-fg: #6e7681;
+
+  --notice-info-bg: rgba(24, 33, 44, 0.95);
+  --notice-info-fg: #85b6ff;
+  --notice-success-bg: rgba(23, 36, 26, 0.96);
+  --notice-success-fg: #89d185;
+  --notice-error-bg: rgba(45, 25, 25, 0.96);
+  --notice-error-fg: #f88070;
+
+  --shadow-menu:
+    0 14px 36px -8px rgba(0, 0, 0, 0.65),
+    0 3px 10px rgba(0, 0, 0, 0.35);
+  --shadow-pop: 0 6px 18px rgba(0, 0, 0, 0.36);
+  --shadow-notice: 0 5px 18px rgba(0, 0, 0, 0.36);
+  --shadow-dialog: 0 20px 60px rgba(0, 0, 0, 0.5);
+
+  --row-h: 26px;
+  --panel-font-size: 12px;
+  --buffer-font-size: 14px;
+  /* Safety nets only: main.tsx overrides both with the stacks from fonts.ts
+     — the platform's VS Code defaults, behind whatever family the user chose
+     in Display Settings — before React mounts. */
+  --font-ui:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Microsoft YaHei", Roboto, sans-serif;
+  --font-mono: monospace;
+}
+
+/* The light palette follows VS Code Light Modern's strategy: a white editor
+   surface inside one neutral chrome gray (#f8f8f8) with #e5e5e5 borders,
+   white input fields, a single blue accent (#005fb8) with white-on-blue
+   primaries, and quiet gray hover/selection states. The xterm and semantic
+   palettes in terminal.ts / semanticColors.ts switch alongside it. */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-app: #f8f8f8;
+  --bg-panel: #f8f8f8;
+  --bg-panel-alt: #ffffff;
+  --bg-terminal: #ffffff;
+  --bg-field: #ffffff;
+  --bg-active: #e8e8e8;
+  --bg-hover: #f2f2f2;
+  --border: #e5e5e5;
+  --border-strong: #cecece;
+  --fg: #3b3b3b;
+  --fg-dim: #616161;
+  --fg-faint: #868686;
+  --accent: #005fb8;
+  --accent-bright: var(--accent);
+  --accent-soft: #bed6ed;
+  --accent-contrast: #ffffff;
+  --panel-session: #2563eb;
+  --panel-sender: #c2410c;
+  --panel-filer: #087f6b;
+  --green: #107c10;
+  --yellow: #bf8803;
+  --red: #cd3131;
+
+  --scrollbar-thumb: #c1c1c1;
+  --scrollbar-thumb-hover: #9a9a9a;
+  --term-scrollbar-thumb-hover: #6f6f6f;
+  --row-separator: rgba(0, 0, 0, 0.08);
+  --swatch-ring: rgba(0, 0, 0, 0.15);
+
+  --bg-menu: #ffffff;
+  --bg-menu-glass: rgba(255, 255, 255, 0.86);
+  --border-menu: #d6d6d6;
+  --menu-highlight: rgba(255, 255, 255, 0.9);
+  --menu-separator: rgba(0, 0, 0, 0.09);
+  --menu-mark: rgba(0, 0, 0, 0.32);
+  --bg-track: #e6e6e6;
+  --bg-knob: #ffffff;
+  --shadow-knob: 0 1px 2px rgba(0, 0, 0, 0.14);
+
+  --dir-label: #26569e;
+  --symlink-label: #652d90;
+
+  --gutter-border: #e5e5e5;
+  --gutter-time-fg: #a3a8ae;
+  --gutter-line-fg: #6e7681;
+
+  --notice-info-bg: rgba(238, 246, 255, 0.96);
+  --notice-info-fg: #005fb8;
+  --notice-success-bg: rgba(233, 248, 236, 0.96);
+  --notice-success-fg: #107c10;
+  --notice-error-bg: rgba(255, 235, 233, 0.96);
+  --notice-error-fg: #a1260d;
+
+  --shadow-menu:
+    0 14px 36px -8px rgba(0, 0, 0, 0.22),
+    0 3px 10px rgba(0, 0, 0, 0.08);
+  --shadow-pop: 0 6px 18px rgba(0, 0, 0, 0.14);
+  --shadow-notice: 0 5px 18px rgba(0, 0, 0, 0.14);
+  --shadow-dialog: 0 20px 60px rgba(0, 0, 0, 0.22);
+}
+
+/* serialX's own two palettes, ported from its workbench design system
+   (src/theme.rs there). Ink: a near-black canvas lifted by a hint of blue,
+   with the chrome a step above the terminal rather than below it, and a
+   lavender accent in place of the VS Code blue. The surface roles map onto
+   serialX's elevation ladder: --bg-app is its title bar, --bg-panel its
+   panel, --bg-panel-alt its raised surface and --bg-terminal its editor.
+   Shadows, metrics and fonts stay the ones :root sets. */
+:root[data-theme="serialx-dark"] {
+  color-scheme: dark;
+
+  --bg-app: #0f1116;
+  --bg-panel: #0e1015;
+  --bg-panel-alt: #13161c;
+  --bg-terminal: #0b0d11;
+  --bg-field: #13161c;
+  --bg-active: #34365e;
+  --bg-hover: #181b23;
+  --border: #1f232c;
+  --border-strong: #252a34;
+  --fg: #b2b8c4;
+  --fg-dim: #767d8c;
+  --fg-faint: #555c6a;
+  --accent: #8b87ff;
+  --accent-bright: #a3a0ff;
+  --accent-soft: #34365e;
+  --accent-contrast: #ffffff;
+  --panel-session: #62b0f5;
+  --panel-sender: #f2b45c;
+  --panel-filer: #4fc9dc;
+  --green: #4fc38a;
+  --yellow: #e0b070;
+  --red: #ef8a83;
+
+  --scrollbar-thumb: #3d434f;
+  --scrollbar-thumb-hover: #4d5462;
+  --term-scrollbar-thumb-hover: #767d8c;
+  --row-separator: rgba(255, 255, 255, 0.07);
+  --swatch-ring: rgba(255, 255, 255, 0.1);
+
+  --bg-menu: #171b22;
+  --bg-menu-glass: rgba(23, 27, 34, 0.86);
+  --border-menu: #2b313c;
+  --menu-highlight: rgba(255, 255, 255, 0.06);
+  --menu-separator: rgba(255, 255, 255, 0.09);
+  --menu-mark: rgba(255, 255, 255, 0.32);
+  --bg-track: #1f242e;
+  --bg-knob: #4f5665;
+  --shadow-knob: 0 1px 2px rgba(0, 0, 0, 0.4);
+
+  --dir-label: #62b0f5;
+  --symlink-label: #b98af5;
+
+  --gutter-border: #1f232c;
+  --gutter-time-fg: #555c6a;
+  --gutter-line-fg: #767d8c;
+
+  --notice-info-bg: rgba(18, 26, 44, 0.95);
+  --notice-info-fg: #8ab6f5;
+  --notice-success-bg: rgba(17, 33, 27, 0.96);
+  --notice-success-fg: #4fc38a;
+  --notice-error-bg: rgba(42, 23, 25, 0.96);
+  --notice-error-fg: #ef8a83;
+}
+
+/* Paper: serialX's light half. A white terminal inside warm-neutral chrome,
+   the same lavender accent at ink strength, and its category hues for the
+   panel marks. */
+:root[data-theme="serialx-light"] {
+  color-scheme: light;
+
+  --bg-app: #f4f4f2;
+  --bg-panel: #fbfbf9;
+  --bg-panel-alt: #f7f7f5;
+  --bg-terminal: #ffffff;
+  --bg-field: #ffffff;
+  --bg-active: #e7e7e2;
+  --bg-hover: #f0f0ec;
+  --border: #e4e4e0;
+  --border-strong: #dededa;
+  --fg: #3b3b42;
+  --fg-dim: #86868f;
+  --fg-faint: #acacb4;
+  --accent: #5b57d8;
+  --accent-bright: var(--accent);
+  --accent-soft: #c4c2f2;
+  --accent-contrast: #ffffff;
+  --panel-session: #2f7fd4;
+  --panel-sender: #b2740b;
+  --panel-filer: #0f8593;
+  --green: #2f8a5b;
+  --yellow: #a8730f;
+  --red: #cb4b40;
+
+  --scrollbar-thumb: #c6c6cd;
+  --scrollbar-thumb-hover: #a8a8b1;
+  --term-scrollbar-thumb-hover: #86868f;
+  --row-separator: rgba(0, 0, 0, 0.08);
+  --swatch-ring: rgba(0, 0, 0, 0.15);
+
+  --bg-menu: #ffffff;
+  --bg-menu-glass: rgba(255, 255, 255, 0.86);
+  --border-menu: #dededa;
+  --menu-highlight: rgba(255, 255, 255, 0.9);
+  --menu-separator: rgba(0, 0, 0, 0.09);
+  --menu-mark: rgba(0, 0, 0, 0.32);
+  --bg-track: #eeeeea;
+  --bg-knob: #ffffff;
+  --shadow-knob: 0 1px 2px rgba(0, 0, 0, 0.14);
+
+  --dir-label: #2f7fd4;
+  --symlink-label: #8a3ee0;
+
+  --gutter-border: #e4e4e0;
+  --gutter-time-fg: #acacb4;
+  --gutter-line-fg: #86868f;
+
+  --notice-info-bg: rgba(240, 240, 253, 0.96);
+  --notice-info-fg: #4d49cc;
+  --notice-success-bg: rgba(233, 246, 238, 0.96);
+  --notice-success-fg: #22794e;
+  --notice-error-bg: rgba(253, 236, 234, 0.96);
+  --notice-error-fg: #b03a30;
+
+  --shadow-menu:
+    0 14px 36px -8px rgba(0, 0, 0, 0.22),
+    0 3px 10px rgba(0, 0, 0, 0.08);
+  --shadow-pop: 0 6px 18px rgba(0, 0, 0, 0.14);
+  --shadow-notice: 0 5px 18px rgba(0, 0, 0, 0.14);
+  --shadow-dialog: 0 20px 60px rgba(0, 0, 0, 0.22);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  background: var(--bg-app);
+  color: var(--fg);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  color: var(--fg);
+  background: var(--bg-field);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 3px 6px;
+  outline: none;
+}
+
+/* The chrome is unselectable (see `body`), but the text a field holds is the
+   user's own: `user-select` inherits into form controls, so without this a
+   drag inside any input selects nothing at all. It belongs here rather than
+   on the handful of fields that used to carry it one by one. */
+input,
+textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: content-box;
+}
+

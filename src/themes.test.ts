@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import INDEX from "../index.html?raw";
 import { SEMANTIC_BANDS, SEMANTIC_PALETTES } from "./semanticColors";
-import STYLES from "./styles.css?raw";
+import STYLES from "./styles/foundation.styles.css?raw";
 import { isLightTheme, THEME_MODES, type ThemeMode } from "./types";
 
 const MODES: readonly ThemeMode[] = THEME_MODES;
