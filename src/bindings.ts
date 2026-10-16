@@ -572,7 +572,12 @@ export type CredentialStoreStatusReason =
  */
 "portable" | 
 /**  The OS credential store could not be reached (absent, locked, …). */
-"keyStoreUnavailable";
+"keyStoreUnavailable" | 
+/**
+ *  `credentials.json` exists but this run cannot open it; saving a
+ *  password is refused so the file survives for recovery.
+ */
+"credentialsUnreadable";
 
 /**  How many entries an export wrote or an import merged. */
 export type DataSummary = {
@@ -648,6 +653,12 @@ export type ErrorCode =
 "unsupported" | 
 /**  The OS credential store is unavailable (see the credential store). */
 "credentialStoreUnavailable" | 
+/**
+ *  `credentials.json` exists but cannot be opened, so a password that
+ *  was meant to be saved was refused; the file is kept unchanged for
+ *  recovery.
+ */
+"credentialsUnreadable" | 
 /**
  *  A write reached the server, but whether it landed could not be
  *  confirmed.

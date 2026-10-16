@@ -9,6 +9,7 @@ use crate::commands::{
 use crate::credentials::{
     legacy_envelope, test_support, CredentialStoreStatus, CredentialStoreStatusReason,
 };
+use crate::error::ErrorCode;
 use crate::fs_local;
 use crate::model::{
     split_command_line, AppData, AuthKind, CommandScope, FileEntry, LineEnding, SavedCommand,
@@ -1712,21 +1713,57 @@ fn credentials_are_sealed_on_disk_and_readable_after_restart() {
     );
     assert!(!read_credentials().contains("legacy"));
 
-    // A file from another machine (a different salt stands in for a
-    // different machine id) yields no secrets, does not crash, and is
-    // replaced by the next save.
+    // A file this store cannot open (a different salt stands in for a
+    // rotated master key or a file from another machine) is not read — and
+    // not overwritten either: saving a password is refused so the ciphertext
+    // survives for recovery.
     let mut envelope: serde_json::Value =
         serde_json::from_str(&read_credentials()).expect("envelope json");
     envelope["salt"] = serde_json::Value::String(B64.encode([7u8; 16]));
-    std::fs::write(&credentials_path, envelope.to_string()).expect("write foreign file");
-    let foreign = Store::load_from_test(path.clone());
-    assert_eq!(stored_password(&foreign, &saved.id), None);
+    let foreign = envelope.to_string();
+    std::fs::write(&credentials_path, &foreign).expect("write foreign file");
+    let locked = Store::load_from_test(path.clone());
+    assert_eq!(stored_password(&locked, &saved.id), None);
+    assert_eq!(
+        locked.credential_store_status(),
+        CredentialStoreStatus {
+            persistent: false,
+            reason: Some(CredentialStoreStatusReason::CredentialsUnreadable),
+        }
+    );
     let mut renewed = password_profile("10.0.0.1", "again");
     renewed.id = saved.id.clone();
-    foreign.save(renewed).expect("save after foreign file");
+    let error = locked
+        .save(renewed.clone())
+        .expect_err("a save must not replace the unreadable file");
+    assert_eq!(error.code, ErrorCode::CredentialsUnreadable);
     assert_eq!(
-        stored_password(&Store::load_from_test(path), &saved.id).as_deref(),
-        Some("again")
+        read_credentials(),
+        foreign,
+        "the unreadable file must survive byte for byte"
+    );
+    // A save that carries no secret still goes through; the profiles file is
+    // the only thing it writes.
+    renewed.password = None;
+    locked.save(renewed).expect("save without a secret");
+
+    // Removing the unreadable file is the escape hatch: the next launch
+    // starts fresh and saves again.
+    std::fs::remove_file(&credentials_path).expect("remove foreign file");
+    let recovered = Store::load_from_test(path.clone());
+    assert_eq!(
+        recovered.credential_store_status(),
+        CredentialStoreStatus {
+            persistent: true,
+            reason: None,
+        }
+    );
+    let saved_again = recovered
+        .save(password_profile("10.0.0.3", "fresh"))
+        .expect("save after the file is gone");
+    assert_eq!(
+        stored_password(&Store::load_from_test(path), &saved_again.id).as_deref(),
+        Some("fresh")
     );
 
     std::fs::remove_dir_all(&dir).ok();
@@ -1841,6 +1878,112 @@ fn a_failed_key_store_move_leaves_no_temporary_file_behind() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// Stages the state a migration interrupted between its two renames leaves
+/// behind: the old file already moved to `credentials.json.bak`, the verified
+/// successor still named `credentials.json.tmp`, and no `credentials.json`.
+/// Returns the legacy (backup) file so a caller can compare.
+fn stage_interrupted_migration(path: &Path, credentials_path: &Path) -> String {
+    stage_password_profile(path, "p1", "10.0.0.1");
+    let legacy = legacy_envelope(r#"{"p1": {"password": "s3cret"}}"#);
+    std::fs::write(credentials_path, &legacy).expect("stage legacy file");
+
+    // A first launch completes the move to the key store ...
+    let moved = Store::load_from_test(path.to_path_buf());
+    assert_eq!(stored_password(&moved, "p1").as_deref(), Some("s3cret"));
+
+    // ... and the completed state is then rewound into the crash window.
+    let successor = std::fs::read_to_string(credentials_path).expect("credentials");
+    std::fs::remove_file(credentials_path).expect("remove main file");
+    std::fs::write(
+        credentials_path.with_file_name("credentials.json.tmp"),
+        &successor,
+    )
+    .expect("stage successor");
+    legacy
+}
+
+#[test]
+fn an_interrupted_migration_between_its_renames_is_completed_on_the_next_launch() {
+    let dir = temp_dir("vault-interrupt-renames");
+    let path = dir.join("sessions.json");
+    let credentials_path = dir.join("credentials.json");
+    let legacy = stage_interrupted_migration(&path, &credentials_path);
+
+    let recovered = Store::load_from_test(path.clone());
+    assert_eq!(stored_password(&recovered, "p1").as_deref(), Some("s3cret"));
+    // The successor took the main name ...
+    let sealed = std::fs::read_to_string(&credentials_path).expect("credentials");
+    assert!(sealed.contains("\"version\": 2"));
+    assert!(!sealed.contains("s3cret"));
+    // ... the backup stayed the backup, and nothing was left behind.
+    assert_eq!(
+        std::fs::read_to_string(credentials_path.with_file_name("credentials.json.bak"))
+            .expect("backup"),
+        legacy
+    );
+    assert!(!credentials_path
+        .with_file_name("credentials.json.tmp")
+        .exists());
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn an_interrupted_migration_without_its_successor_restores_the_backup() {
+    let dir = temp_dir("vault-interrupt-backup");
+    let path = dir.join("sessions.json");
+    let credentials_path = dir.join("credentials.json");
+    let legacy = stage_interrupted_migration(&path, &credentials_path);
+    std::fs::remove_file(credentials_path.with_file_name("credentials.json.tmp"))
+        .expect("drop successor");
+
+    let recovered = Store::load_from_test(path.clone());
+    assert_eq!(stored_password(&recovered, "p1").as_deref(), Some("s3cret"));
+    // The backup went back to the main name and the move was retried from it.
+    let sealed = std::fs::read_to_string(&credentials_path).expect("credentials");
+    assert!(sealed.contains("\"keySource\": \"osKeyStore\""));
+    assert!(!sealed.contains("s3cret"));
+    assert_eq!(
+        std::fs::read_to_string(credentials_path.with_file_name("credentials.json.bak"))
+            .expect("backup"),
+        legacy
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn an_interrupted_migration_is_completed_even_without_the_credential_store() {
+    let dir = temp_dir("vault-interrupt-portable");
+    let path = dir.join("sessions.json");
+    let credentials_path = dir.join("credentials.json");
+    stage_interrupted_migration(&path, &credentials_path);
+
+    // A portable run cannot open the successor, but completing it changes
+    // nothing it could read anyway; the file must not be left in limbo.
+    let portable = Store::load_with(path.clone(), None);
+    assert_eq!(
+        portable.credential_store_status(),
+        CredentialStoreStatus {
+            persistent: false,
+            reason: Some(CredentialStoreStatusReason::Portable),
+        }
+    );
+    assert_eq!(stored_password(&portable, "p1"), None);
+    assert!(std::fs::read_to_string(&credentials_path)
+        .expect("credentials")
+        .contains("\"version\": 2"));
+
+    // A run with the credential store finds the password intact.
+    let with_store = Store::load_from_test(path);
+    assert_eq!(
+        stored_password(&with_store, "p1").as_deref(),
+        Some("s3cret")
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 #[test]
 fn an_unreachable_credential_store_keeps_secrets_for_the_run_only() {
     let dir = temp_dir("vault-unavailable");
@@ -1905,7 +2048,7 @@ fn sealed_credentials_are_left_untouched_without_the_credential_store() {
 }
 
 #[test]
-fn a_deleted_master_key_starts_over_instead_of_refusing_to_run() {
+fn a_deleted_master_key_locks_the_vault_instead_of_destroying_it() {
     let dir = temp_dir("vault-lost-key");
     let path = dir.join("sessions.json");
     let credentials_path = dir.join("credentials.json");
@@ -1913,16 +2056,50 @@ fn a_deleted_master_key_starts_over_instead_of_refusing_to_run() {
     let saved = store
         .save(password_profile("10.0.0.1", "s3cret"))
         .expect("save");
+    let sealed = std::fs::read_to_string(&credentials_path).expect("credentials");
 
+    // The stored key is gone (deleted entry, wiped store): the file can no
+    // longer be opened. It must not be treated as an empty vault that the
+    // next password save overwrites — that would discard the ciphertext,
+    // which a recovered master key could still open.
     test_support::forget_key(&credentials_path);
-    let reloaded = Store::load_from_test(path.clone());
-    assert_eq!(stored_password(&reloaded, &saved.id), None);
+    let locked = Store::load_from_test(path.clone());
+    assert_eq!(stored_password(&locked, &saved.id), None);
+    assert_eq!(
+        locked.credential_store_status(),
+        CredentialStoreStatus {
+            persistent: false,
+            reason: Some(CredentialStoreStatusReason::CredentialsUnreadable),
+        }
+    );
 
     let mut renewed = password_profile("10.0.0.1", "again");
     renewed.id = saved.id.clone();
-    reloaded.save(renewed).expect("save");
+    let error = locked
+        .save(renewed)
+        .expect_err("a save must not replace the unreadable file");
+    assert_eq!(error.code, ErrorCode::CredentialsUnreadable);
     assert_eq!(
-        stored_password(&Store::load_from_test(path), &saved.id).as_deref(),
+        std::fs::read_to_string(&credentials_path).expect("credentials"),
+        sealed,
+        "the unreadable file must survive byte for byte"
+    );
+
+    // Removing the file is the escape hatch: the next launch starts over.
+    std::fs::remove_file(&credentials_path).expect("remove file");
+    let fresh = Store::load_from_test(path.clone());
+    assert_eq!(
+        fresh.credential_store_status(),
+        CredentialStoreStatus {
+            persistent: true,
+            reason: None,
+        }
+    );
+    let saved_again = fresh
+        .save(password_profile("10.0.0.2", "again"))
+        .expect("save after the file is gone");
+    assert_eq!(
+        stored_password(&Store::load_from_test(path), &saved_again.id).as_deref(),
         Some("again")
     );
 
@@ -1957,6 +2134,63 @@ fn portable_mode_keeps_secrets_in_memory_only_and_says_so() {
     assert_eq!(
         std::fs::read_to_string(&credentials_path).expect("credentials"),
         legacy
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn embedded_passwords_stay_on_disk_until_the_vault_can_take_them() {
+    let dir = temp_dir("vault-legacy-unwritable");
+    let path = dir.join("sessions.json");
+    let credentials_path = dir.join("credentials.json");
+    // A profiles file from a release that kept the password in the profile
+    // itself. Importing it must never leave the password only in memory when
+    // the vault cannot persist.
+    let mut embedded = password_profile("10.0.0.1", "s3cret");
+    embedded.id = "p1".into();
+    std::fs::write(
+        &path,
+        serde_json::to_string_pretty(&vec![embedded]).expect("json"),
+    )
+    .expect("write profiles");
+    test_support::set_available(&credentials_path, false);
+
+    // The password serves this run from memory, and the UI copy is redacted.
+    let store = Store::load_from_test(path.clone());
+    assert_eq!(stored_password(&store, "p1").as_deref(), Some("s3cret"));
+    assert_eq!(
+        store.list().first().and_then(|p| p.password.clone()),
+        None,
+        "the profile list never carries the password"
+    );
+    // The profiles file is the only durable copy while the vault is out of
+    // reach, so it must be left exactly as it is.
+    assert!(std::fs::read_to_string(&path)
+        .expect("profiles")
+        .contains("s3cret"));
+    assert!(!credentials_path.exists());
+
+    // A later launch before the store is reachable still has the password.
+    let again = Store::load_from_test(path.clone());
+    assert_eq!(stored_password(&again, "p1").as_deref(), Some("s3cret"));
+
+    // With the store back, the passwords move into the vault first; only
+    // then does the profiles file lose them.
+    test_support::set_available(&credentials_path, true);
+    let migrated = Store::load_from_test(path.clone());
+    assert_eq!(stored_password(&migrated, "p1").as_deref(), Some("s3cret"));
+    let sealed = std::fs::read_to_string(&credentials_path).expect("credentials");
+    assert!(sealed.contains("\"keySource\": \"osKeyStore\""));
+    assert!(!sealed.contains("s3cret"));
+    assert!(!std::fs::read_to_string(&path)
+        .expect("profiles")
+        .contains("s3cret"));
+
+    // And the vault keeps serving the password across another restart.
+    assert_eq!(
+        stored_password(&Store::load_from_test(path), "p1").as_deref(),
+        Some("s3cret")
     );
 
     std::fs::remove_dir_all(&dir).ok();
@@ -1999,6 +2233,13 @@ fn a_credentials_file_from_a_newer_release_is_not_read() {
 
     let store = Store::load_from_test(path);
     assert_eq!(stored_password(&store, "p1"), None);
+    assert_eq!(
+        store.credential_store_status(),
+        CredentialStoreStatus {
+            persistent: false,
+            reason: Some(CredentialStoreStatusReason::CredentialsUnreadable),
+        }
+    );
     assert_eq!(
         std::fs::read_to_string(&credentials_path).expect("credentials"),
         staged

@@ -4,9 +4,9 @@ import { errorText } from "../errorInfo";
 import { openSession } from "../actions";
 import * as api from "../api";
 import {
-  credentialStoreHintKey,
+  credentialStoreHint,
   fetchCredentialStoreStatus,
-  type CredentialHintKey,
+  type CredentialHint,
 } from "../credentialStatus";
 import {
   encodingLabel,
@@ -241,11 +241,9 @@ export function SessionDialog({ initial, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // The note to show where a password is typed when it will not survive a
-  // restart (portable mode, an unreachable OS credential store); null shows
-  // nothing.
-  const [secretsHint, setSecretsHint] = useState<CredentialHintKey | null>(
-    null,
-  );
+  // restart (portable mode, an unreachable OS credential store) or cannot be
+  // saved at all (an unreadable stored file); null shows nothing.
+  const [secretsHint, setSecretsHint] = useState<CredentialHint | null>(null);
 
   const upsertProfile = useStore((s) => s.upsertProfile);
   const groups = useStore((s) => s.groups);
@@ -269,7 +267,7 @@ export function SessionDialog({ initial, onClose }: Props) {
 
   useEffect(() => {
     void fetchCredentialStoreStatus().then((status) =>
-      setSecretsHint(credentialStoreHintKey(status)),
+      setSecretsHint(credentialStoreHint(status)),
     );
   }, []);
 
@@ -519,12 +517,14 @@ export function SessionDialog({ initial, onClose }: Props) {
   );
 
   // One note, wherever a password or passphrase is typed, when it will not be
-  // kept across restarts.
+  // kept across restarts; a warning when saving is refused outright.
   const renderSecretsHint = () =>
     secretsHint ? (
-      <div className="session-note is-wide">
-        <Icon name="info" />
-        <span>{t(secretsHint)}</span>
+      <div
+        className={`session-note is-wide${secretsHint.warning ? " is-warning" : ""}`}
+      >
+        <Icon name={secretsHint.warning ? "warning" : "info"} />
+        <span>{t(secretsHint.key)}</span>
       </div>
     ) : null;
 

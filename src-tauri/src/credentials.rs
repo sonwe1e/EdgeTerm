@@ -21,7 +21,7 @@ use ring::rand::SecureRandom;
 use ring::{aead, hkdf};
 use serde::{Deserialize, Serialize};
 
-use crate::error::{AppError, Result};
+use crate::error::{AppError, ErrorCode, Result};
 use crate::model::{AuthKind, SessionKind, SessionProfile};
 
 /// Secrets are kept separately from the public session profiles.  This avoids
@@ -270,7 +270,8 @@ impl CredentialStoreStatus {
         }
     }
 
-    fn session_only(reason: CredentialStoreStatusReason) -> Self {
+    /// Saved passwords do not survive this run; `reason` says why.
+    fn limited(reason: CredentialStoreStatusReason) -> Self {
         CredentialStoreStatus {
             persistent: false,
             reason: Some(reason),
@@ -287,6 +288,9 @@ pub enum CredentialStoreStatusReason {
     Portable,
     /// The OS credential store could not be reached (absent, locked, …).
     KeyStoreUnavailable,
+    /// `credentials.json` exists but this run cannot open it; saving a
+    /// password is refused so the file survives for recovery.
+    CredentialsUnreadable,
 }
 
 /// Where a `CredentialStore` finds the random master key `credentials.json`
@@ -374,6 +378,11 @@ pub(crate) struct CredentialStore {
     /// The key `persist` seals with; `None` in the run-only mode, where
     /// nothing is written to disk at all.
     key: Option<VaultKey>,
+    /// Set when `credentials.json` exists but this run cannot open it. Writes
+    /// are refused (`persist` writes nothing, `sync` takes no new secret) so
+    /// the unreadable file survives byte for byte until the user repairs or
+    /// removes it.
+    locked: bool,
     status: CredentialStoreStatus,
     secrets: Mutex<HashMap<String, StoredSecrets>>,
 }
@@ -381,9 +390,10 @@ pub(crate) struct CredentialStore {
 impl CredentialStore {
     /// Loads the vault at `path`, or starts a fresh one. `key_store` is the
     /// OS credential store, or `None` in portable mode. Whatever is wrong
-    /// with the file or the store never blocks startup: unreadable secrets
-    /// are dropped with a warning, the file is left alone, and the next save
-    /// replaces it.
+    /// with the file or the store never blocks startup: a file this run
+    /// cannot open is kept exactly as it is — saving a password is refused
+    /// rather than overwrite it — and an unreachable store or a portable
+    /// copy keeps secrets in memory for the run only.
     pub(crate) fn load(path: PathBuf, key_store: Option<&dyn KeyStore>) -> Self {
         // The key store comes first: whether it works decides whether
         // secrets can be kept across restarts at all.
@@ -395,14 +405,17 @@ impl CredentialStore {
                 None
             }
         };
+        // An interrupted migration is settled before anything else looks at
+        // the vault: it leaves no `credentials.json`, only the verified
+        // successor and the backup, and loading from here would mistake the
+        // vault for a first run and orphan both survivors.
+        recover_interrupted_migration(&path, master.as_deref());
         let status = match (&master, key_store) {
             (Some(_), _) => CredentialStoreStatus::persistent(),
-            (None, None) => {
-                CredentialStoreStatus::session_only(CredentialStoreStatusReason::Portable)
+            (None, None) => CredentialStoreStatus::limited(CredentialStoreStatusReason::Portable),
+            (None, Some(_)) => {
+                CredentialStoreStatus::limited(CredentialStoreStatusReason::KeyStoreUnavailable)
             }
-            (None, Some(_)) => CredentialStoreStatus::session_only(
-                CredentialStoreStatusReason::KeyStoreUnavailable,
-            ),
         };
 
         let opened = match read_credentials_file(&path) {
@@ -412,22 +425,40 @@ impl CredentialStore {
             Some(CredentialsFile::Plain(map)) => Ok(import_plain_map(map, master.as_deref())),
             None => Ok(Opened::Fresh),
         };
-        let (secrets, key, reseal) = match opened {
+        let (secrets, key, locked, reseal, status) = match opened {
             Ok(Opened::File {
                 secrets,
                 key,
                 reseal,
-            }) => (secrets, key, reseal),
-            Ok(Opened::Fresh) => (HashMap::new(), fresh_key(&master), false),
+            }) => (secrets, key, false, reseal, status),
+            Ok(Opened::Fresh) => (HashMap::new(), fresh_key(&master), false, false, status),
             Err(error) => {
-                tracing::warn!("EdgeTerm: {error}; saved passwords are unavailable");
-                (HashMap::new(), fresh_key(&master), false)
+                // Not a first run: there is a file, this run just cannot
+                // open it (a lost or rotated master key, a file from another
+                // machine, a newer format). Rewriting it now would throw
+                // away the only copy of the passwords, so the vault keeps
+                // the file and refuses new saves until it is repaired or
+                // removed.
+                tracing::warn!(
+                    "EdgeTerm: {error}; {} is kept unchanged and saving passwords is refused until it is repaired or removed",
+                    path.display()
+                );
+                (
+                    HashMap::new(),
+                    None,
+                    true,
+                    false,
+                    CredentialStoreStatus::limited(
+                        CredentialStoreStatusReason::CredentialsUnreadable,
+                    ),
+                )
             }
         };
 
         let store = Self {
             path,
             key,
+            locked,
             status,
             secrets: Mutex::new(secrets),
         };
@@ -441,6 +472,14 @@ impl CredentialStore {
     /// See `CredentialStoreStatus`.
     pub(crate) fn status(&self) -> CredentialStoreStatus {
         self.status
+    }
+
+    /// Whether this run writes saved secrets to disk at all: false in the
+    /// run-only mode (portable, unreachable store) and while the vault is
+    /// locked. Callers that would otherwise discard the only other copy of a
+    /// secret ask this first.
+    pub(crate) fn writes_to_disk(&self) -> bool {
+        self.key.is_some()
     }
 
     /// The secrets stored for the session `id`, if it has any.
@@ -461,34 +500,86 @@ impl CredentialStore {
 
     /// Stores whatever `profile` now carries. A session kind or auth method
     /// that takes no secret (or the wrong one) clears the entry, as does an
-    /// empty input: an empty editor field means "ask when connecting".
-    pub(crate) fn sync(&self, profile: &SessionProfile) {
+    /// empty input: an empty editor field means "ask when connecting". While
+    /// the vault is locked, a save that would take a secret is refused — the
+    /// unreadable file must not be replaced by one that only holds the new
+    /// password.
+    pub(crate) fn sync(&self, profile: &SessionProfile) -> Result<()> {
         let mut secrets = self.secrets.lock();
-        if !matches!(
-            profile.kind,
-            SessionKind::Ssh | SessionKind::Ftp | SessionKind::Sftp | SessionKind::Telnet
-        ) || (matches!(profile.kind, SessionKind::Ssh | SessionKind::Sftp)
-            && profile.auth == Some(AuthKind::Agent))
-        {
-            secrets.remove(&profile.id);
-            return;
+        let next = next_secrets(secrets.get(&profile.id).cloned(), profile);
+        if self.locked && next.is_some() {
+            return Err(AppError::coded(
+                ErrorCode::CredentialsUnreadable,
+                "the saved-password file cannot be read, so this password was not saved; the file is kept unchanged for recovery",
+            ));
         }
-
-        // FTP and Telnet hold a password and nothing else; Telnet's is typed
-        // at the server's login prompt (see `telnet::AutoLogin`).
-        if matches!(profile.kind, SessionKind::Ftp | SessionKind::Telnet) {
-            let stored = secrets.entry(profile.id.clone()).or_default();
-            stored.passphrase = None;
-            if let Some(password) = &profile.password {
-                stored.password = (!password.is_empty()).then(|| password.clone());
+        match next {
+            Some(next) => {
+                secrets.insert(profile.id.clone(), next);
             }
-            if stored.password.is_none() {
+            None => {
                 secrets.remove(&profile.id);
             }
-            return;
         }
+        Ok(())
+    }
 
-        let stored = secrets.entry(profile.id.clone()).or_default();
+    /// Seals the current map into `credentials.json`, then reads the file
+    /// back and checks it against the map. Every write uses a fresh nonce, so
+    /// two writes of the same map never look alike on disk. The read-back is
+    /// what lets a caller drop another copy of a secret: what is confirmed on
+    /// disk is the map that was meant to be written. In the run-only mode
+    /// there is no key and nothing reaches the disk; a locked vault writes
+    /// nothing either, so its unreadable file survives.
+    pub(crate) fn persist(&self) -> Result<()> {
+        let Some(key) = &self.key else {
+            return Ok(());
+        };
+        let secrets = self.secrets.lock().clone();
+        let envelope = seal_credentials(key, &serde_json::to_vec(&secrets)?)?;
+        crate::store::write_owner_only(&self.path, &serde_json::to_string_pretty(&envelope)?)?;
+
+        let written = match read_credentials_file(&self.path) {
+            Some(CredentialsFile::Encrypted(envelope)) => envelope,
+            _ => {
+                return Err(AppError::new(
+                    "the rewritten credentials file is unreadable",
+                ))
+            }
+        };
+        if decrypt(&written, key)? != secrets {
+            return Err(AppError::new(
+                "the rewritten credentials file does not match",
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// The entry `profile` should have after a save, given the entry it has now:
+/// `None` when the session kind, the auth method or an emptied field means it
+/// keeps no secret at all. A field the profile does not set (`None`) keeps
+/// the stored value; an empty one clears it.
+fn next_secrets(current: Option<StoredSecrets>, profile: &SessionProfile) -> Option<StoredSecrets> {
+    if !matches!(
+        profile.kind,
+        SessionKind::Ssh | SessionKind::Ftp | SessionKind::Sftp | SessionKind::Telnet
+    ) || (matches!(profile.kind, SessionKind::Ssh | SessionKind::Sftp)
+        && profile.auth == Some(AuthKind::Agent))
+    {
+        return None;
+    }
+
+    let mut stored = current.unwrap_or_default();
+
+    // FTP and Telnet hold a password and nothing else; Telnet's is typed
+    // at the server's login prompt (see `telnet::AutoLogin`).
+    if matches!(profile.kind, SessionKind::Ftp | SessionKind::Telnet) {
+        stored.passphrase = None;
+        if let Some(password) = &profile.password {
+            stored.password = (!password.is_empty()).then(|| password.clone());
+        }
+    } else {
         match profile.auth.unwrap_or_default() {
             AuthKind::Password => {
                 stored.passphrase = None;
@@ -502,25 +593,11 @@ impl CredentialStore {
                     stored.passphrase = (!passphrase.is_empty()).then(|| passphrase.clone());
                 }
             }
-            AuthKind::Agent => unreachable!(),
-        }
-
-        if stored.password.is_none() && stored.passphrase.is_none() {
-            secrets.remove(&profile.id);
+            AuthKind::Agent => return None,
         }
     }
 
-    /// Seals the current map into `credentials.json`. Every write uses a
-    /// fresh nonce, so two writes of the same map never look alike on disk.
-    /// In the run-only mode there is no key and nothing reaches the disk.
-    pub(crate) fn persist(&self) -> Result<()> {
-        let Some(key) = &self.key else {
-            return Ok(());
-        };
-        let plaintext = serde_json::to_vec(&*self.secrets.lock())?;
-        let envelope = seal_credentials(key, &plaintext)?;
-        crate::store::write_owner_only(&self.path, &serde_json::to_string_pretty(&envelope)?)
-    }
+    (stored.password.is_some() || stored.passphrase.is_some()).then_some(stored)
 }
 
 /// What opening the file produced; `Fresh` also stands for "no usable file",
@@ -718,6 +795,63 @@ fn sibling(path: &Path, suffix: &str) -> PathBuf {
     let mut name = path.as_os_str().to_os_string();
     name.push(suffix);
     PathBuf::from(name)
+}
+
+/// Settles a migration an interrupted process left between its two renames
+/// (the old file already moved to `.bak`, the verified successor still named
+/// `.tmp`, and no `credentials.json` at all). Completing the successor's
+/// rename resumes what the interrupted run had already verified; without a
+/// successor, the backup goes back and the next load retries the move. Only
+/// called when the main file is missing, so a normal load is never touched,
+/// and neither survivor is ever deleted — at worst it is left in place.
+fn recover_interrupted_migration(path: &Path, master: Option<&[u8]>) {
+    let temp = sibling(path, ".tmp");
+    let backup = sibling(path, ".bak");
+    if path.exists() || (!temp.is_file() && !backup.is_file()) {
+        return;
+    }
+    if temp.is_file() && successor_opens(&temp, master) {
+        match std::fs::rename(&temp, path) {
+            Ok(()) => {
+                tracing::info!("EdgeTerm: completed an interrupted credentials migration");
+                return;
+            }
+            Err(error) => tracing::warn!(
+                "EdgeTerm: could not complete an interrupted credentials migration ({error})"
+            ),
+        }
+    }
+    if backup.is_file() {
+        match std::fs::rename(&backup, path) {
+            Ok(()) => tracing::info!(
+                "EdgeTerm: restored credentials.json from the backup of an interrupted migration"
+            ),
+            Err(error) => tracing::warn!(
+                "EdgeTerm: could not restore credentials.json from the backup of an interrupted migration ({error})"
+            ),
+        }
+    }
+}
+
+/// Whether `file` is a successor the current key can open. The migration
+/// writes, verifies and only then starts renaming, so a surviving temporary
+/// file is trusted on that order alone when no master key is at hand; with
+/// one, the file is checked again here before it takes the main name.
+fn successor_opens(file: &Path, master: Option<&[u8]>) -> bool {
+    let Some(master) = master else {
+        return true;
+    };
+    match read_credentials_file(file) {
+        Some(CredentialsFile::Encrypted(envelope))
+            if envelope.version == FORMAT_KEY_STORE
+                && envelope.key_source == KEY_SOURCE_OS_STORE =>
+        {
+            decode_field("salt", &envelope.salt)
+                .and_then(|salt| decrypt(&envelope, &VaultKey::from_master(master, salt)))
+                .is_ok()
+        }
+        _ => false,
+    }
 }
 
 /// Encrypts the secret map under `key` with a fresh random nonce. The

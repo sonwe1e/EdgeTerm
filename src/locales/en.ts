@@ -393,11 +393,13 @@ export const en = {
   "session.privateKey": "Private key",
   "session.passphrase": "Passphrase",
   // Shown where a password or passphrase is typed when it will not survive a
-  // restart (see `credentialStoreHintKey`).
+  // restart (see `credentialStoreHint`).
   "session.secretsRunOnlyPortable":
     "Portable mode keeps passwords for this run only: they are not written to disk.",
   "session.secretsRunOnlyNoKeyStore":
     "The system credential store is unavailable: passwords are kept for this run only, not written to disk.",
+  "session.secretsUnreadable":
+    "The saved-password file cannot be read, so saving a password is refused; the file is kept unchanged for recovery.",
   "session.jumpHost": "Jump host",
   "session.jumpNone": "None — connect directly",
   "session.jumpDeleted": "(deleted session)",

@@ -6,7 +6,7 @@ vi.mock("./bindings", () => ({
 
 import { commands } from "./bindings";
 import {
-  credentialStoreHintKey,
+  credentialStoreHint,
   fetchCredentialStoreStatus,
 } from "./credentialStatus";
 
@@ -16,20 +16,29 @@ describe("credential store status", () => {
   });
 
   it("shows no note while saved passwords survive restarts", () => {
-    expect(credentialStoreHintKey({ persistent: true, reason: null })).toBeNull();
-    expect(credentialStoreHintKey(null)).toBeNull();
+    expect(credentialStoreHint({ persistent: true, reason: null })).toBeNull();
+    expect(credentialStoreHint(null)).toBeNull();
   });
 
   it("names portable mode and an unavailable credential store separately", () => {
     expect(
-      credentialStoreHintKey({ persistent: false, reason: "portable" }),
-    ).toBe("session.secretsRunOnlyPortable");
+      credentialStoreHint({ persistent: false, reason: "portable" }),
+    ).toEqual({ key: "session.secretsRunOnlyPortable", warning: false });
     expect(
-      credentialStoreHintKey({
+      credentialStoreHint({
         persistent: false,
         reason: "keyStoreUnavailable",
       }),
-    ).toBe("session.secretsRunOnlyNoKeyStore");
+    ).toEqual({ key: "session.secretsRunOnlyNoKeyStore", warning: false });
+  });
+
+  it("warns that saving is refused while the stored file cannot be read", () => {
+    expect(
+      credentialStoreHint({
+        persistent: false,
+        reason: "credentialsUnreadable",
+      }),
+    ).toEqual({ key: "session.secretsUnreadable", warning: true });
   });
 
   it("passes the backend status through", async () => {

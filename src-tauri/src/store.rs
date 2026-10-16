@@ -111,10 +111,20 @@ impl Store {
             sender_commands: Mutex::new(sender_commands),
             command_history: Mutex::new(command_history),
         };
-        if imported_legacy_credentials {
-            // Best effort migration. A later explicit save will surface any
-            // filesystem error to the caller.
-            let _ = store.persist();
+        if imported_legacy_credentials && store.credentials.writes_to_disk() {
+            // The profiles file is only rewritten without its embedded
+            // passwords once the vault holds them: `persist` writes the
+            // credentials file first and verifies it, and on any failure
+            // stops before `sessions.json` is touched — the embedded copies
+            // stay the durable ones and the next launch retries. Without a
+            // writable vault the whole disk is left exactly as it is and the
+            // passwords serve this run from memory.
+            if let Err(error) = store.persist() {
+                tracing::warn!(
+                    "EdgeTerm: legacy passwords were not moved into the credential vault ({error}); {} still carries them",
+                    store.path.display()
+                );
+            }
         }
         store
     }
@@ -204,7 +214,7 @@ impl Store {
         if switched {
             self.credentials.remove(&profile.id);
         }
-        self.credentials.sync(&profile);
+        self.credentials.sync(&profile)?;
         profile.password = None;
         profile.passphrase = None;
 
@@ -637,9 +647,14 @@ impl Store {
             .ok_or_else(|| AppError::new("config directory has no parent"))?;
         std::fs::create_dir_all(parent)?;
 
+        // Credentials first: `load_from` drops the embedded passwords from
+        // the profiles file only when the vault write has succeeded, so the
+        // vault must not be the write that happens after (and depends on)
+        // the profiles write. A failing vault write then leaves every other
+        // file untouched too.
+        self.credentials.persist()?;
         let profiles = serde_json::to_string_pretty(&*self.profiles.lock())?;
-        write_owner_only(&self.path, &profiles)?;
-        self.credentials.persist()
+        write_owner_only(&self.path, &profiles)
     }
 
     fn persist_groups(&self) -> Result<()> {

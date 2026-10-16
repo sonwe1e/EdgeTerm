@@ -30,6 +30,10 @@ pub enum ErrorCode {
     Unsupported,
     /// The OS credential store is unavailable (see the credential store).
     CredentialStoreUnavailable,
+    /// `credentials.json` exists but cannot be opened, so a password that
+    /// was meant to be saved was refused; the file is kept unchanged for
+    /// recovery.
+    CredentialsUnreadable,
     /// A write reached the server, but whether it landed could not be
     /// confirmed.
     RemoteWriteUncertain,
