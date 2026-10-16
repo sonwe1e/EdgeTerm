@@ -1212,3 +1212,76 @@ dialog.dialog-backdrop.is-fallback[open] {
   }
 }
 
+/* The public-key setup dialog (Session panel → Set Up Public-Key Login):
+   where the key comes from, then what the install and the check did. */
+.key-setup-dialog {
+  width: min(520px, calc(100vw - 40px));
+}
+
+.key-setup-body {
+  gap: 12px;
+  line-height: 1.5;
+}
+
+.key-setup-intro {
+  margin: 0;
+  color: var(--fg-dim);
+  user-select: text;
+}
+
+/* The path field keeps its row so the browse button can ride it. */
+.key-setup-path {
+  display: flex;
+  gap: 8px;
+}
+
+.key-setup-path input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.key-setup-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* One step of a run (the key preview, the install/check verdict). */
+.key-setup-result {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel-alt);
+  user-select: text;
+}
+
+.key-setup-result .icon {
+  margin-top: 1px;
+}
+
+.key-setup-result.is-ok {
+  border-color: color-mix(in srgb, var(--green) 45%, transparent);
+  background: color-mix(in srgb, var(--green) 12%, transparent);
+  color: var(--green);
+}
+
+.key-setup-result.is-warn {
+  border-color: color-mix(in srgb, var(--yellow) 45%, transparent);
+  background: color-mix(in srgb, var(--yellow) 12%, transparent);
+  color: var(--yellow);
+}
+
+/* The install's path and the "nothing was saved" line under a verdict. */
+.key-setup-entry {
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.key-setup-entry.is-plain {
+  font-family: inherit;
+}

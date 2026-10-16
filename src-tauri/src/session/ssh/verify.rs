@@ -85,6 +85,15 @@ impl KeyCheck {
     }
 }
 
+/// Refuses a profile that is not the login the live session runs, before
+/// anything is dialled or written. The check tunnels through the session's
+/// own hops, so a profile for another machine's account — a stored host
+/// edited since this session opened, a jump chain that changed — would be
+/// checked against the wrong server.
+pub fn require_same_login(live: &SharedTransport, profile: &SessionProfile) -> Result<()> {
+    live.carries(profile)
+}
+
 /// Checks that `profile`'s public key logs in, on a connection of its own.
 ///
 /// The live transport is the path, never the connection checked: the fresh
@@ -104,7 +113,7 @@ pub async fn key_check(
 ) -> Result<KeyCheck> {
     // The session has to be the machine the profile names, and still up;
     // otherwise this would check a key against the wrong server.
-    live.carries(profile)?;
+    require_same_login(live, profile)?;
     let address = profile.address();
     let username = profile.username.clone().unwrap_or_default();
 

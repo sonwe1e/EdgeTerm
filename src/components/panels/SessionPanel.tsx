@@ -17,6 +17,7 @@ import {
 import { tabTitle, useStore } from "../../store";
 import {
   colorForSession,
+  isSshTransport,
   type SavedCommand,
   type SessionGroup,
   type SessionKind,
@@ -28,6 +29,7 @@ import { ContextMenu, type MenuItem } from "../ContextMenu";
 import { DeleteProfileDialog } from "../DeleteProfileDialog";
 import { GroupNameDialog } from "../GroupNameDialog";
 import { Icon } from "../icons";
+import { PublicKeyLoginDialog } from "../PublicKeyLoginDialog";
 import { SshReuseSetting } from "../SshReuseSetting";
 
 export const LOCAL_SHELL_PROFILE: SessionProfile = {
@@ -119,6 +121,7 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
   const t = useT();
   const profiles = useStore((s) => s.profiles);
   const groups = useStore((s) => s.groups);
+  const tabs = useStore((s) => s.tabs);
   const removeProfile = useStore((s) => s.removeProfile);
   const duplicateProfile = useStore((s) => s.duplicateProfile);
   const moveProfileToGroup = useStore((s) => s.moveProfileToGroup);
@@ -151,6 +154,14 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
   const [groupDialog, setGroupDialog] = useState<GroupDialogState | null>(
     null,
   );
+  /**
+   * Session whose public-key login is being set up in the dialog, with the
+   * live tab the install and the check run against.
+   */
+  const [keySetup, setKeySetup] = useState<{
+    profile: SessionProfile;
+    sessionId: string;
+  } | null>(null);
 
   const closeMenu = useCallback(() => setMenu(null), []);
 
@@ -348,6 +359,24 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
     // The built-in Local Shell is not a saved profile: nothing to edit or move.
     if (!profile.id) return [connect];
 
+    // Key setup runs against the profile's own live session — the install
+    // rides that connection and the check opens a fresh one beside it — so
+    // the entry waits until such a session is up.
+    const live = tabs.find(
+      (tab) =>
+        tab.profile.id === profile.id &&
+        tab.state === "connected" &&
+        isSshTransport(tab.info.kind),
+    );
+    const keyLogin: MenuItem = {
+      label: t("panel.setUpKeyLogin"),
+      icon: "key",
+      disabled: !live,
+      action: () => {
+        if (live) setKeySetup({ profile, sessionId: live.info.id });
+      },
+    };
+
     const current = effectiveGroupId(groups, profile);
     const move = (groupId: string | null) => () =>
       moveProfileToGroup(profile.id, groupId).catch((error) =>
@@ -379,6 +408,9 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
 
     return [
       connect,
+      // A key login only exists for the SSH transports; the entry stays
+      // visible but waits, so it is discoverable before connecting.
+      ...(isSshTransport(profile.kind) ? [keyLogin] : []),
       {
         label: t("panel.editEllipsis"),
         icon: "edit",
@@ -645,6 +677,32 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
             void removeProfile(pendingDelete.profile.id);
           }}
           onCancel={() => setPendingDelete(null)}
+        />
+      )}
+
+      {keySetup && (
+        <PublicKeyLoginDialog
+          profile={keySetup.profile}
+          sessionId={keySetup.sessionId}
+          onConfigured={(login) => {
+            // The backend saved the new login; the live tab keeps a profile
+            // copy of its own, and a reconnect has to dial with the key, not
+            // the login the tab was opened with.
+            const store = useStore.getState();
+            const tab = store.tabs.find(
+              (item) => item.info.id === keySetup.sessionId,
+            );
+            if (tab) {
+              store.updateTabProfile(keySetup.sessionId, {
+                ...tab.profile,
+                auth: "publicKey",
+                privateKeyPath: login.privateKeyPath,
+                passphrase: login.passphrase,
+              });
+            }
+            void store.loadProfiles();
+          }}
+          onClose={() => setKeySetup(null)}
         />
       )}
     </div>

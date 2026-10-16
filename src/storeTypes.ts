@@ -275,6 +275,12 @@ export interface AppStore {
   /** Opens a tab in the active pane and focuses it. */
   addTab: (info: SessionInfo, profile: SessionProfile, state?: SessionState) => void;
   updateTabInfo: (id: string, info: SessionInfo) => void;
+  /**
+   * Replaces a tab's own copy of the profile, for work that changes the
+   * login it dials with (e.g. the public-key setup); without this a
+   * reconnect would keep using the profile the tab was opened with.
+   */
+  updateTabProfile: (id: string, profile: SessionProfile) => void;
   closeTab: (id: string) => Promise<void>;
   /**
    * Closes a tab, asking first while its session is still connecting or

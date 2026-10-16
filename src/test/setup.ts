@@ -28,6 +28,18 @@ if (typeof window.IntersectionObserver !== "function") {
     IntersectionObserverStub;
 }
 
+// The dialog drag setup re-clamps its offset on dialog resizes; nothing in
+// jsdom ever resizes, so the stub only has to exist.
+if (typeof window.ResizeObserver !== "function") {
+  class ResizeObserverStub {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  (window as unknown as { ResizeObserver: unknown }).ResizeObserver =
+    ResizeObserverStub;
+}
+
 if (typeof window.requestAnimationFrame !== "function") {
   window.requestAnimationFrame = (cb) =>
     window.setTimeout(() => cb(performance.now()), 16);

@@ -30,6 +30,7 @@ import folderOpened from "@vscode/codicons/src/icons/folder-opened.svg?raw";
 import goToFile from "@vscode/codicons/src/icons/go-to-file.svg?raw";
 import home from "@vscode/codicons/src/icons/home.svg?raw";
 import info from "@vscode/codicons/src/icons/info.svg?raw";
+import key from "@vscode/codicons/src/icons/key.svg?raw";
 import linkExternal from "@vscode/codicons/src/icons/link-external.svg?raw";
 import listSelection from "@vscode/codicons/src/icons/list-selection.svg?raw";
 import move from "@vscode/codicons/src/icons/move.svg?raw";
@@ -84,6 +85,7 @@ const SVGS = {
   "go-to-file": goToFile,
   home,
   info,
+  key,
   "link-external": linkExternal,
   "list-selection": listSelection,
   move,

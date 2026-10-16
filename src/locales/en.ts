@@ -510,6 +510,7 @@ export const en = {
   "panel.rightClickAddGroup": "Right-click to add a group",
   "panel.noMatches": "No sessions match “{filter}”.",
   "panel.connect": "Connect",
+  "panel.setUpKeyLogin": "Set Up Public-Key Login…",
   "panel.edit": "Edit",
   "panel.editEllipsis": "Edit…",
   "panel.duplicate": "Duplicate",
@@ -987,6 +988,32 @@ export const en = {
   "sshImport.authKey": "key {name}",
   "sshImport.authAgent": "agent",
   "sshImport.authPassword": "password",
+
+  // PublicKeyLoginDialog
+  "keySetup.title": "Set Up Public-Key Login",
+  "keySetup.intro":
+    "EdgeTerm will add the key below to {target}, then open a fresh connection to prove the key alone logs in. The session is switched to the key only once that proof passes.",
+  "keySetup.privateKey": "Private key",
+  "keySetup.pathPlaceholder": "Path to the private key file",
+  "keySetup.pickKey": "Choose a private key",
+  "keySetup.browse": "Browse…",
+  "keySetup.passphrase": "Passphrase",
+  "keySetup.passphraseHint": "Only for an encrypted key.",
+  "keySetup.preview": "{type} · {fingerprint}",
+  "keySetup.run": "Install and Verify",
+  "keySetup.running": "Installing and verifying…",
+  "keySetup.cancel": "Cancel",
+  "keySetup.stopping": "Cancelling…",
+  "keySetup.close": "Close",
+  "keySetup.verifiedSaved": "The key alone logs in; this session now uses it.",
+  "keySetup.installedNotVerified": "Installed, but not verified",
+  "keySetup.presentNotVerified": "Already on the server, but not verified",
+  "keySetup.restrictedNotVerified":
+    "On the server only with restrictions ({options}), not verified",
+  "keySetup.notVerified": "{state}: {reason}",
+  "keySetup.notSaved": "The saved session was not changed.",
+  "keySetup.entry": "Key entry: {path}",
+  "keySetup.failed": "The setup failed: {message}",
 
   // FileDiffDialog
   "diff.dialogAria": "Local and remote file comparison",

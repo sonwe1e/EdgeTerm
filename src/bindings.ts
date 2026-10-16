@@ -101,6 +101,16 @@ export const commands = {
 	 */
 	verifyPublicKeyLogin: (sessionId: string, requestId: string, profile: SessionProfile_Deserialize) => __TAURI_INVOKE<KeyCheck_Serialize>("verify_public_key_login", { sessionId, requestId, profile }),
 	/**
+	 *  Sets up public-key login for a saved session in one step: install the
+	 *  key's public half over the live session's SFTP, prove on a fresh
+	 *  connection that the key alone logs in, and only then switch the saved
+	 *  session to it. Stopping before the proof — a refusal, another factor, a
+	 *  timeout, a host-key decision, a cancel — leaves the saved session exactly
+	 *  as it was, while the result still reports the install, so "installed but
+	 *  not verified" is told apart from "nothing happened".
+	 */
+	configurePublicKeyLogin: (sessionId: string, requestId: string, profileId: string, privateKeyPath: string, passphrase: string | null, comment: string | null) => __TAURI_INVOKE<KeySetup_Serialize>("configure_public_key_login", { sessionId, requestId, profileId, privateKeyPath, passphrase, comment }),
+	/**
 	 *  Stops the check running under `request_id`, if any. A Cancel that arrives
 	 *  before its request does is remembered, so a fast dialog still stops it.
 	 */
@@ -926,6 +936,50 @@ export type KeyCheck_Serialize = {
 	 *  `hostKeyChanged`.
 	 */
 	change?: HostKeyChange | null,
+};
+
+/**
+ *  What [`configure_public_key_login`] did, step by step. The pieces are kept
+ *  apart so the caller can say what is true even when the flow stopped
+ *  part-way: a key that was installed but not verified must not read as
+ *  "nothing happened".
+ */
+export type KeySetup = KeySetup_Serialize | KeySetup_Deserialize;
+
+/**
+ *  What [`configure_public_key_login`] did, step by step. The pieces are kept
+ *  apart so the caller can say what is true even when the flow stopped
+ *  part-way: a key that was installed but not verified must not read as
+ *  "nothing happened".
+ */
+export type KeySetup_Deserialize = {
+	/**  What the install did, including where the entry lives. */
+	install: InstallReport_Deserialize,
+	/**  What the independent check concluded. */
+	check: KeyCheck_Deserialize,
+	/**
+	 *  Whether the saved session was updated. Only a check that proved the
+	 *  key alone logs in sets this.
+	 */
+	saved: boolean,
+};
+
+/**
+ *  What [`configure_public_key_login`] did, step by step. The pieces are kept
+ *  apart so the caller can say what is true even when the flow stopped
+ *  part-way: a key that was installed but not verified must not read as
+ *  "nothing happened".
+ */
+export type KeySetup_Serialize = {
+	/**  What the install did, including where the entry lives. */
+	install: InstallReport_Serialize,
+	/**  What the independent check concluded. */
+	check: KeyCheck_Serialize,
+	/**
+	 *  Whether the saved session was updated. Only a check that proved the
+	 *  key alone logs in sets this.
+	 */
+	saved: boolean,
 };
 
 /**

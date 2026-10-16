@@ -183,6 +183,59 @@ export const importSshConfig = (
   groupId: string | null,
 ) => invoke<SshImportSummary>("import_ssh_config", { path, aliases, groupId });
 
+// --- public-key login setup --------------------------------------------------
+
+export type KeySummary = Wire.KeySummary;
+export type InstallReport = Wire.InstallReport;
+export type KeyCheck = Wire.KeyCheck;
+export type KeySetup = Wire.KeySetup;
+
+/**
+ * Reads a private key file for the setup dialog: its type, the public
+ * `authorized_keys` line and the SHA-256 fingerprint. An encrypted key needs
+ * its passphrase to be read at all.
+ */
+export const inspectPrivateKey = (path: string, passphrase?: string) =>
+  commands.inspectPrivateKey(path, passphrase || null);
+
+let keyCheckSerial = 0;
+
+/** A fresh id for a cancellable public-key check; see `cancelKeyCheck`. */
+export const newKeyCheckId = (): string =>
+  `keycheck-${Date.now().toString(36)}-${++keyCheckSerial}`;
+
+/**
+ * The whole setup behind the dialog: install the key's public half over the
+ * live session's SFTP, verify on a fresh connection that the key alone logs
+ * in, and only then save the session with the new login. The result reports
+ * each step, so an install that was not verified can be told apart from a
+ * flow that never got that far.
+ */
+export const configurePublicKeyLogin = (
+  sessionId: string,
+  requestId: string,
+  profileId: string,
+  privateKeyPath: string,
+  passphrase: string | null,
+  comment?: string,
+) =>
+  commands.configurePublicKeyLogin(
+    sessionId,
+    requestId,
+    profileId,
+    privateKeyPath,
+    passphrase,
+    comment ?? null,
+  );
+
+/**
+ * Stops the check running under `requestId`; the setup command ends with a
+ * cancelled check and leaves the saved session alone.
+ */
+export const cancelKeyCheck = (requestId: string) =>
+  commands.cancelKeyCheck(requestId);
+
+
 // --- command history ---------------------------------------------------------
 
 export type CommandHistoryEntry = Wire.CommandHistoryEntry;

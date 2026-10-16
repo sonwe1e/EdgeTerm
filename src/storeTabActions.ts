@@ -24,6 +24,7 @@ export const createTabActions: StateCreator<
     AppStore,
     | "addTab"
     | "updateTabInfo"
+    | "updateTabProfile"
     | "closeTab"
     | "requestCloseTab"
     | "requestCloseTabs"
@@ -77,6 +78,12 @@ export const createTabActions: StateCreator<
   updateTabInfo(id, info) {
     set({
       tabs: get().tabs.map((tab) => (tab.info.id === id ? { ...tab, info } : tab)),
+    });
+  },
+
+  updateTabProfile(id, profile) {
+    set({
+      tabs: get().tabs.map((tab) => (tab.info.id === id ? { ...tab, profile } : tab)),
     });
   },
 
