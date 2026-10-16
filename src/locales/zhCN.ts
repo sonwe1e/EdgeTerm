@@ -75,6 +75,8 @@ export const zhCN: Catalog = {
 
   "menu.tutorial": "使用教程",
   "menu.checkForUpdates": "检查更新…",
+  "menu.openLogDirectory": "打开日志目录",
+  "menu.exportDiagnostics": "导出诊断…",
   "menu.restoreDefaultSettings": "恢复默认设置…",
   "menu.about": "关于 EdgeTerm",
 
@@ -121,6 +123,9 @@ export const zhCN: Catalog = {
   "status.commandHistoryClearFailed": "清除命令历史失败：{error}",
   "status.defaultSettingsRestored": "已恢复默认设置",
   "status.tutorialOpenFailed": "打开使用教程失败：{error}",
+  "status.logDirectoryOpenFailed": "打开日志目录失败：{error}",
+  "status.diagnosticsExported": "诊断信息已导出到 {file}",
+  "status.diagnosticsExportFailed": "导出诊断失败：{error}",
   "status.filerOnlyShellSsh": "文件：只有 Shell 和 SSH 会话才有工作目录",
   "status.filerNotConnected": "文件：会话尚未连接",
   "status.filerPath": "文件：{path}",

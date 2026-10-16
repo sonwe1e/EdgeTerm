@@ -91,6 +91,8 @@ mod local_files;
 pub use local_files::*;
 mod desktop;
 pub use desktop::*;
+mod diagnostics;
+pub use diagnostics::*;
 mod remote_edit;
 pub use remote_edit::*;
 mod file_drag;

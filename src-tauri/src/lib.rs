@@ -482,6 +482,8 @@ pub fn run() {
             commands::stop_remote_edits,
             commands::list_serial_ports,
             commands::portable_mode,
+            commands::open_log_directory,
+            commands::export_diagnostics,
             commands::set_startup_theme,
             commands::show_main_window,
             commands::finish_main_window,

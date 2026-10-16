@@ -103,6 +103,8 @@ fn export_bindings() {
             commands::write_clipboard_text,
             commands::show_pointer,
             commands::portable_mode,
+            commands::open_log_directory,
+            commands::export_diagnostics,
             commands::open_with_dialog,
             commands::remote_edit_path,
             commands::watch_remote_edit,

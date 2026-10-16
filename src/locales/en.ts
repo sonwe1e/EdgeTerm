@@ -76,6 +76,8 @@ export const en = {
 
   "menu.tutorial": "Tutorial",
   "menu.checkForUpdates": "Check for Updates…",
+  "menu.openLogDirectory": "Open Log Directory",
+  "menu.exportDiagnostics": "Export Diagnostics…",
   "menu.restoreDefaultSettings": "Restore Default Settings…",
   "menu.about": "About EdgeTerm",
 
@@ -128,6 +130,9 @@ export const en = {
   "status.commandHistoryClearFailed": "Failed to clear command history: {error}",
   "status.defaultSettingsRestored": "Default settings restored",
   "status.tutorialOpenFailed": "Failed to open tutorial: {error}",
+  "status.logDirectoryOpenFailed": "Failed to open the log directory: {error}",
+  "status.diagnosticsExported": "Diagnostics exported to {file}",
+  "status.diagnosticsExportFailed": "Failed to export diagnostics: {error}",
   "status.filerOnlyShellSsh":
     "Filer: only shell and SSH sessions have a working directory",
   "status.filerNotConnected": "Filer: the session is not connected",

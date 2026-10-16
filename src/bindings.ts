@@ -286,6 +286,18 @@ export const commands = {
 	 */
 	portableMode: () => __TAURI_INVOKE<boolean>("portable_mode"),
 	/**
+	 *  Opens the diagnostics log directory in the system file manager, creating
+	 *  it first so a fresh install opens an empty folder instead of failing.
+	 */
+	openLogDirectory: () => __TAURI_INVOKE<null>("open_log_directory"),
+	/**
+	 *  Writes the diagnostics report (build header plus a bounded tail of the
+	 *  newest log lines) to `path`, which the front end picked in the save
+	 *  dialog. The log itself never carries credentials (see `diagnostics`), so
+	 *  neither does the report.
+	 */
+	exportDiagnostics: (path: string) => __TAURI_INVOKE<null>("export_diagnostics", { path }),
+	/**
 	 *  Shows the Windows "Open with" chooser for a local file. Other platforms
 	 *  have no system-wide chooser; the front end picks an application itself.
 	 */

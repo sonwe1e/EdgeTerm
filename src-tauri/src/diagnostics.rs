@@ -42,6 +42,105 @@ pub fn logs_dir() -> PathBuf {
     crate::store::data_dir().join("logs")
 }
 
+/// Cap on how much log text the diagnostics export carries; the newest end is
+/// what matters and older lines are summarized away.
+const EXPORT_TAIL_BYTES: usize = 256 * 1024;
+
+/// The diagnostics report: what this build is, where its logs live and a
+/// bounded tail of the newest log text. Built separately from writing it so a
+/// test can check exactly what a user would hand to support.
+pub fn report() -> String {
+    report_from(&logs_dir())
+}
+
+fn report_from(dir: &Path) -> String {
+    let mut report = String::new();
+    report.push_str("EdgeTerm diagnostics\n");
+    report.push_str(&format!(
+        "generated: {}\n",
+        chrono::Local::now().format("%Y-%m-%d %H:%M:%S %z")
+    ));
+    report.push_str(&format!("version: {}\n", env!("CARGO_PKG_VERSION")));
+    report.push_str(&format!(
+        "os: {} {}\n",
+        std::env::consts::OS,
+        std::env::consts::ARCH
+    ));
+    report.push_str(&format!("log directory: {}\n", dir.display()));
+    let files = log_files(dir);
+    if files.is_empty() {
+        report.push_str("log files: none\n");
+    }
+    for (path, size) in &files {
+        report.push_str(&format!(
+            "log file: {} ({size} bytes)\n",
+            path.file_name().unwrap_or_default().to_string_lossy()
+        ));
+    }
+    let (tail, truncated) = log_tail(&files);
+    report.push_str(&format!(
+        "\n--- log tail ({}) ---\n",
+        match truncated {
+            true => format!("newest {EXPORT_TAIL_BYTES} bytes; older lines omitted"),
+            false => "complete".to_string(),
+        }
+    ));
+    report.push_str(&tail);
+    report
+}
+
+/// The log files with their sizes, oldest first. Only the app's own
+/// `edgeterm.log*` files count; anything else in the directory is left out of
+/// both the listing and the tail.
+fn log_files(dir: &Path) -> Vec<(PathBuf, u64)> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut files: Vec<(PathBuf, u64)> = entries
+        .flatten()
+        .filter(|entry| entry.file_name().to_string_lossy().starts_with(FILE_NAME))
+        .filter_map(|entry| {
+            let data = entry.metadata().ok()?;
+            data.is_file().then(|| (entry.path(), data.len()))
+        })
+        .collect();
+    files.sort();
+    files
+}
+
+/// The newest [`EXPORT_TAIL_BYTES`] of log text, oldest line first, plus
+/// whether anything was dropped. A file longer than the budget contributes
+/// only its newest bytes, and the first partial line is cut.
+fn log_tail(files: &[(PathBuf, u64)]) -> (String, bool) {
+    let mut remaining = EXPORT_TAIL_BYTES;
+    let mut newest_first: Vec<String> = Vec::new();
+    let mut truncated = false;
+    for (path, _) in files.iter().rev() {
+        if remaining == 0 {
+            truncated = true;
+            break;
+        }
+        let Ok(content) = std::fs::read(path) else {
+            continue;
+        };
+        let start = content.len().saturating_sub(remaining);
+        let slice = &content[start..];
+        // Starting mid-line would expose a partial event; cut to the next one.
+        let slice = match start > 0 {
+            true => match slice.iter().position(|byte| *byte == b'\n') {
+                Some(newline) => &slice[newline + 1..],
+                None => &[],
+            },
+            false => slice,
+        };
+        truncated |= start > 0;
+        remaining = remaining.saturating_sub(slice.len());
+        newest_first.push(String::from_utf8_lossy(slice).into_owned());
+    }
+    newest_first.reverse();
+    (newest_first.concat(), truncated)
+}
+
 /// Installs the global file subscriber. Never fails the app: a directory that
 /// cannot be created only disables diagnostics, which is reported on stderr.
 pub fn init() {
@@ -126,18 +225,7 @@ fn filter() -> EnvFilter {
 /// fit. Best-effort; a file that cannot be removed is skipped rather than
 /// retried forever, and the newest file always survives.
 fn prune(dir: &Path) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    let mut files: Vec<(PathBuf, u64)> = entries
-        .flatten()
-        .filter(|entry| entry.file_name().to_string_lossy().starts_with(FILE_NAME))
-        .filter_map(|entry| {
-            let data = entry.metadata().ok()?;
-            data.is_file().then(|| (entry.path(), data.len()))
-        })
-        .collect();
-    files.sort();
+    let mut files = log_files(dir);
     let mut total: u64 = files.iter().map(|(_, size)| size).sum();
     while files.len() > 1 && (files.len() > MAX_LOG_FILES || total > MAX_LOG_BYTES) {
         let (path, size) = files.remove(0);
@@ -336,6 +424,59 @@ mod tests {
                 format!("{FILE_NAME}.2026-09-03")
             ]
         );
+    }
+
+    #[test]
+    fn the_report_names_the_build_and_tails_the_newest_log_text() {
+        let dir = scratch_dir();
+        std::fs::write(dir.join(format!("{FILE_NAME}.2026-09-15")), b"old line\n").unwrap();
+        std::fs::write(dir.join(format!("{FILE_NAME}.2026-09-16")), b"new line\n").unwrap();
+        let report = report_from(&dir);
+        assert!(report.contains(&format!("version: {}", env!("CARGO_PKG_VERSION"))));
+        assert!(report.contains(&format!("os: {}", std::env::consts::OS)));
+        assert!(report.contains("log file: edgeterm.log.2026-09-15"));
+        assert!(report.contains("log file: edgeterm.log.2026-09-16"));
+        let old = report.find("old line").expect("older line missing");
+        let new = report.find("new line").expect("newer line missing");
+        assert!(old < new, "the tail must read oldest first: {report}");
+        assert!(report.contains("(complete)"));
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn the_report_bounds_the_tail_and_says_what_it_dropped() {
+        let dir = scratch_dir();
+        // The newest file alone exceeds the budget: only its tail survives,
+        // and the export must stay close to the budget instead of the file.
+        let mut content = String::from("SENTINEL-oldest\n");
+        while content.len() < EXPORT_TAIL_BYTES + 64 * 1024 {
+            content.push_str(&"x".repeat(79));
+            content.push('\n');
+        }
+        content.push_str("SENTINEL-newest\n");
+        std::fs::write(dir.join(format!("{FILE_NAME}.2026-09-16")), content).unwrap();
+        let report = report_from(&dir);
+        assert!(report.contains("SENTINEL-newest"));
+        assert!(!report.contains("SENTINEL-oldest"));
+        assert!(report.contains("older lines omitted"));
+        assert!(
+            report.len() < EXPORT_TAIL_BYTES + 4096,
+            "the report grew to {} bytes",
+            report.len()
+        );
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn the_report_leaves_out_files_that_are_not_logs() {
+        let dir = scratch_dir();
+        std::fs::write(dir.join("notes.txt"), b"SENTINEL-not-a-log\n").unwrap();
+        std::fs::write(dir.join(format!("{FILE_NAME}.2026-09-16")), b"kept\n").unwrap();
+        let report = report_from(&dir);
+        assert!(report.contains("kept"));
+        assert!(!report.contains("SENTINEL-not-a-log"));
+        assert!(!report.contains("notes.txt"));
+        std::fs::remove_dir_all(dir).ok();
     }
 
     #[test]

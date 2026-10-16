@@ -24,6 +24,7 @@ import {
   importAppData,
   importSshConfig,
 } from "../dataTransfer";
+import { exportDiagnostics, openLogDirectory } from "../diagnostics";
 import { commandHistory } from "../history";
 import { LANGUAGES, LANGUAGE_LABELS, type Language } from "../i18n";
 import { ask } from "../nativeDialog";
@@ -657,6 +658,8 @@ export function MenuBar(props: Props) {
           },
         },
         { label: t("menu.checkForUpdates"), action: props.onCheckForUpdates },
+        { label: t("menu.openLogDirectory"), action: () => void openLogDirectory() },
+        { label: t("menu.exportDiagnostics"), action: () => void exportDiagnostics() },
         "separator",
         {
           label: t("menu.restoreDefaultSettings"),
