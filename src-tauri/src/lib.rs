@@ -1,3 +1,4 @@
+mod authorized_keys;
 #[cfg(all(test, feature = "bindings"))]
 mod bindings;
 mod commands;
@@ -417,6 +418,7 @@ pub fn run() {
             commands::import_ssh_config,
             commands::inspect_private_key,
             commands::generate_private_key,
+            commands::install_public_key,
             commands::open_session,
             commands::accept_host_key,
             commands::answer_auth_prompt,

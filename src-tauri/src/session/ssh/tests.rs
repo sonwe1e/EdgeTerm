@@ -1554,3 +1554,512 @@ fn the_saved_password_answers_only_a_password_question() {
         "the saved password is offered once; a second refusal is the user's to answer"
     );
 }
+
+// --- SFTP fixture and the public-key install (phase 3) ----------------------
+
+use crate::authorized_keys::{install, InstallOutcome};
+use russh_sftp::client::SftpSession;
+use russh_sftp::protocol::{
+    Attrs, Data as SftpData, File as SftpFile, FileAttributes, Handle as SftpHandle, Name,
+    OpenFlags, Status, StatusCode, Version,
+};
+use std::collections::HashMap;
+use std::io::{Read as _, Seek as _, SeekFrom, Write as _};
+
+/// An SSH server whose SFTP subsystem is a real directory on this machine, so
+/// everything the public-key install writes over SFTP can be read back from
+/// disk. The login is accepted without authentication, like the other shell
+/// fixtures.
+#[derive(Clone)]
+struct SftpHomeServer {
+    root: PathBuf,
+    channels:
+        Arc<tokio::sync::Mutex<HashMap<russh::ChannelId, russh::Channel<russh::server::Msg>>>>,
+    /// Applied when the next file write reaches the subsystem: how a test
+    /// stages an edit of the file under an install (see
+    /// `a_concurrent_edit_stops_the_install_before_it_replaces_the_file`).
+    concurrent_edit: Arc<Mutex<Option<(String, Vec<u8>)>>>,
+}
+
+impl SftpHomeServer {
+    fn new(root: &Path) -> Self {
+        Self {
+            root: root.to_path_buf(),
+            channels: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            concurrent_edit: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    /// Appends `content` to the virtual `path` right before the subsystem
+    /// handles its next write, as another process editing the file would.
+    fn tamper(&self, path: &str, content: &[u8]) {
+        *self.concurrent_edit.lock() = Some((path.to_string(), content.to_vec()));
+    }
+}
+
+impl russh::server::Handler for SftpHomeServer {
+    type Error = russh::Error;
+
+    async fn auth_none(&mut self, _user: &str) -> std::result::Result<Auth, Self::Error> {
+        Ok(Auth::Accept)
+    }
+
+    async fn channel_open_session(
+        &mut self,
+        channel: russh::Channel<russh::server::Msg>,
+        reply: russh::server::ChannelOpenHandle,
+        _session: &mut russh::server::Session,
+    ) -> std::result::Result<(), Self::Error> {
+        self.channels.lock().await.insert(channel.id(), channel);
+        reply.accept().await;
+        Ok(())
+    }
+
+    async fn subsystem_request(
+        &mut self,
+        channel: russh::ChannelId,
+        name: &str,
+        session: &mut russh::server::Session,
+    ) -> std::result::Result<(), Self::Error> {
+        let stored = self.channels.lock().await.remove(&channel);
+        match (name == "sftp", stored) {
+            (true, Some(stored)) => {
+                session.channel_success(channel)?;
+                let files = SftpFiles {
+                    root: self.root.clone(),
+                    concurrent_edit: self.concurrent_edit.clone(),
+                    ..Default::default()
+                };
+                russh_sftp::server::run(stored.into_stream(), files).await;
+            }
+            _ => session.channel_failure(channel)?,
+        }
+        Ok(())
+    }
+}
+
+/// The filesystem behind the fixture's SFTP subsystem. Paths are the
+/// virtual, absolute ones a client sees, rooted at the server's home
+/// directory: `/` is the login's home, `/.ssh/authorized_keys` the file the
+/// install works on.
+#[derive(Default)]
+struct SftpFiles {
+    root: PathBuf,
+    concurrent_edit: Arc<Mutex<Option<(String, Vec<u8>)>>>,
+    /// The open files, keyed by the handle string the client keeps.
+    open: HashMap<String, std::fs::File>,
+    serial: u64,
+}
+
+impl SftpFiles {
+    fn local(&self, virtual_path: &str) -> PathBuf {
+        let relative = virtual_path.trim_start_matches('.').trim_matches('/');
+        self.root.join(relative)
+    }
+}
+
+/// The attributes the SFTP client reads from a local file.
+fn attrs_of(meta: &std::fs::Metadata) -> FileAttributes {
+    let mut attrs = FileAttributes::default();
+    attrs.size = Some(meta.len());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        attrs.uid = Some(meta.uid());
+        attrs.gid = Some(meta.gid());
+        attrs.permissions = Some(meta.permissions().mode());
+        attrs.mtime = Some(meta.mtime() as u32);
+    }
+    #[cfg(not(unix))]
+    {
+        if meta.is_dir() {
+            attrs.set_dir(true);
+            attrs.permissions = attrs.permissions.map(|mode| mode | 0o755);
+        } else {
+            attrs.set_regular(true);
+            attrs.permissions = attrs.permissions.map(|mode| mode | 0o644);
+        }
+        attrs.mtime = meta
+            .modified()
+            .ok()
+            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|since| since.as_secs() as u32);
+    }
+    attrs
+}
+
+/// The status code a local I/O failure becomes.
+fn io_status(error: &std::io::Error) -> StatusCode {
+    match error.kind() {
+        std::io::ErrorKind::NotFound => StatusCode::NoSuchFile,
+        std::io::ErrorKind::PermissionDenied => StatusCode::PermissionDenied,
+        _ => StatusCode::Failure,
+    }
+}
+
+fn ok(id: u32) -> Status {
+    Status {
+        id,
+        status_code: StatusCode::Ok,
+        error_message: "Ok".to_string(),
+        language_tag: "en-US".to_string(),
+    }
+}
+
+/// Applies the permissions an `attrs` packet carries, where the platform has
+/// them; the mode a create asked for is otherwise only a hint.
+#[allow(unused_variables)]
+fn set_mode(path: &Path, attrs: &FileAttributes) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Some(mode) = attrs.permissions {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode & 0o777))?;
+        }
+    }
+    Ok(())
+}
+
+impl russh_sftp::server::Handler for SftpFiles {
+    type Error = StatusCode;
+
+    fn unimplemented(&self) -> Self::Error {
+        StatusCode::OpUnsupported
+    }
+
+    async fn realpath(&mut self, id: u32, path: String) -> Result<Name, Self::Error> {
+        let relative = path.trim_start_matches('.').trim_matches('/').to_string();
+        if !self.root.join(&relative).exists() {
+            return Err(StatusCode::NoSuchFile);
+        }
+        Ok(Name {
+            id,
+            files: vec![SftpFile::dummy(format!("/{relative}"))],
+        })
+    }
+
+    async fn lstat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {
+        let meta =
+            std::fs::symlink_metadata(self.local(&path)).map_err(|error| io_status(&error))?;
+        Ok(Attrs {
+            id,
+            attrs: attrs_of(&meta),
+        })
+    }
+
+    async fn stat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {
+        let meta = std::fs::metadata(self.local(&path)).map_err(|error| io_status(&error))?;
+        Ok(Attrs {
+            id,
+            attrs: attrs_of(&meta),
+        })
+    }
+
+    async fn setstat(
+        &mut self,
+        id: u32,
+        path: String,
+        attrs: FileAttributes,
+    ) -> Result<Status, Self::Error> {
+        set_mode(&self.local(&path), &attrs).map_err(|error| io_status(&error))?;
+        Ok(ok(id))
+    }
+
+    async fn open(
+        &mut self,
+        id: u32,
+        filename: String,
+        pflags: OpenFlags,
+        attrs: FileAttributes,
+    ) -> Result<SftpHandle, Self::Error> {
+        let local = self.local(&filename);
+        let requested_mode = attrs.permissions;
+        let mut options = std::fs::OpenOptions::new();
+        options.read(pflags.contains(OpenFlags::READ));
+        options.write(pflags.contains(OpenFlags::WRITE));
+        options.append(pflags.contains(OpenFlags::APPEND));
+        options.truncate(pflags.contains(OpenFlags::TRUNCATE));
+        if pflags.contains(OpenFlags::EXCLUDE) {
+            options.create_new(true);
+        } else {
+            options.create(pflags.contains(OpenFlags::CREATE));
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            if let Some(mode) = requested_mode {
+                options.mode(mode & 0o777);
+            }
+        }
+        let file = options.open(&local).map_err(|error| io_status(&error))?;
+        let handle = format!("fh-{}", self.serial);
+        self.serial += 1;
+        self.open.insert(handle.clone(), file);
+        Ok(SftpHandle { id, handle })
+    }
+
+    async fn close(&mut self, id: u32, handle: String) -> Result<Status, Self::Error> {
+        self.open.remove(&handle);
+        Ok(ok(id))
+    }
+
+    async fn read(
+        &mut self,
+        id: u32,
+        handle: String,
+        offset: u64,
+        len: u32,
+    ) -> Result<SftpData, Self::Error> {
+        let file = self.open.get_mut(&handle).ok_or(StatusCode::Failure)?;
+        file.seek(SeekFrom::Start(offset))
+            .map_err(|error| io_status(&error))?;
+        let mut data = vec![0u8; len as usize];
+        let read = file.read(&mut data).map_err(|error| io_status(&error))?;
+        if read == 0 {
+            return Err(StatusCode::Eof);
+        }
+        data.truncate(read);
+        Ok(SftpData { id, data })
+    }
+
+    async fn write(
+        &mut self,
+        id: u32,
+        handle: String,
+        offset: u64,
+        data: Vec<u8>,
+    ) -> Result<Status, Self::Error> {
+        // A staged concurrent edit lands right before the subsystem handles
+        // a write, between the install's read of the file and its replace.
+        if let Some((path, content)) = self.concurrent_edit.lock().take() {
+            let mut file = std::fs::OpenOptions::new()
+                .append(true)
+                .open(self.local(&path))
+                .map_err(|error| io_status(&error))?;
+            file.write_all(&content)
+                .map_err(|error| io_status(&error))?;
+        }
+        let file = self.open.get_mut(&handle).ok_or(StatusCode::Failure)?;
+        file.seek(SeekFrom::Start(offset))
+            .map_err(|error| io_status(&error))?;
+        file.write_all(&data).map_err(|error| io_status(&error))?;
+        Ok(ok(id))
+    }
+
+    async fn remove(&mut self, id: u32, filename: String) -> Result<Status, Self::Error> {
+        std::fs::remove_file(self.local(&filename)).map_err(|error| io_status(&error))?;
+        Ok(ok(id))
+    }
+
+    async fn mkdir(
+        &mut self,
+        id: u32,
+        path: String,
+        attrs: FileAttributes,
+    ) -> Result<Status, Self::Error> {
+        let local = self.local(&path);
+        std::fs::create_dir(&local).map_err(|error| io_status(&error))?;
+        set_mode(&local, &attrs).map_err(|error| io_status(&error))?;
+        Ok(ok(id))
+    }
+
+    async fn rename(
+        &mut self,
+        id: u32,
+        oldpath: String,
+        newpath: String,
+    ) -> Result<Status, Self::Error> {
+        // A plain `rename(2)`, overwriting like OpenSSH's sftp-server does.
+        std::fs::rename(self.local(&oldpath), self.local(&newpath))
+            .map_err(|error| io_status(&error))?;
+        Ok(ok(id))
+    }
+
+    async fn init(
+        &mut self,
+        _version: u32,
+        _extensions: HashMap<String, String>,
+    ) -> Result<Version, Self::Error> {
+        Ok(Version::new())
+    }
+}
+
+/// Opens the SFTP subsystem of `transport`, the way the install command does.
+async fn sftp_on(transport: &Arc<SharedTransport>) -> SftpSession {
+    SftpSession::new(transport.transfer_channel().await.expect("sftp subsystem"))
+        .await
+        .expect("sftp session")
+}
+
+/// The key the install tests put on the server; the fixture accepts any key,
+/// so its private half is never needed.
+fn install_key() -> (&'static str, &'static str) {
+    ED25519_A.split_once(' ').expect("type and data")
+}
+
+#[tokio::test]
+async fn installing_a_key_creates_the_ssh_directory_and_the_file() {
+    let file = KnownHosts::new();
+    let home = file.path().parent().expect("scratch").join("home");
+    std::fs::create_dir_all(&home).expect("home");
+
+    let address = serve_once(SftpHomeServer::new(&home), Preferred::default()).await;
+    let transport = transport_to(address, file.path()).await;
+    let sftp = sftp_on(&transport).await;
+
+    let (key_type, data) = install_key();
+    let report = install(&sftp, "/", key_type, data, Some("edgeterm"))
+        .await
+        .expect("install");
+    assert_eq!(report.outcome, InstallOutcome::Added);
+    assert_eq!(report.path, "/.ssh/authorized_keys");
+    assert_eq!(
+        std::fs::read_to_string(home.join(".ssh/authorized_keys")).expect("file"),
+        format!("{key_type} {data} edgeterm\n")
+    );
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(home.join(".ssh"))
+                .expect("dir")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700,
+            "the created .ssh must be owner-only"
+        );
+        assert_eq!(
+            std::fs::metadata(home.join(".ssh/authorized_keys"))
+                .expect("file")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600,
+            "the installed file must be owner-only"
+        );
+    }
+}
+
+#[tokio::test]
+async fn installing_a_key_preserves_the_existing_file_around_the_appended_line() {
+    let file = KnownHosts::new();
+    let home = file.path().parent().expect("scratch").join("home");
+    std::fs::create_dir_all(home.join(".ssh")).expect(".ssh");
+    // No final newline: the append has to repair it without losing the line.
+    std::fs::write(
+        home.join(".ssh/authorized_keys"),
+        "# keep me\nssh-rsa AAAA old@host",
+    )
+    .expect("stage file");
+
+    let address = serve_once(SftpHomeServer::new(&home), Preferred::default()).await;
+    let transport = transport_to(address, file.path()).await;
+    let sftp = sftp_on(&transport).await;
+
+    let (key_type, data) = install_key();
+    let report = install(&sftp, "/", key_type, data, None)
+        .await
+        .expect("install");
+    assert_eq!(report.outcome, InstallOutcome::Added);
+    assert_eq!(
+        std::fs::read_to_string(home.join(".ssh/authorized_keys")).expect("file"),
+        format!("# keep me\nssh-rsa AAAA old@host\n{key_type} {data}\n")
+    );
+
+    // The same key, whatever comment it now carries, is already there.
+    let before = std::fs::read(home.join(".ssh/authorized_keys")).expect("file");
+    let again = install(&sftp, "/", key_type, data, Some("somewhere else"))
+        .await
+        .expect("install again");
+    assert_eq!(again.outcome, InstallOutcome::Present);
+    assert_eq!(
+        std::fs::read(home.join(".ssh/authorized_keys")).expect("file"),
+        before,
+        "a present key is never written twice"
+    );
+
+    // A copy behind restrictions is left alone; no unrestricted line appears.
+    let restricted_line = format!("from=\"10.0.0.1\" {key_type} {data}\n");
+    std::fs::write(home.join(".ssh/authorized_keys"), &restricted_line).expect("stage");
+    let restricted = install(&sftp, "/", key_type, data, None)
+        .await
+        .expect("restricted install");
+    assert_eq!(restricted.outcome, InstallOutcome::PresentRestricted);
+    assert_eq!(restricted.options.as_deref(), Some("from=\"10.0.0.1\""));
+    assert_eq!(
+        std::fs::read_to_string(home.join(".ssh/authorized_keys")).expect("file"),
+        restricted_line
+    );
+}
+
+#[tokio::test]
+async fn a_concurrent_edit_stops_the_install_before_it_replaces_the_file() {
+    let file = KnownHosts::new();
+    let home = file.path().parent().expect("scratch").join("home");
+    std::fs::create_dir_all(home.join(".ssh")).expect(".ssh");
+    std::fs::write(home.join(".ssh/authorized_keys"), "# keep me\n").expect("stage file");
+
+    let server = SftpHomeServer::new(&home);
+    // Another process adds a line while the install is between its read and
+    // its replace; the install must notice and write nothing.
+    server.tamper("/.ssh/authorized_keys", b"someone@else ssh-ed25519 OTHER\n");
+    let address = serve_once(server, Preferred::default()).await;
+    let transport = transport_to(address, file.path()).await;
+    let sftp = sftp_on(&transport).await;
+
+    let (key_type, data) = install_key();
+    let error = install(&sftp, "/", key_type, data, None)
+        .await
+        .expect_err("the edit must stop the install");
+    assert!(
+        error.to_string().contains("changed on the server"),
+        "unexpected error: {error}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(home.join(".ssh/authorized_keys")).expect("file"),
+        "# keep me\nsomeone@else ssh-ed25519 OTHER\n",
+        "the concurrent edit survives and the key is not half-written"
+    );
+    let leftovers: Vec<_> = std::fs::read_dir(home.join(".ssh"))
+        .expect(".ssh")
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".authorized_keys.edgeterm-")
+        })
+        .collect();
+    assert!(leftovers.is_empty(), "no temporary file may be left behind");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_symlinked_authorized_keys_is_refused() {
+    let file = KnownHosts::new();
+    let home = file.path().parent().expect("scratch").join("home");
+    std::fs::create_dir_all(home.join(".ssh")).expect(".ssh");
+    let target = home.join("real_keys");
+    std::fs::write(&target, "# elsewhere\n").expect("target");
+    std::os::unix::fs::symlink(&target, home.join(".ssh/authorized_keys")).expect("symlink");
+
+    let address = serve_once(SftpHomeServer::new(&home), Preferred::default()).await;
+    let transport = transport_to(address, file.path()).await;
+    let sftp = sftp_on(&transport).await;
+
+    let (key_type, data) = install_key();
+    let error = install(&sftp, "/", key_type, data, None)
+        .await
+        .expect_err("a symlink is not where a login's keys belong");
+    assert!(
+        error.to_string().contains("symlink"),
+        "unexpected error: {error}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&target).expect("target"),
+        "# elsewhere\n",
+        "the symlink's target is untouched"
+    );
+}

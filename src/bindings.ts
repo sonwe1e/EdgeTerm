@@ -82,6 +82,15 @@ export const commands = {
 	 */
 	generatePrivateKey: (path: string, passphrase: string | null) => __TAURI_INVOKE<KeySummary>("generate_private_key", { path, passphrase }),
 	/**
+	 *  Installs the public half of a local private key into the server behind a
+	 *  connected SSH session's `authorized_keys`, over the session's own SFTP
+	 *  subsystem. The key is deduplicated by type and data, existing content is
+	 *  preserved, and no unrestricted copy is added when the key is already
+	 *  present behind restrictions. Verification that the login now works is a
+	 *  separate step; see `verify_public_key_login`.
+	 */
+	installPublicKey: (sessionId: string, privateKeyPath: string, passphrase: string | null, comment: string | null) => __TAURI_INVOKE<InstallReport_Serialize>("install_public_key", { sessionId, privateKeyPath, passphrase, comment }),
+	/**
 	 *  Record the key a host now presents, replacing every `known_hosts` entry
 	 *  the file held for it, after the user accepted a reported `HostKeyChange`.
 	 */
@@ -788,6 +797,45 @@ export type HostKeyChange = {
 	line: number,
 	/**  One-line explanation for the terminal and status bar. */
 	message: string,
+};
+
+/**  What merging the key into the file did. */
+export type InstallOutcome = 
+/**  The line was appended to the file. */
+"added" | 
+/**  The key is already present on a plain line; nothing was written. */
+"present" | 
+/**
+ *  The key is present, but only behind restrictions such as `from=` or
+ *  `command=`. No unrestricted copy was added next to it.
+ */
+"presentRestricted";
+
+/**  The result of an install, in the form the setup dialog reports. */
+export type InstallReport = InstallReport_Serialize | InstallReport_Deserialize;
+
+/**  The result of an install, in the form the setup dialog reports. */
+export type InstallReport_Deserialize = {
+	/**  Where the entry lives, e.g. `/home/u/.ssh/authorized_keys`. */
+	path: string,
+	outcome: InstallOutcome,
+	/**
+	 *  The restrictions the existing entry carries; only with
+	 *  [`InstallOutcome::PresentRestricted`].
+	 */
+	options: string | null,
+};
+
+/**  The result of an install, in the form the setup dialog reports. */
+export type InstallReport_Serialize = {
+	/**  Where the entry lives, e.g. `/home/u/.ssh/authorized_keys`. */
+	path: string,
+	outcome: InstallOutcome,
+	/**
+	 *  The restrictions the existing entry carries; only with
+	 *  [`InstallOutcome::PresentRestricted`].
+	 */
+	options?: string | null,
 };
 
 /**
