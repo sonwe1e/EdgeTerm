@@ -70,6 +70,25 @@ impl Drop for Remote {
         let _ = self.raw.close_session();
     }
 }
+/// Both SFTP and tar transfers use this boundary so control-generated
+/// timeout/pause/cancel failures receive the same end event as SSH failures.
+pub(super) async fn dial_transfer(job: &Job) -> TransferResult<Arc<SharedTransport>> {
+    let request = Request::begin("transfer_connect")
+        .with_session(&job.session_id)
+        .with_transfer(&job.id);
+    let result = job.control.run(async {
+        let prompt = AuthPrompter::background();
+        match connect_sftp(&job.profile, &job.jumps, &prompt, &request)
+            .await.map_err(Failure::connection)? {
+            SftpConnectOutcome::Ready(conn) => Ok(conn.transport()),
+            SftpConnectOutcome::HostKeyChanged(_) => Err(Failure::new(
+                "hostKey", "host key changed; reconnect the session and review its host key before retrying", false)),
+        }
+    }).await;
+    request.record_result(&result);
+    result
+}
+
 impl Remote {
     /// Production dial/handshake for one job's SFTP session; also the
     /// bridge the real-server acceptance tests use to reach the engine.
@@ -79,24 +98,7 @@ impl Remote {
         let existing = job.transport.lock().clone();
         let transport = match existing {
             Some(t) => t,
-            None => {
-                let prompt = AuthPrompter::background();
-                let request = Request::begin("transfer_connect")
-                    .with_session(&job.session_id)
-                    .with_transfer(&job.id);
-                let conn = job
-                    .control
-                    .run(async {
-                        connect_sftp(&job.profile, &job.jumps, &prompt, &request)
-                            .await
-                            .map_err(Failure::connection)
-                    })
-                    .await?;
-                match conn {
-                    SftpConnectOutcome::Ready(conn) => conn.transport(),
-                    SftpConnectOutcome::HostKeyChanged(_) => return Err(Failure::new("hostKey", "host key changed; reconnect the session and review its host key before retrying", false)),
-                }
-            }
+            None => dial_transfer(job).await?,
         };
         let stream = match job
             .control

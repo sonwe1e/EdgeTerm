@@ -35,10 +35,8 @@ use russh::{Channel, ChannelMsg};
 use tokio::io::{AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use super::{Control, Failure, Item, Job, TransferResult};
-use crate::diagnostics::Request;
 use crate::model::SessionKind;
-use crate::session::auth::AuthPrompter;
-use crate::session::ssh::{connect_sftp, SftpConnectOutcome, SharedTransport};
+use crate::session::ssh::SharedTransport;
 use crate::session::transfer::{plan_local_upload_checked, UploadJob};
 
 #[cfg(test)]
@@ -638,36 +636,13 @@ fn single_directory_upload(job: &Job) -> TransferResult<&Item> {
 
 /// The transport the job runs on, the way `sftp::Remote::connect` obtains it:
 /// the one the session already holds, or a freshly authenticated one.
-async fn connect(job: &Arc<Job>) -> TransferResult<Arc<SharedTransport>> {
+pub(super) async fn connect(job: &Arc<Job>) -> TransferResult<Arc<SharedTransport>> {
     job.control.check()?;
     job.phase("connecting");
     let existing = job.transport.lock().clone();
     let transport = match existing {
         Some(transport) => transport,
-        None => {
-            let prompt = AuthPrompter::background();
-            let request = Request::begin("transfer_connect")
-                .with_session(&job.session_id)
-                .with_transfer(&job.id);
-            let conn = job
-                .control
-                .run(async {
-                    connect_sftp(&job.profile, &job.jumps, &prompt, &request)
-                        .await
-                        .map_err(Failure::connection)
-                })
-                .await?;
-            match conn {
-                SftpConnectOutcome::Ready(conn) => conn.transport(),
-                SftpConnectOutcome::HostKeyChanged(_) => {
-                    return Err(Failure::new(
-                        "hostKey",
-                        "host key changed; reconnect the session and review its host key before retrying",
-                        false,
-                    ))
-                }
-            }
-        }
+        None => super::sftp::dial_transfer(job).await?,
     };
     *job.transport.lock() = Some(transport.clone());
     Ok(transport)

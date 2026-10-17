@@ -392,8 +392,15 @@ impl Request {
                 .with_operation(self.operation)
                 .with_request_id(self.id())
         });
+        self.record_result(&result);
+        result
+    }
+
+    /// Records outcomes for domains with their own error type, including
+    /// transfer pause/cancel results produced outside the connection future.
+    pub fn record_result<T, E: std::fmt::Display>(&self, result: &std::result::Result<T, E>) {
         let duration_ms = self.started.elapsed().as_millis() as u64;
-        match &result {
+        match result {
             Ok(_) => tracing::info!(
                 request_id = %self.id,
                 operation = self.operation,
@@ -416,7 +423,6 @@ impl Request {
                 "failed"
             ),
         }
-        result
     }
 }
 

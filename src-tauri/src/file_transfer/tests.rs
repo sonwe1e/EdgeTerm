@@ -1,4 +1,67 @@
 use super::*;
+
+#[tokio::test(flavor = "current_thread")]
+async fn transfer_connection_failures_and_cancellation_have_end_events() {
+    for tar_mode in [false, true] {
+        for cancel in [false, true] {
+            let root =
+                std::env::temp_dir().join(format!("edgeterm-dial-log-{}", uuid::Uuid::new_v4()));
+            let mut job = test_job(root.clone());
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let profile = &mut Arc::get_mut(&mut job).unwrap().profile;
+            profile.host = Some("127.0.0.1".into());
+            profile.port = Some(listener.local_addr().unwrap().port());
+            // Missing username is a deterministic authentication-input failure;
+            // cancellation instead interrupts a real pending SSH handshake.
+            profile.username = cancel.then(|| "fixture".into());
+            let logs = root.join("logs");
+            let (subscriber, guard) = crate::diagnostics::build(&logs).unwrap();
+            {
+                let _default = tracing::subscriber::set_default(subscriber);
+                let dial = async {
+                    if tar_mode {
+                        tar::connect(&job).await.map(|_| ())
+                    } else {
+                        sftp::Remote::connect(&job).await.map(|_| ())
+                    }
+                };
+                let result = if cancel {
+                    let cancel_after_accept = async {
+                        let (_stream, _) = listener.accept().await.unwrap();
+                        job.control.set(2);
+                    };
+                    tokio::time::timeout(Duration::from_secs(3), async {
+                        tokio::join!(dial, cancel_after_accept).0
+                    })
+                    .await
+                    .unwrap()
+                } else {
+                    dial.await
+                };
+                assert!(result.is_err());
+            }
+            drop(guard);
+            let content: String = std::fs::read_dir(&logs)
+                .unwrap()
+                .map(|e| std::fs::read_to_string(e.unwrap().path()).unwrap())
+                .collect();
+            let end = content
+                .lines()
+                .find(|line| line.contains("phase=\"end\""))
+                .expect("transfer connection must end even on failure or cancellation");
+            assert!(end.contains(&job.id));
+            assert!(end.contains("outcome=\"error\""));
+            assert!(end.contains("duration_ms="));
+            if cancel {
+                assert!(end.contains("transfer cancelled"));
+            } else {
+                assert!(end.contains("missing a username"));
+            }
+            drop(job);
+            std::fs::remove_dir_all(root).unwrap();
+        }
+    }
+}
 #[test]
 fn shell_and_file_sessions_share_limits_and_target_locks() {
     let mut profile: SessionProfile = serde_json::from_value(
