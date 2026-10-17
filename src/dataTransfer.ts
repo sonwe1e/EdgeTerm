@@ -1,5 +1,6 @@
 
 import * as api from "./api";
+import { errorText } from "./errorInfo";
 import { ask, open as openDialog, save as saveDialog } from "./nativeDialog";
 import { useStore } from "./store";
 import type { AppData } from "./types";
@@ -69,7 +70,7 @@ export async function exportAppData(): Promise<void> {
       `Exported ${describe(summary)} and settings to ${basename(path)} (passwords are not included)`,
     );
   } catch (error) {
-    setStatus(`Export failed: ${error}`);
+    setStatus(`Export failed: ${errorText(error)}`);
   }
 }
 
@@ -124,7 +125,7 @@ export async function importAppData(): Promise<void> {
     }
     store.setStatus(status);
   } catch (error) {
-    store.setStatus(`Import failed: ${error}`);
+    store.setStatus(`Import failed: ${errorText(error)}`);
   }
 }
 
@@ -152,6 +153,6 @@ export async function importSshConfig(): Promise<void> {
     }
     store.setSshConfigImport(preview);
   } catch (error) {
-    store.setStatus(`Import failed: ${error}`);
+    store.setStatus(`Import failed: ${errorText(error)}`);
   }
 }

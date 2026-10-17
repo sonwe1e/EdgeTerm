@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState, type MouseEvent } from "react";
 
 import { openSession, toggleSessionConnection } from "../../actions";
 import * as api from "../../api";
+import { errorText } from "../../errorInfo";
 import { importSshConfig } from "../../dataTransfer";
 import { t as translateMsg, type Translate } from "../../i18n";
 import { ask } from "../../nativeDialog";
@@ -233,7 +234,7 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
   };
 
   const report = (what: string, error: unknown) =>
-    setStatus(`${what}: ${error}`);
+    setStatus(`${what}: ${errorText(error)}`);
 
   const listSenderCommands = () =>
     api.listSenderCommands().catch((): SavedCommand[] => []);

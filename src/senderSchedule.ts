@@ -170,7 +170,7 @@ export function startSchedule(spec: ScheduleSpec): string | null {
       try {
         await sendUnits(ids, entry.units, spec.ending, entry.stop);
       } catch (error) {
-        setStatus(`Sender: ${error}`);
+        setStatus(`Sender: ${errorText(error)}`);
       }
     }
     if (active !== entry) return;
