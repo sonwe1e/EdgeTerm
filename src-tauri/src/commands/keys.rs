@@ -316,8 +316,12 @@ fn with_key_login(
     stored.private_key_path = Some(private_key_path.to_string());
     if let Some(given) = passphrase.filter(|passphrase| !passphrase.is_empty()) {
         stored.passphrase = Some(given);
-    } else if !same_key {
-        stored.passphrase = None;
+    } else if !same_key && stored.passphrase.is_some() {
+        // An empty passphrase is how a save clears the stored one (see
+        // `next_secrets`); `None` would read as "unchanged" and keep the
+        // previous key's passphrase in the vault, where the next connect
+        // offers it to this key — one the user never typed it for.
+        stored.passphrase = Some(String::new());
     }
     stored
 }
@@ -417,6 +421,53 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    /// Switching a session to another key must not carry the passphrase
+    /// stored for the previous one: it stays in the vault otherwise, and the
+    /// next connect offers it to a key the user never typed it for — an
+    /// encrypted new key then fails with a "wrong passphrase" the user
+    /// cannot explain.
+    #[test]
+    fn switching_to_another_key_clears_the_passphrase_stored_for_the_old_one() {
+        let dir = std::env::temp_dir().join(format!("edgeterm-keys-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = crate::store::Store::load_from_test(dir.join("profiles.json"));
+
+        let mut profile = crate::tests::profile(SessionKind::Ssh);
+        profile.host = Some("host.example".into());
+        profile.username = Some("ops".into());
+        profile.auth = Some(AuthKind::PublicKey);
+        profile.private_key_path = Some("/keys/id_ed25519".into());
+        profile.passphrase = Some("old-key-phrase".into());
+        let saved = store.save(profile).unwrap();
+        // What the setup reads back: the stored profile with the vault's
+        // passphrase merged in, the way `store.get` serves it.
+        let stored = store.get(&saved.id).unwrap().unwrap();
+        assert_eq!(
+            stored.passphrase.as_deref(),
+            Some("old-key-phrase"),
+            "the vault holds the passphrase for the key in use"
+        );
+
+        // The setup for another key with nothing typed; only a proven check
+        // saves, and the save must take the old passphrase with it.
+        let candidate = with_key_login(stored, "/keys/other_ed25519", None);
+        assert!(
+            update_if_verified(&store, candidate, &check(KeyCheckOutcome::Ready)).unwrap(),
+            "a proven check saves the new key"
+        );
+
+        let after = store.get(&saved.id).unwrap().unwrap();
+        assert_eq!(
+            after.private_key_path.as_deref(),
+            Some("/keys/other_ed25519")
+        );
+        assert_eq!(
+            after.passphrase, None,
+            "the previous key's passphrase must not survive the switch"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     /// What the session is switched *to*: the key login the dialog asked
     /// for, on top of the stored profile. The passphrase rules matter most:
     /// the webview never sees a stored one, so re-running the setup for the
@@ -448,6 +499,10 @@ mod tests {
         );
 
         let other = with_key_login(same, "/keys/other", None);
-        assert_eq!(other.passphrase, None, "another key starts without one");
+        assert_eq!(
+            other.passphrase.as_deref(),
+            Some(""),
+            "another key starts without one; the empty value clears what the vault holds"
+        );
     }
 }
