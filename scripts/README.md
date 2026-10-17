@@ -111,6 +111,33 @@ The Win32 scripts have machine-specific process/window assumptions. Pass `-Exe`
 explicitly when using them on another checkout. They were not run against the
 user's desktop during the 2026-10-14 audit.
 
+`check-native-terminal-tabs.mjs <new-output-dir>` drives a disposable Windows
+portable release through WebView2 CDP. Set `EDGETERM_CDP_URL` (default
+`http://127.0.0.1:9241`) and explicitly select its page with
+`EDGETERM_CDP_TARGET_ID` from that endpoint's `/json/list`. The instance must
+have no saved profiles or open sessions and must use the default GPU option.
+It opens eight local ConPTY sessions, writes three bursts of 20,000 synthetic
+lines into the first, checks search/input and cycles all eight tabs three
+times. JSON samples include shortcut dispatch and two animation frames; they
+are not a pure key-to-pixel latency measurement. The behavior gate checks that
+evicted hidden DOM fallbacks do not paint rows, rather than imposing an
+arbitrary timing threshold. A CPU profile and screenshot are saved alongside
+the results. The script closes its test sessions; close the disposable app
+afterward, including on failure. Do not run builds or other tests during the
+timed portion. This proves the recorded WebView2/ConPTY workload only.
+
+`check-native-profile-recovery.mjs <seed|blocked|restored> <data-dir>
+<new-output-dir>` uses the same explicit CDP target selection and requires a
+portable instance whose data directory is under the repository's `.tmp/`.
+Run each mode in a separate process launch: `seed` saves an original synthetic
+profile; with the app closed, retain a good copy of `sessions.json` and inject
+truncated JSON into this test directory; `blocked` checks the startup error,
+refused save and byte-for-byte preservation; close the app, restore the good
+copy, and use `restored` to verify that the original remains and a new save
+works. It never edits the configuration itself. The screenshots and JSON
+demonstrate actual native IPC/startup behavior, not disk-full or crash-safe
+transactional writes, OS vault persistence, or another platform's behavior.
+
 ### Static checks
 
 `npm run lint` runs Biome 2.5.15 without formatting. Unused variables/imports and
