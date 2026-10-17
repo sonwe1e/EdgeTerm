@@ -5,7 +5,6 @@ use crate::diagnostics::Request;
 use crate::model::AuthKind;
 use crate::session::ssh::{KeyCheck, KeyCheckOutcome, SharedTransport};
 use crate::ssh_keys::KeySummary;
-use russh_sftp::client::SftpSession;
 use serde::Serialize;
 
 /// Reads a private key file for the public-key login setup: its type, the
@@ -106,7 +105,7 @@ async fn install_into_session(
         format!("using {} {}", summary.key_type, summary.fingerprint),
     );
 
-    let sftp = SftpSession::new(transport.transfer_channel().await?)
+    let sftp = authorized_keys::KeyFileSession::new(transport.transfer_channel().await?)
         .await
         .map_err(|error| {
             AppError::connection_failed(format!("the server refused the sftp subsystem: {error}"))

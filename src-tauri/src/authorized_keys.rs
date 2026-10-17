@@ -16,10 +16,14 @@
 
 use std::time::Duration;
 
-use russh_sftp::client::SftpSession;
-use russh_sftp::protocol::{FileAttributes, OpenFlags, StatusCode};
+use russh_sftp::client::{
+    error::Error as SftpError,
+    rawsession::{Limits, SftpResult},
+    RawSftpSession,
+};
+use russh_sftp::protocol::{FileAttributes, OpenFlags, Packet, StatusCode};
 use serde::Serialize;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::error::{AppError, ErrorCode, Result};
 
@@ -31,6 +35,125 @@ pub const INSTALL_TIMEOUT: Duration = Duration::from_secs(30);
 /// Real files are kilobytes; anything bigger is not this file, and it is not
 /// a login to risk by rewriting.
 const MAX_AUTHORIZED_KEYS: usize = 512 * 1024;
+
+/// This transaction needs the negotiated posix-rename extension, which the
+/// dependency's high-level SftpSession does not expose. Keep its raw protocol
+/// use local to key installation; other SFTP clients are unchanged.
+pub struct KeyFileSession {
+    raw: RawSftpSession,
+    posix_rename: bool,
+    read_len: u32,
+    write_len: usize,
+    packet_len: Option<u64>,
+}
+
+impl KeyFileSession {
+    pub async fn new<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
+        stream: S,
+    ) -> SftpResult<Self> {
+        let mut raw = RawSftpSession::new(stream);
+        let version = raw.init().await?;
+        let posix_rename = version
+            .extensions
+            .get("posix-rename@openssh.com")
+            .is_some_and(|v| v == "1");
+        let mut read_len = 32768;
+        let mut write_len = 32768;
+        let mut packet_len = None;
+        if version
+            .extensions
+            .get("limits@openssh.com")
+            .is_some_and(|v| v == "1")
+        {
+            let limits = Limits::from(raw.limits().await?);
+            read_len = limits.read_len.unwrap_or(32768).min(32768) as u32;
+            write_len = limits.write_len.unwrap_or(32768).min(32768) as usize;
+            packet_len = limits.packet_len;
+            // DATA response: length(4), type(1), id(4), data length(4).
+            read_len =
+                (read_len as u64).min(packet_len.unwrap_or(u64::MAX).saturating_sub(13)) as u32;
+            if read_len == 0 {
+                return Err(SftpError::Limited(
+                    "packet limit cannot hold file data".into(),
+                ));
+            }
+            raw.set_limits(limits);
+        }
+        Ok(Self {
+            raw,
+            posix_rename,
+            read_len,
+            write_len,
+            packet_len,
+        })
+    }
+
+    pub async fn canonicalize(&self, path: &str) -> SftpResult<String> {
+        self.raw
+            .realpath(path)
+            .await?
+            .files
+            .into_iter()
+            .next()
+            .map(|file| file.filename)
+            .ok_or_else(|| SftpError::UnexpectedBehavior("missing canonical path".into()))
+    }
+
+    async fn read(&self, path: &str) -> SftpResult<Vec<u8>> {
+        let handle = self
+            .raw
+            .open(path, OpenFlags::READ, FileAttributes::default())
+            .await?
+            .handle;
+        let result = async {
+            let mut bytes = Vec::new();
+            loop {
+                match self
+                    .raw
+                    .read(&handle, bytes.len() as u64, self.read_len)
+                    .await
+                {
+                    Ok(data) if data.data.is_empty() => {
+                        return Err(SftpError::UnexpectedBehavior(
+                            "empty file data before EOF".into(),
+                        ))
+                    }
+                    Ok(data) => bytes.extend_from_slice(&data.data),
+                    Err(SftpError::Status(status)) if status.status_code == StatusCode::Eof => {
+                        break
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+            Ok(bytes)
+        }
+        .await;
+        let closed = self.raw.close(handle).await;
+        let bytes = result?;
+        closed?;
+        Ok(bytes)
+    }
+
+    async fn commit(&self, from: &str, to: &str, replacing: bool) -> SftpResult<()> {
+        if replacing && self.posix_rename {
+            let mut data = Vec::new();
+            for path in [from, to] {
+                data.extend_from_slice(&(path.len() as u32).to_be_bytes());
+                data.extend_from_slice(path.as_bytes());
+            }
+            match self.raw.extended("posix-rename@openssh.com", data).await? {
+                Packet::Status(status) if status.status_code == StatusCode::Ok => Ok(()),
+                Packet::Status(status) => Err(SftpError::Status(status)),
+                _ => Err(SftpError::UnexpectedPacket),
+            }
+        } else {
+            // Keep v3 RENAME's no-overwrite semantics for an initially absent
+            // file. Without the extension, an existing target may be refused;
+            // never delete it or open a two-step gap in the login trust file.
+            self.raw.rename(from, to).await.map(|_| ())
+        }
+    }
+}
 
 /// What merging the key into the file did.
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
@@ -199,7 +322,7 @@ fn fields_of(line: &str) -> Vec<&str> {
 /// landed. `home` is the login user's home directory, as the SFTP session
 /// resolved it.
 pub async fn install(
-    sftp: &SftpSession,
+    sftp: &KeyFileSession,
     home: &str,
     key_type: &str,
     data: &str,
@@ -220,15 +343,18 @@ pub async fn install(
     let path = format!("{dir}/authorized_keys");
 
     let home_meta = sftp
-        .metadata(home)
+        .raw
+        .stat(home)
         .await
-        .map_err(|error| sftp_error(format!("cannot read {home} over SFTP"), &error))?;
+        .map_err(|error| sftp_error(format!("cannot read {home} over SFTP"), &error))?
+        .attrs;
     ensure_dir(sftp, &dir, &home_meta).await?;
 
     // A symlinked `authorized_keys` is someone pointing the login's trust
     // file elsewhere; replacing it through the link is not this tool's call.
-    let existing = match sftp.symlink_metadata(&path).await {
+    let existing = match sftp.raw.lstat(&path).await {
         Ok(meta) => {
+            let meta = meta.attrs;
             if meta.is_symlink() {
                 return Err(AppError::new(format!(
                     "{path} is a symlink; refusing to install through it"
@@ -286,14 +412,15 @@ pub async fn install(
 /// Ensures `dir` exists as a real directory owned like the home directory,
 /// and tightens it to owner-only — what sshd's own checks and every
 /// `ssh-copy-id` expect.
-async fn ensure_dir(sftp: &SftpSession, dir: &str, home: &FileAttributes) -> Result<()> {
+async fn ensure_dir(sftp: &KeyFileSession, dir: &str, home: &FileAttributes) -> Result<()> {
     let perms = {
         let mut attrs = FileAttributes::default();
         attrs.permissions = Some(0o700);
         attrs
     };
-    match sftp.symlink_metadata(dir).await {
+    match sftp.raw.lstat(dir).await {
         Ok(meta) => {
+            let meta = meta.attrs;
             if meta.is_symlink() {
                 return Err(AppError::new(format!(
                     "{dir} is a symlink; refusing to install through it"
@@ -306,16 +433,19 @@ async fn ensure_dir(sftp: &SftpSession, dir: &str, home: &FileAttributes) -> Res
             }
             check_owner(&meta, home, dir)?;
             if meta.permissions.map(|mode| mode & 0o777) != Some(0o700) {
-                sftp.set_metadata(dir, perms).await.map_err(|error| {
+                sftp.raw.setstat(dir, perms).await.map_err(|error| {
                     sftp_error(format!("cannot set the permissions of {dir}"), &error)
                 })?;
             }
         }
         Err(error) if is_missing(&error) => {
-            sftp.create_dir(dir).await.map_err(|error| {
-                sftp_error(format!("cannot create {dir} on the server"), &error)
-            })?;
-            sftp.set_metadata(dir, perms).await.map_err(|error| {
+            sftp.raw
+                .mkdir(dir, FileAttributes::default())
+                .await
+                .map_err(|error| {
+                    sftp_error(format!("cannot create {dir} on the server"), &error)
+                })?;
+            sftp.raw.setstat(dir, perms).await.map_err(|error| {
                 sftp_error(format!("cannot set the permissions of {dir}"), &error)
             })?;
         }
@@ -338,12 +468,12 @@ fn check_owner(meta: &FileAttributes, home: &FileAttributes, path: &str) -> Resu
     Ok(())
 }
 
-/// Replaces `path` with `merged`, leaving the original untouched if anything
-/// at all goes wrong: a temporary file carries the new content, the original
-/// is read once more to catch a concurrent edit, and the result is read back
-/// before the install is reported.
+/// Prepares a complete temporary file, checks the original again, and commits
+/// without deleting the old path first. Failures before the commit preserve
+/// the original; failures after it explicitly report the installed/uncertain
+/// state. Read-back must succeed before installation is reported as complete.
 async fn replace(
-    sftp: &SftpSession,
+    sftp: &KeyFileSession,
     dir: &str,
     path: &str,
     merged: &str,
@@ -352,8 +482,9 @@ async fn replace(
     let temp = format!("{dir}/.authorized_keys.edgeterm-{}", uuid::Uuid::new_v4());
     let mut attrs = FileAttributes::default();
     attrs.permissions = Some(0o600);
-    let mut file = sftp
-        .open_with_flags_and_attributes(
+    let handle = sftp
+        .raw
+        .open(
             temp.clone(),
             OpenFlags::CREATE | OpenFlags::WRITE | OpenFlags::EXCLUDE,
             attrs.clone(),
@@ -364,25 +495,41 @@ async fn replace(
                 format!("cannot create a temporary file next to {path}"),
                 &error,
             )
-        })?;
-    if let Err(error) = file.write_all(merged.as_bytes()).await {
-        let _ = sftp.remove_file(&temp).await;
-        return Err(AppError::from_io(
-            format!("cannot write {temp} on the server"),
-            &error,
-        ));
+        })?
+        .handle;
+    // WRITE adds length/type/id, the handle string, offset and data length.
+    let write_len = sftp.write_len.min(
+        sftp.packet_len
+            .unwrap_or(u64::MAX)
+            .saturating_sub(25 + handle.len() as u64)
+            .min(32768) as usize,
+    );
+    let written = async {
+        if write_len == 0 {
+            return Err(SftpError::Limited(
+                "packet limit cannot hold a write".into(),
+            ));
+        }
+        for (index, chunk) in merged.as_bytes().chunks(write_len).enumerate() {
+            sftp.raw
+                .write(&handle, (index * write_len) as u64, chunk.to_vec())
+                .await?;
+        }
+        Ok::<_, SftpError>(())
     }
-    if let Err(error) = file.shutdown().await {
-        let _ = sftp.remove_file(&temp).await;
-        return Err(AppError::from_io(
+    .await;
+    let closed = sftp.raw.close(handle).await;
+    if let Err(error) = written.and(closed.map(|_| ())) {
+        let _ = sftp.raw.remove(&temp).await;
+        return Err(sftp_error(
             format!("cannot finish {temp} on the server"),
             &error,
         ));
     }
     // The create mode is a hint some servers ignore; the file that replaces
     // an `authorized_keys` must be owner-only either way.
-    if let Err(error) = sftp.set_metadata(&temp, attrs.clone()).await {
-        let _ = sftp.remove_file(&temp).await;
+    if let Err(error) = sftp.raw.setstat(&temp, attrs.clone()).await {
+        let _ = sftp.raw.remove(&temp).await;
         return Err(sftp_error(
             format!("cannot set the permissions of {temp}"),
             &error,
@@ -391,22 +538,22 @@ async fn replace(
     match unchanged(sftp, path, before).await {
         Ok(true) => {}
         Ok(false) => {
-            let _ = sftp.remove_file(&temp).await;
+            let _ = sftp.raw.remove(&temp).await;
             return Err(AppError::new(format!(
                 "{path} changed on the server while the key was being installed; \
                  nothing was written, retry"
             )));
         }
         Err(error) => {
-            let _ = sftp.remove_file(&temp).await;
+            let _ = sftp.raw.remove(&temp).await;
             return Err(error);
         }
     }
-    if let Err(error) = sftp.rename(&temp, path).await {
-        let _ = sftp.remove_file(&temp).await;
+    if let Err(error) = sftp.commit(&temp, path, before.is_some()).await {
+        let _ = sftp.raw.remove(&temp).await;
         return Err(sftp_error(format!("cannot replace {path}"), &error));
     }
-    if let Err(error) = sftp.set_metadata(path, attrs).await {
+    if let Err(error) = sftp.raw.setstat(path, attrs).await {
         // The content is in place; say so rather than implying nothing was
         // installed.
         return Err(sftp_error(
@@ -429,7 +576,7 @@ async fn replace(
 
 /// Whether `path` still holds exactly the bytes that were read at the start;
 /// a file that was absent must still be absent.
-async fn unchanged(sftp: &SftpSession, path: &str, before: Option<&[u8]>) -> Result<bool> {
+async fn unchanged(sftp: &KeyFileSession, path: &str, before: Option<&[u8]>) -> Result<bool> {
     match sftp.read(path).await {
         Ok(now) => Ok(before == Some(now.as_slice())),
         Err(error) if is_missing(&error) => Ok(before.is_none()),

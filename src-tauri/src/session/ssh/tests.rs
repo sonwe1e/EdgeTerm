@@ -1587,6 +1587,9 @@ use std::io::{Read as _, Seek as _, SeekFrom, Write as _};
 #[derive(Clone)]
 struct SftpHomeServer {
     root: PathBuf,
+    posix_rename: bool,
+    deny_posix_rename: bool,
+    packet_len: Option<u64>,
     channels:
         Arc<tokio::sync::Mutex<HashMap<russh::ChannelId, russh::Channel<russh::server::Msg>>>>,
     /// Applied when the next file write reaches the subsystem: how a test
@@ -1599,6 +1602,9 @@ impl SftpHomeServer {
     fn new(root: &Path) -> Self {
         Self {
             root: root.to_path_buf(),
+            posix_rename: true,
+            deny_posix_rename: false,
+            packet_len: None,
             channels: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             concurrent_edit: Arc::new(Mutex::new(None)),
         }
@@ -1641,6 +1647,9 @@ impl russh::server::Handler for SftpHomeServer {
                 session.channel_success(channel)?;
                 let files = SftpFiles {
                     root: self.root.clone(),
+                    posix_rename: self.posix_rename,
+                    deny_posix_rename: self.deny_posix_rename,
+                    packet_len: self.packet_len,
                     concurrent_edit: self.concurrent_edit.clone(),
                     ..Default::default()
                 };
@@ -1659,6 +1668,9 @@ impl russh::server::Handler for SftpHomeServer {
 #[derive(Default)]
 struct SftpFiles {
     root: PathBuf,
+    posix_rename: bool,
+    deny_posix_rename: bool,
+    packet_len: Option<u64>,
     concurrent_edit: Arc<Mutex<Option<(String, Vec<u8>)>>>,
     /// The open files, keyed by the handle string the client keeps.
     open: HashMap<String, std::fs::File>,
@@ -1885,7 +1897,11 @@ impl russh_sftp::server::Handler for SftpFiles {
         oldpath: String,
         newpath: String,
     ) -> Result<Status, Self::Error> {
-        // A plain `rename(2)`, overwriting like OpenSSH's sftp-server does.
+        // SFTP v3 RENAME must refuse an existing target. OpenSSH's separate
+        // posix-rename extension is what provides replacement semantics.
+        if self.local(&newpath).exists() {
+            return Err(StatusCode::Failure);
+        }
         std::fs::rename(self.local(&oldpath), self.local(&newpath))
             .map_err(|error| io_status(&error))?;
         Ok(ok(id))
@@ -1896,21 +1912,190 @@ impl russh_sftp::server::Handler for SftpFiles {
         _version: u32,
         _extensions: HashMap<String, String>,
     ) -> Result<Version, Self::Error> {
-        Ok(Version::new())
+        let mut version = Version::new();
+        if self.posix_rename {
+            version
+                .extensions
+                .insert("posix-rename@openssh.com".into(), "1".into());
+        }
+        if self.packet_len.is_some() {
+            version
+                .extensions
+                .insert("limits@openssh.com".into(), "1".into());
+        }
+        Ok(version)
+    }
+
+    async fn extended(
+        &mut self,
+        id: u32,
+        request: String,
+        data: Vec<u8>,
+    ) -> Result<russh_sftp::protocol::Packet, Self::Error> {
+        if request == "limits@openssh.com" {
+            let packet_len = self.packet_len.ok_or(StatusCode::OpUnsupported)?;
+            // No read/write-specific cap: clients must respect the packet
+            // cap, including request overhead, as the high-level client did.
+            let data = [packet_len, 0, 0, 0]
+                .into_iter()
+                .flat_map(u64::to_be_bytes)
+                .collect();
+            return Ok(russh_sftp::protocol::Packet::ExtendedReply(
+                russh_sftp::protocol::ExtendedReply { id, data },
+            ));
+        }
+        if request != "posix-rename@openssh.com" || !self.posix_rename {
+            return Err(StatusCode::OpUnsupported);
+        }
+        if self.deny_posix_rename {
+            return Err(StatusCode::PermissionDenied);
+        }
+        fn path(bytes: &mut &[u8]) -> Result<String, StatusCode> {
+            let size = bytes.get(..4).ok_or(StatusCode::BadMessage)?;
+            let size = u32::from_be_bytes(size.try_into().unwrap()) as usize;
+            *bytes = &bytes[4..];
+            let value = bytes.get(..size).ok_or(StatusCode::BadMessage)?;
+            let value = std::str::from_utf8(value)
+                .map_err(|_| StatusCode::BadMessage)?
+                .to_string();
+            *bytes = &bytes[size..];
+            Ok(value)
+        }
+        let mut bytes = data.as_slice();
+        let from = path(&mut bytes)?;
+        let to = path(&mut bytes)?;
+        std::fs::rename(self.local(&from), self.local(&to)).map_err(|error| io_status(&error))?;
+        Ok(russh_sftp::protocol::Packet::Status(ok(id)))
     }
 }
 
 /// Opens the SFTP subsystem of `transport`, the way the install command does.
-async fn sftp_on(transport: &Arc<SharedTransport>) -> SftpSession {
-    SftpSession::new(transport.transfer_channel().await.expect("sftp subsystem"))
-        .await
-        .expect("sftp session")
+async fn sftp_on(transport: &Arc<SharedTransport>) -> crate::authorized_keys::KeyFileSession {
+    crate::authorized_keys::KeyFileSession::new(
+        transport.transfer_channel().await.expect("sftp subsystem"),
+    )
+    .await
+    .expect("sftp session")
 }
 
 /// The key the install tests put on the server; the fixture accepts any key,
 /// so its private half is never needed.
 fn install_key() -> (&'static str, &'static str) {
     ED25519_A.split_once(' ').expect("type and data")
+}
+
+#[tokio::test]
+#[ignore = "dedicated OpenSSH fixture whose SFTP home equals EDGETERM_REAL_SSH_ROOT"]
+async fn real_public_key_append_preserves_existing_keys_and_reconnects() {
+    use tokio::io::AsyncWriteExt;
+    let var = |name: &str| std::env::var(name).expect("dedicated SSH fixture environment");
+    let address = var("EDGETERM_REAL_SSH_ADDR");
+    let (host, port) = address.rsplit_once(':').unwrap();
+    let port: u16 = port.parse().unwrap();
+    let user = var("EDGETERM_REAL_SSH_USER");
+    let known_hosts = KnownHosts::new();
+    let transport = super::test_transport(
+        host,
+        port,
+        &user,
+        &var("EDGETERM_REAL_SSH_KEY"),
+        known_hosts.path(),
+    )
+    .await;
+    let files = SftpSession::new(transport.transfer_channel().await.unwrap())
+        .await
+        .unwrap();
+    let home = files.canonicalize(".").await.unwrap();
+    assert_eq!(
+        home,
+        var("EDGETERM_REAL_SSH_ROOT"),
+        "never install outside the dedicated fixture home"
+    );
+    let path = format!("{home}/.ssh/authorized_keys");
+    let before = files.read(&path).await.unwrap();
+    assert!(
+        !before.is_empty(),
+        "the regression requires an existing authorization file"
+    );
+    let key_path = known_hosts.path().parent().unwrap().join("new-key");
+    let summary = crate::ssh_keys::generate_private_key(key_path.to_str().unwrap(), None).unwrap();
+    let (key_type, data) = summary.public_key.split_once(' ').unwrap();
+    let sftp = sftp_on(&transport).await;
+    let installed = install(&sftp, &home, key_type, data, Some("append-regression")).await;
+    if installed.is_err() {
+        assert_eq!(
+            files.read(&path).await.unwrap(),
+            before,
+            "failed installs must retain the original"
+        );
+    }
+    assert_eq!(
+        installed
+            .expect("append to existing OpenSSH authorized_keys")
+            .outcome,
+        InstallOutcome::Added
+    );
+    let after = files.read(&path).await.unwrap();
+    assert!(after.starts_with(&before));
+    assert_eq!(
+        files.metadata(&path).await.unwrap().permissions.unwrap() & 0o777,
+        0o600
+    );
+    assert_eq!(
+        install(&sftp, &home, key_type, data, Some("repeat"))
+            .await
+            .unwrap()
+            .outcome,
+        InstallOutcome::Present
+    );
+    assert_eq!(files.read(&path).await.unwrap(), after);
+    let mut profile = crate::tests::profile(SessionKind::Ssh);
+    profile.host = Some(host.into());
+    profile.port = Some(port);
+    profile.username = Some(user.clone());
+    profile.auth = Some(AuthKind::PublicKey);
+    profile.private_key_path = Some(key_path.to_string_lossy().into());
+    let check = key_check(
+        &transport,
+        &profile,
+        &request(),
+        &Control::default(),
+        Duration::from_secs(20),
+        Some(known_hosts.path().to_path_buf()),
+    )
+    .await
+    .unwrap();
+    assert_eq!(check.outcome, KeyCheckOutcome::Ready);
+    let store_path = known_hosts.path().parent().unwrap().join("sessions.json");
+    let saved = crate::store::Store::load_from_test(store_path.clone())
+        .save(profile)
+        .unwrap();
+    transport.test_disconnect().await;
+    drop(files);
+    drop(sftp);
+    drop(transport);
+    let saved = crate::store::Store::load_from_test(store_path)
+        .get(&saved.id)
+        .unwrap()
+        .unwrap();
+    let fresh = super::test_transport(
+        host,
+        port,
+        &user,
+        saved.private_key_path.as_deref().unwrap(),
+        known_hosts.path(),
+    )
+    .await;
+    let files = SftpSession::new(fresh.transfer_channel().await.unwrap())
+        .await
+        .unwrap();
+    assert_eq!(files.read(&path).await.unwrap(), after);
+    let mut restore = files.create(&path).await.unwrap();
+    restore.write_all(&before).await.unwrap();
+    restore.shutdown().await.unwrap();
+    assert_eq!(files.read(&path).await.unwrap(), before);
+    fresh.test_disconnect().await;
+    eprintln!("OpenSSH append, original key preservation, deduplication, independent verification, saved profile reload and fresh key-only login passed");
 }
 
 #[tokio::test]
@@ -2007,6 +2192,75 @@ async fn installing_a_key_preserves_the_existing_file_around_the_appended_line()
     assert_eq!(
         std::fs::read_to_string(home.join(".ssh/authorized_keys")).expect("file"),
         restricted_line
+    );
+}
+
+#[tokio::test]
+async fn a_refused_key_replacement_keeps_the_original_and_cleans_its_temp_file() {
+    for supports_posix in [false, true] {
+        let file = KnownHosts::new();
+        let home = file.path().parent().unwrap().join("home");
+        std::fs::create_dir_all(home.join(".ssh")).unwrap();
+        let path = home.join(".ssh/authorized_keys");
+        let before = b"# preserve the original authorization file\n";
+        std::fs::write(&path, before).unwrap();
+        let mut server = SftpHomeServer::new(&home);
+        server.posix_rename = supports_posix;
+        server.deny_posix_rename = true;
+        let address = serve_once(server, Preferred::default()).await;
+        let transport = transport_to(address, file.path()).await;
+        let sftp = sftp_on(&transport).await;
+        let (key_type, data) = install_key();
+        assert!(install(&sftp, "/", key_type, data, None).await.is_err());
+        assert_eq!(std::fs::read(path).unwrap(), before);
+        assert_eq!(
+            std::fs::read_dir(home.join(".ssh")).unwrap().count(),
+            1,
+            "only the original must remain after a refused commit"
+        );
+    }
+}
+
+#[tokio::test]
+async fn key_install_readback_confirms_the_complete_appended_file() {
+    let file = KnownHosts::new();
+    let home = file.path().parent().unwrap().join("home");
+    std::fs::create_dir_all(home.join(".ssh")).unwrap();
+    let path = home.join(".ssh/authorized_keys");
+    // The original is inside the existing 512 KiB input cap; adding a key
+    // crosses it. Read-back must compare the entire committed file, just as
+    // the old high-level read did, rather than truncate the confirmation.
+    let original = format!("#{}\n", "x".repeat(512 * 1024 - 52));
+    std::fs::write(&path, &original).unwrap();
+    let address = serve_once(SftpHomeServer::new(&home), Preferred::default()).await;
+    let transport = transport_to(address, file.path()).await;
+    let sftp = sftp_on(&transport).await;
+    let (key_type, data) = install_key();
+    let report = install(&sftp, "/", key_type, data, None).await.unwrap();
+    assert_eq!(report.outcome, InstallOutcome::Added);
+    let after = std::fs::read_to_string(path).unwrap();
+    assert_eq!(after, format!("{original}{key_type} {data}\n"));
+}
+
+#[tokio::test]
+async fn key_install_keeps_the_servers_packet_limit_when_reading_and_writing() {
+    let file = KnownHosts::new();
+    let home = file.path().parent().unwrap().join("home");
+    std::fs::create_dir_all(home.join(".ssh")).unwrap();
+    let path = home.join(".ssh/authorized_keys");
+    let original = format!("#{}\n", "x".repeat(10000));
+    std::fs::write(&path, &original).unwrap();
+    let mut server = SftpHomeServer::new(&home);
+    server.packet_len = Some(4096);
+    let address = serve_once(server, Preferred::default()).await;
+    let transport = transport_to(address, file.path()).await;
+    let sftp = sftp_on(&transport).await;
+    let (key_type, data) = install_key();
+    let report = install(&sftp, "/", key_type, data, None).await.unwrap();
+    assert_eq!(report.outcome, InstallOutcome::Added);
+    assert_eq!(
+        std::fs::read_to_string(path).unwrap(),
+        format!("{original}{key_type} {data}\n")
     );
 }
 
