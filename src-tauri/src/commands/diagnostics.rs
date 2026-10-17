@@ -17,8 +17,12 @@ pub fn open_log_directory() -> Result<()> {
 /// neither does the report.
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
-pub fn export_diagnostics(path: String) -> Result<()> {
-    let report = crate::diagnostics::report();
-    std::fs::write(&path, report)
-        .map_err(|error| AppError::from_io(format!("cannot write {path}"), &error))
+pub async fn export_diagnostics(path: String) -> Result<()> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let report = crate::diagnostics::report();
+        std::fs::write(&path, report)
+            .map_err(|error| AppError::from_io(format!("cannot write {path}"), &error))
+    })
+    .await
+    .map_err(err)?
 }

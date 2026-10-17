@@ -17,7 +17,7 @@
 //! leaves the app running without a subscriber, the writer is non-blocking,
 //! and a full disk only loses the affected line.
 
-use std::io::Write;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -117,25 +117,38 @@ fn log_tail(files: &[(PathBuf, u64)]) -> (String, bool) {
             truncated = true;
             break;
         }
-        let Ok(content) = std::fs::read(path) else {
+        let Ok(mut file) = std::fs::File::open(path) else {
             continue;
         };
-        let start = content.len().saturating_sub(remaining);
-        let slice = &content[start..];
+        let Ok((content, omitted)) = read_tail(&mut file, remaining) else {
+            continue;
+        };
+        let slice = &content[..];
         // Starting mid-line would expose a partial event; cut to the next one.
-        let slice = match start > 0 {
+        let slice = match omitted {
             true => match slice.iter().position(|byte| *byte == b'\n') {
                 Some(newline) => &slice[newline + 1..],
                 None => &[],
             },
             false => slice,
         };
-        truncated |= start > 0;
-        remaining = remaining.saturating_sub(slice.len());
+        truncated |= omitted;
+        // Charge bytes read, including a partial first line, so dropping that
+        // line cannot pull older data back into a supposedly newest-only tail.
+        remaining = remaining.saturating_sub(content.len());
         newest_first.push(String::from_utf8_lossy(slice).into_owned());
     }
     newest_first.reverse();
     (newest_first.concat(), truncated)
+}
+
+fn read_tail(reader: &mut (impl Read + Seek), budget: usize) -> std::io::Result<(Vec<u8>, bool)> {
+    let length = reader.seek(SeekFrom::End(0))?;
+    let start = length.saturating_sub(budget as u64);
+    reader.seek(SeekFrom::Start(start))?;
+    let mut bytes = Vec::with_capacity(budget);
+    reader.take(budget as u64).read_to_end(&mut bytes)?;
+    Ok((bytes, start > 0))
 }
 
 /// Installs the global file subscriber. Never fails the app: a directory that
@@ -515,6 +528,34 @@ mod tests {
         assert!(files.iter().map(|(_, n)| n).sum::<u64>() <= 8 * 1024 * 1024);
         assert!(report_from(&dir).contains("latest-event-survives"));
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn tail_reader_never_reads_the_whole_file() {
+        struct Counted {
+            inner: std::io::Cursor<Vec<u8>>,
+            read: usize,
+        }
+        impl Read for Counted {
+            fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
+                let count = self.inner.read(bytes)?;
+                self.read += count;
+                Ok(count)
+            }
+        }
+        impl Seek for Counted {
+            fn seek(&mut self, from: SeekFrom) -> std::io::Result<u64> {
+                self.inner.seek(from)
+            }
+        }
+        let mut reader = Counted {
+            inner: std::io::Cursor::new(vec![b'x'; 1024 * 1024]),
+            read: 0,
+        };
+        let (tail, omitted) = read_tail(&mut reader, 256 * 1024).unwrap();
+        assert!(omitted);
+        assert_eq!(reader.read, 262144);
+        assert_eq!(tail.len(), 262144);
     }
 
     #[test]
