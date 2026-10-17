@@ -199,3 +199,70 @@ X/ZMODEM 下沉、协议库替换、便携主密码跨机方案的完整交付�
   与平台记录。
 
 验收口径不变（沿用第 4 节）：环境未配置、用例被过滤或 ignored 都不算通过。
+
+## 7. 收尾记录（2026-10-17）
+
+起始提交 `ac320ae`，分支 `codex/edgeterm-flow181-improvements`。本轮将阶段一遗留的
+四项补修整理为提交，并修复审查中确认的一个阶段三缺陷。提交链（每个提交独立通过
+typecheck，`check:commits ac320ae..HEAD --typecheck`：5 提交 / 0 错误 / 0 警告）：
+
+| 提交 | 内容 |
+|---|---|
+| `4f66a67` | 日志边界：运行期按 2 MiB / UTC 日期分段，分段前预留容量；启动 prune 可删除单个超大最新文件，失败即停写而非放任增长 |
+| `00b563d` | 诊断读取：报告只读每个文件尾部（seek + 限额读取，丢弃的半行计入预算）；导出改到 `spawn_blocking`，不再阻塞命令线程 |
+| `bacc7f3` | 传输连接日志：SFTP 与 tar 共用 `dial_transfer`，失败、主机密钥变化、暂停/取消也有 `end` 事件 |
+| `6b30b08` | 结构化错误显示：会话面板、导入导出、OpenSSH 配置入口经 `errorText`，不再显示 `[object Object]` |
+| `81ed964` | 公钥设置：换密钥时清除凭据库中旧密钥的口令（见下） |
+
+### 7.1 本轮发现并修复的缺陷
+
+- **换密钥不清除旧口令**（`81ed964`）：为另一把密钥配置公钥登录时，旧密钥的口令残留在
+  凭据库——`with_key_login` 只清 profile 字段，而保存把空字段解释为“不变”。后果：重连时
+  把旧口令提供给新密钥（新密钥设了口令时报无法理解的“口令错误”），且一个不再被配置的
+  密钥的口令被无限期保留。修复：换密钥时写入表示“清除”的空口令（见 `next_secrets` 约定）；
+  同密钥重跑仍保留已存口令，本就无口令的 profile 不受影响。回归测试
+  `switching_to_another_key_clears_the_passphrase_stored_for_the_old_one` 在 `ac320ae` 上
+  失败（旧口令仍在），修复后通过。
+
+### 7.2 最终候选状态验证（2026-10-17，Windows 11，rustc 1.99.0 / node v24.19.0）
+
+| 检查 | 命令 | 结果 |
+|---|---|---|
+| 类型 | `npm run typecheck` | 通过 |
+| 静态检查 | `npm run lint` | 通过；仅 2 条既有生成文件警告（`src/bindings.ts`，IPC 契约文档已声明原样保留），无新增 |
+| 前端测试 | `npm test` | 73 文件 / 543 用例全过 |
+| 浏览器契约 | `npm run test:browser` | 8 文件 / 49 用例全过 |
+| 构建 | `npm run build` | 通过；既有 chunk 大小警告 |
+| 契约 | `npm run check:bindings` | 通过：101/106 命令、5 事件、5 项手写例外 |
+| Rust 测试 | `cargo test --manifest-path src-tauri/Cargo.toml --lib` | 343 通过 / 0 失败 / 24 ignored |
+| 格式 | `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` | 通过 |
+| 空白 | `git diff --check` | 通过 |
+| 逐提交 | `npm run check:commits -- ac320ae..HEAD --typecheck` | 5 提交 / 0 错误 / 0 警告 |
+
+24 个 ignored 均为真实夹具、真实凭据库往返与基准用例，本机环境未配置，不计入通过。
+
+### 7.3 真实环境验收（未执行，不得标记为通过）
+
+本机检查：无 `sshd.exe`、无 sshd 服务、无 Docker、`EDGETERM_REAL_SSH_*` 未设置；
+OpenSSH Server 功能查询需管理员权限，未安装（不擅自安装全局服务）。最小验收条件：
+
+1. 一台 loopback OpenSSH 夹具（本机安装 OpenSSH Server 并用临时账户，或隔离容器/虚拟机），
+   设置 `EDGETERM_REAL_SSH_ADDR/USER/KEY/ROOT`；
+2. 安装 → 独立验证 → 保存会话 → 断开原连接 → 仅凭密钥重连成功；
+3. 覆盖：带口令密钥、认证失败、取消/超时、单跳/多跳跳板路径、
+   `AuthenticationMethods publickey,keyboard-interactive` 下的第二因子；
+4. `tauri:dev` / `tauri:build` 桌面端对菜单入口、对话框与状态刷新的实机验证；
+5. macOS/Linux 私钥权限与系统凭据库行为（本机无此环境，列为待验收）。
+
+### 7.4 已接受的范围限制与已知观察
+
+- 公钥安装仅支持 SFTP（无远程命令回退）；对话框只接受已有私钥（生成能力已实现但未接入
+  对话框）；`additionalFactor` 仅单元级证据（russh 作为服务端夹具丢弃 `partial_success`）。
+- 验证通过但保存失败时，命令整体返回错误，结构化的 `KeySetup`（安装路径/结果）不随错误
+  返回；已存会话不变，界面显示"已安装并验证，但会话未能保存"，状态一致但信息有损。
+- `Store::save` 先更新内存再落盘，落盘失败时内存与磁盘短暂不一致（既有设计，错误已向
+  调用方呈现）；凭据库的锁定/拒绝写入路径不受影响。
+
+### 7.5 工作区状态
+
+本轮全部改动已形成提交，工作区干净；无关工作未被触碰。
