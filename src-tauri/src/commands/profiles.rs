@@ -4,8 +4,9 @@ use crate::credentials::CredentialStoreStatus;
 
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
-pub fn list_profiles(state: State<'_, AppState>) -> Vec<SessionProfile> {
-    state.store.list()
+pub fn list_profiles(state: State<'_, AppState>) -> Result<Vec<SessionProfile>> {
+    state.store.require_readable_profiles()?;
+    Ok(state.store.list())
 }
 
 /// How saved passwords are protected right now: whether they survive a
@@ -117,6 +118,7 @@ pub fn export_app_data(
     exported_at: String,
 ) -> Result<DataSummary> {
     require_data_file_path(&path)?;
+    state.store.require_readable_profiles()?;
     let mut data = state.store.snapshot();
     data.exported_at = Some(exported_at);
     data.settings = Some(settings.0);

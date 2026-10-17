@@ -1,5 +1,6 @@
 import type { StateCreator } from "zustand";
 import * as api from "./api";
+import { errorText } from "./errorInfo";
 import { AppStore } from "./storeTypes";
 
 export const createProfileActions: StateCreator<
@@ -18,8 +19,14 @@ export const createProfileActions: StateCreator<
   >
 > = (set, get) => ({
   async loadProfiles() {
-    const [profiles, groups] = await Promise.all([api.listProfiles(), api.listSessionGroups()]);
-    set({ profiles, groups });
+    try {
+      const [profiles, groups] = await Promise.all([api.listProfiles(), api.listSessionGroups()]);
+      set({ profiles, groups });
+    } catch (error) {
+      const message = errorText(error);
+      get().setError(message);
+      get().setStatus(message);
+    }
   },
 
   async upsertProfile(profile) {

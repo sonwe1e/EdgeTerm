@@ -41,6 +41,7 @@ pub struct Store {
     sender_commands_path: PathBuf,
     command_history_path: PathBuf,
     profiles: Mutex<Vec<SessionProfile>>,
+    profiles_load_error: Option<AppError>,
     credentials: CredentialStore,
     groups: Mutex<Vec<SessionGroup>>,
     sender_commands: Mutex<Vec<SavedCommand>>,
@@ -76,7 +77,14 @@ impl Store {
     /// tests pass a process-local store so `cargo test` never touches the
     /// real credential store (see `load_from_test`).
     pub(crate) fn load_with(path: PathBuf, key_store: Option<Arc<dyn KeyStore>>) -> Self {
-        let mut profiles: Vec<SessionProfile> = read_json(&path).unwrap_or_default();
+        let (mut profiles, profiles_load_error) = match std::fs::read_to_string(&path) {
+            Ok(raw) => match serde_json::from_str::<Vec<SessionProfile>>(&raw) {
+                Ok(profiles) => (profiles, None),
+                Err(_) => (Vec::new(), Some(profiles_read_error(&path))),
+            },
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => (Vec::new(), None),
+            Err(_) => (Vec::new(), Some(profiles_read_error(&path))),
+        };
         let credentials = CredentialStore::load(credentials_path_for(&path), key_store.as_deref());
         let groups_path = groups_path_for(&path);
         let groups = read_json(&groups_path).unwrap_or_default();
@@ -106,6 +114,7 @@ impl Store {
             sender_commands_path,
             command_history_path,
             profiles: Mutex::new(profiles),
+            profiles_load_error,
             credentials,
             groups: Mutex::new(groups),
             sender_commands: Mutex::new(sender_commands),
@@ -131,6 +140,15 @@ impl Store {
 
     pub fn list(&self) -> Vec<SessionProfile> {
         self.profiles.lock().clone()
+    }
+
+    /// A missing file is a first launch; an existing unreadable file must
+    /// survive for recovery. Refuse before changing memory or any other file.
+    pub fn require_readable_profiles(&self) -> Result<()> {
+        match &self.profiles_load_error {
+            Some(error) => Err(error.clone()),
+            None => Ok(()),
+        }
     }
 
     /// Whether saved passwords survive a restart right now, and why not when
@@ -196,6 +214,7 @@ impl Store {
     }
 
     pub fn save(&self, mut profile: SessionProfile) -> Result<SessionProfile> {
+        self.require_readable_profiles()?;
         if profile.id.is_empty() {
             profile.id = uuid::Uuid::new_v4().to_string();
         }
@@ -262,6 +281,7 @@ impl Store {
     /// copied here because the webview never sees them; the Sender commands
     /// scoped to the original stay with the original.
     pub fn duplicate(&self, id: &str) -> Result<SessionProfile> {
+        self.require_readable_profiles()?;
         let copy = {
             let mut profiles = self.profiles.lock();
             let index = profiles
@@ -284,6 +304,7 @@ impl Store {
     /// Removes a profile together with everything that belongs to it: its
     /// stored credentials and the Sender commands scoped to it alone.
     pub fn delete(&self, id: &str) -> Result<()> {
+        self.require_readable_profiles()?;
         self.credentials.remove(id);
         self.profiles.lock().retain(|p| p.id != id);
         self.persist()?;
@@ -360,6 +381,7 @@ impl Store {
     /// the profiles in any of them (with their credentials) and the Sender
     /// commands scoped to any of those groups or profiles.
     pub fn delete_group(&self, id: &str) -> Result<()> {
+        self.require_readable_profiles()?;
         let removed_groups = {
             let mut groups = self.groups.lock();
             if !groups.iter().any(|g| g.id == id) {
@@ -552,6 +574,7 @@ impl Store {
     /// group of another kind or around a cycle are detached so the Session
     /// panel tree stays finite.
     pub fn import_data(&self, data: AppData) -> Result<DataSummary> {
+        self.require_readable_profiles()?;
         validate_app_data(&data)?;
         let mut summary = DataSummary::default();
 
@@ -641,6 +664,7 @@ impl Store {
     // --- persistence ----------------------------------------------------------
 
     fn persist(&self) -> Result<()> {
+        self.require_readable_profiles()?;
         let parent = self
             .path
             .parent()
@@ -913,6 +937,14 @@ fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Option<T> {
     std::fs::read_to_string(path)
         .ok()
         .and_then(|raw| serde_json::from_str(&raw).ok())
+}
+
+fn profiles_read_error(path: &Path) -> AppError {
+    AppError::new(format!(
+        "Cannot read the session configuration at {}. The existing file has been left untouched; \
+         restore a readable configuration and restart EdgeTerm before saving sessions.",
+        path.display()
+    ))
 }
 
 fn credentials_path_for(path: &Path) -> PathBuf {

@@ -29,6 +29,134 @@ fn temp_dir(tag: &str) -> PathBuf {
     dir
 }
 
+#[test]
+fn unreadable_session_profiles_are_not_replaced_or_changed_in_memory() {
+    for directory_instead_of_file in [false, true] {
+        let dir = temp_dir("unreadable-profiles");
+        let path = dir.join("sessions.json");
+        let damaged = br#"[{"id":"old","name":"Original server","kind":"ssh"},"#;
+        if directory_instead_of_file {
+            std::fs::create_dir(&path).unwrap();
+        } else {
+            std::fs::write(&path, damaged).unwrap();
+        }
+        let store = Store::load_with(path.clone(), None);
+        let saved = store.save(profile(SessionKind::Local));
+        let memory = store.list();
+        let preserved = if directory_instead_of_file {
+            path.is_dir()
+        } else {
+            std::fs::read(&path).unwrap() == damaged
+        };
+        std::fs::remove_dir_all(dir).unwrap();
+        assert!(
+            saved.is_err(),
+            "an unreadable profile file must block saves"
+        );
+        assert!(preserved, "the existing path must survive unchanged");
+        assert!(memory.is_empty(), "a refused save must not mutate profiles");
+        let message = saved.unwrap_err().message;
+        assert!(message.contains("sessions.json"));
+        assert!(message.contains("restart"));
+    }
+}
+
+#[test]
+fn damaged_session_profiles_block_deletion_and_import_before_other_files_change() {
+    let dir = temp_dir("damaged-profiles-import");
+    let path = dir.join("sessions.json");
+    let damaged = b"not valid JSON";
+    std::fs::write(&path, damaged).unwrap();
+    let store = Store::load_from_test(path.clone());
+    let delete = store.delete("missing");
+    let mut data = store.snapshot();
+    data.profiles.push(profile(SessionKind::Ssh));
+    let imported = store.import_data(data);
+    let preserved = std::fs::read(&path).unwrap() == damaged;
+    let memory = store.list();
+    let wrote_groups = dir.join("session_groups.json").exists();
+    std::fs::remove_dir_all(dir).unwrap();
+    assert!(delete.is_err());
+    assert!(imported.is_err());
+    assert!(preserved);
+    assert!(memory.is_empty());
+    assert!(
+        !wrote_groups,
+        "refused imports must not write companion files"
+    );
+}
+
+#[test]
+fn damaged_profiles_preserve_existing_credentials_groups_and_sender_commands() {
+    let dir = temp_dir("damaged-profiles-companions");
+    let path = dir.join("sessions.json");
+    let store = Store::load_from_test(path.clone());
+    let group = store
+        .save_group(group("Original group", SessionKind::Ssh, None))
+        .unwrap();
+    let mut original = profile(SessionKind::Ssh);
+    original.group_id = Some(group.id.clone());
+    original.password = Some("synthetic-regression-password".into());
+    let original = store.save(original).unwrap();
+    store
+        .save_sender_command(scoped(
+            "Original command",
+            CommandScope::Profile {
+                id: original.id.clone(),
+            },
+        ))
+        .unwrap();
+    let imported = store.snapshot();
+    drop(store);
+    std::fs::write(&path, b"[").unwrap();
+    let files: Vec<_> = [
+        "sessions.json",
+        "credentials.json",
+        "session_groups.json",
+        "sender_commands.json",
+    ]
+    .into_iter()
+    .map(|name| {
+        let path = dir.join(name);
+        let bytes = std::fs::read(&path).unwrap();
+        (path, bytes)
+    })
+    .collect();
+    let blocked = Store::load_from_test(path);
+    assert!(blocked.save(profile(SessionKind::Ssh)).is_err());
+    assert!(blocked.duplicate(&original.id).is_err());
+    assert!(blocked.delete(&original.id).is_err());
+    assert!(blocked.delete_group(&group.id).is_err());
+    assert!(blocked.import_data(imported).is_err());
+    for (path, bytes) in files {
+        assert_eq!(
+            std::fs::read(path).unwrap(),
+            bytes,
+            "refused operations must preserve companion bytes"
+        );
+    }
+    assert!(blocked.list().is_empty());
+    assert_eq!(blocked.list_groups().len(), 1);
+    assert_eq!(blocked.list_sender_commands().len(), 1);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn restored_session_profiles_load_normally_after_restart() {
+    let dir = temp_dir("restored-profiles");
+    let path = dir.join("sessions.json");
+    std::fs::write(&path, b"[").unwrap();
+    let blocked = Store::load_with(path.clone(), None);
+    assert!(blocked.save(profile(SessionKind::Local)).is_err());
+    let original = profile(SessionKind::Ssh);
+    std::fs::write(&path, serde_json::to_vec(&vec![original]).unwrap()).unwrap();
+    let restored = Store::load_with(path.clone(), None);
+    assert_eq!(restored.list().len(), 1);
+    restored.save(profile(SessionKind::Local)).unwrap();
+    assert_eq!(Store::load_with(path, None).list().len(), 2);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
 /// A progress channel for tests that only care about the result.
 fn silent_progress() -> tauri::ipc::Channel<TransferProgress> {
     tauri::ipc::Channel::new(|_| Ok(()))
