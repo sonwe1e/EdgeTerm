@@ -177,6 +177,9 @@ pub(super) async fn write_transfer_bytes(path: String, offset: u64, bytes: &[u8]
     let mut file = tokio::fs::OpenOptions::new().write(true).open(path).await?;
     file.seek(std::io::SeekFrom::Start(offset)).await?;
     file.write_all(bytes).await?;
+    // Tokio may still have the write queued when write_all returns. Wait
+    // before acknowledging the chunk or dropping its last file handle.
+    file.flush().await?;
     Ok(())
 }
 
@@ -335,6 +338,39 @@ mod binary_transfer_tests {
             zmodem_read_chunk(file.0.clone(), 0, 2).await.unwrap(),
             B64.encode([42, 24])
         );
+    }
+
+    #[test]
+    fn file_chunk_write_returns_after_bytes_are_visible_to_a_new_reader() {
+        // Exercise a busy blocking pool with real, independent files. No time
+        // threshold: the contract is visibility after the write was acknowledged.
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .max_blocking_threads(1)
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let tasks: Vec<_> = (1..=8)
+                    .map(|value| {
+                        tokio::spawn(async move {
+                            let file = TempFile::new();
+                            std::fs::write(&file.0, vec![0; 1024 * 1024]).unwrap();
+                            let expected = vec![value; 1024 * 1024];
+                            write_transfer_bytes(file.0.clone(), 0, &expected)
+                                .await
+                                .unwrap();
+                            assert!(
+                                std::fs::read(&file.0).unwrap() == expected,
+                                "a completed chunk write must be visible to another reader"
+                            );
+                        })
+                    })
+                    .collect();
+                for task in tasks {
+                    task.await.unwrap();
+                }
+            });
     }
 
     #[tokio::test]
