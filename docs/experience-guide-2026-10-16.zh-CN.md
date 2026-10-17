@@ -41,7 +41,7 @@ Rust/TS 字段漂移。Compiler 对照没有显示有价值的收益，默认关
 ## 产物
 
 构建命令：`npm run tauri -- build --no-bundle`。最终日志：`.tmp/final-delivery-tauri.log`。
-可运行 exe：`G:\Workspaces\TestStudio\EdgeTerm\src-tauri\target\release\edgeterm.exe`。
+可运行 exe（相对项目根目录）：`src-tauri/target/release/edgeterm.exe`。
 构建结果和 SHA256 在本次任务最终交付记录中核对。
 
 ## 主动暂缓和未验证
