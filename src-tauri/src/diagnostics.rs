@@ -5,8 +5,8 @@
 //! so a failure report reads as one story and can be traced across the
 //! connection, authentication and remote-write stages. The log lives in the
 //! application data directory's `logs/` (see [`logs_dir`]), rotates daily and
-//! is capped in file count and total size by [`prune`] plus the appender's own
-//! `max_log_files` housekeeping.
+//! is capped in file count and total size by [`BoundedLogWriter`]. Segments
+//! roll over at midnight or 2 MiB, on the background writer thread.
 //!
 //! What must never appear in a log line: passwords, passphrases, private key
 //! material, terminal output and file contents. Call sites pass identifiers
@@ -17,23 +17,20 @@
 //! leaves the app running without a subscriber, the writer is non-blocking,
 //! and a full disk only loses the affected line.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use tracing_appender::non_blocking::WorkerGuard;
-use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::EnvFilter;
 
 use crate::error::Result;
 
-/// The rotated files kept in the log directory; the appender prunes on
-/// rollover, and [`prune`] enforces the same count (plus the byte budget)
-/// on startup.
+/// Maximum number of log segments retained.
 const MAX_LOG_FILES: usize = 5;
-/// Total size the log directory may reach before [`prune`] drops the oldest
-/// files. The newest file always survives.
+/// Total retained size; an oversized legacy file may be removed on startup.
 const MAX_LOG_BYTES: u64 = 8 * 1024 * 1024;
-/// The appender appends the UTC date: `edgeterm.log.2026-10-16`.
+/// Prefix shared by legacy daily files and new timestamped segments.
 const FILE_NAME: &str = "edgeterm.log";
 
 /// Where the log files live: the same data directory as `sessions.json`, so
@@ -181,16 +178,15 @@ fn guard_slot() -> &'static parking_lot::Mutex<Option<WorkerGuard>> {
 
 /// Builds the file subscriber without installing it, so tests can scope it
 /// with `tracing::subscriber::set_default` and several can run in one process.
-fn build(dir: &Path) -> std::io::Result<(FileSubscriber, WorkerGuard)> {
+pub(crate) fn build(dir: &Path) -> std::io::Result<(FileSubscriber, WorkerGuard)> {
     std::fs::create_dir_all(dir)?;
-    prune(dir);
-    let appender = RollingFileAppender::builder()
-        .rotation(Rotation::DAILY)
-        .filename_prefix(FILE_NAME)
-        .max_log_files(MAX_LOG_FILES)
-        .build(dir)
-        .map_err(|error| std::io::Error::other(error.to_string()))?;
-    let (writer, guard) = tracing_appender::non_blocking(appender);
+    prune(dir)?;
+    let (writer, guard) = tracing_appender::non_blocking(BoundedLogWriter {
+        dir: dir.to_owned(),
+        file: None,
+        size: 0,
+        day: String::new(),
+    });
     let subscriber = tracing_subscriber::fmt()
         .with_env_filter(filter())
         .with_writer(writer)
@@ -220,19 +216,80 @@ fn filter() -> EnvFilter {
     })
 }
 
-/// Keeps the log directory bounded on startup: files are named by UTC date, so
-/// the oldest sort first and are deleted until the count and byte budgets
-/// fit. Best-effort; a file that cannot be removed is skipped rather than
-/// retried forever, and the newest file always survives.
-fn prune(dir: &Path) {
+/// Keeps the log directory bounded on startup, including a single oversized
+/// file. Failure disables the writer instead of allowing unbounded growth.
+fn prune(dir: &Path) -> std::io::Result<()> {
+    prune_for(dir, 0, 0)
+}
+
+fn prune_for(dir: &Path, reserve_bytes: u64, reserve_files: usize) -> std::io::Result<()> {
     let mut files = log_files(dir);
     let mut total: u64 = files.iter().map(|(_, size)| size).sum();
-    while files.len() > 1 && (files.len() > MAX_LOG_FILES || total > MAX_LOG_BYTES) {
+    while !files.is_empty()
+        && (files.len() + reserve_files > MAX_LOG_FILES || total + reserve_bytes > MAX_LOG_BYTES)
+    {
         let (path, size) = files.remove(0);
-        let _ = std::fs::remove_file(&path);
-        // Whether the removal worked or not, the file no longer counts:
-        // retrying an undeletable file forever would hang startup.
+        // If housekeeping fails, stop writing rather than pretend space was freed.
+        std::fs::remove_file(&path)?;
         total = total.saturating_sub(size);
+    }
+    Ok(())
+}
+
+/// Runs only on tracing-appender's worker. Reserve a whole segment before
+/// opening it, bounding disk use during a long-running process as well as at
+/// startup. Older daily logs remain readable and participate in the budget.
+struct BoundedLogWriter {
+    dir: PathBuf,
+    file: Option<std::fs::File>,
+    size: u64,
+    day: String,
+}
+
+const LOG_SEGMENT_BYTES: u64 = 2 * 1024 * 1024;
+
+impl Write for BoundedLogWriter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if bytes.len() as u64 > LOG_SEGMENT_BYTES {
+            // An oversized event must not defeat the disk budget.
+            return Ok(bytes.len());
+        }
+        let now = chrono::Utc::now();
+        let day = now.format("%Y-%m-%d").to_string();
+        if self.file.is_none()
+            || self.day != day
+            || self.size + bytes.len() as u64 > LOG_SEGMENT_BYTES
+        {
+            self.file.take();
+            prune_for(&self.dir, LOG_SEGMENT_BYTES, 1)?;
+            let name = format!(
+                "{FILE_NAME}.{}-{}",
+                now.format("%Y-%m-%d.%H%M%S%f"),
+                uuid::Uuid::new_v4()
+            );
+            self.file = Some(
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(self.dir.join(name))?,
+            );
+            self.size = 0;
+            self.day = day;
+        }
+        let written = self
+            .file
+            .as_mut()
+            .expect("opened log segment")
+            .write(bytes)?;
+        self.size += written as u64;
+        Ok(written)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        match &mut self.file {
+            Some(file) => file.flush(),
+            None => Ok(()),
+        }
     }
 }
 
@@ -400,7 +457,7 @@ mod tests {
         for day in 1..=MAX_LOG_FILES + 3 {
             std::fs::write(dir.join(format!("{FILE_NAME}.2026-09-{day:02}")), b"line\n").unwrap();
         }
-        prune(&dir);
+        prune(&dir).unwrap();
         let names = log_files(&dir);
         assert_eq!(names.len(), MAX_LOG_FILES);
         assert!(!names.contains(&format!("{FILE_NAME}.2026-09-01")));
@@ -415,7 +472,7 @@ mod tests {
         for day in ["01", "02", "03"] {
             std::fs::write(dir.join(format!("{FILE_NAME}.2026-09-{day}")), &chunk).unwrap();
         }
-        prune(&dir);
+        prune(&dir).unwrap();
         let names = log_files(&dir);
         assert_eq!(
             names,
@@ -424,6 +481,40 @@ mod tests {
                 format!("{FILE_NAME}.2026-09-03")
             ]
         );
+    }
+
+    #[test]
+    fn prune_removes_an_oversized_latest_file() {
+        let dir = scratch_dir();
+        let path = dir.join("edgeterm.log.2026-10-16");
+        std::fs::File::create(&path)
+            .unwrap()
+            .set_len(9 * 1024 * 1024)
+            .unwrap();
+        prune(&dir).unwrap();
+        assert!(super::log_files(&dir).iter().map(|(_, n)| n).sum::<u64>() <= 8 * 1024 * 1024);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn running_writer_bounds_segments_and_keeps_latest_events() {
+        let dir = scratch_dir();
+        let (subscriber, guard) = build(&dir).unwrap();
+        {
+            let _default = tracing::subscriber::set_default(subscriber);
+            let payload = "x".repeat(256 * 1024);
+            for _ in 0..48 {
+                tracing::info!("{payload}");
+            }
+            tracing::info!("latest-event-survives");
+        }
+        drop(guard);
+        let files = super::log_files(&dir);
+        assert!(files.len() <= 5);
+        assert!(files.iter().all(|(_, n)| *n <= 2 * 1024 * 1024));
+        assert!(files.iter().map(|(_, n)| n).sum::<u64>() <= 8 * 1024 * 1024);
+        assert!(report_from(&dir).contains("latest-event-survives"));
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
