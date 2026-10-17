@@ -31,6 +31,8 @@ export class TerminalGpuRenderer {
 
   private webglTimer: number | null = null;
 
+  private domRenderingGuarded = false;
+
   /**
    * WebGL is a large win on heavy output but is unavailable in some
    * environments; the DOM renderer remains a working fallback. The fallback
@@ -44,6 +46,7 @@ export class TerminalGpuRenderer {
       return;
     }
     try {
+      this.guardHiddenDomRenderer();
       const webgl = new WebglAddon();
       webgl.onContextLoss(() => this.handleWebglLoss(webgl));
       this.context.term.loadAddon(webgl);
@@ -62,6 +65,33 @@ export class TerminalGpuRenderer {
         this.scheduleWebglRecovery();
       }
     }
+  }
+
+  private guardHiddenDomRenderer() {
+    if (this.domRenderingGuarded) return;
+    // xterm 6.0.0's WebglAddon.dispose creates a DOM renderer and schedules
+    // handleResize even when IntersectionObserver paused the terminal. That
+    // resize paints rows directly, bypassing RenderService's pause. A hidden
+    // WidthCache measures zero and repeats layout for every cell. Guard the
+    // fallback factory (also used after context loss), keeping resize and
+    // selection state intact; the normal show/fit refresh paints it later.
+    type Renderer = { renderRows(start: number, end: number): void };
+    const core = (this.context.term as unknown as {
+      _core?: { _createRenderer(): Renderer };
+    })._core;
+    if (!core?._createRenderer) return;
+    const createRenderer = core._createRenderer.bind(core);
+    core._createRenderer = () => {
+      const renderer = createRenderer();
+      const renderRows = renderer.renderRows.bind(renderer);
+      renderer.renderRows = (start, end) => {
+        if (!this.context.disposed && this.context.visible && this.context.host?.clientWidth) {
+          renderRows(start, end);
+        }
+      };
+      return renderer;
+    };
+    this.domRenderingGuarded = true;
   }
 
   unloadWebgl() {
