@@ -6,6 +6,9 @@ resolve it from `node_modules` (no `NODE_PATH` needed). They drive an
 Edge/Chromium channel (`PERF_BROWSER`, default `msedge`); on a clean machine
 install it once with `npx playwright install msedge`, or install Microsoft
 Edge. Results and screenshots go to `artifacts/performance/`.
+The isolated Vite gates exclude `.tmp/` from file watching: historical builds
+and disposable worktrees are not fixture inputs, and watching those trees can
+delay Playwright initialization or reload a running gate when worktrees change.
 The review harness mocks Tauri IPC and file listings; it does not validate a
 real remote server. The performance harness measures DOM virtualization and
 ordinary-byte ZMODEM input handling, not complete terminal rendering throughput.
@@ -68,7 +71,9 @@ there. The font gate drives the real App over the real store chain (no
 terminal session is involved — that is the gutter gate's path) and asserts
 the audited 12/18px literals (App variable, inner row height, date-column
 font, consecutive-row pitch) at 1100px and 760px with 10,000 windowed
-entries.
+entries. It also checks each rendered date's text bounds against its cell and
+the list viewport, and saves a screenshot at each width with the 18px panel
+font so clipping remains visible in the evidence.
 
 Run them with a unique results name (earlier results are never overwritten)
 and pick the engine with the environment knobs:
@@ -137,6 +142,14 @@ copy, and use `restored` to verify that the original remains and a new save
 works. It never edits the configuration itself. The screenshots and JSON
 demonstrate actual native IPC/startup behavior, not disk-full or crash-safe
 transactional writes, OS vault persistence, or another platform's behavior.
+
+`check-native-file-io.mjs <new-output-dir>` drives a disposable Windows portable
+release with the current raw-byte file IPC commands. Set `EDGETERM_CDP_URL`
+and explicitly select its page using `EDGETERM_CDP_TARGET_ID`; use a fresh output
+directory under the repository's `.tmp/`. It checks eight concurrent 1 MiB writes
+followed by immediate byte-for-byte reads, a Unicode path, a nonzero typed-array
+offset, and file-read offsets. This exercises real WebView2 IPC and local disk;
+it does not validate remote transfer engines or other desktop platforms.
 
 ### Static checks
 
