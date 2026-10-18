@@ -2,7 +2,6 @@ import type * as Wire from "./bindings";
 import type { Translate } from "./i18n";
 
 export type SessionKind = Wire.SessionKind;
-export type AuthKind = Wire.AuthKind;
 /** What the Backspace key sends; see `SessionProfile.backspace`. */
 export type BackspaceKey = Wire.BackspaceKey;
 
@@ -75,9 +74,6 @@ export type LegacyAlgorithms = Wire.LegacyAlgorithms;
 
 /** An SSH host whose key no longer matches the one recorded in known_hosts. */
 export type HostKeyChange = Wire.HostKeyChange;
-
-/** One question in a server's keyboard-interactive challenge. */
-export type AuthPromptField = Wire.AuthPromptField;
 
 /**
  * A round of questions an SSH server asked while authenticating (RFC 4256's

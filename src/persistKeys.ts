@@ -23,6 +23,12 @@ export const SENDER_SAVE_LEVEL_KEY = "edgeterm.senderSaveLevel";
 /** Applications files were last opened with; see the Filer panel. */
 export const FILER_OPEN_WITH_KEY = "edgeterm.filerOpenWith";
 
+/** Workbench view, last project, experiment memory and open files. */
+export const WORKBENCH_VIEW_KEY = "edgeterm.workbench.view";
+export const WORKBENCH_LAST_PROJECT_KEY = "edgeterm.workbench.lastWorkspace";
+export const WORKBENCH_EXPERIMENTS_KEY = "edgeterm.workbench.experiments";
+export const WORKBENCH_OPEN_FILES_KEY = "edgeterm.workbench.openFiles";
+
 /** Concurrency and durability of file transfers; see transferSettings.ts. */
 export const TRANSFER_OPTIONS_KEY = "edgeterm.transfer-options";
 export const RESOURCE_MONITOR_KEY = "edgeterm.resource-monitor";
@@ -39,4 +45,8 @@ export const PANEL_PREFERENCE_KEYS: readonly string[] = [
   FILER_OPEN_WITH_KEY,
   TRANSFER_OPTIONS_KEY,
   RESOURCE_MONITOR_KEY,
+  WORKBENCH_VIEW_KEY,
+  WORKBENCH_LAST_PROJECT_KEY,
+  WORKBENCH_EXPERIMENTS_KEY,
+  WORKBENCH_OPEN_FILES_KEY,
 ];

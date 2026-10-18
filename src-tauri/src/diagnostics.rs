@@ -478,10 +478,12 @@ mod tests {
         }
         prune(&dir).unwrap();
         let names = log_files(&dir);
-        assert_eq!(names.len(), MAX_LOG_FILES);
+        // Literal, not MAX_LOG_FILES: the limit is the contract under test, so
+        // deriving the expectation from it would make any change self-consistent.
+        assert_eq!(names.len(), 5);
         assert!(!names.contains(&format!("{FILE_NAME}.2026-09-01")));
         assert!(!names.contains(&format!("{FILE_NAME}.2026-09-03")));
-        assert!(names.contains(&format!("{FILE_NAME}.2026-09-0{}", MAX_LOG_FILES + 3)));
+        assert!(names.contains(&format!("{FILE_NAME}.2026-09-08")));
     }
 
     #[test]

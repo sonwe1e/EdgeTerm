@@ -374,10 +374,6 @@ pub fn spawn(
 fn run_ftp(connection: &mut FtpConnection, request: SftpRequest) -> Result<SftpResponse> {
     match request {
         SftpRequest::Home => Ok(SftpResponse::Path(connection.home.clone())),
-        SftpRequest::Canonicalize { path } => Ok(SftpResponse::Path(canonicalize(
-            &mut connection.stream,
-            &path,
-        )?)),
         SftpRequest::List { path } => list_directory(connection, &path).map(SftpResponse::Listing),
         SftpRequest::Mkdir { path } => {
             connection.stream.mkdir(path)?;
@@ -405,17 +401,6 @@ fn run_ftp(connection: &mut FtpConnection, request: SftpRequest) -> Result<SftpR
             connection.stream.rename(from, to)?;
             Ok(SftpResponse::Done)
         }
-    }
-}
-
-fn canonicalize(ftp: &mut FtpStream, path: &str) -> Result<String> {
-    let original = ftp.pwd()?;
-    ftp.cwd(if path.is_empty() { "." } else { path })?;
-    let resolved = ftp.pwd();
-    let restore = ftp.cwd(&original);
-    match (resolved, restore) {
-        (Ok(path), Ok(())) => Ok(path),
-        (Err(error), _) | (_, Err(error)) => Err(error.into()),
     }
 }
 

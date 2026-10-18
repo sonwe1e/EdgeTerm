@@ -4,10 +4,10 @@
 
 EdgeTerm is a React 19/TypeScript terminal client with a Rust/Tauri 2 backend.
 
-- `src/`: frontend logic; `components/` contains UI and `components/panels/` contains Session, Filer, and Sender panels. `store.ts` manages Zustand state; `api.ts` wraps IPC; `styles.css` defines styling.
-- `src-tauri/src/`: backend commands, session transports in `session/`, and transfer engines in `file_transfer/`. Desktop configuration, permissions, and icons live under `src-tauri/`.
+- `src/`: frontend logic; `components/` contains UI and `components/panels/` contains Session, Filer, and Sender panels. `workbench/` holds the experiment workbench (project records, editor, diffs, runs, host sampling). `store.ts` manages the terminal Zustand store; `api.ts` wraps IPC; `styles.css` defines styling.
+- `src-tauri/src/`: backend commands, session transports in `session/`, and transfer engines in `file_transfer/`. `workspace.rs` persists projects/experiments/runs; `project.rs` runs bounded project inspections and launches. Desktop configuration, permissions, and icons live under `src-tauri/`.
 - Tests sit beside frontend modules as `*.test.ts`; Rust tests use module-local tests and `*_tests.rs` fixtures.
-- `docs/`: website, screenshots, engineering standards, and test plans. `scripts/`: validation, diagnostics, and release utilities.
+- `docs/`: website, screenshots, engineering standards, test plans, and the workbench model/boundaries. `scripts/`: validation, diagnostics, and release utilities.
 
 ## Build, Test, and Development Commands
 
@@ -32,7 +32,7 @@ Reuse Codicons through `src/components/icons.tsx`. Put shared preferences in the
 
 ## Testing Guidelines
 
-Follow [engineering standards](docs/engineering-standards.zh-CN.md) and the [test plan](docs/test-plan.zh-CN.md). Add behavior-focused regressions; demonstrate failure on the old implementation for confirmed defects. Run one frontend file with `npm test -- src/fileSort.test.ts`.
+Follow [engineering standards](docs/engineering-standards.zh-CN.md) and the [test plan](docs/test-plan.zh-CN.md). Workbench behavior and its verified/unverified boundaries are in [docs/workbench.zh-CN.md](docs/workbench.zh-CN.md). Add behavior-focused regressions; demonstrate failure on the old implementation for confirmed defects. Run one frontend file with `npm test -- src/fileSort.test.ts`.
 
 No numerical coverage threshold is configured. Distinguish fixture/jsdom results from real desktop or server validation. Browser harness prerequisites and diagnostic limitations are documented in [scripts/README.md](scripts/README.md).
 

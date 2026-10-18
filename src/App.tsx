@@ -39,6 +39,8 @@ import { Splitter } from "./components/Splitter";
 import { StatusBar } from "./components/StatusBar";
 import { UpdateDialog } from "./components/UpdateDialog";
 import { Workspace } from "./components/Workspace";
+import { Workbench } from "./workbench/Workbench";
+import { useWorkbench } from "./workbench/store";
 import { FilerPanel } from "./components/panels/FilerPanel";
 import { SenderPanel } from "./components/panels/SenderPanel";
 import { SessionPanel } from "./components/panels/SessionPanel";
@@ -78,6 +80,8 @@ export default function App() {
   const updater = useUpdater();
   const t = useT();
   const activeId = useStore((s) => s.activeId);
+  const workbenchView = useWorkbench((s) => s.view) === "workbench";
+  const setWorkbenchView = useWorkbench((s) => s.setView);
   const panels = useStore((s) => s.panels);
   const panelDocks = useStore((s) => s.panelDocks);
   const togglePanel = useStore((s) => s.togglePanel);
@@ -350,6 +354,10 @@ export default function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      // The workbench's editor and dialogs own their keys. Running the
+      // terminal shortcuts over them would, for example, turn Mod+F into a
+      // terminal search over the editor's own find panel.
+      if (useWorkbench.getState().view === "workbench") return;
       // xterm keeps a hidden textarea for input, so "focus is in a text field"
       // has to exclude the terminal itself or every shortcut would be dead
       // exactly where it matters most.
@@ -495,6 +503,8 @@ export default function App() {
         onKeyboardShortcuts={() => setShortcutsOpen(true)}
         onCheckForUpdates={() => void updater.checkForUpdates()}
         onAbout={() => setAboutOpen(true)}
+        workbenchOpen={workbenchView}
+        onToggleWorkbench={() => setWorkbenchView(workbenchView ? "terminals" : "workbench")}
       />
 
       <div className="app-body">
@@ -517,8 +527,12 @@ export default function App() {
           )}
 
           <div className="center">
-            <Workspace onNewSession={newSession} />
-            {searchOpen && (
+            {workbenchView ? (
+              <Workbench />
+            ) : (
+              <Workspace onNewSession={newSession} />
+            )}
+            {searchOpen && !workbenchView && (
               <SearchOverlay
                 ref={searchRef}
                 onClose={() => setSearchOpen(false)}
@@ -570,7 +584,7 @@ export default function App() {
         <PanelDropOverlay />
       </div>
 
-      <StatusBar />
+      <StatusBar showResources={!workbenchView} />
 
       <UpdateDialog
         appVersion={updater.appVersion}

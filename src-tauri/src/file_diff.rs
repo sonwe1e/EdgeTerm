@@ -377,6 +377,39 @@ pub async fn compare(
     }
 }
 
+/// Compares two remote files, on one server or on two. Used by the project
+/// workbench to put the same file from two experiment directories side by
+/// side; the transfer path stays the same bounded reader the Filer uses.
+pub async fn compare_remote(
+    left_transport: Arc<SharedTransport>,
+    left_path: String,
+    right_transport: Arc<SharedTransport>,
+    right_path: String,
+    encoding: Option<String>,
+) -> Result<Comparison> {
+    if left_path.is_empty() || right_path.is_empty() {
+        return Err(AppError::new("select two remote files"));
+    }
+    let control = Control::default();
+    let work = async {
+        let left = read_sftp(left_transport, &left_path, &control);
+        let right = read_sftp(right_transport, &right_path, &control);
+        let (left, right) = tokio::try_join!(left, right)?;
+        tokio::task::spawn_blocking(move || {
+            compare_snapshots(left, right, encoding.as_deref(), &Control::default())
+        })
+        .await
+        .map_err(io_failure)?
+    };
+    match tokio::time::timeout(Duration::from_secs(15), control.run(work)).await {
+        Ok(result) => result.map_err(AppError::from),
+        Err(_) => {
+            control.set(2);
+            Err(AppError::new("file comparison timed out"))
+        }
+    }
+}
+
 fn decode(snapshot: &Snapshot, fallback: Option<&str>) -> Text {
     let mut meta = Metadata {
         size: snapshot.size,

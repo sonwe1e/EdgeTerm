@@ -24,10 +24,10 @@ pub(super) fn binary_metadata<T: serde::de::DeserializeOwned>(encoded: &str) -> 
     serde_json::from_slice(&bytes).map_err(err)
 }
 
-/// The metadata header and the raw body of a binary invoke, split out so
-/// the decoding can be tested on its own: `tauri::ipc::Request` has no
-/// public constructor, so a test cannot build one. `binary_request` stays
-/// a thin adapter over this.
+/// The metadata header and the raw body of a binary invoke, split out so the
+/// decoding can be tested without building a full `InvokeRequest`.
+/// `feature_ipc_tests` drives the real dispatch through `binary_request`, so
+/// this split exists for small decode cases, not as a substitute for that.
 pub(super) fn binary_request_parts<T: serde::de::DeserializeOwned>(
     metadata: Option<&tauri::http::HeaderValue>,
     body: &tauri::ipc::InvokeBody,

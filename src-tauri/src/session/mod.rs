@@ -35,9 +35,6 @@ pub enum SftpRequest {
     List {
         path: String,
     },
-    Canonicalize {
-        path: String,
-    },
     Mkdir {
         path: String,
     },

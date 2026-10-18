@@ -12,22 +12,6 @@ pub async fn sftp_list(state: State<'_, AppState>, id: String, path: String) -> 
     expect_listing(state.sessions.sftp(&id, SftpRequest::List { path }).await?)
 }
 
-/// Resolves `..`, symlinks and relative paths on the remote host.
-#[tauri::command]
-#[cfg_attr(feature = "bindings", specta::specta)]
-pub async fn sftp_canonicalize(
-    state: State<'_, AppState>,
-    id: String,
-    path: String,
-) -> Result<String> {
-    expect_path(
-        state
-            .sessions
-            .sftp(&id, SftpRequest::Canonicalize { path })
-            .await?,
-    )
-}
-
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn sftp_mkdir(state: State<'_, AppState>, id: String, path: String) -> Result<()> {
@@ -78,121 +62,6 @@ pub async fn sftp_rename(
     Ok(())
 }
 
-/// `transfer`, on this and the three transfers below, is the id
-/// `cancel_transfer` can name while the copy runs; without one the transfer
-/// gets a generated id and can still be controlled in the transfer center.
-#[tauri::command]
-#[cfg_attr(feature = "bindings", specta::specta)]
-pub async fn sftp_download(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-    remote: String,
-    local: String,
-    on_progress: Channel<TransferProgress>,
-    transfer: Option<String>,
-) -> Result<()> {
-    transfer_files(
-        app,
-        state,
-        id,
-        vec![crate::file_transfer::Item {
-            remote,
-            local,
-            upload: false,
-            directory: false,
-        }],
-        transfer,
-        None,
-        on_progress,
-    )
-    .await
-}
-
-#[tauri::command]
-#[cfg_attr(feature = "bindings", specta::specta)]
-pub async fn sftp_download_directory(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-    remote: String,
-    local: String,
-    on_progress: Channel<TransferProgress>,
-    transfer: Option<String>,
-) -> Result<()> {
-    transfer_files(
-        app,
-        state,
-        id,
-        vec![crate::file_transfer::Item {
-            remote,
-            local,
-            upload: false,
-            directory: true,
-        }],
-        transfer,
-        None,
-        on_progress,
-    )
-    .await
-}
-
-#[tauri::command]
-#[cfg_attr(feature = "bindings", specta::specta)]
-pub async fn sftp_upload(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-    local: String,
-    remote: String,
-    on_progress: Channel<TransferProgress>,
-    transfer: Option<String>,
-) -> Result<()> {
-    transfer_files(
-        app,
-        state,
-        id,
-        vec![crate::file_transfer::Item {
-            remote,
-            local,
-            upload: true,
-            directory: false,
-        }],
-        transfer,
-        None,
-        on_progress,
-    )
-    .await
-}
-
-#[tauri::command]
-#[cfg_attr(feature = "bindings", specta::specta)]
-pub async fn sftp_upload_directory(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-    local: String,
-    remote: String,
-    on_progress: Channel<TransferProgress>,
-    transfer: Option<String>,
-) -> Result<()> {
-    transfer_files(
-        app,
-        state,
-        id,
-        vec![crate::file_transfer::Item {
-            remote,
-            local,
-            upload: true,
-            directory: true,
-        }],
-        transfer,
-        None,
-        on_progress,
-    )
-    .await
-}
-
 /// Interrupts pending I/O and asks the background worker to remove its owned
 /// partial files. Existing destination files are preserved.
 #[tauri::command]
@@ -217,6 +86,9 @@ pub fn control_file_transfer(
     state.file_transfers.control(&transfer, &action)
 }
 
+/// `transfer` is the id `cancel_transfer` can name while the copy runs;
+/// without one the transfer gets a generated id and can still be controlled
+/// in the transfer center.
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn transfer_files(

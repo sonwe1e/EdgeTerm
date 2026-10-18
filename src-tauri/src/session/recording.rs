@@ -371,7 +371,9 @@ mod tests {
         assert_eq!(file_stem("..."), "session");
         assert_eq!(file_stem("中文 会话"), "中文 会话");
         let long = "x".repeat(200);
-        assert_eq!(file_stem(&long).chars().count(), MAX_STEM_CHARS);
+        // Literal 64: the safe-stem length is the contract, so deriving the
+        // expectation from MAX_STEM_CHARS would let any change pass silently.
+        assert_eq!(file_stem(&long).chars().count(), 64);
     }
 
     #[test]

@@ -424,3 +424,20 @@
   background: var(--bg-app);
 }
 
+
+/* The workbench project a session was opened for; the tab title alone says
+   only the server. */
+.tab-workspace {
+  max-width: 84px;
+  margin-left: 2px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--accent-bright);
+  font-size: 9px;
+  line-height: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: none;
+}

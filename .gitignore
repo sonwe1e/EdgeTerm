@@ -6,9 +6,10 @@
 /dist-ssr/
 /coverage/
 /.tmp/
-/src/test/__screenshots__/
+**/__screenshots__/
 /.vitest-attachments/
-/artifacts/performance/
+/artifacts/
+/.workbuddy/
 /src-tauri/target/
 /src-tauri/gen/schemas/
 *.tsbuildinfo

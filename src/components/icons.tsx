@@ -20,6 +20,8 @@ import cloudDownload from "@vscode/codicons/src/icons/cloud-download.svg?raw";
 import cloudUpload from "@vscode/codicons/src/icons/cloud-upload.svg?raw";
 import copy from "@vscode/codicons/src/icons/copy.svg?raw";
 import debugStop from "@vscode/codicons/src/icons/debug-stop.svg?raw";
+import diff from "@vscode/codicons/src/icons/diff.svg?raw";
+import findInFiles from "@vscode/codicons/src/icons/search-fuzzy.svg?raw";
 import debugPause from "@vscode/codicons/src/icons/debug-pause.svg?raw";
 import play from "@vscode/codicons/src/icons/play.svg?raw";
 import edit from "@vscode/codicons/src/icons/edit.svg?raw";
@@ -75,6 +77,8 @@ const SVGS = {
   "cloud-upload": cloudUpload,
   copy,
   "debug-stop": debugStop,
+  diff,
+  "find-in-files": findInFiles,
   "debug-pause": debugPause,
   play,
   edit,

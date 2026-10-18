@@ -25,7 +25,7 @@ type Mounted = {
 };
 
 /** Runs after each test: unmount every tree the test mounted. */
-export function cleanupMounts(): void {
+function cleanupMounts(): void {
   const errors: unknown[] = [];
   while (cleanups.length) {
     try {

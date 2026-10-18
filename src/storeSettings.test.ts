@@ -65,9 +65,12 @@ describe("terminal scrollback", () => {
     expect(useStore.getState().terminalScrollback).toBe(10_000);
 
     useStore.getState().setTerminalScrollback(5_000_000);
-    expect(useStore.getState().terminalScrollback).toBe(TERMINAL_SCROLLBACK.max);
+    expect(useStore.getState().terminalScrollback).toBe(1_000_000);
     useStore.getState().setTerminalScrollback(Number.NaN);
-    expect(useStore.getState().terminalScrollback).toBe(TERMINAL_SCROLLBACK.default);
+    expect(useStore.getState().terminalScrollback).toBe(10_000);
+    // The clamps above are literals so a changed constant cannot silently
+    // redefine them; this pins the constant itself.
+    expect(TERMINAL_SCROLLBACK).toEqual({ min: 0, max: 1_000_000, default: 10_000 });
   });
 
   it("estimates the floor of the memory a session holds", () => {

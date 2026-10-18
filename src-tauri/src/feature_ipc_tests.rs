@@ -168,6 +168,13 @@ async fn real_ssh_diff_monitor_and_forward_cross_tauri_ipc() {
         file_transfers: Default::default(),
         file_diffs: Default::default(),
         resource_monitor: Default::default(),
+        workspaces: crate::workspace::WorkspaceStore::load_from(
+            std::env::temp_dir().join(format!("edgeterm-workspaces-{}", uuid::Uuid::new_v4())),
+        ),
+        drafts: crate::drafts::DraftStore::load_from(
+            std::env::temp_dir().join(format!("edgeterm-drafts-{}", uuid::Uuid::new_v4())),
+        ),
+        project_ops: Default::default(),
         key_checks: Default::default(),
         port_forwards: Default::default(),
         ssh_transports: Default::default(),
@@ -294,5 +301,118 @@ async fn real_ssh_diff_monitor_and_forward_cross_tauri_ipc() {
     drop(window);
     drop(app);
     drop(transport);
+    std::fs::remove_dir_all(scratch).unwrap();
+}
+
+/// The project records cross the real IPC dispatch: three projects on two
+/// logins keep their own roots, experiments and runs, and deleting one
+/// removes only what belongs to it. No SSH connection is involved.
+#[test]
+fn workspace_records_cross_ipc_and_keep_projects_isolated() {
+    let scratch =
+        std::env::temp_dir().join(format!("edgeterm-workspace-ipc-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&scratch).unwrap();
+    let state = AppState {
+        sessions: Default::default(),
+        outputs: Default::default(),
+        store: crate::store::Store::load_from_test(scratch.join("profiles.json")),
+        remote_edits: Default::default(),
+        auth_prompts: Default::default(),
+        file_transfers: Default::default(),
+        file_diffs: Default::default(),
+        resource_monitor: Default::default(),
+        workspaces: crate::workspace::WorkspaceStore::load_from(scratch.join("workspaces.json")),
+        drafts: crate::drafts::DraftStore::load_from(scratch.join("drafts")),
+        project_ops: Default::default(),
+        key_checks: Default::default(),
+        port_forwards: Default::default(),
+        ssh_transports: Default::default(),
+    };
+    let app = mock_builder()
+        .manage(state)
+        .invoke_handler(tauri::generate_handler![
+            commands::save_workspace,
+            commands::list_workspace_data,
+            commands::save_experiment,
+            commands::record_run,
+            commands::delete_workspace
+        ])
+        .build(mock_context(noop_assets()))
+        .unwrap();
+    let window = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+        .build()
+        .unwrap();
+    let server = |host: &str, profile: &str| json!({"profileId": profile, "name": host, "host": host, "port": 22, "username": "lab"});
+    let mut ids = Vec::new();
+    for (name, host, profile, root) in [
+        ("baseline", "gpu-01", "p1", "/data/vfi/base"),
+        ("ablation A", "gpu-01", "p1", "/data/vfi/abl_a"),
+        ("ablation B", "gpu-02", "p2", "/mnt/fast/abl_b"),
+    ] {
+        let saved = invoke(
+            &window,
+            "save_workspace",
+            json!({"workspace": {
+                "name": name,
+                "server": server(host, profile),
+                "root": root,
+                "env": "",
+                "commands": []
+            }}),
+        )
+        .unwrap();
+        ids.push(saved["id"].as_str().unwrap().to_string());
+    }
+    let data = invoke(&window, "list_workspace_data", json!({})).unwrap();
+    assert_eq!(data["workspaces"].as_array().unwrap().len(), 3);
+    assert_eq!(data["workspaces"][1]["root"], "/data/vfi/abl_a");
+
+    let experiment = invoke(
+        &window,
+        "save_experiment",
+        json!({"experiment": {
+            "workspaceId": ids[1],
+            "name": "baseline",
+            "kind": "baseline"
+        }}),
+    )
+    .unwrap();
+    let experiment_id = experiment["id"].as_str().unwrap().to_string();
+    invoke(
+        &window,
+        "record_run",
+        json!({"run": {
+            "id": "run-1",
+            "workspaceId": ids[1],
+            "experimentId": experiment_id,
+            "server": server("gpu-01", "p1"),
+            "root": "/data/vfi/abl_a",
+            "command": "python train.py",
+            "status": "running"
+        }}),
+    )
+    .unwrap();
+
+    let wrong = invoke(
+        &window,
+        "record_run",
+        json!({"run": {
+            "id": "run-2",
+            "workspaceId": ids[0],
+            "experimentId": experiment_id,
+            "server": server("gpu-01", "p1"),
+            "root": "/data/vfi/base",
+            "command": "python train.py"
+        }}),
+    );
+    assert!(
+        wrong.is_err(),
+        "a run cannot borrow another project's experiment"
+    );
+
+    let data = invoke(&window, "delete_workspace", json!({"id": ids[1]})).unwrap();
+    assert_eq!(data["workspaces"].as_array().unwrap().len(), 2);
+    assert_eq!(data["experiments"].as_array().unwrap().len(), 0);
+    assert_eq!(data["runs"].as_array().unwrap().len(), 0);
     std::fs::remove_dir_all(scratch).unwrap();
 }

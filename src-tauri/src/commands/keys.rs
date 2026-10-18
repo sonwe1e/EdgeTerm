@@ -32,50 +32,6 @@ pub async fn generate_private_key(path: String, passphrase: Option<String>) -> R
     .map_err(err)?
 }
 
-/// Installs the public half of a local private key into the server behind a
-/// connected SSH session's `authorized_keys`, over the session's own SFTP
-/// subsystem. The key is deduplicated by type and data, existing content is
-/// preserved, and no unrestricted copy is added when the key is already
-/// present behind restrictions. Verification that the login now works is a
-/// separate step; see `verify_public_key_login`.
-#[tauri::command]
-#[cfg_attr(feature = "bindings", specta::specta)]
-pub async fn install_public_key(
-    state: State<'_, AppState>,
-    session_id: String,
-    private_key_path: String,
-    passphrase: Option<String>,
-    comment: Option<String>,
-) -> Result<InstallReport> {
-    let request = Request::begin("install_public_key").with_session(&session_id);
-    let result = install_public_key_inner(
-        &state,
-        &session_id,
-        &private_key_path,
-        passphrase,
-        comment,
-        &request,
-    )
-    .await;
-    request.finish(result)
-}
-
-async fn install_public_key_inner(
-    state: &AppState,
-    session_id: &str,
-    private_key_path: &str,
-    passphrase: Option<String>,
-    comment: Option<String>,
-    request: &Request,
-) -> Result<InstallReport> {
-    let summary = key_summary(private_key_path, passphrase).await?;
-    let transport = state
-        .ssh_transports
-        .get(session_id)
-        .ok_or_else(|| AppError::new("the session is not connected over SSH any more"))?;
-    install_into_session(&transport, &summary, comment, request).await
-}
-
 /// Reads the private key file off the async runtime: its public
 /// `authorized_keys` line, key type and fingerprint. An encrypted key needs
 /// the passphrase that opens it.
@@ -142,47 +98,6 @@ async fn install_into_session(
         ),
     }
     Ok(report)
-}
-
-/// Checks that the profile's public key logs in by dialling the target on a
-/// fresh connection of its own — never on the session's connection, and never
-/// through the automatic pool — with the session's own jump path. The flow is
-/// public-key only: no password, no agent, no prompt, no fallback, and a
-/// server that wants more is reported rather than asked. The check ends on
-/// its own timeout, when `cancel_key_check` marks the request id, or when the
-/// session closes.
-#[tauri::command]
-#[cfg_attr(feature = "bindings", specta::specta)]
-pub async fn verify_public_key_login(
-    state: State<'_, AppState>,
-    session_id: String,
-    request_id: String,
-    profile: SessionProfile,
-) -> Result<KeyCheck> {
-    let request = Request::begin("verify_public_key_login").with_session(&session_id);
-    let result =
-        verify_public_key_login_inner(&state, &session_id, &request_id, profile, &request).await;
-    request.finish(result)
-}
-
-async fn verify_public_key_login_inner(
-    state: &AppState,
-    session_id: &str,
-    request_id: &str,
-    profile: SessionProfile,
-    request: &Request,
-) -> Result<KeyCheck> {
-    // Register before looking the transport up: closing the session can then
-    // either stop this check or make it fail cleanly before it dials.
-    let checking = state.key_checks.begin(session_id, request_id)?;
-    let transport = state
-        .ssh_transports
-        .get(session_id)
-        .ok_or_else(|| AppError::new("the session is not connected over SSH any more"))?;
-    state
-        .key_checks
-        .check(checking, transport, profile, request)
-        .await
 }
 
 /// Stops the check running under `request_id`, if any. A Cancel that arrives

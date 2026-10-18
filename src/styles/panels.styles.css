@@ -248,10 +248,6 @@
   }
 }
 
-.row-indent {
-  display: inline-block;
-}
-
 /* Groups: the folder glyph marks them; the label matches a section heading. */
 .row.is-group .row-label {
   color: var(--fg-dim);

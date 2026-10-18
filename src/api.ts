@@ -185,8 +185,6 @@ export const importSshConfig = (
 // --- public-key login setup --------------------------------------------------
 
 export type KeySummary = Wire.KeySummary;
-export type InstallReport = Wire.InstallReport;
-export type KeyCheck = Wire.KeyCheck;
 export type KeySetup = Wire.KeySetup;
 
 /**

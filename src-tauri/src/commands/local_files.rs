@@ -48,12 +48,6 @@ pub fn local_create_file(path: String) -> Result<()> {
     fs_local::create_file(&path)
 }
 
-#[tauri::command]
-#[cfg_attr(feature = "bindings", specta::specta)]
-pub fn local_is_directory(path: String) -> bool {
-    fs_local::is_directory(&path)
-}
-
 /// Opens a local file with the system default application, or with `with`
 /// (a macOS `.app` bundle, a Windows executable or a Unix program path) when
 /// given. Errors only cover launching; whatever the program does afterwards is

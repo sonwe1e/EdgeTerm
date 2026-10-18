@@ -56,6 +56,14 @@ export interface Tab {
   rows: number;
   /** The pane whose strip shows this tab; see `AppStore.panes`. */
   paneId: string;
+  /**
+   * The workbench project this session was opened for, when it came from
+   * there. It is a view association, not an identity: project records never
+   * store a tab id.
+   */
+  workspaceId?: string;
+  /** The project name at the time it was associated, for the strip's chip. */
+  workspaceName?: string;
 }
 
 /**
@@ -281,6 +289,12 @@ export interface AppStore {
    * reconnect would keep using the profile the tab was opened with.
    */
   updateTabProfile: (id: string, profile: SessionProfile) => void;
+  /** Associates a session with the project it was opened for (null clears it). */
+  setTabWorkspace: (
+    id: string,
+    workspaceId: string | null,
+    workspaceName?: string,
+  ) => void;
   closeTab: (id: string) => Promise<void>;
   /**
    * Closes a tab, asking first while its session is still connecting or

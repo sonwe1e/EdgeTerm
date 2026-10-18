@@ -260,9 +260,6 @@ pub(super) async fn ensure_sftp(
 pub(super) async fn run_sftp(sftp: Arc<SftpSession>, request: SftpRequest) -> Result<SftpResponse> {
     match request {
         SftpRequest::Home => Ok(SftpResponse::Path(sftp.canonicalize(".").await?)),
-        SftpRequest::Canonicalize { path } => {
-            Ok(SftpResponse::Path(sftp.canonicalize(path).await?))
-        }
         SftpRequest::List { path } => {
             let base = match sftp.canonicalize(path.clone()).await {
                 Ok(p) => p,

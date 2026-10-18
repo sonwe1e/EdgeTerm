@@ -82,25 +82,6 @@ export const commands = {
 	 */
 	generatePrivateKey: (path: string, passphrase: string | null) => __TAURI_INVOKE<KeySummary>("generate_private_key", { path, passphrase }),
 	/**
-	 *  Installs the public half of a local private key into the server behind a
-	 *  connected SSH session's `authorized_keys`, over the session's own SFTP
-	 *  subsystem. The key is deduplicated by type and data, existing content is
-	 *  preserved, and no unrestricted copy is added when the key is already
-	 *  present behind restrictions. Verification that the login now works is a
-	 *  separate step; see `verify_public_key_login`.
-	 */
-	installPublicKey: (sessionId: string, privateKeyPath: string, passphrase: string | null, comment: string | null) => __TAURI_INVOKE<InstallReport_Serialize>("install_public_key", { sessionId, privateKeyPath, passphrase, comment }),
-	/**
-	 *  Checks that the profile's public key logs in by dialling the target on a
-	 *  fresh connection of its own — never on the session's connection, and never
-	 *  through the automatic pool — with the session's own jump path. The flow is
-	 *  public-key only: no password, no agent, no prompt, no fallback, and a
-	 *  server that wants more is reported rather than asked. The check ends on
-	 *  its own timeout, when `cancel_key_check` marks the request id, or when the
-	 *  session closes.
-	 */
-	verifyPublicKeyLogin: (sessionId: string, requestId: string, profile: SessionProfile_Deserialize) => __TAURI_INVOKE<KeyCheck_Serialize>("verify_public_key_login", { sessionId, requestId, profile }),
-	/**
 	 *  Sets up public-key login for a saved session in one step: install the
 	 *  key's public half over the live session's SFTP, prove on a fresh
 	 *  connection that the key alone logs in, and only then switch the saved
@@ -161,21 +142,10 @@ export const commands = {
 	zmodemFinishFile: (path: string, size: number) => __TAURI_INVOKE<null>("zmodem_finish_file", { path, size }),
 	sftpHome: (id: string) => __TAURI_INVOKE<string>("sftp_home", { id }),
 	sftpList: (id: string, path: string) => __TAURI_INVOKE<DirListing>("sftp_list", { id, path }),
-	/**  Resolves `..`, symlinks and relative paths on the remote host. */
-	sftpCanonicalize: (id: string, path: string) => __TAURI_INVOKE<string>("sftp_canonicalize", { id, path }),
 	sftpMkdir: (id: string, path: string) => __TAURI_INVOKE<null>("sftp_mkdir", { id, path }),
 	sftpCreateFile: (id: string, path: string) => __TAURI_INVOKE<null>("sftp_create_file", { id, path }),
 	sftpRemove: (id: string, path: string, isDir: boolean) => __TAURI_INVOKE<null>("sftp_remove", { id, path, isDir }),
 	sftpRename: (id: string, from: string, to: string) => __TAURI_INVOKE<null>("sftp_rename", { id, from, to }),
-	/**
-	 *  `transfer`, on this and the three transfers below, is the id
-	 *  `cancel_transfer` can name while the copy runs; without one the transfer
-	 *  gets a generated id and can still be controlled in the transfer center.
-	 */
-	sftpDownload: (id: string, remote: string, local: string, onProgress: Channel<TransferProgress>, transfer: string | null) => __TAURI_INVOKE<null>("sftp_download", { id, remote, local, onProgress, transfer }),
-	sftpDownloadDirectory: (id: string, remote: string, local: string, onProgress: Channel<TransferProgress>, transfer: string | null) => __TAURI_INVOKE<null>("sftp_download_directory", { id, remote, local, onProgress, transfer }),
-	sftpUpload: (id: string, local: string, remote: string, onProgress: Channel<TransferProgress>, transfer: string | null) => __TAURI_INVOKE<null>("sftp_upload", { id, local, remote, onProgress, transfer }),
-	sftpUploadDirectory: (id: string, local: string, remote: string, onProgress: Channel<TransferProgress>, transfer: string | null) => __TAURI_INVOKE<null>("sftp_upload_directory", { id, local, remote, onProgress, transfer }),
 	/**
 	 *  Interrupts pending I/O and asks the background worker to remove its owned
 	 *  partial files. Existing destination files are preserved.
@@ -183,6 +153,11 @@ export const commands = {
 	cancelTransfer: (transfer: string) => __TAURI_INVOKE<void>("cancel_transfer", { transfer }),
 	listFileTransfers: () => __TAURI_INVOKE<FileTransfer[]>("list_file_transfers"),
 	controlFileTransfer: (transfer: string, action: string) => __TAURI_INVOKE<null>("control_file_transfer", { transfer, action }),
+	/**
+	 *  `transfer` is the id `cancel_transfer` can name while the copy runs;
+	 *  without one the transfer gets a generated id and can still be controlled
+	 *  in the transfer center.
+	 */
 	transferFiles: (id: string, items: TransferItem[], transfer: string | null, options: {
 	requests: number,
 	chunkKib: number,
@@ -245,6 +220,62 @@ export const commands = {
 	cancelFileDiff: (requestId: string) => __TAURI_INVOKE<void>("cancel_file_diff", { requestId }),
 	sampleResources: (id: string, requestId: string) => __TAURI_INVOKE<Metrics>("sample_resources", { id, requestId }),
 	cancelResourceSample: (requestId: string) => __TAURI_INVOKE<void>("cancel_resource_sample", { requestId }),
+	listWorkspaceData: () => __TAURI_INVOKE<WorkspaceData>("list_workspace_data"),
+	saveWorkspace: (workspace: Workspace) => __TAURI_INVOKE<Workspace>("save_workspace", { workspace }),
+	/**
+	 *  Removes a project with its experiments and runs; the returned snapshot
+	 *  lets the front end drop every affected view in one update.
+	 */
+	deleteWorkspace: (id: string) => __TAURI_INVOKE<WorkspaceData>("delete_workspace", { id }),
+	saveExperiment: (experiment: Experiment) => __TAURI_INVOKE<Experiment>("save_experiment", { experiment }),
+	deleteExperiment: (id: string) => __TAURI_INVOKE<WorkspaceData>("delete_experiment", { id }),
+	recordRun: (run: RunRecord) => __TAURI_INVOKE<RunRecord>("record_run", { run }),
+	updateRun: (update: RunUpdate) => __TAURI_INVOKE<RunRecord>("update_run", { update }),
+	deleteRun: (id: string) => __TAURI_INVOKE<WorkspaceData>("delete_run", { id }),
+	draftSave: (draft: Draft) => __TAURI_INVOKE<Draft>("draft_save", { draft }),
+	draftLoad: (docId: string) => __TAURI_INVOKE<{
+	docId: string,
+	workspaceId: string,
+	/**
+	 *  Login identity + endpoint the draft was written against. Restoring it
+	 *  through a different server is refused rather than guessed.
+	 */
+	serverKey: string,
+	serverLabel?: string,
+	projectName?: string,
+	path?: string,
+	absolutePath: string,
+	content: string,
+	/**
+	 *  Hash of the server copy the edit started from; the editor compares it
+	 *  with the current remote hash before applying the draft.
+	 */
+	baseHash: string,
+	updatedAt: number,
+} | null>("draft_load", { docId }),
+	draftList: () => __TAURI_INVOKE<DraftList>("draft_list"),
+	draftDelete: (docId: string) => __TAURI_INVOKE<null>("draft_delete", { docId }),
+	projectProbe: (id: string, root: string) => __TAURI_INVOKE<ProjectProbe>("project_probe", { id, root }),
+	projectReadText: (id: string, path: string) => __TAURI_INVOKE<TextFile>("project_read_text", { id, path }),
+	projectFileStat: (id: string, path: string) => __TAURI_INVOKE<FileStat>("project_file_stat", { id, path }),
+	/**
+	 *  Saves one text file, refusing when the server's copy no longer matches
+	 *  `expectedHash`. The returned hash becomes the next save's baseline.
+	 */
+	projectWriteText: (id: string, request: TextWrite) => __TAURI_INVOKE<WriteOutcome>("project_write_text", { id, request }),
+	projectListFiles: (id: string, root: string) => __TAURI_INVOKE<FileList>("project_list_files", { id, root }),
+	projectSearch: (id: string, root: string, query: string) => __TAURI_INVOKE<SearchResult>("project_search", { id, root, query }),
+	projectGitState: (id: string, root: string) => __TAURI_INVOKE<GitState>("project_git_state", { id, root }),
+	projectGitDiff: (id: string, root: string, path: string | null) => __TAURI_INVOKE<DiffText>("project_git_diff", { id, root, path }),
+	projectReadLog: (id: string, path: string, offset: number) => __TAURI_INVOKE<LogChunk>("project_read_log", { id, path, offset }),
+	projectStartRun: (id: string, request: StartRunRequest) => __TAURI_INVOKE<RunLaunch>("project_start_run", { id, request }),
+	projectRunStatus: (id: string, run: RunRecord) => __TAURI_INVOKE<RunObservation>("project_run_status", { id, run }),
+	projectStopRun: (id: string, run: RunRecord) => __TAURI_INVOKE<null>("project_stop_run", { id, run }),
+	/**
+	 *  Compares the same file across two project directories, including two
+	 *  servers. The result is the Filer's existing bounded comparison.
+	 */
+	projectCompare: (leftId: string, leftPath: string, rightId: string, rightPath: string) => __TAURI_INVOKE<FileComparison>("project_compare", { leftId, leftPath, rightId, rightPath }),
 	localHome: () => __TAURI_INVOKE<string>("local_home"),
 	/**
 	 *  Where the session's shell is right now, for the Filer's "Reveal Working
@@ -260,7 +291,6 @@ export const commands = {
 	localParent: (path: string) => __TAURI_INVOKE<string>("local_parent", { path }),
 	localMkdir: (path: string) => __TAURI_INVOKE<null>("local_mkdir", { path }),
 	localCreateFile: (path: string) => __TAURI_INVOKE<null>("local_create_file", { path }),
-	localIsDirectory: (path: string) => __TAURI_INVOKE<boolean>("local_is_directory", { path }),
 	/**
 	 *  Remembers the theme the front end is showing, so the next launch creates
 	 *  its window in the matching background colour (`store::save_startup_theme`).
@@ -305,7 +335,7 @@ export const commands = {
 	/**
 	 *  Brings the mouse pointer back, for the moment before a native dialog
 	 *  opens.
-	 * 
+	 *
 	 *  macOS hides the pointer while the user types: WebKit asks AppKit for
 	 *  `setHiddenUntilMouseMoves:` on every keystroke that lands in an editable
 	 *  area, and a terminal is one, so the pointer is gone the instant a command
@@ -316,7 +346,7 @@ export const commands = {
 	 *  for as long as it is up. `rz` is where it hurts, since the panel opens
 	 *  straight off the command the user just typed, and the file to send then
 	 *  has to be picked blind.
-	 * 
+	 *
 	 *  Clearing the flag costs nothing when the pointer is already visible, so
 	 *  every native dialog goes through it (see `nativeDialog.ts`). Elsewhere
 	 *  this is a no-op: Windows hides the pointer while typing through the
@@ -375,7 +405,7 @@ export const commands = {
 	 *  entries instead, see `start_promised_file_drag`). The pointer must still
 	 *  be down: the drag session attaches to the gesture the user is already
 	 *  making.
-	 * 
+	 *
 	 *  The drag is handed to the main thread rather than started here, because
 	 *  that is the only thread AppKit and GTK accept one from, and a command is
 	 *  not promised to run on it. Nothing waits for it either: Windows runs the
@@ -405,7 +435,7 @@ export const commands = {
 	listSerialPorts: () => __TAURI_INVOKE<SerialPortDesc[]>("list_serial_ports"),
 	/**
 	 *  Minimize / maximize / restore the main window.
-	 * 
+	 *
 	 *  The menubar's window controls (and a double-click on the drag region) call
 	 *  this instead of `window.minimize()` / `window.toggleMaximize()`. On Linux
 	 *  (and macOS, for the drag-region double-click) it simply forwards to the
@@ -474,7 +504,7 @@ export type AppData_Serialize = {
 /**
  *  A failure that can cross the IPC boundary: the human-readable `message`
  *  plus the machine-readable fields the UI and the diagnostics log act on.
- * 
+ *
  *  `Display` is the message alone, so anything that formats the error (the
  *  diagnostics log, tests, `format!`) shows what a user would read, while the
  *  front end receives `{ code, message, operation?, requestId? }`.
@@ -484,7 +514,7 @@ export type AppError = AppError_Serialize | AppError_Deserialize;
 /**
  *  A failure that can cross the IPC boundary: the human-readable `message`
  *  plus the machine-readable fields the UI and the diagnostics log act on.
- * 
+ *
  *  `Display` is the message alone, so anything that formats the error (the
  *  diagnostics log, tests, `format!`) shows what a user would read, while the
  *  front end receives `{ code, message, operation?, requestId? }`.
@@ -504,7 +534,7 @@ export type AppError_Deserialize = {
 /**
  *  A failure that can cross the IPC boundary: the human-readable `message`
  *  plus the machine-readable fields the UI and the diagnostics log act on.
- * 
+ *
  *  `Display` is the message alone, so anything that formats the error (the
  *  diagnostics log, tests, `format!`) shows what a user would read, while the
  *  front end receives `{ code, message, operation?, requestId? }`.
@@ -603,14 +633,14 @@ export type CredentialStoreStatus = {
 	reason: CredentialStoreStatusReason | null,
 };
 
-export type CredentialStoreStatusReason = 
+export type CredentialStoreStatusReason =
 /**
  *  Portable mode: a copy must not depend on (or write to) the machine it
  *  happens to run on.
  */
-"portable" | 
+"portable" |
 /**  The OS credential store could not be reached (absent, locked, …). */
-"keyStoreUnavailable" | 
+"keyStoreUnavailable" |
 /**
  *  `credentials.json` exists but this run cannot open it; saving a
  *  password is refused so the file survives for recovery.
@@ -649,6 +679,12 @@ export type DiffRow = {
 	rightEnding: string | null,
 };
 
+export type DiffText = {
+	text: string,
+	truncated: boolean,
+	bytes: number,
+};
+
 export type DirListing = {
 	path: string,
 	entries: FileEntry[],
@@ -656,60 +692,126 @@ export type DirListing = {
 
 export type Direction = "local" | "remote";
 
+export type Draft = {
+	docId: string,
+	workspaceId: string,
+	/**
+	 *  Login identity + endpoint the draft was written against. Restoring it
+	 *  through a different server is refused rather than guessed.
+	 */
+	serverKey: string,
+	serverLabel?: string,
+	projectName?: string,
+	path?: string,
+	absolutePath: string,
+	content: string,
+	/**
+	 *  Hash of the server copy the edit started from; the editor compares it
+	 *  with the current remote hash before applying the draft.
+	 */
+	baseHash: string,
+	updatedAt: number,
+};
+
+export type DraftList = {
+	drafts: Draft[],
+	dir: string,
+	bytes: number,
+	/**
+	 *  Files that could not be read back (permissions, a partial write from
+	 *  an older version). They are reported, never silently dropped.
+	 */
+	unreadable: number,
+};
+
 /**
  *  The machine-readable half of [`AppError`]: what went wrong, as a stable
  *  identifier the front end can switch on without parsing a translated
  *  message. Serialized in camelCase (`"connectionFailed"`).
- * 
+ *
  *  `unknown` is the honest answer wherever a failure has no category yet —
  *  including every legacy string error, which the TypeScript side normalizes
  *  into this code before any UI sees it.
  */
-export type ErrorCode = 
+export type ErrorCode =
 /**  No more specific code applies; the message is the whole story. */
-"unknown" | 
+"unknown" |
 /**
  *  Dialling, the SSH handshake or a channel on an established connection
  *  failed.
  */
-"connectionFailed" | 
+"connectionFailed" |
 /**
  *  An operation ran past its deadline: a dial, a handshake, a subsystem
  *  request or a remote command.
  */
-"timeout" | 
+"timeout" |
 /**
  *  The server refused the credentials, or accepted them only far enough
  *  to ask for a factor EdgeTerm cannot supply here.
  */
-"authenticationDenied" | 
+"authenticationDenied" |
 /**
  *  The credential was accepted, but the account needs another
  *  authentication factor and the operation runs where none can be asked
  *  for — a public-key check, which only ever sends the key.
  */
-"additionalFactorRequired" | 
+"additionalFactorRequired" |
 /**  The user cancelled the operation. */
-"cancelled" | 
+"cancelled" |
 /**  A file or directory operation was refused for permissions. */
-"permissionDenied" | 
+"permissionDenied" |
 /**  The peer does not speak anything this client can or will speak. */
-"unsupported" | 
+"unsupported" |
 /**  The OS credential store is unavailable (see the credential store). */
-"credentialStoreUnavailable" | 
+"credentialStoreUnavailable" |
 /**
  *  `credentials.json` exists but cannot be opened, so a password that
  *  was meant to be saved was refused; the file is kept unchanged for
  *  recovery.
  */
-"credentialsUnreadable" | 
+"credentialsUnreadable" |
 /**
  *  A write reached the server, but whether it landed could not be
  *  confirmed.
  */
-"remoteWriteUncertain" | 
+"remoteWriteUncertain" |
 /**  The input the operation was given is invalid or incomplete. */
-"invalidInput";
+"invalidInput" |
+/**
+ *  The target changed since the caller last read it, so the write was
+ *  refused instead of overwriting someone else's change.
+ */
+"conflict";
+
+/**
+ *  Where a run's command actually executed. `Workspace` is the project
+ *  directory the user edits: the snapshot beside the run is then evidence of
+ *  what was there at launch, not a copy the run used. `Isolated` executes
+ *  inside that snapshot, with explicitly linked data directories.
+ */
+export type ExecutionMode = "workspace" | "isolated";
+
+export type Experiment = {
+	id?: string,
+	workspaceId?: string,
+	name?: string,
+	kind?: ExperimentKind,
+	/**  The variant this one is measured against; empty for a baseline. */
+	baselineId?: string | null,
+	/**  Code directory when the variant lives outside the workspace root. */
+	root?: string | null,
+	/**
+	 *  Optional git branch the variant is expected to use. It is recorded,
+	 *  not checked out: launching never changes the user's working tree.
+	 */
+	branch?: string | null,
+	notes?: string,
+	createdAt?: number,
+	updatedAt?: number,
+};
+
+export type ExperimentKind = "baseline" | "variant";
 
 export type Failure = {
 	code: string,
@@ -762,6 +864,25 @@ export type FileEntry = {
 	group: string | null,
 };
 
+export type FileList = {
+	root: string,
+	files: string[],
+	truncated: boolean,
+	/**  `git` (tracked + untracked, honouring .gitignore) or `find`. */
+	source: string,
+};
+
+/**
+ *  A cheap "did it change?" probe: no content, so an open editor can notice a
+ *  remote edit without downloading the file again.
+ */
+export type FileStat = {
+	path: string,
+	exists: boolean,
+	size: number,
+	modifiedAt: number | null,
+};
+
 export type FileTransfer = {
 	revision: number,
 	id: string,
@@ -787,6 +908,24 @@ export type FontFamily = {
 	name: string,
 	monospaced: boolean,
 	symbols: boolean,
+};
+
+export type GitFileChange = {
+	path: string,
+	/**  `M`, `A`, `D`, `R`, `??` … straight from `git status --porcelain`. */
+	status: string,
+};
+
+export type GitState = {
+	isRepository: boolean,
+	branch: string,
+	commit: string,
+	dirty: boolean,
+	files: GitFileChange[],
+	diffSha256: string,
+	diffBytes: number,
+	diffTruncated: boolean,
+	note: string,
 };
 
 export type Gpu = {
@@ -824,11 +963,11 @@ export type HostKeyChange = {
 };
 
 /**  What merging the key into the file did. */
-export type InstallOutcome = 
+export type InstallOutcome =
 /**  The line was appended to the file. */
-"added" | 
+"added" |
 /**  The key is already present on a plain line; nothing was written. */
-"present" | 
+"present" |
 /**
  *  The key is present, but only behind restrictions such as `from=` or
  *  `command=`. No unrestricted copy was added next to it.
@@ -869,41 +1008,41 @@ export type KeyCheck = KeyCheck_Serialize | KeyCheck_Deserialize;
  *  What one public-key check concluded, in the form the setup dialog
  *  reports. Only [`KeyCheckOutcome::Ready`] proves the key alone logs in.
  */
-export type KeyCheckOutcome = 
+export type KeyCheckOutcome =
 /**  The server accepted the connection with the key, and nothing else. */
-"ready" | 
+"ready" |
 /**
  *  The key was accepted, but the account also needs another factor
  *  (a one-time code, a push). A session can answer that interactively;
  *  a check cannot, so the login is not proven to work from the key
  *  alone.
  */
-"additionalFactor" | 
+"additionalFactor" |
 /**  The server refused the key. */
-"denied" | 
+"denied" |
 /**
  *  The key itself could not be used: unreadable, encrypted with a wrong
  *  passphrase, or no key path in the profile at all. The server never
  *  got to judge it.
  */
-"keyUnusable" | 
+"keyUnusable" |
 /**
  *  The server accepts this login without any authentication, so the key
  *  could not be exercised. Nothing needs to be configured.
  */
-"notRequired" | 
+"notRequired" |
 /**
  *  The target could not be reached: the dial, the tunnel through the
  *  session's jump hosts, or the handshake failed.
  */
-"unreachable" | 
+"unreachable" |
 /**  The check ran past its deadline. */
-"timeout" | 
+"timeout" |
 /**
  *  The host presented a key that differs from the one on file. Nothing
  *  was checked; the user decides on the host key first.
  */
-"hostKeyChanged" | 
+"hostKeyChanged" |
 /**  The check was cancelled, by the user or by closing the session. */
 "cancelled";
 
@@ -1019,6 +1158,19 @@ export type LocalCopySummary = {
 	skipped: number,
 };
 
+export type LogChunk = {
+	path: string,
+	content: string,
+	offset: number,
+	size: number,
+	/**
+	 *  The reader restarted from the tail because the requested offset was
+	 *  past the end (a log was rotated or truncated).
+	 */
+	reset: boolean,
+	exists: boolean,
+};
+
 export type Memory = {
 	usedBytes: number,
 	totalBytes: number,
@@ -1076,19 +1228,35 @@ export type PortForwardSpec = {
 	targetPort: number,
 };
 
+export type ProjectProbe = {
+	os: string,
+	home: string,
+	shell: string,
+	git: boolean,
+	tmux: boolean,
+	python: string | null,
+	conda: boolean,
+	nvidiaSmi: boolean,
+	scheduler: string | null,
+	isRepository: boolean,
+	rootExists: boolean,
+	/**  `git`, `tmux`, `python`… as the server's `command -v` printed them. */
+	paths: string[],
+};
+
 /**
  *  What a promise drag reports back: `Write` when a receiver asks for the
  *  file (once per drop in practice, and possibly after `Ended`), `Ended` once
  *  when the pointer is released, `Failed` instead of both when the drag could
  *  not be started.
  */
-export type PromisedDragEvent = 
+export type PromisedDragEvent =
 /**
  *  A drop target took the promise and wants the entry at `destination`,
  *  a full local path that already carries the entry's name. `token`
  *  goes back through `finish` once the file is there, or is not coming.
  */
-{ kind: "write"; token: string; destination: string } | 
+{ kind: "write"; token: string; destination: string } |
 /**
  *  The drag ended; `dropped` is false when it was cancelled or let go
  *  somewhere that took nothing (inside this window, say).
@@ -1136,6 +1304,182 @@ export type RemoteEditEvent = {
 
 export type RowKind = "equal" | "modified" | "deleted" | "added";
 
+/**
+ *  What a launch was bound to, written beside the run and kept in the record.
+ *  It answers "which code, which directory, which edits" without implying
+ *  that a run is reproducible: environment packages, data and weights are
+ *  recorded only when the user or the server actually reported them.
+ */
+export type RunBinding = {
+	execution?: ExecutionMode,
+	/**  Absolute directory the command ran in. */
+	executedFrom?: string,
+	workspaceRoot?: string,
+	/**  Whether the executed directory was a copy made for this run. */
+	isolated?: boolean,
+	snapshotVerified?: boolean,
+	/**
+	 *  Files with unsaved local edits when the launch was confirmed. Their
+	 *  remote copies are what ran.
+	 */
+	unsynced?: string[],
+	/**  Project-relative paths linked into the isolated copy (data, weights). */
+	links?: string[],
+	note?: string,
+};
+
+/**
+ *  The code a run was launched from. A commit alone does not identify a
+ *  dirty tree, so the uncommitted diff is part of it; the digest is over the
+ *  bounded diff text (see `project::capture_code`).
+ */
+export type RunCodeState = {
+	branch?: string,
+	commit?: string,
+	dirty?: boolean,
+	dirtyFiles?: string[],
+	diffSha256?: string,
+	diffBytes?: number,
+	/**
+	 *  Whether the captured diff hit its byte limit. A truncated diff still
+	 *  identifies this launch, but it is not the whole change set.
+	 */
+	diffTruncated?: boolean,
+	/**
+	 *  `true` only when git answered; a run outside a repository records
+	 *  no commit and says so instead of pretending.
+	 */
+	isRepository?: boolean,
+};
+
+export type RunLaunch = {
+	run: RunRecord,
+	warnings: string[],
+	/**
+	 *  The launch command's own result could not be read. The run record
+	 *  exists, so the UI can poll it instead of starting a second copy.
+	 */
+	uncertain?: boolean,
+};
+
+export type RunMode =
+/**  Executed in a named tmux session: reattachable and observable. */
+"tmux" |
+/**
+ *  Executed under setsid/nohup: observable through its files, not
+ *  reattachable interactively.
+ */
+"detached" |
+/**  Launched in a terminal tab; EdgeTerm does not manage its lifecycle. */
+"terminal";
+
+export type RunObservation = {
+	status: RunStatus,
+	exitCode: number | null,
+	alive: boolean,
+	logSize: number,
+	checkedAt: number,
+	note: string,
+};
+
+export type RunRecord = {
+	id?: string,
+	workspaceId?: string,
+	experimentId?: string,
+	server?: ServerRef,
+	/**
+	 *  Directory the command runs in (the experiment root, not necessarily
+	 *  the workspace root).
+	 */
+	root?: string,
+	command?: string,
+	env?: string,
+	/**
+	 *  GPU selection as the user typed it (`0`, `0,1`, `none`). Nothing here
+	 *  translates it into a framework-specific variable.
+	 */
+	gpu?: string,
+	/**  The scheduler the launch command submits to, when one was detected. */
+	scheduler?: string | null,
+	/**
+	 *  True when the command only submits work (for example `sbatch`); this
+	 *  client then observes the submission, not the training job.
+	 */
+	submitOnly?: boolean,
+	mode?: RunMode,
+	status?: RunStatus,
+	startedAt?: number,
+	endedAt?: number | null,
+	exitCode?: number | null,
+	code?: RunCodeState,
+	snapshot?: RunSnapshot,
+	/**
+	 *  The executed directory, its code copy and the edits that were still
+	 *  local at launch.
+	 */
+	binding?: RunBinding,
+	runDir?: string,
+	logPath?: string,
+	/**  tmux session name or detached process id file, whichever the mode uses. */
+	taskName?: string,
+	/**
+	 *  Run this one continues (for example a checkpoint resume). It is a
+	 *  link, not a claim that the new run reproduces the old one.
+	 */
+	resumedFrom?: string | null,
+	note?: string,
+	/**
+	 *  Last time the launcher confirmed anything about the process. Stale
+	 *  values make the UI say "unknown", not "running".
+	 */
+	lastSeenAt?: number,
+};
+
+export type RunSnapshot = {
+	mode?: SnapshotMode,
+	path?: string,
+	files?: number,
+	bytes?: number,
+	/**
+	 *  Files left out by the count, size or exclusion limits. Non-zero means
+	 *  the snapshot is not a complete copy of the project.
+	 */
+	skipped?: number,
+	/**
+	 *  The copy was extracted and the file count matched the list it was
+	 *  built from. Only a verified snapshot may back an isolated run.
+	 */
+	verified?: boolean,
+	note?: string,
+};
+
+export type RunStatus = "starting" | "running" |
+/**
+ *  The launch command returned after submitting to a scheduler; the
+ *  training itself is not observable through this run.
+ */
+"submitted" | "finished" | "failed" |
+/**
+ *  The process was alive when last checked but nothing can be confirmed
+ *  now (the session is gone, or the host cannot be asked).
+ */
+"unknown" |
+/**  The process ended and its exit status could not be read. */
+"lost" | "stopped";
+
+/**
+ *  What `update_run` may change after a launch. Code, command, environment
+ *  and paths are immutable: rewriting them would break the run's identity.
+ */
+export type RunUpdate = {
+	id: string,
+	status: RunStatus,
+	exitCode?: number | null,
+	endedAt?: number | null,
+	lastSeenAt?: number,
+	note?: string | null,
+};
+
 /**  A reusable command shown as a tag in the Sender pane. */
 export type SavedCommand = {
 	id?: string,
@@ -1146,10 +1490,37 @@ export type SavedCommand = {
 	scope?: CommandScope,
 };
 
+export type SearchMatch = {
+	path: string,
+	line: number,
+	text: string,
+};
+
+export type SearchResult = {
+	root: string,
+	query: string,
+	matches: SearchMatch[],
+	truncated: boolean,
+	skipped: string,
+};
+
 export type SerialPortDesc = {
 	portName: string,
 	portType: string,
 	description: string | null,
+};
+
+/**
+ *  The server a record belongs to. `profile_id` is the link to the saved
+ *  login; the rest is an identity snapshot so a record still says which
+ *  machine it means when the profile is renamed, moved or deleted.
+ */
+export type ServerRef = {
+	profileId?: string,
+	name?: string,
+	host?: string,
+	port?: number,
+	username?: string,
 };
 
 /**
@@ -1355,6 +1726,8 @@ export type SessionProfile_Serialize = {
 	flowControl: string | null,
 };
 
+export type SnapshotMode = "none" | "code";
+
 /**  One `Host` alias, resolved to what `ssh alias` would connect to. */
 export type SshConfigEntry = SshConfigEntry_Serialize | SshConfigEntry_Deserialize;
 
@@ -1437,10 +1810,75 @@ export type SshImportSummary = {
 	warnings?: string[],
 };
 
+export type StartRunRequest = {
+	run: RunRecord,
+	/**  Where run directories live; empty means `<root>/.edgeterm/runs`. */
+	runRoot?: string,
+	snapshot?: SnapshotMode,
+	/**  Extra relative directories or files kept out of the code snapshot. */
+	excludes?: string[],
+	/**
+	 *  Run in the project directory (`Workspace`) or in this run's code copy
+	 *  (`Isolated`). Isolation needs a verified snapshot.
+	 */
+	execution?: ExecutionMode,
+	/**
+	 *  Project-relative paths linked into an isolated copy: datasets and
+	 *  weights that were excluded from the snapshot.
+	 */
+	links?: string[],
+	/**
+	 *  Files the editor still holds unsaved edits for. Their remote copies
+	 *  are what a run executes; the list is recorded with the run.
+	 */
+	unsynced?: string[],
+	/**
+	 *  Refuse to launch while `unsynced` is non-empty. The UI sets this
+	 *  unless the user explicitly confirmed using the remote copies; the
+	 *  default is the safe one.
+	 */
+	requireClean?: boolean,
+};
+
 export type StateEvent = {
 	id: string,
 	state: string,
 	message: string | null,
+};
+
+export type TextFile = {
+	path: string,
+	content: string,
+	/**
+	 *  SHA-256 of the exact bytes on the server, used as the write's CAS
+	 *  token.
+	 */
+	hash: string,
+	size: number,
+	encoding: string,
+	eol: string,
+	bom: boolean,
+	modifiedAt: number | null,
+	permissions: number | null,
+};
+
+export type TextWrite = {
+	path: string,
+	content: string,
+	expectedHash: string | null,
+	/**  `lf`, `crlf` or `cr`; a save keeps the file's existing convention. */
+	eol?: string,
+	bom?: boolean,
+	/**
+	 *  Replace the server's copy even though its hash is not the expected
+	 *  one. Only the explicit overwrite action sets this.
+	 */
+	force?: boolean,
+	/**
+	 *  The encoding the file was read with (`UTF-8`, `GBK`, …). Saving with
+	 *  it preserves a non-UTF-8 source instead of silently converting it.
+	 */
+	encoding?: string | null,
 };
 
 /**
@@ -1448,7 +1886,7 @@ export type StateEvent = {
  *  the webview's own storage; the backend only remembers the last one so the
  *  next window can be created in its background colour (`store::startup_theme`).
  */
-export type Theme = "dark" | "light" | 
+export type Theme = "dark" | "light" |
 /**  The two palettes ported from serialX; see `ThemeMode` in `src/types.ts`. */
 "serialx-dark" | "serialx-light";
 
@@ -1501,6 +1939,63 @@ export type TransferOptions = {
 export type TransferProgress = {
 	transferred: number,
 	total: number,
+};
+
+export type Workspace = {
+	id?: string,
+	name?: string,
+	server?: ServerRef,
+	/**  Absolute directory of the project on the server (the baseline code). */
+	root?: string,
+	/**  Shell prelude run before commands, e.g. `conda activate vfi`. */
+	env?: string,
+	commands?: WorkspaceCommand[],
+	/**
+	 *  Where this project's runs and logs are written. Empty means
+	 *  `<root>/.edgeterm/runs`.
+	 */
+	runRoot?: string,
+	baselineExperimentId?: string | null,
+	createdAt?: number,
+	updatedAt?: number,
+};
+
+export type WorkspaceCommand = {
+	id?: string,
+	label?: string,
+	command?: string,
+	kind?: WorkspaceCommandKind,
+};
+
+export type WorkspaceCommandKind = "train" | "validate" | "infer" | "shell" | "other";
+
+export type WorkspaceData = {
+	workspaces?: Workspace[],
+	experiments?: Experiment[],
+	runs?: RunRecord[],
+};
+
+export type WriteOutcome = {
+	/**
+	 *  The path the file was actually written to. It can differ from the
+	 *  request when the parent directory was reached through a symlink.
+	 */
+	path: string,
+	hash: string,
+	size: number,
+	/**
+	 *  A copy of the previous content, kept because the replace could not be
+	 *  confirmed. The path exists on the server.
+	 */
+	backup?: string | null,
+	/**  The new content still sitting under a temporary name on the server. */
+	temp?: string | null,
+	/**
+	 *  The replace could not be verified: the bytes may or may not be in
+	 *  place. Callers must keep their recovery material.
+	 */
+	uncertain?: boolean,
+	note?: string,
 };
 
 /**

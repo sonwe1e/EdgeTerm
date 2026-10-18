@@ -221,11 +221,6 @@ dialog.dialog-backdrop.is-fallback[open] {
   width: 100%;
 }
 
-.field-row {
-  display: flex;
-  gap: 8px;
-}
-
 .session-dialog {
   display: flex;
   flex-direction: column;

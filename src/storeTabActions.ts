@@ -25,6 +25,7 @@ export const createTabActions: StateCreator<
     | "addTab"
     | "updateTabInfo"
     | "updateTabProfile"
+    | "setTabWorkspace"
     | "closeTab"
     | "requestCloseTab"
     | "requestCloseTabs"
@@ -84,6 +85,18 @@ export const createTabActions: StateCreator<
   updateTabProfile(id, profile) {
     set({
       tabs: get().tabs.map((tab) => (tab.info.id === id ? { ...tab, profile } : tab)),
+    });
+  },
+
+  setTabWorkspace(id, workspaceId, workspaceName) {
+    set({
+      tabs: get().tabs.map((tab) =>
+        tab.info.id === id
+          ? workspaceId
+            ? { ...tab, workspaceId, workspaceName }
+            : { ...tab, workspaceId: undefined, workspaceName: undefined }
+          : tab,
+      ),
     });
   },
 

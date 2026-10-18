@@ -4,7 +4,6 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   hideOverflowTooltip,
   installOverflowTooltip,
-  OVERFLOW_TOOLTIP_DELAY_MS,
   truncatedLabel,
 } from "./overflowTooltip";
 
@@ -65,7 +64,11 @@ describe("overflow tooltip", () => {
     const { row, span } = label("a-very-long-session-name", 240);
     over(span);
     expect(tip()?.classList.contains("is-visible") ?? false).toBe(false);
-    vi.advanceTimersByTime(OVERFLOW_TOOLTIP_DELAY_MS);
+    // 450 ms is the documented pause; 449 must still be too early, or the
+    // delay could drift without any test noticing.
+    vi.advanceTimersByTime(449);
+    expect(tip()?.classList.contains("is-visible") ?? false).toBe(false);
+    vi.advanceTimersByTime(1);
     expect(tip()?.classList.contains("is-visible")).toBe(true);
     expect(tip()?.querySelector("div")?.textContent).toBe(
       "a-very-long-session-name",
@@ -84,7 +87,7 @@ describe("overflow tooltip", () => {
     const { row, span } = label("a-very-long-session-name", 240);
     over(span);
     out(span, row);
-    vi.advanceTimersByTime(OVERFLOW_TOOLTIP_DELAY_MS * 2);
+    vi.advanceTimersByTime(900);
     expect(tip()?.classList.contains("is-visible") ?? false).toBe(false);
   });
 
@@ -92,7 +95,7 @@ describe("overflow tooltip", () => {
     vi.useFakeTimers();
     const { span } = label("a-very-long-session-name", 240);
     over(span);
-    vi.advanceTimersByTime(OVERFLOW_TOOLTIP_DELAY_MS);
+    vi.advanceTimersByTime(450);
     span.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
     expect(tip()?.classList.contains("is-visible")).toBe(false);
   });

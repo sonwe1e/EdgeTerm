@@ -43,6 +43,9 @@ pub enum ErrorCode {
     RemoteWriteUncertain,
     /// The input the operation was given is invalid or incomplete.
     InvalidInput,
+    /// The target changed since the caller last read it, so the write was
+    /// refused instead of overwriting someone else's change.
+    Conflict,
 }
 
 /// A failure that can cross the IPC boundary: the human-readable `message`

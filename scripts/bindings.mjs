@@ -1,6 +1,6 @@
 // Offline Rust-source contract export. No app startup, user store or connections.
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 const root = process.cwd();
 const check = process.argv.slice(2).includes("--check");
@@ -20,7 +20,12 @@ try {
     encoding: "utf8", timeout: 180000, maxBuffer: 16 * 1024 * 1024,
   });
   if (run.status !== 0) throw new Error(`Rust export failed (${run.status}): ${run.error ?? ""}\n${run.stdout}\n${run.stderr}`);
-  if (check && readFileSync(target, "utf8").replaceAll("\r\n", "\n") !== readFileSync("src/bindings.ts", "utf8").replaceAll("\r\n", "\n")) throw new Error("Stale src/bindings.ts: run npm run bindings and review the wire contract diff");
+  // Specta's multi-line unions end lines with a space. Strip it so the
+  // generated file passes `git diff --check`; the contract is unchanged.
+  const normalize = (text) =>
+    text.replaceAll("\r\n", "\n").replace(/[ \t]+$/gm, "");
+  if (!check) writeFileSync(target, normalize(readFileSync(target, "utf8")));
+  if (check && normalize(readFileSync(target, "utf8")) !== normalize(readFileSync("src/bindings.ts", "utf8"))) throw new Error("Stale src/bindings.ts: run npm run bindings and review the wire contract diff");
   console.log(`${check ? "Fresh" : "Generated"} Rust bindings: ${exported.length}/${registered.length} commands, 5 events; ${manual.length} explicit exceptions.`);
 } finally {
   if (!temporary.startsWith(parent + path.sep)) throw new Error("temporary output escaped .tmp");

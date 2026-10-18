@@ -11,7 +11,6 @@ afterEach(async () => { await browserAfterEach(); vi.restoreAllMocks(); });
 for (const fallback of [false, true]) describe(fallback ? "fallback modal" : "native modal", () => {
   const prepare = () => {
     if (fallback) {
-      vi.spyOn(HTMLDialogElement.prototype, "showModal").mockImplementation(function (this: HTMLDialogElement) { this.setAttribute("open", ""); });
       // Real absence, rather than a fake implementation of the native API.
       Object.defineProperty(HTMLDialogElement.prototype, "showModal", { configurable: true, value: undefined });
     }
@@ -27,7 +26,7 @@ for (const fallback of [false, true]) describe(fallback ? "fallback modal" : "na
     input.focus();
     await userEvent.keyboard("abc");
     expect(input.value).toBe("abc");
-    expect(key).toHaveBeenCalled();
+    expect(key.mock.calls.map(([event]) => event.key)).toEqual(["a", "b", "c"]);
     document.querySelector<HTMLButtonElement>("#last")!.focus();
     await userEvent.keyboard("{Tab}");
     expect(document.activeElement).toBe(input);

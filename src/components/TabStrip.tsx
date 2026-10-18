@@ -536,6 +536,11 @@ export function TabStrip({ paneId }: Props) {
             <span className="tab-index">{tab.number}.</span>
             <span className="tab-dot" aria-hidden="true" />
             <span className="tab-label">{tabTitle(tab)}</span>
+            {tab.workspaceName && (
+              <span className="tab-workspace" title={tab.workspaceName}>
+                {tab.workspaceName}
+              </span>
+            )}
             <button
               className="tab-close"
               onMouseDown={(event) => {

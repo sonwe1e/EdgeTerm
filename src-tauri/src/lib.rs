@@ -4,6 +4,7 @@ mod bindings;
 mod commands;
 mod credentials;
 mod diagnostics;
+mod drafts;
 mod error;
 mod file_diff;
 mod file_promise;
@@ -17,6 +18,7 @@ mod port_forward;
 // runs the Rust tests on Linux.
 #[cfg(any(target_os = "linux", all(test, unix)))]
 mod nvidia_quirk;
+mod project;
 mod remote_edit;
 mod resource_monitor;
 mod session;
@@ -24,6 +26,7 @@ mod ssh_config;
 mod ssh_keys;
 mod store;
 mod window_state;
+mod workspace;
 
 #[cfg(test)]
 mod feature_ipc_tests;
@@ -374,6 +377,9 @@ pub fn run() {
             file_transfers: Default::default(),
             file_diffs: Default::default(),
             resource_monitor: Default::default(),
+            workspaces: workspace::WorkspaceStore::load(),
+            drafts: drafts::DraftStore::load(),
+            project_ops: Default::default(),
             key_checks: Default::default(),
             port_forwards: Default::default(),
             ssh_transports: Default::default(),
@@ -420,8 +426,6 @@ pub fn run() {
             commands::import_ssh_config,
             commands::inspect_private_key,
             commands::generate_private_key,
-            commands::install_public_key,
-            commands::verify_public_key_login,
             commands::configure_public_key_login,
             commands::cancel_key_check,
             commands::open_session,
@@ -442,6 +446,31 @@ pub fn run() {
             commands::sftp_home,
             commands::compare_files,
             commands::sample_resources,
+            commands::list_workspace_data,
+            commands::save_workspace,
+            commands::delete_workspace,
+            commands::save_experiment,
+            commands::delete_experiment,
+            commands::record_run,
+            commands::update_run,
+            commands::delete_run,
+            commands::draft_save,
+            commands::draft_load,
+            commands::draft_list,
+            commands::draft_delete,
+            commands::project_probe,
+            commands::project_read_text,
+            commands::project_file_stat,
+            commands::project_write_text,
+            commands::project_list_files,
+            commands::project_search,
+            commands::project_git_state,
+            commands::project_git_diff,
+            commands::project_read_log,
+            commands::project_start_run,
+            commands::project_run_status,
+            commands::project_stop_run,
+            commands::project_compare,
             commands::start_port_forward,
             commands::list_port_forwards,
             commands::stop_port_forward,
@@ -451,15 +480,10 @@ pub fn run() {
             commands::cancel_resource_sample,
             commands::cancel_file_diff,
             commands::sftp_list,
-            commands::sftp_canonicalize,
             commands::sftp_mkdir,
             commands::sftp_create_file,
             commands::sftp_remove,
             commands::sftp_rename,
-            commands::sftp_download,
-            commands::sftp_download_directory,
-            commands::sftp_upload,
-            commands::sftp_upload_directory,
             commands::cancel_transfer,
             commands::transfer_files,
             commands::list_file_transfers,
@@ -472,7 +496,6 @@ pub fn run() {
             commands::local_hostname,
             commands::local_list,
             commands::local_parent,
-            commands::local_is_directory,
             commands::local_mkdir,
             commands::local_create_file,
             commands::local_copy_into,

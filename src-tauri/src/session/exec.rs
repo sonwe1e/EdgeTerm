@@ -7,6 +7,88 @@ use crate::{
 use russh::ChannelMsg;
 use std::sync::Arc;
 use std::time::Duration;
+/// What a bounded inspection command produced. Unlike [`run`], a non-zero
+/// exit is data rather than an error: project queries ask `git`, `grep` and
+/// `command -v`, which all use the exit status to answer.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ExecStatus {
+    pub stdout: String,
+    pub stderr: String,
+    pub exit_code: Option<u32>,
+    pub truncated: bool,
+}
+
+pub async fn run_status(
+    transport: Arc<SharedTransport>,
+    script: &str,
+    control: &Control,
+    limit: usize,
+    timeout: Duration,
+) -> Result<ExecStatus> {
+    let work = control.run(async {
+        let mut channel = transport
+            .owned_command_channel()
+            .await
+            .map_err(Failure::connection)?;
+        channel.terminate_on_drop();
+        channel
+            .exec(true, "sh")
+            .await
+            .map_err(Failure::connection)?;
+        channel
+            .data_bytes(script.as_bytes().to_vec())
+            .await
+            .map_err(Failure::connection)?;
+        channel.eof().await.map_err(Failure::connection)?;
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let mut exit = None;
+        let mut truncated = false;
+        while let Some(message) = channel.wait().await {
+            control.check()?;
+            match message {
+                ChannelMsg::Data { data } => {
+                    if stdout.len().saturating_add(data.len()) > limit {
+                        truncated = true;
+                        break;
+                    }
+                    stdout.extend_from_slice(&data);
+                }
+                ChannelMsg::ExtendedData { data, .. } => {
+                    // Diagnostics only; never let a noisy warning starve the
+                    // answer the caller is waiting for.
+                    if stderr.len() < 64 * 1024 {
+                        stderr.extend_from_slice(&data);
+                    }
+                }
+                ChannelMsg::Failure => {
+                    return Err(Failure::new(
+                        "denied",
+                        "the server refused this inspection command",
+                        false,
+                    ))
+                }
+                ChannelMsg::ExitStatus { exit_status } => exit = Some(exit_status),
+                ChannelMsg::Close => break,
+                _ => {}
+            }
+        }
+        Ok(ExecStatus {
+            stdout: String::from_utf8_lossy(&stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&stderr).into_owned(),
+            exit_code: exit,
+            truncated,
+        })
+    });
+    match tokio::time::timeout(timeout, work).await {
+        Ok(result) => result.map_err(AppError::from),
+        Err(_) => {
+            control.set(2);
+            Err(AppError::new("inspection timed out"))
+        }
+    }
+}
+
 pub async fn run(
     transport: Arc<SharedTransport>,
     script: &str,

@@ -21,7 +21,7 @@ const legacyTitle = (servers: LegacyAlgorithms[]): string =>
     ...servers.map(({ address, algorithms }) => `${address}: ${algorithms.join(", ")}`),
   ].join("\n");
 
-function StatusBarBase() {
+function StatusBarBase({ showResources = true }: { showResources?: boolean }) {
   const t = useT();
   const tab = useActiveTab();
   const status = useStore((s) => s.status);
@@ -47,7 +47,7 @@ function StatusBarBase() {
         {error ?? status}
       </span>
       <div className="status-spacer" />
-      <ResourceMonitorBar tab={tab} />
+      {showResources && <ResourceMonitorBar tab={tab} />}
       <ForwardCenter />
       <TransferCenter />
       {tab && (
@@ -86,6 +86,6 @@ function StatusBarBase() {
   );
 }
 
-// Memoised: the bar takes no props, so the app's re-renders skip it and it
-// redraws only for the store slices and clock it reads itself.
+// Memoised: the one prop changes only when the workbench takes over host
+// sampling, so the app's other re-renders skip the bar.
 export const StatusBar = memo(StatusBarBase);
