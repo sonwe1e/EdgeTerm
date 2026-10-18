@@ -42,40 +42,56 @@ const HOST_BONUS = 2e15;
 class CommandHistory {
   private entries: CommandHistoryEntry[] = [];
   private loadStarted = false;
+  private loadingChanges: (() => void)[] | null = null;
 
   load() {
     if (this.loadStarted) return;
     this.loadStarted = true;
+    this.loadingChanges = [];
     api.listCommandHistory().then(
       (entries) => {
+        const changes = this.loadingChanges;
+        this.loadingChanges = null;
         this.entries = entries;
+        // The snapshot may predate typing, forgetting or clearing while
+        // IPC was in flight. Replay those local edits without persisting twice.
+        for (const change of changes ?? []) change();
       },
       () => {
         // Allow a retry on the next call when the backend was not ready.
+        this.loadingChanges = null;
         this.loadStarted = false;
       },
     );
   }
 
   record(command: string, host: string) {
-    const existing = this.entries.find(
+    const lastUsed = Date.now();
+    const count = (this.entries.find(
       (entry) => entry.command === command && entry.host === host,
-    );
-    if (existing) {
-      existing.count += 1;
-      existing.lastUsed = Date.now();
-    } else {
-      this.entries.push({ command, host, count: 1, lastUsed: Date.now() });
-      if (this.entries.length > MAX_ENTRIES) {
-        let oldest = 0;
-        for (let i = 1; i < this.entries.length; i += 1) {
-          if (this.entries[i].lastUsed < this.entries[oldest].lastUsed) {
-            oldest = i;
+    )?.count ?? 0) + 1;
+    this.change(() => {
+      const existing = this.entries.find(
+        (entry) => entry.command === command && entry.host === host,
+      );
+      if (existing) {
+        // The concurrent snapshot may already include this record. Merge
+        // the observed state instead of counting it again or moving it back.
+        existing.count = Math.max(existing.count, count);
+        existing.lastUsed = Math.max(existing.lastUsed, lastUsed);
+      } else {
+        this.entries.push({ command, host, count, lastUsed });
+        if (this.entries.length > MAX_ENTRIES) {
+          let oldest = 0;
+          for (let i = 1; i < this.entries.length; i += 1) {
+            if (this.entries[i].lastUsed < this.entries[oldest].lastUsed) {
+              oldest = i;
+            }
           }
+          this.entries.splice(oldest, 1);
         }
-        this.entries.splice(oldest, 1);
       }
-    }
+    });
     void api.recordCommand(command, host).catch(() => undefined);
   }
 
@@ -108,13 +124,22 @@ class CommandHistory {
 
   /** Forgets `command` on every host (suggestions are per command text). */
   remove(command: string) {
-    this.entries = this.entries.filter((entry) => entry.command !== command);
+    this.change(() => {
+      this.entries = this.entries.filter((entry) => entry.command !== command);
+    });
     void api.deleteCommandHistory(command).catch(() => undefined);
   }
 
   clear(): Promise<void> {
-    this.entries = [];
+    this.change(() => {
+      this.entries = [];
+    });
     return api.clearCommandHistory();
+  }
+
+  private change(update: () => void) {
+    update();
+    this.loadingChanges?.push(update);
   }
 }
 
