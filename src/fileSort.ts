@@ -11,8 +11,6 @@ export interface FileSort {
   explicit?: true;
 }
 
-export { SORT_STORAGE_KEY };
-
 export const DEFAULT_FILE_SORT: FileSort = { key: "name", direction: "asc" };
 
 const SORT_KEYS: readonly SortKey[] = ["name", "modified", "size"];

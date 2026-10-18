@@ -15,7 +15,6 @@ import type {
   SavedCommand,
   SerialPortDesc,
   SessionGroup,
-  SessionInfo,
   SessionProfile,
   SshConfigPreview,
   SshImportSummary,
@@ -335,8 +334,6 @@ export const closeSession = (id: string) => {
   });
 };
 
-export const listSessions = () => invoke<SessionInfo[]>("list_sessions");
-
 /** Where a profile's recordings go when it names no folder of its own. */
 export const defaultRecordingDir = () =>
   invoke<string>("default_recording_dir");
@@ -399,9 +396,6 @@ export const sftpHome = (id: string) => invoke<string>("sftp_home", { id });
 
 export const sftpList = (id: string, path: string) =>
   invoke<DirListing>("sftp_list", { id, path });
-
-export const sftpCanonicalize = (id: string, path: string) =>
-  invoke<string>("sftp_canonicalize", { id, path });
 
 export const sftpMkdir = (id: string, path: string) =>
   invoke<void>("sftp_mkdir", { id, path });
@@ -492,9 +486,6 @@ export const localList = (path: string) =>
 
 export const localParent = (path: string) =>
   invoke<string>("local_parent", { path });
-
-export const localIsDirectory = (path: string) =>
-  invoke<boolean>("local_is_directory", { path });
 
 export const localMkdir = (path: string) =>
   invoke<void>("local_mkdir", { path });
@@ -780,14 +771,7 @@ export const cancelPortDiscovery = (requestId: string): Promise<void> => invoke(
 
 // --- encoding helpers -------------------------------------------------------
 
-export function base64ToBytes(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
-
-export function bytesToBase64(bytes: Uint8Array): string {
+function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
   return btoa(binary);

@@ -100,19 +100,7 @@
 /* The modal primitive: the <dialog> element itself fills the viewport and
    the browser's top layer supplies the backdrop, focus containment and
    inertness. The ::backdrop layer only paints the dim; hit-testing treats
-   clicks on the dialog element outside the content box as backdrop clicks.
-   The legacy div.dialog-backdrop rule stays until every dialog is migrated. */
-/* Legacy div backdrops (dialogs not yet migrated): constrained to div so the
-   closed native dialog elements are not accidentally display:grid'd visible
-   by this rule before showModal runs. */
-div.dialog-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  display: grid;
-  place-items: center;
-  background: rgba(0, 0, 0, 0.5);
-}
+   clicks on the dialog element outside the content box as backdrop clicks. */
 
 dialog.dialog-backdrop {
   position: fixed;
