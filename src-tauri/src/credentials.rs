@@ -1005,8 +1005,18 @@ mod tests {
     #[test]
     #[ignore = "writes to the real OS credential store; run explicitly"]
     fn os_credential_store_round_trips() {
-        let entry = keyring::Entry::new("EdgeTerm", "credential-store round-trip test")
-            .expect("open the OS credential store");
+        // A unique account never overwrites an earlier run's probe, and the
+        // guard removes this run's entry even if a later assertion fails.
+        struct Probe(keyring::Entry);
+        impl Drop for Probe {
+            fn drop(&mut self) {
+                let _ = self.0.delete_credential();
+            }
+        }
+        let account = format!("credential-store round-trip test {}", uuid::Uuid::new_v4());
+        let probe =
+            Probe(keyring::Entry::new("EdgeTerm", &account).expect("open the OS credential store"));
+        let entry = &probe.0;
         entry.set_password("probe").expect("store a probe secret");
         assert_eq!(
             entry.get_password().expect("read the probe secret"),

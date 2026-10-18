@@ -103,7 +103,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib native_pty_output_survives
 cargo test --manifest-path src-tauri/Cargo.toml --lib benchmark_ -- --ignored --nocapture
 ```
 
-以上是模拟延迟基准，报告 build profile、RTT、文件数/大小、并发和 durable。不能把默认关闭 fsync 前后的时间差标成纯性能提升。真实跳板机用例需要配置 `EDGETERM_TEST_JUMP` 等测试凭据，只使用专用测试环境；不将其加入无条件本地命令。
+以上是模拟延迟基准，报告 build profile、RTT、文件数/大小、并发和 durable。不能把默认关闭 fsync 前后的时间差标成纯性能提升。真实跳板机用例需要配置 `EDGETERM_TEST_JUMP` 等测试凭据，只使用专用测试环境；跳板 fixture 应通过 `PermitOpen` 允许实际 SSH 目标并拒绝目标端口 1，负例须在 5 秒内收到真实拒绝，超时算失败。用例为每次握手显式注入临时 known_hosts，不依赖 Windows 上无效的 HOME 环境覆盖；不将其加入无条件本地命令。
 
 ## 7. 提交验收记录
 

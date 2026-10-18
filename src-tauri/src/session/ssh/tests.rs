@@ -3,12 +3,11 @@ use std::path::{Path, PathBuf};
 use russh::keys::PublicKey;
 
 use super::{
-    auth_failure, authenticate, client_config, connect, connect_on, connect_sftp, ensure_sftp,
-    handshake_failure, key_check, key_only_verdict, legacy_choices, open_shell, replace_host_key,
-    run_sftp, saved_answer, verify_host_key, AuthFlow, AuthPrompter, Client, ConnectOutcome,
-    Endpoint, Handle, HandshakeError, Hops, KeyCheck, KeyCheckOutcome, LegacyRecord, Prompt,
-    Request, SftpConnectOutcome, SftpRequest, SftpResponse, SharedTransport, SshTransports,
-    SAVED_PASSWORD_REJECTED,
+    auth_failure, authenticate, client_config, connect_on, ensure_sftp, handshake_failure,
+    key_check, key_only_verdict, legacy_choices, open_shell, replace_host_key, run_sftp,
+    saved_answer, verify_host_key, AuthFlow, AuthPrompter, Client, Endpoint, Handle,
+    HandshakeError, Hops, KeyCheck, KeyCheckOutcome, LegacyRecord, Prompt, Request, SftpRequest,
+    SftpResponse, SharedTransport, SshTransports, SAVED_PASSWORD_REJECTED,
 };
 use crate::error::{AppError, ErrorCode};
 use crate::file_transfer::Control;
@@ -111,31 +110,59 @@ fn profile_from_env(var: &str) -> SessionProfile {
 /// `EDGETERM_TEST_JUMP=user@host:port EDGETERM_TEST_TARGET=user@host:port
 /// EDGETERM_TEST_KEY=/path/to/key cargo test -- --ignored jump_host`.
 /// The target must be reachable from the jump host and both must accept
-/// the key. HOME is pointed at a scratch directory so the developer's
-/// own known_hosts is never touched.
+/// the key. Each handshake receives an explicit scratch known_hosts path;
+/// changing HOME would not isolate dirs::home_dir() on Windows.
+/// The dedicated jump fixture must reject forwarding to target port 1
+/// (for example, PermitOpen allows only the actual target's SSH port).
 #[tokio::test]
 #[ignore]
 async fn shell_and_sftp_open_through_a_jump_host() {
     let jump = profile_from_env("EDGETERM_TEST_JUMP");
     let target = profile_from_env("EDGETERM_TEST_TARGET");
     let scratch = KnownHosts::new();
-    let home = scratch.path().parent().expect("scratch dir").to_path_buf();
-    std::fs::create_dir_all(home.join(".ssh")).expect("create .ssh");
-    std::env::set_var("HOME", &home);
     // Both hops authenticate with a key; a server that asked anything
     // else would cancel rather than hang this test.
     let user = Mutex::new(CannedAnswers::default());
     let prompter = AuthPrompter::canned(&user);
 
-    // A shell through the tunnel: what the shell prints comes back. The
-    // marker is computed so the echoed command line cannot match it.
-    let mut conn = match connect(&target, std::slice::from_ref(&jump), &prompter, &request())
+    async fn through_jump(
+        target: &SessionProfile,
+        jump: &SessionProfile,
+        prompter: &AuthPrompter<'_>,
+        known_hosts: &Path,
+    ) -> Arc<SharedTransport> {
+        use super::transport::{connect_handle, Dial, HandleOutcome};
+        let transport = match connect_handle(
+            target,
+            std::slice::from_ref(jump),
+            prompter,
+            Dial {
+                flow: AuthFlow::Interactive,
+                known_hosts: Some(known_hosts),
+            },
+            &request(),
+        )
         .await
         .expect("connect through the jump host")
-    {
-        ConnectOutcome::Ready(conn) => conn,
-        ConnectOutcome::HostKeyChanged(change) => panic!("{}", change.message),
-    };
+        {
+            HandleOutcome::Ready(transport) => transport,
+            HandleOutcome::HostKeyChanged(change) => panic!("{}", change.message),
+        };
+        Arc::new(SharedTransport {
+            forwards: transport.forwards,
+            handle: Arc::new(transport.handle),
+            hops: Some(transport.hops),
+            legacy: transport.legacy,
+            endpoint: Endpoint::of(target),
+        })
+    }
+
+    // A shell through the tunnel: what the shell prints comes back. The
+    // marker is computed so the echoed command line cannot match it.
+    let transport = through_jump(&target, &jump, &prompter, scratch.path()).await;
+    let mut conn = connect_on(transport, &target)
+        .await
+        .expect("shell through the jump host");
     conn.channel
         .data(&b"echo edgeterm-$((40+2)); exit\n"[..])
         .await
@@ -165,13 +192,8 @@ async fn shell_and_sftp_open_through_a_jump_host() {
     drop(conn);
 
     // SFTP through the same kind of tunnel.
-    let sftp = match connect_sftp(&target, std::slice::from_ref(&jump), &prompter, &request())
-        .await
-        .expect("sftp through the jump host")
-    {
-        SftpConnectOutcome::Ready(conn) => conn,
-        SftpConnectOutcome::HostKeyChanged(change) => panic!("{}", change.message),
-    };
+    let transport = through_jump(&target, &jump, &prompter, scratch.path()).await;
+    let sftp = super::connect_sftp_on(transport, &target).expect("sftp through the jump host");
     let mut slot = None;
     let session = ensure_sftp(&sftp.transport.handle, &mut slot)
         .await
@@ -186,8 +208,7 @@ async fn shell_and_sftp_open_through_a_jump_host() {
     drop(sftp);
 
     // Both hops went through the host key policy: each was learned.
-    let known_hosts = std::fs::read_to_string(home.join(".ssh").join("known_hosts"))
-        .expect("known_hosts was written");
+    let known_hosts = std::fs::read_to_string(scratch.path()).expect("known_hosts was written");
     for hop in [&jump, &target] {
         let entry = format!("[{}]:{}", hop.host.as_deref().unwrap(), hop.port.unwrap());
         assert!(
@@ -196,18 +217,27 @@ async fn shell_and_sftp_open_through_a_jump_host() {
         );
     }
 
-    // A target the jump host cannot reach is reported as such.
+    // The fixture's forwarding policy rejects this target; use a deadline
+    // because a merely unused port may silently drop packets on the host.
     let mut unreachable = target.clone();
     unreachable.port = Some(1);
-    let error = connect(
-        &unreachable,
-        std::slice::from_ref(&jump),
-        &prompter,
-        &request(),
+    let error = tokio::time::timeout(
+        Duration::from_secs(5),
+        super::transport::connect_handle(
+            &unreachable,
+            std::slice::from_ref(&jump),
+            &prompter,
+            super::transport::Dial {
+                flow: AuthFlow::Interactive,
+                known_hosts: Some(scratch.path()),
+            },
+            &request(),
+        ),
     )
     .await
+    .expect("the fixture must reject forwarding to port 1 within five seconds")
     .err()
-    .expect("port 1 is closed");
+    .expect("the fixture rejects this forwarding target");
     assert!(error.to_string().contains("jump host"), "{error}");
 }
 
