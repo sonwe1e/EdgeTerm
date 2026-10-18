@@ -8,19 +8,6 @@ pub fn write_session(state: State<'_, AppState>, id: String, data: String) -> Re
     state.sessions.write_text(&id, &data)
 }
 
-/// Raw bytes, base64-encoded, for ZMODEM's protocol frames; waits until
-/// the session has written them (see `SessionManager::write_confirmed`).
-#[tauri::command]
-#[cfg_attr(feature = "bindings", specta::specta)]
-pub async fn write_session_binary(
-    state: State<'_, AppState>,
-    id: String,
-    data: String,
-) -> Result<()> {
-    let bytes = B64.decode(data).map_err(err)?;
-    state.sessions.write_confirmed(&id, bytes).await
-}
-
 #[derive(serde::Deserialize, Debug)]
 pub(super) struct BinarySessionTarget {
     pub(super) id: String,
@@ -115,12 +102,6 @@ pub async fn zmodem_file_info(path: String) -> Result<ZmodemFileInfo> {
 }
 
 #[tauri::command]
-#[cfg_attr(feature = "bindings", specta::specta)]
-pub async fn zmodem_read_chunk(path: String, offset: u64, length: u32) -> Result<String> {
-    Ok(B64.encode(read_transfer_bytes(path, offset, length).await?))
-}
-
-#[tauri::command]
 pub async fn zmodem_read_bytes(
     path: String,
     offset: u64,
@@ -152,13 +133,6 @@ pub async fn zmodem_create_file(path: String) -> Result<()> {
     let file = tokio::fs::File::create(path).await?;
     file.sync_all().await?;
     Ok(())
-}
-
-#[tauri::command]
-#[cfg_attr(feature = "bindings", specta::specta)]
-pub async fn zmodem_write_chunk(path: String, offset: u64, data: String) -> Result<()> {
-    let bytes = B64.decode(data).map_err(err)?;
-    write_transfer_bytes(path, offset, &bytes).await
 }
 
 #[tauri::command]
@@ -329,14 +303,6 @@ mod binary_transfer_tests {
         assert_eq!(
             read_transfer_bytes(file.0.clone(), 0, 8).await.unwrap(),
             [0, 1]
-        );
-        // Legacy commands still share the same validated I/O implementation.
-        zmodem_write_chunk(file.0.clone(), 0, B64.encode([42, 24]))
-            .await
-            .unwrap();
-        assert_eq!(
-            zmodem_read_chunk(file.0.clone(), 0, 2).await.unwrap(),
-            B64.encode([42, 24])
         );
     }
 

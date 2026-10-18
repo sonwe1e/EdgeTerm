@@ -29,6 +29,114 @@ fn invoke(
     )
     .map(|body| body.deserialize::<Value>().unwrap())
 }
+
+/// Replaces the former base64-command file test at the production raw IPC
+/// boundary, including Request/header decoding and the binary Response.
+#[test]
+fn raw_file_commands_cross_tauri_ipc_with_bounded_chunks_and_offsets() {
+    use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
+    use tauri::ipc::{InvokeBody, InvokeResponseBody};
+
+    const CHUNK_SIZE: usize = 1024 * 1024;
+    let scratch =
+        std::env::temp_dir().join(format!("edgeterm-binary-ipc-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&scratch).unwrap();
+    let path = scratch.join("测试 é #%.bin");
+    let path_string = path.to_str().unwrap();
+    let app = mock_builder()
+        .invoke_handler(tauri::generate_handler![
+            commands::zmodem_create_file,
+            commands::zmodem_file_info,
+            commands::zmodem_finish_file,
+            commands::zmodem_read_bytes,
+            commands::zmodem_write_bytes
+        ])
+        .build(mock_context(noop_assets()))
+        .unwrap();
+    let window = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+        .build()
+        .unwrap();
+    let request = |cmd: &str, body: InvokeBody, metadata: Option<Value>| {
+        let mut headers = tauri::http::HeaderMap::new();
+        if let Some(metadata) = metadata {
+            headers.insert(
+                "x-edgeterm-metadata",
+                B64.encode(serde_json::to_vec(&metadata).unwrap())
+                    .parse()
+                    .unwrap(),
+            );
+        }
+        tauri::test::get_ipc_response(
+            &window,
+            tauri::webview::InvokeRequest {
+                cmd: cmd.into(),
+                callback: tauri::ipc::CallbackFn(0),
+                error: tauri::ipc::CallbackFn(1),
+                url: "http://tauri.localhost".parse().unwrap(),
+                body,
+                headers,
+                invoke_key: tauri::test::INVOKE_KEY.into(),
+            },
+        )
+    };
+    invoke(&window, "zmodem_create_file", json!({"path":path_string})).unwrap();
+    let first: Vec<u8> = (0..CHUNK_SIZE).map(|i| (i % 256) as u8).collect();
+    let second = vec![0xa5; 17];
+    for (offset, bytes) in [(0, first.clone()), (CHUNK_SIZE, second.clone())] {
+        request(
+            "zmodem_write_bytes",
+            InvokeBody::Raw(bytes),
+            Some(json!({"path":path_string,"offset":offset})),
+        )
+        .unwrap();
+    }
+    invoke(
+        &window,
+        "zmodem_finish_file",
+        json!({"path":path_string,"size":CHUNK_SIZE + 17}),
+    )
+    .unwrap();
+    let info = invoke(&window, "zmodem_file_info", json!({"path":path_string})).unwrap();
+    assert_eq!(info["name"], "测试 é #%.bin");
+    assert_eq!(info["size"], CHUNK_SIZE + 17);
+    assert_eq!(
+        std::fs::read(&path).unwrap(),
+        [first, second.clone()].concat()
+    );
+    let read = request(
+        "zmodem_read_bytes",
+        InvokeBody::Json(json!({"path":path_string,"offset":CHUNK_SIZE,"length":17})),
+        None,
+    )
+    .unwrap();
+    assert!(matches!(read, InvokeResponseBody::Raw(bytes) if bytes == second));
+    for length in [0, CHUNK_SIZE + 1] {
+        assert!(
+            request(
+                "zmodem_read_bytes",
+                InvokeBody::Json(json!({"path":path_string,"offset":0,"length":length})),
+                None,
+            )
+            .is_err(),
+            "zero and oversized reads must be rejected"
+        );
+    }
+    assert!(
+        request(
+            "zmodem_write_bytes",
+            InvokeBody::Raw(vec![0; CHUNK_SIZE + 1]),
+            Some(json!({"path":path_string,"offset":0})),
+        )
+        .is_err(),
+        "writes larger than the fixed application chunk must be rejected"
+    );
+    assert_eq!(
+        std::fs::metadata(&path).unwrap().len(),
+        (CHUNK_SIZE + 17) as u64
+    );
+    std::fs::remove_dir_all(scratch).unwrap();
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "dedicated loopback OpenSSH fixture; actual Tauri dispatch with isolated store"]
 async fn real_ssh_diff_monitor_and_forward_cross_tauri_ipc() {

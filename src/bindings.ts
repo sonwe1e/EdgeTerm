@@ -155,16 +155,9 @@ export const commands = {
 	 *  goes out in the session's own encoding.
 	 */
 	writeSession: (id: string, data: string) => __TAURI_INVOKE<null>("write_session", { id, data }),
-	/**
-	 *  Raw bytes, base64-encoded, for ZMODEM's protocol frames; waits until
-	 *  the session has written them (see `SessionManager::write_confirmed`).
-	 */
-	writeSessionBinary: (id: string, data: string) => __TAURI_INVOKE<null>("write_session_binary", { id, data }),
 	resizeSession: (id: string, cols: number, rows: number) => __TAURI_INVOKE<null>("resize_session", { id, cols, rows }),
 	zmodemFileInfo: (path: string) => __TAURI_INVOKE<ZmodemFileInfo>("zmodem_file_info", { path }),
-	zmodemReadChunk: (path: string, offset: number, length: number) => __TAURI_INVOKE<string>("zmodem_read_chunk", { path, offset, length }),
 	zmodemCreateFile: (path: string) => __TAURI_INVOKE<null>("zmodem_create_file", { path }),
-	zmodemWriteChunk: (path: string, offset: number, data: string) => __TAURI_INVOKE<null>("zmodem_write_chunk", { path, offset, data }),
 	zmodemFinishFile: (path: string, size: number) => __TAURI_INVOKE<null>("zmodem_finish_file", { path, size }),
 	sftpHome: (id: string) => __TAURI_INVOKE<string>("sftp_home", { id }),
 	sftpList: (id: string, path: string) => __TAURI_INVOKE<DirListing>("sftp_list", { id, path }),
