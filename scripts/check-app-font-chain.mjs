@@ -91,18 +91,30 @@ window.__appFontChain = {
   sample() {
     const list = document.querySelector(".filer-list");
     const rows = [...list.querySelectorAll(".filer-entry")];
-    const indices = rows.map((row) => Number(/entry(\d+)\.txt/.exec(row.querySelector(".row-label").textContent)[1]));
+    const indices = rows.map((row) => Number(/entry(\\d+)\\.txt/.exec(row.querySelector(".row-label").textContent)[1]));
     const pairs = rows.slice(1).map((row, i) => ({
       gap: row.getBoundingClientRect().top - rows[i].getBoundingClientRect().top,
       delta: indices[i + 1] - indices[i],
     })).filter((pair) => pair.delta === 1);
     const app = document.querySelector(".app");
     const dateFont = rows[0]?.querySelector(".filer-col-date");
+    const datesFit = rows.every((row) => {
+      const date = row.querySelector(".filer-col-date");
+      if (!date?.textContent) return true;
+      const range = document.createRange();
+      range.selectNodeContents(date);
+      const text = range.getBoundingClientRect();
+      const cell = date.getBoundingClientRect();
+      const viewport = list.getBoundingClientRect();
+      return text.width > 0 && text.left >= cell.left - 0.5 &&
+        text.right <= cell.right + 0.5 && text.right <= viewport.left + list.clientWidth + 0.5;
+    });
     return {
       fontCss: getComputedStyle(app).getPropertyValue("--panel-font-size"),
       rowPitch: pairs.map((pair) => pair.gap),
       entryHeight: rows[0]?.getBoundingClientRect().height ?? null,
       dateFont: dateFont ? getComputedStyle(dateFont).fontSize : null,
+      datesFit,
       mountedRows: rows.length,
       listHeight: list.clientHeight,
       scrollHeight: list.scrollHeight,
@@ -181,7 +193,7 @@ try {
   const channel = process.env.PERF_BROWSER?.trim() || "chromium";
   browser = await chromium.launch(channel === "chromium" ? { headless: true } : { channel, headless: true });
   browserVersion = browser.version();
-  const page = await browser.newPage({ locale: "en", viewport: { width: 1100, height: 720 } });
+  page = await browser.newPage({ locale: "en", viewport: { width: 1100, height: 720 } });
   page.on("pageerror", (error) => errors.push(String(error)));
   page.on("console", (message) => {
     if (message.type() === "error") consoleErrors.push(message.text());
@@ -206,26 +218,7 @@ try {
   // the chain, straight from the real list. Sampling layers separately is
   // what catches an App that hardcodes the variable while the store still
   // drives the slot pitch.
-  const sample = () => page.evaluate(() => {
-    const list = document.querySelector(".filer-list");
-    const rows = [...list.querySelectorAll(".filer-entry")];
-    const indices = rows.map((row) => Number(/entry(\d+)\.txt/.exec(row.querySelector(".row-label").textContent)[1]));
-    const pairs = rows.slice(1).map((row, i) => ({
-      gap: row.getBoundingClientRect().top - rows[i].getBoundingClientRect().top,
-      delta: indices[i + 1] - indices[i],
-    })).filter((pair) => pair.delta === 1);
-    const app = document.querySelector(".app");
-    const dateFont = rows[0]?.querySelector(".filer-col-date");
-    return {
-      fontCss: getComputedStyle(app).getPropertyValue("--panel-font-size"),
-      rowPitch: pairs.map((pair) => pair.gap),
-      entryHeight: rows[0]?.getBoundingClientRect().height ?? null,
-      dateFont: dateFont ? getComputedStyle(dateFont).fontSize : null,
-      mountedRows: rows.length,
-      listHeight: list.clientHeight,
-      scrollHeight: list.scrollHeight,
-    };
-  });
+  const sample = () => invoke("sample");
   // Collect the FULL wide/narrow × 12/18 matrix: an early throw would hide
   // whether later normal controls still hold. The expectations are the
   // audited literals (12px → 26px pitch / 24px row, 18px → 30px / 28px), not
@@ -240,6 +233,7 @@ try {
       innerHeight: value.entryHeight !== null &&
         Math.abs(value.entryHeight - innerHeight) < 0.1,
       dateFont: value.dateFont === `${font - 2}px`,
+      datesFit: value.datesFit,
       windowed: value.mountedRows < 100 && value.mountedRows > 1,
     };
     const failed = Object.entries(checks).filter(([, ok]) => !ok).map(([key]) => key);
@@ -248,6 +242,7 @@ try {
     if (!passed) failures.push({ name, failedChecks: failed, sample: value });
   };
 
+  await fs.mkdir(path.dirname(resultsPath), { recursive: true });
   for (const [width, height] of [[1100, 720], [760, 600]]) {
     await page.setViewportSize({ width, height });
     await invoke("font", 12);
@@ -256,6 +251,7 @@ try {
     await invoke("font", 18);
     await wait(200);
     await expectState(`${width}x${height} at font 18`, 18, 30, 28);
+    await page.screenshot({ path: resultsPath.replace(/\.json$/, `-${width}.png`) });
   }
   assert.ok(failures.length === 0,
     `font chain failures: ${JSON.stringify(failures)}`);
@@ -267,7 +263,7 @@ try {
     browser: browserVersion,
     channel,
     subjectRoot,
-    scope: "Production build (real vite.config). Real App → store.setPanelFontSize → App-owned --panel-font-size → FilerPanel rowHeight + real CSS row height → virtual rows; 10k synthetic entries; consecutive-row pitch within 0.1px of 26/30; mounted rows < 100 (windowed); unexpected IPC recorded and gated.",
+    scope: "Production build (real vite.config). Real App → store.setPanelFontSize → App-owned --panel-font-size → FilerPanel rowHeight + real CSS row height → virtual rows; 10k synthetic entries; consecutive-row pitch within 0.1px of 26/30; date text contained in its cell and list viewport; mounted rows < 100 (windowed); unexpected IPC recorded and gated.",
     passedAll,
     results,
     unknownIpc,
