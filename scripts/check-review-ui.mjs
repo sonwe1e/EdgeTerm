@@ -46,7 +46,9 @@ window.render();window.ready=true;
 </script></body></html>`;
 
 const server = await createServer({
-  server: { host: "127.0.0.1", port: 0 },
+  // Historical builds/worktrees under .tmp are not fixture inputs. Watching
+  // their large trees delays browser initialization and triggers stray reloads.
+  server: { host: "127.0.0.1", port: 0, watch: { ignored: ["**/.tmp/**"] } },
   plugins: [{ name: "review-ui-harness", configureServer(server) {
     server.middlewares.use(async (req, res, next) => {
       if (req.url !== "/__review_ui") return next();

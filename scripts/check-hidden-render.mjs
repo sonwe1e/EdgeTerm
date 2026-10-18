@@ -65,7 +65,8 @@ window.ready = true;
 </script></body></html>`;
 
 const server = await createServer({
-  server: { host: "127.0.0.1", port: 0 },
+  // Historical builds/worktrees are outside this fixture's source inputs.
+  server: { host: "127.0.0.1", port: 0, watch: { ignored: ["**/.tmp/**"] } },
   plugins: [{ name: "hidden-render-harness", configureServer(server) {
     server.middlewares.use(async (req, res, next) => {
       if (req.url !== "/__hidden_render") return next();

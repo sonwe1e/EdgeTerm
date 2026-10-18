@@ -83,7 +83,8 @@ const gate = (name, measured, limit) => {
 };
 
 const server = await createServer({
-  server: { port: 0, strictPort: false, host: "127.0.0.1" },
+  // Historical builds/worktrees are outside this fixture's source inputs.
+  server: { port: 0, strictPort: false, host: "127.0.0.1", watch: { ignored: ["**/.tmp/**"] } },
   plugins: [{ name: "file-perf-harness", configureServer(server) {
     server.middlewares.use(async (req, res, next) => {
       if (req.url !== "/__file_perf") return next();
