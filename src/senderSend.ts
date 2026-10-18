@@ -51,9 +51,6 @@ export function newStopSignal(): StopSignal {
 
 const busy = new Set<string>();
 
-/** Whether a send to the session is still in progress. */
-export const isSending = (id: string) => busy.has(id);
-
 export interface SendOutcome {
   sent: string[];
   /** Sessions left out: a file transfer or another send owned them. */
@@ -76,11 +73,11 @@ export async function sendUnits(
   );
   const skipped = ids.filter((id) => !sent.includes(id));
   for (const id of sent) busy.add(id);
-  try {
-    await Promise.all(sent.map((id) => sendSequence(id, units, ending, stop)));
-  } finally {
-    for (const id of sent) busy.delete(id);
-  }
+  await Promise.all(sent.map((id) =>
+    // Promise.all rejects on the first failure while other sessions can
+    // still be writing. Keep their reservations until their own send ends.
+    sendSequence(id, units, ending, stop).finally(() => busy.delete(id)),
+  ));
   return { sent, skipped };
 }
 
