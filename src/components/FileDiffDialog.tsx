@@ -16,12 +16,16 @@ export function FileDiffDialog({ sessionId, local, remote, active, onClose }: {
   const [loading, setLoading] = useState(true);
   const [attempt, setAttempt] = useState(0);
   const pending = useRef<string | null>(null);
+  // Cancellation acknowledgements can outlive the request, including a
+  // successful retry. Keep its identity until this comparison is replaced.
+  const currentRequest = useRef<string | null>(null);
   const close = useStableCallback(onClose);
   useEffect(() => {
     if (!active) return;
     let disposed = false;
     const requestId = crypto.randomUUID();
     pending.current = requestId;
+    currentRequest.current = requestId;
     setResult(null);
     setError(null);
     setLoading(true);
@@ -40,6 +44,7 @@ export function FileDiffDialog({ sessionId, local, remote, active, onClose }: {
     });
     return () => {
       disposed = true;
+      if (currentRequest.current === requestId) currentRequest.current = null;
       if (pending.current === requestId) {
         pending.current = null;
         void api.cancelFileDiff(requestId).catch(() => {});
@@ -52,7 +57,9 @@ export function FileDiffDialog({ sessionId, local, remote, active, onClose }: {
     pending.current = null;
     setLoading(false);
     setError(t("diff.cancelled"));
-    if (id) void api.cancelFileDiff(id).catch((e) => setError(t("diff.cancelFailed", { error: errorText(e) })));
+    if (id) void api.cancelFileDiff(id).catch((e) => {
+      if (currentRequest.current === id) setError(t("diff.cancelFailed", { error: errorText(e) }));
+    });
   };
   const status = loading ? t("diff.readingFiles")
     : result?.status === "identical" ? t("diff.identical")

@@ -68,4 +68,46 @@ describe("read-only file comparison", () => {
       expect(api.cancelFileDiff).toHaveBeenCalledWith(id); expect(host.childElementCount).toBe(0);
     } finally { act(() => root.unmount()); }
   });
+  it("keeps a cancelled comparison stopped and reports a current cancellation failure", async () => {
+    let complete!: (value: FileComparison) => void;
+    let rejectCancel!: (reason: Error) => void;
+    api.compareFiles.mockReturnValueOnce(new Promise((resolve) => { complete = resolve; }));
+    api.cancelFileDiff.mockReturnValueOnce(new Promise((_, reject) => { rejectCancel = reject; }));
+    const host = document.createElement("div"); const root = createRoot(host);
+    try {
+      await act(async () => root.render(h(FileDiffDialog, { sessionId: "ssh", local: "/a", remote: "/b", active: true, onClose: vi.fn() })));
+      const request = api.compareFiles.mock.calls[0][1];
+      await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Cancel comparison")!.click());
+      expect(api.cancelFileDiff).toHaveBeenCalledWith(request);
+      await act(async () => complete(result("cancelled result")));
+      expect(host.textContent).not.toContain("cancelled result");
+      await act(async () => rejectCancel(new Error("cancellation unavailable")));
+      expect(host.querySelector('[role="alert"]')!.textContent).toContain("cancellation unavailable");
+    } finally { act(() => root.unmount()); }
+  });
+  it.each(["retry", "selection", "hide"])("ignores an old cancellation failure after %s starts a new comparison", async (next) => {
+    let rejectCancel!: (reason: Error) => void;
+    api.compareFiles.mockReturnValueOnce(new Promise(() => {}));
+    api.compareFiles.mockResolvedValueOnce(result("new comparison"));
+    api.cancelFileDiff.mockReturnValueOnce(new Promise((_, reject) => { rejectCancel = reject; }));
+    const host = document.createElement("div"); const root = createRoot(host); const close = vi.fn();
+    const render = (active = true, local = "/a") => h(FileDiffDialog, { sessionId: "ssh", local, remote: "/b", active, onClose: close });
+    try {
+      await act(async () => root.render(render()));
+      await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Cancel comparison")!.click());
+      if (next === "retry") {
+        await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Compare again")!.click());
+      } else if (next === "selection") {
+        await act(async () => root.render(render(true, "/new")));
+      } else {
+        await act(async () => root.render(render(false)));
+        await act(async () => root.render(render()));
+      }
+      expect(api.compareFiles).toHaveBeenCalledTimes(2);
+      expect(host.textContent).toContain("new comparison");
+      await act(async () => rejectCancel(new Error("stale cancellation failure")));
+      expect(host.querySelector('[role="alert"]')).toBeNull();
+      expect(host.textContent).toContain("new comparison");
+    } finally { act(() => root.unmount()); }
+  });
 });
