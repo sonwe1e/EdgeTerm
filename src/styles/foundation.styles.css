@@ -137,7 +137,13 @@
   --bg-panel-alt: #ffffff;
   --bg-terminal: #ffffff;
   --bg-field: #ffffff;
-  --bg-active: #e8e8e8;
+  /* The dark half selects with a saturated blue (#04395e); a 6%-delta gray
+     on the white panel left the selected session row reading as a seam
+     rather than a choice — the one place the light themes lost the
+     selection the dark ones carry. This is the same accent at tint
+     strength, the strongest direction a white canvas allows, and --fg
+     stays above 7:1 on top of it. */
+  --bg-active: #c6daeb;
   --bg-hover: #f2f2f2;
   --border: #e5e5e5;
   --border-strong: #cecece;
@@ -271,7 +277,10 @@
   --bg-panel-alt: #f7f7f5;
   --bg-terminal: #ffffff;
   --bg-field: #ffffff;
-  --bg-active: #e7e7e2;
+  /* Same tint strategy as the VS Code light half: the lavender accent at
+     tint strength over the paper panel, so a selected row carries the same
+     weight its dark twin does instead of a 5%-delta warm gray. */
+  --bg-active: #dbdaf2;
   --bg-hover: #f0f0ec;
   --border: #e4e4e0;
   --border-strong: #dededa;
