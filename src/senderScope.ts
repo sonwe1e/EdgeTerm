@@ -137,7 +137,9 @@ export function scopeForLevel(
 // The last choice in the Save picker is remembered as a level rather than a
 // concrete scope, so "this session's group" carries over to the next tab's
 // group; it only preselects the entry, the picker still asks every time.
-// Everywhere is the initial default, matching how tags behaved before scopes.
+// The default is the narrowest level that still makes sense on a saved
+// session: saving "restart nginx" on one host must not offer it on every
+// other host. A tab without a saved profile falls back to its kind.
 export function loadSaveLevel(): ScopeLevel {
   try {
     const stored = localStorage.getItem(SAVE_LEVEL_KEY);
@@ -152,7 +154,7 @@ export function loadSaveLevel(): ScopeLevel {
   } catch {
     // Use the default when storage is unavailable.
   }
-  return "global";
+  return "profile";
 }
 
 export function storeSaveLevel(level: ScopeLevel): void {
