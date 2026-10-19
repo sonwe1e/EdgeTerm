@@ -11,13 +11,13 @@ import {
 import {
   encodingLabel,
   DEFAULT_ENCODING,
-  LOCALE_NAME,
   LOCALE_SUGGESTIONS,
   TERMINAL_ENCODINGS,
 } from "../encodings";
-import { t as translateMsg, type Translate } from "../i18n";
+import type { Translate } from "../i18n";
 import { open as openDialog } from "../nativeDialog";
 import { IS_WINDOWS } from "../platform";
+import { validateProfile, invalidField, type InvalidSessionField } from "../sessionValidation";
 import {
   flattenGroups,
   groupCategory,
@@ -27,6 +27,9 @@ import {
 import { useStore } from "../store";
 import { useT } from "../useT";
 import { ModalDialog } from "./ModalDialog";
+
+/** The pinned validation message, referenced by the offending field. */
+const SESSION_ERROR_ID = "session-dialog-error";
 import {
   colorForSession,
   isFileSession,
@@ -177,24 +180,6 @@ function jumpHostChoices(
 const describeJumpHost = (p: SessionProfile) =>
   `${p.name} — ${p.username ?? ""}@${p.host ?? ""}:${p.port ?? 22}`;
 
-function validateProfile(profile: SessionProfile): string | null {
-  if (profile.locale && !LOCALE_NAME.test(profile.locale)) {
-    return translateMsg("session.localeError");
-  }
-  if (profile.kind !== "serial") return null;
-
-  const baudRate = profile.baudRate;
-  if (
-    baudRate == null ||
-    !Number.isInteger(baudRate) ||
-    baudRate <= 0 ||
-    baudRate > 0xffffffff
-  ) {
-    return translateMsg("session.baudError");
-  }
-  return null;
-}
-
 function nextColorIndex(
   key: string,
   current: number,
@@ -225,6 +210,29 @@ function nextColorIndex(
 
 export function SessionDialog({ initial, onClose }: Props) {
   const colorPickerRef = useRef<HTMLDivElement>(null);
+  // The fields a failed Save/Connect can point at, so the caret lands where
+  // the fix belongs instead of on the button that was just pressed.
+  const fieldRefs = useRef<
+    Partial<Record<InvalidSessionField | "name", HTMLElement | null>>
+  >({});
+  /** The field a validation message is about, marked while the message shows. */
+  const invalidFieldRef = useRef<HTMLElement | null>(null);
+  const focusField = (field: InvalidSessionField) => {
+    const element = fieldRefs.current[field];
+    if (!element) return;
+    const previous = invalidFieldRef.current;
+    if (previous && previous !== element) {
+      previous.removeAttribute("aria-invalid");
+      previous.removeAttribute("aria-describedby");
+    }
+    // The message is role="alert" and pinned above the buttons; pointing the
+    // field at it makes the relationship explicit instead of relying on the
+    // announcement alone.
+    element.setAttribute("aria-invalid", "true");
+    element.setAttribute("aria-describedby", SESSION_ERROR_ID);
+    invalidFieldRef.current = element;
+    element.focus();
+  };
   const t = useT();
   const [profile, setProfile] = useState<SessionProfile>(() =>
     initial
@@ -239,6 +247,13 @@ export function SessionDialog({ initial, onClose }: Props) {
   // Where recordings go when the profile names no folder; the placeholder.
   const [defaultRecordDir, setDefaultRecordDir] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // A field stays marked only while the message that explains it is shown.
+  useEffect(() => {
+    if (error || !invalidFieldRef.current) return;
+    invalidFieldRef.current.removeAttribute("aria-invalid");
+    invalidFieldRef.current.removeAttribute("aria-describedby");
+    invalidFieldRef.current = null;
+  }, [error]);
   const [busy, setBusy] = useState(false);
   // The note to show where a password is typed when it will not survive a
   // restart (portable mode, an unreachable OS credential store) or cannot be
@@ -271,8 +286,13 @@ export function SessionDialog({ initial, onClose }: Props) {
     );
   }, []);
 
-  const patch = (fields: Partial<SessionProfile>) =>
+  const patch = (fields: Partial<SessionProfile>) => {
     setProfile((prev) => ({ ...prev, ...fields }));
+    // The message described the attempt as it was; editing the form makes it
+    // stale, and a stale error pinned above the buttons contradicts the values
+    // the user is now looking at.
+    setError(null);
+  };
 
   const defaultName = () => {
     if (profile.kind === "ssh") return profile.host ?? "ssh";
@@ -390,6 +410,8 @@ export function SessionDialog({ initial, onClose }: Props) {
               <input
                 {...RAW_TEXT_INPUT}
                 list="session-locale-suggestions"
+                data-field="locale"
+                ref={(element) => { fieldRefs.current.locale = element; }}
                 value={profile.locale ?? ""}
                 placeholder={t("session.automatic")}
                 onChange={(event) => patch({ locale: event.target.value })}
@@ -450,10 +472,16 @@ export function SessionDialog({ initial, onClose }: Props) {
         {profile.record === true && (
           <>
             <div className="session-field is-wide">
-              <span className="session-field-label">{t("session.folder")}</span>
+              <label
+                className="session-field-label"
+                htmlFor="session-record-dir"
+              >
+                {t("session.folder")}
+              </label>
               <div className="serial-port-row">
                 <input
                   {...RAW_TEXT_INPUT}
+                  id="session-record-dir"
                   value={profile.recordDir ?? ""}
                   placeholder={defaultRecordDir || t("session.defaultFolder")}
                   onChange={(event) => patch({ recordDir: event.target.value })}
@@ -604,6 +632,10 @@ export function SessionDialog({ initial, onClose }: Props) {
     const validationError = validateProfile(candidate);
     if (validationError) {
       setError(validationError);
+      // Put the caret on the field the message is about; the error itself is
+      // pinned above the buttons so it is visible wherever the body scrolled.
+      const field = invalidField(candidate);
+      if (field) focusField(field);
       return;
     }
 
@@ -624,6 +656,10 @@ export function SessionDialog({ initial, onClose }: Props) {
     const validationError = validateProfile(candidate);
     if (validationError) {
       setError(validationError);
+      // Put the caret on the field the message is about; the error itself is
+      // pinned above the buttons so it is visible wherever the body scrolled.
+      const field = invalidField(candidate);
+      if (field) focusField(field);
       return;
     }
 
@@ -631,8 +667,13 @@ export function SessionDialog({ initial, onClose }: Props) {
     setError(null);
     try {
       // Saving first keeps the profile in the tree and stores its credentials
-      // in the operating system's secure credential vault.
-      const saved = candidate.name ? await upsertProfile(candidate) : candidate;
+      // in the operating system's secure credential vault. A one-off local
+      // shell is the exception: the tree already has its built-in row, and
+      // saving "shell" on every Connect left a pile of identical profiles.
+      const quickLocal = candidate.kind === "local" && !initial?.id;
+      const saved = candidate.name && !quickLocal
+        ? await upsertProfile(candidate)
+        : candidate;
       const id = await openSession({
         ...saved,
         password: candidate.password,
@@ -656,6 +697,11 @@ export function SessionDialog({ initial, onClose }: Props) {
   return (
     <ModalDialog open onClose={onClose} dismissable={false} draggable
       contentClassName="session-dialog" headerClassName="session-dialog-header"
+      initialFocus={
+        profile.kind === "local" || profile.kind === "serial"
+          ? '[data-field="name"]'
+          : '[data-field="host"]'
+      }
       labelledBy="session-dialog-title" title={<>
           {/* The badge carries the session colour picked below, so the
               dialog wears the identity the tab will have. */}
@@ -752,6 +798,8 @@ export function SessionDialog({ initial, onClose }: Props) {
                 <span className="session-field-label">{t("session.name")}</span>
                 <input
                   {...RAW_TEXT_INPUT}
+                  data-field="name"
+                  ref={(element) => { fieldRefs.current.name = element; }}
                   value={profile.name}
                   placeholder={defaultName()}
                   onChange={(event) => patch({ name: event.target.value })}
@@ -890,6 +938,8 @@ export function SessionDialog({ initial, onClose }: Props) {
                   <span className="session-field-label">{t("session.host")}</span>
                   <input
                     {...RAW_TEXT_INPUT}
+                    data-field="host"
+                    ref={(element) => { fieldRefs.current.host = element; }}
                     value={profile.host ?? ""}
                     placeholder={
                       profile.kind === "ssh" ? "example.com" : "192.168.1.1"
@@ -904,6 +954,8 @@ export function SessionDialog({ initial, onClose }: Props) {
                     type="number"
                     min={1}
                     max={65535}
+                    data-field="port"
+                    ref={(element) => { fieldRefs.current.port = element; }}
                     value={profile.port ?? (profile.kind === "ssh" ? 22 : 23)}
                     onChange={(event) =>
                       patch({
@@ -1028,6 +1080,8 @@ export function SessionDialog({ initial, onClose }: Props) {
                   <span className="session-field-label">{t("session.host")}</span>
                   <input
                     {...RAW_TEXT_INPUT}
+                    data-field="host"
+                    ref={(element) => { fieldRefs.current.host = element; }}
                     value={profile.host ?? ""}
                     placeholder={
                       profile.kind === "sftp"
@@ -1155,6 +1209,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                   <div className="serial-port-row">
                     <select
                       value={profile.portName ?? ""}
+                      aria-label={t("session.port")}
                       onChange={(event) =>
                         patch({ portName: event.target.value })
                       }
@@ -1206,6 +1261,8 @@ export function SessionDialog({ initial, onClose }: Props) {
                       max={0xffffffff}
                       step={1}
                       list="serial-baud-rates"
+                      data-field="baudRate"
+                      ref={(element) => { fieldRefs.current.baudRate = element; }}
                       value={profile.baudRate ?? ""}
                       placeholder="115200"
                       onChange={(event) =>
@@ -1302,13 +1359,20 @@ export function SessionDialog({ initial, onClose }: Props) {
 
           {!isFileSession(profile.kind) && renderRecordingSection()}
 
-          {error && (
-            <div className="dialog-error session-dialog-error" role="alert">
-              <Icon name="error" />
-              <span>{error}</span>
-            </div>
-          )}
         </div>
+
+        {/* Outside the scrolling body: a failed Connect must be visible even
+            when the form is scrolled to the top. */}
+        {error && (
+          <div
+            className="dialog-error session-dialog-error"
+            id={SESSION_ERROR_ID}
+            role="alert"
+          >
+            <Icon name="error" />
+            <span>{error}</span>
+          </div>
+        )}
 
         <div className="dialog-footer">
           <button type="button" className="btn" onClick={onClose}>
