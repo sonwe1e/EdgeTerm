@@ -1,4 +1,12 @@
-import { useCallback, useMemo, useState, type MouseEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent,
+} from "react";
 
 import { openSession, toggleSessionConnection } from "../../actions";
 import * as api from "../../api";
@@ -103,6 +111,35 @@ interface KindSection {
   rows: Row[];
 }
 
+/**
+ * One visible row of the tree, in on-screen order, for the arrow keys. The
+ * kind headings are rows too: they fold and unfold like a group.
+ */
+type TreeItem =
+  | {
+      id: string;
+      type: "section";
+      kind: SessionKind;
+      level: number;
+      collapsed: boolean;
+    }
+  | {
+      id: string;
+      type: "group";
+      level: number;
+      row: Extract<Row, { type: "group" }>;
+    }
+  | { id: string; type: "profile"; level: number; profile: SessionProfile };
+
+/** Row ids for aria-activedescendant; a profile name may contain spaces. */
+const profileRowId = (profile: SessionProfile): string =>
+  `session-row-${encodeURIComponent(profile.id || profile.name)}`;
+
+const groupRowId = (group: SessionGroup): string =>
+  `session-group-${encodeURIComponent(group.id)}`;
+
+const sectionRowId = (kind: SessionKind): string => `session-kind-${kind}`;
+
 interface MenuState {
   x: number;
   y: number;
@@ -170,7 +207,10 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
 
   const sections = useMemo<KindSection[]>(() => {
     const needle = filter.trim().toLowerCase();
-    const visible = [LOCAL_SHELL_PROFILE, ...profiles].filter(
+    // The built-in row follows the interface language; a tab opened from it
+    // takes this name with it, so the strip and the tree agree.
+    const localShell = { ...LOCAL_SHELL_PROFILE, name: t("panel.localShell") };
+    const visible = [localShell, ...profiles].filter(
       (p) => !needle || p.name.toLowerCase().includes(needle),
     );
 
@@ -223,6 +263,159 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
       };
     });
   }, [profiles, groups, filter, open, t]);
+
+  /** Every visible row, in on-screen order, for the tree's arrow keys. */
+  const treeItems = useMemo<TreeItem[]>(() => {
+    const items: TreeItem[] = [];
+    for (const section of sections) {
+      items.push({
+        id: sectionRowId(section.kind),
+        type: "section",
+        kind: section.kind,
+        level: 1,
+        collapsed: section.collapsed,
+      });
+      if (section.collapsed) continue;
+      for (const row of section.rows) {
+        items.push(
+          row.type === "group"
+            ? {
+                id: groupRowId(row.group),
+                type: "group",
+                level: row.depth + 1,
+                row,
+              }
+            : {
+                id: profileRowId(row.profile),
+                type: "profile",
+                level: row.depth + 1,
+                profile: row.profile,
+              },
+        );
+      }
+    }
+    return items;
+  }, [sections]);
+
+  /**
+   * The row the keyboard acts on. This is not a selection — the tree has no
+   * selection model — so it is announced through aria-activedescendant and
+   * the list itself is the single Tab stop.
+   */
+  const [activeId, setActiveId] = useState<string | null>(null);
+  // A click marks a row active and then focuses the list, whose focus
+  // handler must not read the state update still in flight.
+  const activeIdRef = useRef<string | null>(null);
+  const setActive = (id: string | null) => {
+    activeIdRef.current = id;
+    setActiveId(id);
+  };
+  const activeIndex =
+    activeId === null
+      ? -1
+      : treeItems.findIndex((item) => item.id === activeId);
+  const currentIndex =
+    activeIndex >= 0
+      ? activeIndex
+      : activeId !== null && treeItems.length > 0
+        ? 0
+        : -1;
+  const currentItem = currentIndex >= 0 ? treeItems[currentIndex] : undefined;
+  const currentId = currentItem?.id ?? null;
+
+  // Filtering or folding can hide the active row; the first row takes over.
+  useEffect(() => {
+    if (activeId !== null && activeIndex < 0) {
+      const first = treeItems[0]?.id ?? null;
+      activeIdRef.current = first;
+      setActiveId(first);
+    }
+  }, [activeId, activeIndex, treeItems]);
+
+  // Walking past the fold with the keyboard brings the row into view.
+  useEffect(() => {
+    if (currentId) {
+      document.getElementById(currentId)?.scrollIntoView({ block: "nearest" });
+    }
+  }, [currentId]);
+
+  /** Points the keyboard model at a row and keeps the tree focused. */
+  const markActive = (id: string, target: HTMLElement) => {
+    setActive(id);
+    target.closest<HTMLElement>(".panel-body")?.focus({ preventScroll: true });
+  };
+
+  const onTreeKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    // Keys pressed on a row's own button belong to that button.
+    if (event.target !== event.currentTarget) return;
+    if (treeItems.length === 0) return;
+    const item = currentItem;
+    const index = currentIndex;
+    const moveTo = (next: number) => {
+      const target = treeItems[next];
+      if (target) setActive(target.id);
+    };
+    switch (event.key) {
+      case "ArrowDown":
+        event.preventDefault();
+        moveTo(index < 0 ? 0 : Math.min(treeItems.length - 1, index + 1));
+        return;
+      case "ArrowUp":
+        event.preventDefault();
+        moveTo(index < 0 ? 0 : Math.max(0, index - 1));
+        return;
+      case "Home":
+        event.preventDefault();
+        moveTo(0);
+        return;
+      case "End":
+        event.preventDefault();
+        moveTo(treeItems.length - 1);
+        return;
+      case "ArrowRight": {
+        event.preventDefault();
+        if (!item || index < 0) return;
+        const next = treeItems[index + 1];
+        if (item.type === "section" && item.collapsed) {
+          toggle(`kind:${item.kind}`);
+        } else if (item.type === "group" && item.row.collapsed) {
+          toggle(`group:${item.row.group.id}`);
+        } else if (next && next.level > item.level) {
+          moveTo(index + 1);
+        }
+        return;
+      }
+      case "ArrowLeft": {
+        event.preventDefault();
+        if (!item || index < 0) return;
+        if (item.type === "section" && !item.collapsed) {
+          toggle(`kind:${item.kind}`);
+          return;
+        }
+        if (item.type === "group" && !item.row.collapsed) {
+          toggle(`group:${item.row.group.id}`);
+          return;
+        }
+        for (let cursor = index - 1; cursor >= 0; cursor--) {
+          const candidate = treeItems[cursor];
+          if (candidate && candidate.level < item.level) {
+            moveTo(cursor);
+            return;
+          }
+        }
+        return;
+      }
+      case "Enter":
+      case " ": {
+        event.preventDefault();
+        if (!item) return;
+        if (item.type === "profile") void openSession(item.profile);
+        else if (item.type === "group") toggle(`group:${item.row.group.id}`);
+        else toggle(`kind:${item.kind}`);
+        return;
+      }
+    }
+  };
 
   const toggle = (key: string) =>
     setOpen((prev) => ({ ...prev, [key]: !isOpen(prev, key) }));
@@ -319,7 +512,7 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
           "separator" as const,
           {
             label: t("menu.importOpenSshConfig"),
-            icon: "cloud-download" as const,
+            icon: "server-environment" as const,
             action: () => void importSshConfig(),
           },
         ]
@@ -438,85 +631,106 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
     ];
   };
 
-  const renderProfile = (profile: SessionProfile, depth: number) => (
-    <div
-      key={profile.id || profile.name}
-      className="row"
-      style={{ paddingLeft: 6 + INDENT * depth }}
-      onDoubleClick={() => void openSession(profile)}
-      onContextMenu={(event) => openMenu(event, profileMenu(profile))}
-      title={describeProfile(
-        profile,
-        profiles.find((p) => p.id && p.id === profile.jumpProfileId),
-      )}
-    >
-      <span
-        className="row-dot"
-        style={{
-          background:
-            profile.color ?? colorForSession(profile.id || profile.name),
+  const renderProfile = (profile: SessionProfile, depth: number) => {
+    const id = profileRowId(profile);
+    return (
+      <div
+        key={profile.id || profile.name}
+        id={id}
+        role="treeitem"
+        aria-level={depth + 1}
+        // Not a selection model: the row is never "selected", but a treeitem
+        // without aria-selected reads as selectable to some screen readers.
+        aria-selected={false}
+        className={`row${currentId === id ? " is-active" : ""}`}
+        style={{ paddingLeft: 6 + INDENT * depth }}
+        onMouseDown={(event) => {
+          if (event.button === 0) markActive(id, event.currentTarget);
         }}
-      />
-      <span className="row-label">{profile.name}</span>
-      {/* SSH and Telnet share a section; the rarer protocol is marked. */}
-      {profile.kind === "telnet" && <span className="row-meta">telnet</span>}
-      {profile.id && (
-        <>
-          <button
-            className="panel-action"
-            onMouseDown={(event) => {
-              event.stopPropagation();
-              onEditProfile(profile);
-            }}
-            title={t("panel.edit")}
-            aria-label={t("panel.edit")}
-          >
-            <Icon name="edit" />
-          </button>
-          <button
-            className="panel-action"
-            onMouseDown={(event) => {
-              event.stopPropagation();
-              void askDeleteProfile(profile);
-            }}
-            title={t("common.delete")}
-            aria-label={t("common.delete")}
-          >
-            <Icon name="close" />
-          </button>
-        </>
-      )}
-    </div>
-  );
+        onDoubleClick={() => void openSession(profile)}
+        onContextMenu={(event) => openMenu(event, profileMenu(profile))}
+        title={describeProfile(
+          profile,
+          profiles.find((p) => p.id && p.id === profile.jumpProfileId),
+        )}
+      >
+        <span
+          className="row-dot"
+          style={{
+            background:
+              profile.color ?? colorForSession(profile.id || profile.name),
+          }}
+        />
+        <span className="row-label">{profile.name}</span>
+        {/* SSH and Telnet share a section; the rarer protocol is marked. */}
+        {profile.kind === "telnet" && <span className="row-meta">telnet</span>}
+        {profile.id && (
+          <>
+            <button
+              className="panel-action"
+              onMouseDown={(event) => {
+                event.stopPropagation();
+                onEditProfile(profile);
+              }}
+              title={t("panel.edit")}
+              aria-label={t("panel.edit")}
+            >
+              <Icon name="edit" />
+            </button>
+            <button
+              className="panel-action"
+              onMouseDown={(event) => {
+                event.stopPropagation();
+                void askDeleteProfile(profile);
+              }}
+              title={t("common.delete")}
+              aria-label={t("common.delete")}
+            >
+              <Icon name="close" />
+            </button>
+          </>
+        )}
+      </div>
+    );
+  };
 
-  const renderGroup = (row: Extract<Row, { type: "group" }>) => (
-    // Location breadcrumb doubles as the hint that a menu exists here.
-    <div
-      key={`group:${row.group.id}`}
-      className="row is-group"
-      style={{ paddingLeft: 6 + INDENT * row.depth }}
-      onMouseDown={(event) => {
-        if (event.button === 0) toggle(`group:${row.group.id}`);
-      }}
-      onContextMenu={(event) => openMenu(event, groupMenu(row.group))}
-      title={`${describeLocation(
-        groups,
-        row.group.kind,
-        row.group.id,
-        t,
-      )} · ${t("panel.rightClickOptions")}`}
-    >
-      <span className={`row-caret${row.collapsed ? "" : " is-open"}`}>
-        <Icon name="chevron-right" />
-      </span>
-      <Icon
-        name={row.collapsed ? "folder" : "folder-opened"}
-        className="row-folder"
-      />
-      <span className="row-label">{row.group.name}</span>
-      <span className="row-meta">{row.count}</span>
-    </div>
-  );
+  const renderGroup = (row: Extract<Row, { type: "group" }>) => {
+    const id = groupRowId(row.group);
+    return (
+      // Location breadcrumb doubles as the hint that a menu exists here.
+      <div
+        key={`group:${row.group.id}`}
+        id={id}
+        role="treeitem"
+        aria-level={row.depth + 1}
+        aria-expanded={!row.collapsed}
+        className={`row is-group${currentId === id ? " is-active" : ""}`}
+        style={{ paddingLeft: 6 + INDENT * row.depth }}
+        onMouseDown={(event) => {
+          if (event.button !== 0) return;
+          markActive(id, event.currentTarget);
+          toggle(`group:${row.group.id}`);
+        }}
+        onContextMenu={(event) => openMenu(event, groupMenu(row.group))}
+        title={`${describeLocation(
+          groups,
+          row.group.kind,
+          row.group.id,
+          t,
+        )} · ${t("panel.rightClickOptions")}`}
+      >
+        <span className={`row-caret${row.collapsed ? "" : " is-open"}`}>
+          <Icon name="chevron-right" />
+        </span>
+        <Icon
+          name={row.collapsed ? "folder" : "folder-opened"}
+          className="row-folder"
+        />
+        <span className="row-label">{row.group.name}</span>
+        <span className="row-meta">{row.count}</span>
+      </div>
+    );
+  };
 
   return (
     <div className="panel" style={{ flex: 1 }}>
@@ -571,36 +785,59 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
         <summary>{t("panel.sshConnections")}</summary>
         <SshReuseSetting />
       </details>
-      <div className="panel-body">
-        {sections.map((section) => (
-          <div key={section.kind}>
-            <div
-              className="row is-section"
-              onMouseDown={(event) => {
-                if (event.button === 0) toggle(`kind:${section.kind}`);
-              }}
-              onContextMenu={(event) =>
-                openMenu(event, kindMenu(section.kind))
-              }
-              title={t("panel.rightClickAddGroup")}
-            >
-              <span
-                className={`row-caret${section.collapsed ? "" : " is-open"}`}
+      <div
+        className="panel-body"
+        role="tree"
+        aria-label={t("panel.sessionTree")}
+        aria-activedescendant={currentId ?? undefined}
+        tabIndex={0}
+        onFocus={(event) => {
+          if (event.target === event.currentTarget && activeIdRef.current === null) {
+            setActive(treeItems[0]?.id ?? null);
+          }
+        }}
+        onKeyDown={onTreeKeyDown}
+      >
+        {sections.map((section) => {
+          const id = sectionRowId(section.kind);
+          return (
+            <div key={section.kind}>
+              <div
+                id={id}
+                role="treeitem"
+                aria-level={1}
+                aria-expanded={!section.collapsed}
+                className={`row is-section${currentId === id ? " is-active" : ""}`}
+                onMouseDown={(event) => {
+                  if (event.button !== 0) return;
+                  markActive(id, event.currentTarget);
+                  toggle(`kind:${section.kind}`);
+                }}
+                onContextMenu={(event) =>
+                  openMenu(event, kindMenu(section.kind))
+                }
+                title={t("panel.rightClickAddGroup")}
               >
-                <Icon name="chevron-right" />
-              </span>
-              <span className="row-label">{sectionLabel(section.kind, t)}</span>
-              <span className="row-meta">{section.count}</span>
-            </div>
+                <span
+                  className={`row-caret${section.collapsed ? "" : " is-open"}`}
+                >
+                  <Icon name="chevron-right" />
+                </span>
+                <span className="row-label">
+                  {sectionLabel(section.kind, t)}
+                </span>
+                <span className="row-meta">{section.count}</span>
+              </div>
 
-            {!section.collapsed &&
-              section.rows.map((row) =>
-                row.type === "group"
-                  ? renderGroup(row)
-                  : renderProfile(row.profile, row.depth),
-              )}
-          </div>
-        ))}
+              {!section.collapsed &&
+                section.rows.map((row) =>
+                  row.type === "group"
+                    ? renderGroup(row)
+                    : renderProfile(row.profile, row.depth),
+                )}
+            </div>
+          );
+        })}
         {filtering && sections.every((section) => section.count === 0) && (
           <div className="panel-empty">
             {t("panel.noMatches", { filter: filter.trim() })}
