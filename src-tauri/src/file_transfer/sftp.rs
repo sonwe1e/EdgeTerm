@@ -1,7 +1,8 @@
 use std::collections::{HashMap, HashSet};
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use futures_util::{
     stream::{FuturesOrdered, FuturesUnordered},
@@ -27,6 +28,24 @@ use crate::session::{
 #[cfg(test)]
 #[path = "sftp_tests.rs"]
 mod tests;
+
+/// How long a job tolerates a server that answers *nothing at all*. The
+/// deadline is measured from the last replied request, not from the moment a
+/// request was sent: a request on a slow link legitimately waits behind the
+/// bytes ahead of it, so measuring from the send turns a slow link into a
+/// retry loop — each attempt is cut off mid-pipeline, its prefix is read back
+/// to verify the resume, and the fan-out is repeated, which is slower than
+/// simply waiting. Only a genuinely silent server is a stall.
+pub(super) const IDLE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// The protocol layer's own per-request ceiling. russh-sftp measures it from
+/// the moment a request is queued, so it has to be far above any plausible
+/// backlog wait; the idle deadline above is what actually decides that a
+/// server has stopped. SFTP servers answer every request or lose the
+/// connection, so a single reply that never comes is a broken peer, not a slow
+/// one. The fixture keeps this value too, so its regressions see production's
+/// shape.
+pub(super) const REQUEST_TIMEOUT_SECS: u64 = 600;
 
 impl From<Error> for Failure {
     fn from(e: Error) -> Self {
@@ -63,6 +82,13 @@ pub(super) struct Remote {
     /// without a listing (a download, a direct copy, an unlistable
     /// directory) keeps the probe.
     listings: Mutex<HashMap<String, HashSet<String>>>,
+    /// When the last reply arrived. Requests may queue behind one another on
+    /// a slow link; only total silence counts against this.
+    last_response: Mutex<Instant>,
+    /// Total silence tolerated before the attempt is retried. A field, not a
+    /// constant read here, so the wire fixture can shorten it and still prove
+    /// a real stall is caught; production always uses [`IDLE_TIMEOUT`].
+    idle_timeout: Duration,
     _transport: Option<Arc<SharedTransport>>,
 }
 impl Drop for Remote {
@@ -113,7 +139,7 @@ impl Remote {
         };
         *job.transport.lock() = Some(transport.clone());
         let mut raw = RawSftpSession::new(stream);
-        raw.set_timeout(25);
+        raw.set_timeout(REQUEST_TIMEOUT_SECS);
         let version = job
             .control
             .run(async { raw.init().await.map_err(Failure::from) })
@@ -158,19 +184,79 @@ impl Remote {
             requests: Semaphore::new(job.options.requests),
             pacer: job.pacer.clone(),
             listings: Mutex::new(HashMap::new()),
+            last_response: Mutex::new(Instant::now()),
+            idle_timeout: IDLE_TIMEOUT,
             _transport: Some(transport),
         }))
     }
+    /// Runs one SFTP exchange under the job's control and the idle deadline.
+    /// Every reply moves the deadline, so a pipeline backlogged on a slow link
+    /// keeps running; only a server that answers nothing at all is a stall.
+    async fn exchange<T>(
+        &self,
+        control: &Control,
+        future: impl Future<Output = TransferResult<T>>,
+    ) -> TransferResult<T> {
+        control.check()?;
+        let started = Instant::now();
+        tokio::select! {
+            biased;
+            _ = control.stopped() => { control.check()?; unreachable!() },
+            _ = self.silent(control, started) => {
+                control.check()?;
+                Err(Failure::new(
+                    "timeout",
+                    format!(
+                        "the transfer server did not answer for {} s",
+                        self.idle_timeout.as_secs()
+                    ),
+                    true,
+                ))
+            }
+            result = future => {
+                *self.last_response.lock() = Instant::now();
+                result
+            }
+        }
+    }
+    /// A commit-critical exchange that must not be cancelled between the two
+    /// renames: pause and cancel are ignored for its duration, but a server
+    /// that goes silent still bounds the wait. The old code left these raw
+    /// calls on the protocol deadline alone, which now only bounds a single
+    /// lost reply, not a commit that has to finish or be restored.
+    async fn committed<T>(
+        &self,
+        future: impl Future<Output = TransferResult<T>>,
+    ) -> TransferResult<T> {
+        self.exchange(&Control::default(), future).await
+    }
+    /// Sleeps until the exchange is [`Remote::idle_timeout`] old, counting
+    /// from whichever is later: the exchange's own start or the last reply
+    /// anywhere. A job that starts a fresh exchange after a long failure must
+    /// not inherit the old deadline, and one request must not postpone the
+    /// deadline for a server that only answers *other* requests.
+    async fn silent(&self, control: &Control, started: Instant) {
+        loop {
+            let quiet = (*self.last_response.lock()).max(started).elapsed();
+            if quiet >= self.idle_timeout {
+                return;
+            }
+            tokio::select! {
+                biased;
+                _ = control.stopped() => return,
+                _ = tokio::time::sleep(self.idle_timeout - quiet) => {}
+            }
+        }
+    }
     async fn attrs(&self, path: &str, control: &Control) -> TransferResult<Option<FileAttributes>> {
-        control
-            .run(async {
-                match self.raw.lstat(path).await {
-                    Ok(v) => Ok(Some(v.attrs)),
-                    Err(Error::Status(s)) if s.status_code == StatusCode::NoSuchFile => Ok(None),
-                    Err(e) => Err(e.into()),
-                }
-            })
-            .await
+        self.exchange(control, async {
+            match self.raw.lstat(path).await {
+                Ok(v) => Ok(Some(v.attrs)),
+                Err(Error::Status(s)) if s.status_code == StatusCode::NoSuchFile => Ok(None),
+                Err(e) => Err(e.into()),
+            }
+        })
+        .await
     }
     async fn open(
         &self,
@@ -178,15 +264,14 @@ impl Remote {
         flags: OpenFlags,
         control: &Control,
     ) -> TransferResult<String> {
-        control
-            .run(async {
-                self.raw
-                    .open(path, flags, FileAttributes::empty())
-                    .await
-                    .map(|v| v.handle)
-                    .map_err(Failure::from)
-            })
-            .await
+        self.exchange(control, async {
+            self.raw
+                .open(path, flags, FileAttributes::empty())
+                .await
+                .map(|v| v.handle)
+                .map_err(Failure::from)
+        })
+        .await
     }
     async fn close(&self, handle: &str) {
         let _ = tokio::time::timeout(Duration::from_secs(2), self.raw.close(handle)).await;
@@ -198,38 +283,37 @@ impl Remote {
         count: usize,
         control: &Control,
     ) -> TransferResult<Vec<u8>> {
-        control
-            .run(async {
-                let _permit = self.requests.acquire().await.map_err(Failure::network)?;
-                let mut result = Vec::with_capacity(count);
-                // A short DATA packet is legal; only explicit EOF terminates a read.
-                while result.len() < count {
-                    let size = (count - result.len()).min(self.read_len);
-                    // The charge is taken here, where this future is first
-                    // polled and the request actually goes out — creating a
-                    // pipeline of futures charges nothing until each one
-                    // runs, so the burst the server ever sees is bounded by
-                    // the bucket, not by the pipeline's depth.
-                    if let Some(pacer) = &self.pacer {
-                        super::paced(pacer, control, size as u64).await?;
-                    }
-                    let bytes = self
-                        .raw
-                        .read(handle, offset + result.len() as u64, size as u32)
-                        .await?;
-                    if bytes.data.is_empty() || bytes.data.len() > size {
-                        return Err(Failure::conflict(
-                            "unexpected short or oversized remote file",
-                        ));
-                    }
-                    if let Some(pacer) = &self.pacer {
-                        pacer.refund((size - bytes.data.len()) as u64);
-                    }
-                    result.extend_from_slice(&bytes.data);
+        self.exchange(control, async {
+            let _permit = self.requests.acquire().await.map_err(Failure::network)?;
+            let mut result = Vec::with_capacity(count);
+            // A short DATA packet is legal; only explicit EOF terminates a read.
+            while result.len() < count {
+                let size = (count - result.len()).min(self.read_len);
+                // The charge is taken here, where this future is first
+                // polled and the request actually goes out — creating a
+                // pipeline of futures charges nothing until each one
+                // runs, so the burst the server ever sees is bounded by
+                // the bucket, not by the pipeline's depth.
+                if let Some(pacer) = &self.pacer {
+                    super::paced(pacer, control, size as u64).await?;
                 }
-                Ok(result)
-            })
-            .await
+                let bytes = self
+                    .raw
+                    .read(handle, offset + result.len() as u64, size as u32)
+                    .await?;
+                if bytes.data.is_empty() || bytes.data.len() > size {
+                    return Err(Failure::conflict(
+                        "unexpected short or oversized remote file",
+                    ));
+                }
+                if let Some(pacer) = &self.pacer {
+                    pacer.refund((size - bytes.data.len()) as u64);
+                }
+                result.extend_from_slice(&bytes.data);
+            }
+            Ok(result)
+        })
+        .await
     }
     async fn write(
         &self,
@@ -238,18 +322,17 @@ impl Remote {
         bytes: Vec<u8>,
         control: &Control,
     ) -> TransferResult<Vec<u8>> {
-        control
-            .run(async {
-                let _permit = self.requests.acquire().await.map_err(Failure::network)?;
-                // Charged as the write request — carrying its whole payload —
-                // is about to go out.
-                if let Some(pacer) = &self.pacer {
-                    super::paced(pacer, control, bytes.len() as u64).await?;
-                }
-                self.raw.write(handle, offset, bytes.clone()).await?;
-                Ok(bytes)
-            })
-            .await
+        self.exchange(control, async {
+            let _permit = self.requests.acquire().await.map_err(Failure::network)?;
+            // Charged as the write request — carrying its whole payload —
+            // is about to go out.
+            if let Some(pacer) = &self.pacer {
+                super::paced(pacer, control, bytes.len() as u64).await?;
+            }
+            self.raw.write(handle, offset, bytes.clone()).await?;
+            Ok(bytes)
+        })
+        .await
     }
     async fn signature(
         &self,
@@ -275,8 +358,8 @@ impl Remote {
             return Ok(None);
         };
         if meta.is_symlink() && follow_source {
-            meta = control
-                .run(async {
+            meta = self
+                .exchange(control, async {
                     self.raw
                         .stat(path)
                         .await
@@ -297,16 +380,16 @@ impl Remote {
         let result = async {
             let mut context = Context::new(&SHA256);
             let length = size.min(64 * 1024) as usize;
-            let tail = size.saturating_sub(length as u64);
+            let tail_offset = size.saturating_sub(length as u64);
             let head = self.read(&handle, 0, length, control).await?;
             context.update(&head);
             // A file that fits in one sample has the same bytes at both ends.
             // They are still hashed twice, so the signature a checkpoint holds
             // is unchanged, but the second read would only fetch them again.
-            if tail == 0 {
+            if tail_offset == 0 {
                 context.update(&head);
             } else {
-                context.update(&self.read(&handle, tail, length, control).await?);
+                context.update(&self.read(&handle, tail_offset, length, control).await?);
             }
             Ok(Some(local::Signature {
                 size,
@@ -318,6 +401,8 @@ impl Remote {
         self.close(&handle).await;
         result
     }
+    /// Re-reads a file this job already wrote and returns its digest: a
+    /// resumed prefix, or a destination a recovery has to recognise.
     async fn hash(&self, path: &str, size: u64, control: &Control) -> TransferResult<String> {
         let handle = self.open(path, OpenFlags::READ, control).await?;
         let result = async {
@@ -350,31 +435,30 @@ impl Remote {
         // directory is the common case and costs one round trip. Servers
         // answer "failure" both for real errors and for an existing
         // directory, so only then is a stat spent to tell them apart.
-        control
-            .run(async {
-                match self.raw.mkdir(path, FileAttributes::empty()).await {
-                    Ok(_) => Ok(true),
-                    Err(Error::Status(s)) if s.status_code == StatusCode::Failure => {
-                        match self.raw.lstat(path).await {
-                            Ok(v) if v.attrs.is_dir() && !v.attrs.is_symlink() => Ok(false),
-                            Ok(_) => Err(Failure::conflict(format!(
-                                "target is not a real directory: {path}"
-                            ))),
-                            Err(e) => Err(e.into()),
-                        }
+        self.exchange(control, async {
+            match self.raw.mkdir(path, FileAttributes::empty()).await {
+                Ok(_) => Ok(true),
+                Err(Error::Status(s)) if s.status_code == StatusCode::Failure => {
+                    match self.raw.lstat(path).await {
+                        Ok(v) if v.attrs.is_dir() && !v.attrs.is_symlink() => Ok(false),
+                        Ok(_) => Err(Failure::conflict(format!(
+                            "target is not a real directory: {path}"
+                        ))),
+                        Err(e) => Err(e.into()),
                     }
-                    Err(e) => Err(e.into()),
                 }
-            })
-            .await
+                Err(e) => Err(e.into()),
+            }
+        })
+        .await
     }
     async fn list(
         &self,
         path: &str,
         control: &Control,
     ) -> TransferResult<Vec<russh_sftp::protocol::File>> {
-        let handle = control
-            .run(async {
+        let handle = self
+            .exchange(control, async {
                 self.raw
                     .opendir(path)
                     .await
@@ -385,8 +469,8 @@ impl Remote {
         let result = async {
             let mut entries = Vec::new();
             loop {
-                let page = control
-                    .run(async {
+                let page = self
+                    .exchange(control, async {
                         match self.raw.readdir(&handle).await {
                             Ok(v) => Ok(Some(v.files)),
                             Err(Error::Status(s)) if s.status_code == StatusCode::Eof => Ok(None),
@@ -473,11 +557,11 @@ pub(super) async fn copy_files(job: &Job, remote: &Remote, files: Vec<Item>) -> 
     }
 }
 
-/// How many directory creations or parent resolutions stay in flight at
-/// once during planning. OpenSSH's sftp-server (and most servers) process
-/// one channel's requests in order, so a parent is created before the
-/// children behind it arrive; `create_directories` still recovers on a
-/// server that does not.
+/// How many directory creations, parent resolutions or remote size lookups
+/// stay in flight at once during planning. OpenSSH's sftp-server (and most
+/// servers) process one channel's requests in order, so a parent is created
+/// before the children behind it arrive; `create_directories` still recovers
+/// on a server that does not.
 const PLAN_WINDOW: usize = 8;
 
 /// Creates the planned directories parents-first, keeping a window of
@@ -543,22 +627,42 @@ pub(super) async fn plan(job: &Job, remote: &Remote) -> TransferResult<Vec<Item>
         for item in &plan {
             job.control.check()?;
             sizes.push(match job.checkpoint(&job.key(item)) {
-                Some(checkpoint) => checkpoint.source.size,
-                None if item.upload => std::fs::metadata(&item.local)?.len(),
-                None => remote
-                    .attrs(&item.remote, &job.control)
-                    .await?
-                    .and_then(|attrs| attrs.size)
-                    .ok_or_else(|| {
-                        Failure::conflict(format!("source size unavailable: {}", item.remote))
-                    })?,
+                Some(checkpoint) => Some(checkpoint.source.size),
+                None if item.upload => Some(std::fs::metadata(&item.local)?.len()),
+                None => None,
             });
         }
+        let gaps: Vec<usize> = sizes
+            .iter()
+            .enumerate()
+            .filter(|(_, size)| size.is_none())
+            .map(|(index, _)| index)
+            .collect();
+        for gap in gaps {
+            job.control.check()?;
+            sizes[gap] = remote
+                .attrs(&plan[gap].remote, &job.control)
+                .await?
+                .and_then(|attrs| attrs.size);
+        }
+        let sizes: Vec<u64> = sizes
+            .into_iter()
+            .enumerate()
+            .map(|(index, size)| {
+                size.ok_or_else(|| {
+                    Failure::conflict(format!("source size unavailable: {}", plan[index].remote))
+                })
+            })
+            .collect::<TransferResult<Vec<u64>>>()?;
         job.prime_resumed_progress(&plan, &sizes);
         return Ok(plan);
     }
     let mut files = Vec::new();
-    let mut sizes = Vec::new();
+    // Each planned file's size, or `None` while the server still has to be
+    // asked: the walk below knows a size the moment it sees a listing or the
+    // local disk, and the remaining ones are collected over a window once the
+    // walk is done.
+    let mut sizes: Vec<Option<u64>> = Vec::new();
     // Directories this plan creates. They are empty by construction, so
     // their files need no destination listing.
     let mut created = HashSet::new();
@@ -567,13 +671,9 @@ pub(super) async fn plan(job: &Job, remote: &Remote) -> TransferResult<Vec<Item>
         let directory = item.directory || (item.upload && std::fs::metadata(&item.local)?.is_dir());
         if !directory {
             sizes.push(if item.upload {
-                std::fs::metadata(&item.local)?.len()
+                Some(std::fs::metadata(&item.local)?.len())
             } else {
-                remote
-                    .attrs(&item.remote, &job.control)
-                    .await?
-                    .and_then(|m| m.size)
-                    .unwrap_or(0)
+                None
             });
             files.push(item.clone());
             continue;
@@ -595,7 +695,7 @@ pub(super) async fn plan(job: &Job, remote: &Remote) -> TransferResult<Vec<Item>
                     created.insert(path);
                 });
             for file in plan.files {
-                sizes.push(file.size);
+                sizes.push(Some(file.size));
                 files.push(Item {
                     local: file.local.to_string_lossy().into(),
                     remote: file.remote,
@@ -618,9 +718,8 @@ pub(super) async fn plan(job: &Job, remote: &Remote) -> TransferResult<Vec<Item>
                     // Directory links must never create a cycle or escape the tree.
                     let mut attrs = entry.attrs;
                     if attrs.is_symlink() {
-                        attrs = match job
-                            .control
-                            .run(async {
+                        attrs = match remote
+                            .exchange(&job.control, async {
                                 remote
                                     .raw
                                     .stat(&remote_child)
@@ -638,7 +737,7 @@ pub(super) async fn plan(job: &Job, remote: &Remote) -> TransferResult<Vec<Item>
                     if attrs.is_dir() {
                         directories.push((remote_child, child));
                     } else {
-                        sizes.push(attrs.size.unwrap_or(0));
+                        sizes.push(Some(attrs.size.unwrap_or(0)));
                         files.push(Item {
                             local: child.to_string_lossy().into(),
                             remote: remote_child,
@@ -648,6 +747,18 @@ pub(super) async fn plan(job: &Job, remote: &Remote) -> TransferResult<Vec<Item>
                     }
                 }
             }
+        }
+    }
+    // Every size still unknown is a remote file's, and each one costs a round
+    // trip. They are asked in plan order, so the first failure reported is the
+    // first one a sequential walk would have hit.
+    for (item, size) in files.iter().zip(sizes.iter_mut()) {
+        job.control.check()?;
+        if size.is_none() {
+            *size = remote
+                .attrs(&item.remote, &job.control)
+                .await?
+                .and_then(|attrs| attrs.size);
         }
     }
     // Duplicate destinations in one batch are rejected before any file is written.
@@ -678,8 +789,10 @@ pub(super) async fn plan(job: &Job, remote: &Remote) -> TransferResult<Vec<Item>
             while resolves.len() < PLAN_WINDOW {
                 let Some(parent) = queue.next() else { break };
                 resolves.push_back(async move {
-                    job.control
-                        .run(async { remote.raw.realpath(&parent).await.map_err(Failure::from) })
+                    remote
+                        .exchange(&job.control, async {
+                            remote.raw.realpath(&parent).await.map_err(Failure::from)
+                        })
                         .await
                         .map(|resolved| (parent, resolved))
                 });
@@ -771,7 +884,7 @@ pub(super) async fn plan(job: &Job, remote: &Remote) -> TransferResult<Vec<Item>
         remote.set_listings(listings);
     }
     for (item, size) in files.iter().zip(sizes) {
-        job.progress(&job.key(item), 0, size, false);
+        job.progress(&job.key(item), 0, size.unwrap_or(0), false);
     }
     // Freeze the expanded plan before the first byte moves, so restart
     // recovery replays exactly this list.
@@ -802,12 +915,16 @@ async fn copy(
                 .await?
                 .ok_or_else(|| Failure::conflict("source disappeared"))?
         };
+        // Waiting for one of the two large-file slots is a local wait, not a
+        // request: on a slow link the files ahead of it legitimately transfer
+        // for minutes, and a fixed operation deadline here failed this file
+        // while the job was making progress. Pause and cancel still interrupt
+        // the wait.
         let _large = if source.size >= 16 * 1024 * 1024 {
-            Some(
-                job.control
-                    .run(async { large.acquire().await.map_err(Failure::network) })
-                    .await?,
-            )
+            Some(tokio::select! {
+                _ = job.control.stopped() => { job.control.check()?; unreachable!() },
+                permit = large.acquire() => permit.map_err(Failure::network)?,
+            })
         } else {
             None
         };
@@ -1082,8 +1199,8 @@ async fn upload(
         if !fresh {
             // Resume: drop any unconfirmed tail beyond the checkpointed
             // prefix before appending to it.
-            job.control
-                .run(async {
+            remote
+                .exchange(&job.control, async {
                     remote
                         .raw
                         .fsetstat(
@@ -1147,8 +1264,8 @@ async fn upload(
         // small-file batches are not paced by it. Unsupported servers are
         // rejected before writing; never silently weaken this option.
         if job.options.durable {
-            job.control
-                .run(async {
+            remote
+                .exchange(&job.control, async {
                     remote
                         .raw
                         .fsync(&handle)
@@ -1158,8 +1275,8 @@ async fn upload(
                 })
                 .await?;
         }
-        job.control
-            .run(async {
+        remote
+            .exchange(&job.control, async {
                 remote
                     .raw
                     .close(&handle)
@@ -1332,8 +1449,8 @@ async fn commit(
                 .await?
             {
                 if let Some(permissions) = meta.permissions {
-                    job.control
-                        .run(async {
+                    remote
+                        .exchange(&job.control, async {
                             remote
                                 .raw
                                 .setstat(
@@ -1371,8 +1488,8 @@ async fn commit(
                 data.extend_from_slice(&(path.len() as u32).to_be_bytes());
                 data.extend_from_slice(path.as_bytes());
             }
-            job.control
-                .run(async {
+            remote
+                .exchange(&job.control, async {
                     match remote
                         .raw
                         .extended("posix-rename@openssh.com", data)
@@ -1391,8 +1508,8 @@ async fn commit(
                 }
                 cp.owns_backup = true;
                 job.save_async(cp).await?;
-                job.control
-                    .run(async {
+                remote
+                    .exchange(&job.control, async {
                         remote
                             .raw
                             .rename(&cp.item.remote, &cp.backup)
@@ -1403,12 +1520,44 @@ async fn commit(
                     .await?;
             }
             // Do not cancel between the two renames: finish or restore the old
-            // file. Raw requests still have their own bounded timeout.
-            if let Err(e) = remote.raw.rename(&cp.temporary, &cp.item.remote).await {
-                if (current.is_some() || recovering_backup)
-                    && matches!(remote.raw.lstat(&cp.item.remote).await, Err(Error::Status(s)) if s.status_code == StatusCode::NoSuchFile)
-                {
-                    let _ = remote.raw.rename(&cp.backup, &cp.item.remote).await;
+            // file. A silent server still bounds the wait (see `committed`).
+            if let Err(e) = remote
+                .committed(async {
+                    remote
+                        .raw
+                        .rename(&cp.temporary, &cp.item.remote)
+                        .await
+                        .map(|_| ())
+                        .map_err(Failure::from)
+                })
+                .await
+            {
+                if current.is_some() || recovering_backup {
+                    let target_missing = remote
+                        .committed(async {
+                            match remote.raw.lstat(&cp.item.remote).await {
+                                Err(Error::Status(s))
+                                    if s.status_code == StatusCode::NoSuchFile =>
+                                {
+                                    Ok(true)
+                                }
+                                _ => Ok(false),
+                            }
+                        })
+                        .await
+                        .unwrap_or(false);
+                    if target_missing {
+                        let _ = remote
+                            .committed(async {
+                                remote
+                                    .raw
+                                    .rename(&cp.backup, &cp.item.remote)
+                                    .await
+                                    .map(|_| ())
+                                    .map_err(Failure::from)
+                            })
+                            .await;
+                    }
                 }
                 // A refused rename of a fresh upload usually means the target
                 // appeared meanwhile; say so instead of a bare server error.
@@ -1417,7 +1566,7 @@ async fn commit(
                         "remote destination changed during transfer",
                     ));
                 }
-                return Err(e.into());
+                return Err(e);
             }
         }
         remove_backup(remote, cp, &job.control).await?;
@@ -1497,6 +1646,8 @@ pub async fn cleanup(job: &Job) -> TransferResult<()> {
             // a stopped job's control would interrupt any paced wait anyway.
             pacer: None,
             listings: Mutex::new(HashMap::new()),
+            last_response: Mutex::new(Instant::now()),
+            idle_timeout: IDLE_TIMEOUT,
             _transport: Some(transport),
         };
         cleanup_remote(&remote, remote_paths, Some(job)).await
@@ -1521,8 +1672,8 @@ async fn remove_backup(
                     "backup changed; retained for manual recovery",
                 ));
             }
-            control
-                .run(async {
+            remote
+                .exchange(control, async {
                     remote
                         .raw
                         .remove(&cp.backup)
@@ -1554,7 +1705,16 @@ async fn cleanup_remote(
                         "cannot verify the original backup; retained for manual recovery",
                     ));
                 }
-                remote.raw.rename(&cp.backup, &cp.item.remote).await?;
+                remote
+                    .exchange(&control, async {
+                        remote
+                            .raw
+                            .rename(&cp.backup, &cp.item.remote)
+                            .await
+                            .map(|_| ())
+                            .map_err(Failure::from)
+                    })
+                    .await?;
                 cp.owns_backup = false;
             } else if current != cp.original
                 && (current.as_ref().map(|s| s.size) != Some(cp.source.size)
@@ -1569,11 +1729,15 @@ async fn cleanup_remote(
             }
             remove_backup(remote, &mut cp, &control).await?;
         }
-        match remote.raw.remove(&cp.temporary).await {
-            Ok(_) => {}
-            Err(Error::Status(s)) if s.status_code == StatusCode::NoSuchFile => {}
-            Err(e) => return Err(e.into()),
-        }
+        remote
+            .exchange(&control, async {
+                match remote.raw.remove(&cp.temporary).await {
+                    Ok(_) => Ok(()),
+                    Err(Error::Status(s)) if s.status_code == StatusCode::NoSuchFile => Ok(()),
+                    Err(e) => Err(e.into()),
+                }
+            })
+            .await?;
         cp.owns_temporary = false;
         if let Some(job) = job {
             job.save_async(&cp).await?;

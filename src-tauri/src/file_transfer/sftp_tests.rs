@@ -19,6 +19,16 @@ struct Server {
     writes: Vec<u64>,
     pending: usize,
     peak: usize,
+    /// Answers one request at a time and only then reads the next, sleeping
+    /// the whole reply delay first: a single-threaded sftp-server, or a link
+    /// that carries only so much per round trip. A request pipelined behind
+    /// others therefore waits for all of them, which is the shape that used
+    /// to be mistaken for a stalled request.
+    serial: bool,
+    /// Total silence after which the job declares this server stalled. The
+    /// production value is 30 s; the fixture shortens it so a stall test stays
+    /// fast, while the protocol deadline stays at production's value.
+    idle_timeout_ms: u64,
     /// A rate limit the fixture's Remote paces with: the same shared
     /// bucket shape production builds from `Options::rate_limit_bps`.
     rate_limit_bps: Option<u64>,
@@ -73,6 +83,13 @@ impl Fixture {
         let root = std::env::temp_dir().join(format!("edgeterm-wire-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir(&root).unwrap();
         let rate_limit = server.rate_limit_bps;
+        // The production idle deadline is 30 s; a test that proves a stall is
+        // caught cannot wait that long, so the fixture's default is 1 s.
+        let idle_timeout = Duration::from_millis(if server.idle_timeout_ms == 0 {
+            1000
+        } else {
+            server.idle_timeout_ms
+        });
         let state = Arc::new(Mutex::new(server));
         let (client, stream) = tokio::io::duplex(2 * 1024 * 1024);
         let shared = state.clone();
@@ -88,22 +105,41 @@ impl Fixture {
                 let packet = Packet::try_from(&mut Bytes::from(data)).unwrap();
                 let is_write = matches!(packet, Packet::Write(_));
                 let is_data = matches!(packet, Packet::Read(_) | Packet::Write(_));
-                let (reply, delay) = response(&mut shared.lock(), packet);
-                if delay > 0 {
+                let (serial, reply, delay) = {
                     let mut server = shared.lock();
-                    server.pending += 1;
-                    server.peak = server.peak.max(server.pending);
-                    if is_write {
-                        server.pending_writes += 1;
+                    let serial = server.serial;
+                    let (reply, delay) = response(&mut server, packet);
+                    // A serial server never has two replies in flight, so there
+                    // is nothing to count; the concurrent path tracks them here.
+                    if !serial && delay > 0 {
+                        server.pending += 1;
+                        server.peak = server.peak.max(server.pending);
+                        if is_write {
+                            server.pending_writes += 1;
+                        }
+                        if is_data {
+                            server.data_pending += 1;
+                            server.peak_data = server.peak_data.max(server.data_pending);
+                        }
                     }
-                    if is_data {
-                        server.data_pending += 1;
-                        server.peak_data = server.peak_data.max(server.data_pending);
-                    }
-                }
+                    (serial, reply, delay)
+                };
                 let Some(reply) = reply else {
                     continue;
                 };
+                if serial {
+                    // One request at a time: the reply is written before the
+                    // next request is even read, so a pipelined request's wait
+                    // includes every request ahead of it. This is what a
+                    // single-threaded sftp-server, and a link drained chunk by
+                    // chunk, look like from the client.
+                    if delay > 0 {
+                        tokio::time::sleep(Duration::from_millis(delay)).await;
+                    }
+                    let bytes = Bytes::try_from(reply).unwrap();
+                    let _ = writer.lock().await.write_all(&bytes).await;
+                    continue;
+                }
                 let state = shared.clone();
                 let writer = writer.clone();
                 tokio::spawn(async move {
@@ -128,7 +164,10 @@ impl Fixture {
             }
         });
         let raw = RawSftpSession::new(client);
-        raw.set_timeout(1);
+        // Production's protocol deadline: a request's own wait must not decide
+        // a stall, so the fixture never shortens this one — only the idle
+        // watchdog above it is shortened.
+        raw.set_timeout(REQUEST_TIMEOUT_SECS);
         raw.init().await.unwrap();
         let pacer = rate_limit.map(|rate| Arc::new(super::super::Pacer::new(rate)));
         // The production connect() shrinks its read/write lengths to the
@@ -146,6 +185,8 @@ impl Fixture {
             requests: Semaphore::new(32),
             pacer,
             listings: Mutex::new(HashMap::new()),
+            last_response: Mutex::new(std::time::Instant::now()),
+            idle_timeout,
             _transport: None,
         });
         Self {
@@ -619,6 +660,65 @@ async fn a_stalled_write_times_out_without_replacing_the_destination() {
     assert_eq!(f.state.lock().files["/target"], b"old");
 }
 
+/// The same pipeline against a server that answers one request at a time and
+/// spends real time on each. A request's wait therefore grows with the backlog
+/// ahead of it, while progress itself never stops. That wait used to be cut
+/// off at a per-request deadline and reported as a stall, which turned a slow
+/// server or link into a retry loop; the transfer must instead finish.
+#[tokio::test]
+async fn a_slow_serial_server_does_not_stall_a_pipelined_upload() {
+    let f = Fixture::new(Server {
+        serial: true,
+        delay_ms: 250,
+        ..Server::default()
+    })
+    .await;
+    let bytes = payload(2 * 1024 * 1024);
+    let item = f.upload(&bytes);
+    let job = f.job();
+    let started = std::time::Instant::now();
+    copy(&job, &f.remote, item.clone(), 8, &Semaphore::new(2))
+        .await
+        .unwrap();
+    assert!(
+        started.elapsed() < Duration::from_secs(30),
+        "sixteen serialised replies at 250 ms each fit well inside this bound"
+    );
+    assert_eq!(f.state.lock().files["/target"], bytes);
+    assert!(job.checkpoint(&job.key(&item)).unwrap().complete);
+}
+
+/// The download side of the same queue, where the backlog is server replies
+/// rather than writes.
+#[tokio::test]
+async fn a_slow_serial_server_does_not_stall_a_pipelined_download() {
+    let bytes = payload(2 * 1024 * 1024);
+    let f = Fixture::new(Server {
+        serial: true,
+        delay_ms: 250,
+        files: HashMap::from([("/source".into(), bytes.clone())]),
+        ..Server::default()
+    })
+    .await;
+    let job = f.job();
+    let target = f.root.join("download");
+    let item = Item {
+        local: target.to_string_lossy().into(),
+        remote: "/source".into(),
+        upload: false,
+        directory: false,
+    };
+    let started = std::time::Instant::now();
+    copy(&job, &f.remote, item, 8, &Semaphore::new(2))
+        .await
+        .unwrap();
+    assert!(
+        started.elapsed() < Duration::from_secs(30),
+        "the pipelined reads must outlive their own queue"
+    );
+    assert_eq!(std::fs::read(target).unwrap(), bytes);
+}
+
 #[tokio::test]
 async fn pause_interrupts_a_stalled_write_and_resume_reuses_the_job() {
     let f = Fixture::new(Server {
@@ -740,6 +840,75 @@ async fn source_changes_and_partial_tampering_block_resume() {
         .message
         .contains("source changed"));
     assert!(!f.state.lock().files.contains_key("/target"));
+}
+
+/// A batch may hold more large files than the two slots that transfer at
+/// once. Waiting for a slot is a local wait: it must not be reported as a
+/// timeout while the files ahead are still moving, and a cancel must still
+/// interrupt it at once.
+#[tokio::test]
+async fn a_large_file_waiting_for_its_slot_is_not_a_timeout_and_still_cancels() {
+    let f = Fixture::new(Server::default()).await;
+    let bytes = payload(16 * 1024 * 1024 + 1);
+    let item = f.upload(&bytes);
+    let job = f.job();
+    let large = Arc::new(Semaphore::new(2));
+    let _first = large.clone().acquire_owned().await.unwrap();
+    let _second = large.clone().acquire_owned().await.unwrap();
+    let task = {
+        let job = job.clone();
+        let remote = f.remote.clone();
+        let item = item.clone();
+        let large = large.clone();
+        tokio::spawn(async move { copy(&job, &remote, item, 8, &large).await })
+    };
+    // Long enough for the copy to reach the slot and settle there.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(
+        !task.is_finished(),
+        "a large file must wait for a slot, not fail: {:?}",
+        task.is_finished()
+    );
+    job.control.set(2);
+    let error = tokio::time::timeout(Duration::from_secs(2), task)
+        .await
+        .expect("cancel must interrupt the slot wait")
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(error.code, "cancelled");
+}
+
+/// The slot wait used to run inside the 30 s operation deadline, so a batch
+/// with three or more large files failed the waiting one while the first two
+/// were still legitimately transferring — and the retry repeated it. This must
+/// actually wait out that deadline, so it is ignored by default and run
+/// explicitly; see the commit's `Tests:` line.
+#[tokio::test]
+#[ignore = "waits out the old 30 s slot deadline; run explicitly with --ignored"]
+async fn a_large_file_waiting_for_a_slot_outlives_the_old_deadline() {
+    let f = Fixture::new(Server::default()).await;
+    let bytes = payload(16 * 1024 * 1024 + 1);
+    let item = f.upload(&bytes);
+    let job = f.job();
+    let large = Arc::new(Semaphore::new(2));
+    let first = large.clone().acquire_owned().await.unwrap();
+    let second = large.clone().acquire_owned().await.unwrap();
+    let task = {
+        let job = job.clone();
+        let remote = f.remote.clone();
+        let item = item.clone();
+        let large = large.clone();
+        tokio::spawn(async move { copy(&job, &remote, item, 8, &large).await })
+    };
+    tokio::time::sleep(Duration::from_secs(31)).await;
+    assert!(
+        !task.is_finished(),
+        "the slot wait must outlive the old 30 s operation deadline"
+    );
+    drop(first);
+    drop(second);
+    task.await.unwrap().unwrap();
+    assert_eq!(f.state.lock().files["/target"], bytes);
 }
 
 #[tokio::test]
