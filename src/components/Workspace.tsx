@@ -4,6 +4,7 @@ import appIcon from "../../src-tauri/icons/128x128@2x.png";
 import { layoutRects, type Rect, type SplitterRect } from "../layout";
 import { chordLabel } from "../shortcuts";
 import { useStore } from "../store";
+import { useT } from "../useT";
 import { Splitter } from "./Splitter";
 import { TabStrip } from "./TabStrip";
 import { SessionPane } from "./TerminalPane";
@@ -71,6 +72,7 @@ const splitterStyle = (splitter: SplitterRect): CSSProperties =>
  * boundaries, so a pane's box is exactly its share.
  */
 export function Workspace({ onNewSession }: Props) {
+  const t = useT();
   const layout = useStore((s) => s.layout);
   const panes = useStore((s) => s.panes);
   const tabs = useStore((s) => s.tabs);
@@ -79,6 +81,12 @@ export function Workspace({ onNewSession }: Props) {
   const dropTarget = useStore((s) => s.dropTarget);
   const resizeLayout = useStore((s) => s.resizeLayout);
   const newSessionKey = useStore((s) => chordLabel(s.shortcuts.newSession));
+  // The hint wraps the chord in a <kbd>; the catalogs put {key} where it goes.
+  // The built-in local shell is named from the same catalog entry as the row,
+  // so the hint and the thing it points at cannot disagree.
+  const hint = t("empty.hint").replace("{localShell}", t("panel.localShell"));
+  const hintNoKey = t("empty.hintNoKey").replace("{localShell}", t("panel.localShell"));
+  const [hintBeforeKey, hintAfterKey = ""] = hint.split("{key}");
   const ref = useRef<HTMLDivElement>(null);
   const rects = useMemo(() => layoutRects(layout), [layout]);
 
@@ -127,15 +135,16 @@ export function Workspace({ onNewSession }: Props) {
                   <p className="term-empty-hint">
                     {newSessionKey ? (
                       <>
-                        Press <kbd>{newSessionKey}</kbd> for a new session, or
-                        pick one from the Session panel.
+                        {hintBeforeKey}
+                        <kbd>{newSessionKey}</kbd>
+                        {hintAfterKey}
                       </>
                     ) : (
-                      "Open a new session, or pick one from the Session panel."
+                      hintNoKey
                     )}
                   </p>
                   <button className="btn is-primary" onClick={onNewSession}>
-                    New Session
+                    {t("empty.newSession")}
                   </button>
                 </div>
               )}

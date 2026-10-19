@@ -18,6 +18,7 @@ import { useStore, type Tab } from "../store";
 import type { TerminalController } from "../terminal";
 import { getController } from "../terminalRegistry";
 import { isFileSession } from "../types";
+import { useT } from "../useT";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 
 // The dual-pane file workspace only exists for FTP and SFTP tabs, so it loads
@@ -64,6 +65,10 @@ export const SessionPane = memo(function SessionPane({
     <div
       className={`pane-slot${visible ? "" : " is-hidden"}`}
       style={style}
+      role="tabpanel"
+      aria-labelledby={`tab-${id}`}
+      data-focus-region={focused ? "terminal" : undefined}
+      tabIndex={focused ? -1 : undefined}
       onMouseDownCapture={claim}
       onFocusCapture={claim}
     >
@@ -104,6 +109,7 @@ function TerminalHost({
   focused: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const t = useT();
   const gutterMode = useStore((s) => s.gutterMode);
   const bufferFontSize = useStore((s) => s.bufferFontSize);
   const bufferFontFamily = useStore((s) => s.bufferFontFamily);
@@ -192,34 +198,34 @@ function TerminalHost({
 
   const menuItems: MenuItem[] = [
     {
-      label: "Copy",
+      label: t("menu.copy"),
       icon: "copy",
       shortcut: copyKey,
       disabled: !menu?.canCopy,
       action: withTerminal((controller) => controller.copySelection()),
     },
     {
-      label: "Paste",
+      label: t("menu.paste"),
       icon: "clippy",
       shortcut: pasteKey,
       action: withTerminal((controller) => controller.pasteFromClipboard()),
     },
     {
-      label: "Select All",
+      label: t("menu.selectAll"),
       icon: "list-selection",
       shortcut: selectAllKey,
       action: withTerminal((controller) => controller.selectAll()),
     },
     "separator",
     {
-      label: "Clear Buffer",
+      label: t("menu.clearBuffer"),
       icon: "clear-all",
       shortcut: clearKey,
       action: withTerminal((controller) => controller.clear()),
     },
     "separator",
     {
-      label: "Reveal Working Directory in Filer",
+      label: t("menu.revealCwdInFiler"),
       icon: "folder-opened",
       shortcut: revealCwdKey,
       action: withTerminal(() => void revealCwdInFiler(id)),
