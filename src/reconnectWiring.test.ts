@@ -10,7 +10,7 @@ vi.mock("./api", async (original) => ({
 }));
 
 import * as api from "./api";
-import { ensureController } from "./actions";
+import { disconnectSession, ensureController } from "./actions";
 import { useStore, type Tab } from "./store";
 import { disposeController } from "./terminalRegistry";
 import type { SessionProfile } from "./types";
@@ -115,10 +115,39 @@ describe("Enter on an ended session, through the wiring in actions.ts", () => {
     expect(api.openSession).not.toHaveBeenCalled();
   });
 
+  it("reconnects with the saved profile, not the copy the tab opened with", async () => {
+    const controller = await ended("wired-edited");
+    useStore.setState({
+      profiles: [
+        { id: "wired-edited", name: "edited", kind: "local", shell: "/bin/zsh" },
+      ],
+    });
+    press(controller, "\r");
+
+    expect(vi.mocked(api.openSession).mock.calls[0][0]).toMatchObject({
+      id: "wired-edited",
+      shell: "/bin/zsh",
+    });
+  });
+
   it("does not start a connect for a session that is already live", async () => {
     const controller = await ended("wired-live", "connected");
     press(controller, "\r");
     expect(api.openSession).not.toHaveBeenCalled();
     expect(api.writeSession).toHaveBeenCalledWith("wired-live", "\r");
   });
+
+it("cancels a connect that is still negotiating instead of ignoring the request", async () => {
+  const id = "wired-connecting";
+  ids.push(id);
+  useStore.setState({
+    tabs: [...useStore.getState().tabs, makeTab(id, "connecting")],
+    activeId: id,
+    panes: [{ id: initialState.activePaneId, activeTabId: id }],
+  });
+  await ensureController(id);
+  await disconnectSession(id);
+  expect(useStore.getState().tabs.find((tab) => tab.info.id === id)?.state).toBe("closed");
+  expect(api.closeSession).toHaveBeenCalledWith(id);
+});
 });

@@ -75,6 +75,15 @@ function pendingSessionInfo(
 const pendingConnects = new Set<string>();
 
 /**
+ * The connect attempt in flight per tab. Cancelling bumps the number, so a
+ * late reply from the previous attempt cannot mark the tab connected again.
+ */
+const connectAttempts = new Map<string, number>();
+
+/** Attempts the user cancelled while the backend was still negotiating. */
+const cancelledAttempts = new Set<string>();
+
+/**
  * The history bucket a session's commands belong to, so suggestions can
  * prefer commands seen on the same host. Resolved per call because the tab's
  * info is refined once the backend connects.
@@ -232,11 +241,31 @@ export async function splitSession(
  */
 export async function disconnectSession(id: string): Promise<void> {
   const tab = useStore.getState().tabs.find((item) => item.info.id === id);
+  if (!tab) return;
+
+  // A connect that has not settled is cancellable: mark the attempt so its
+  // reply is ignored, close whatever the backend already created, and park
+  // the tab on the same "closed" state a normal disconnect leaves it in.
+  if (tab.state === "connecting") {
+    const attempt = connectAttempts.get(id);
+    if (attempt !== undefined) cancelledAttempts.add(`${id}:${attempt}`);
+    connectAttempts.set(id, (attempt ?? 0) + 1);
+    const store = useStore.getState();
+    const message = t("status.connectionCancelled");
+    store.applyState(id, "closed", message);
+    store.setStatus(message);
+    getController(id)?.writeText(
+      `\r\n\x1b[33m${message}\x1b[0m\r\n`,
+    );
+    await api.closeSession(id).catch(() => undefined);
+    return;
+  }
+
   // The backend reports "connected" as soon as the session task starts,
   // which can land before open_session's own reply. Closing in that window
   // would let the late reply mark the tab connected again over a session
   // that is already gone, so wait for the connect to settle first.
-  if (!tab || tab.state !== "connected" || pendingConnects.has(id)) return;
+  if (tab.state !== "connected" || pendingConnects.has(id)) return;
 
   let failure: string | null = null;
   await api.closeSession(id).catch((e) => {
@@ -264,11 +293,27 @@ export async function disconnectSession(id: string): Promise<void> {
  * output stays in the scrollback. Resolves like `openSession`.
  */
 export function reconnectSession(id: string): Promise<string | null> {
-  const tab = useStore.getState().tabs.find((item) => item.info.id === id);
+  const store = useStore.getState();
+  const tab = store.tabs.find((item) => item.info.id === id);
   if (!tab || (tab.state !== "closed" && tab.state !== "error")) {
     return Promise.resolve(null);
   }
-  return connectSession(id, tab.profile);
+  // The tab's copy is the profile as it was when the session opened. Editing
+  // the saved session does not rewrite that copy (only the public-key setup
+  // does), so reconnecting from it would dial the old host with the old
+  // credentials while the tree shows the new ones. Use the saved profile and
+  // keep a tab-only secret when the saved one has none.
+  const saved = tab.profile.id
+    ? store.profiles.find((profile) => profile.id === tab.profile.id)
+    : undefined;
+  const profile = saved
+    ? {
+        ...saved,
+        password: saved.password ?? tab.profile.password,
+        passphrase: saved.passphrase ?? tab.profile.passphrase,
+      }
+    : tab.profile;
+  return connectSession(id, profile);
 }
 
 /**
@@ -285,8 +330,11 @@ export function toggleSessionConnection(id: string): void {
   const tab = useStore.getState().tabs.find((item) => item.info.id === id);
   if (!tab) return;
   getController(id)?.focus();
-  if (tab.state === "connected") void disconnectSession(id);
-  else if (tab.state !== "connecting") void reconnectSession(id);
+  if (tab.state === "connected" || tab.state === "connecting") {
+    void disconnectSession(id);
+  } else {
+    void reconnectSession(id);
+  }
 }
 
 /**
@@ -316,6 +364,9 @@ async function connectSession(
   getController(id)?.setEncoding(profile.encoding);
   getController(id)?.setBackspace(profile.backspace);
 
+  const attempt = (connectAttempts.get(id) ?? 0) + 1;
+  connectAttempts.set(id, attempt);
+  const attemptKey = `${id}:${attempt}`;
   pendingConnects.add(id);
   try {
     // The controller exists before the backend is asked to connect (see
@@ -332,6 +383,15 @@ async function connectSession(
       reuseSessionId,
       useStore.getState().sshAutoReuse,
     );
+
+    // Cancelled while negotiating: close the backend session this attempt
+    // created, if any, and leave the tab on its cancellation state.
+    if (cancelledAttempts.delete(attemptKey)) {
+      if (outcome.status === "connected") {
+        await api.closeSession(id).catch(() => undefined);
+      }
+      return null;
+    }
 
     // The user may close the optimistic tab while SSH is still negotiating.
     // In that case close the newly-created backend session immediately.
@@ -370,6 +430,7 @@ async function connectSession(
     }
     return id;
   } catch (e) {
+    if (cancelledAttempts.delete(attemptKey)) return null;
     const message = errorText(e);
     if (useStore.getState().tabs.some((tab) => tab.info.id === id)) {
       failSession(id, message);
