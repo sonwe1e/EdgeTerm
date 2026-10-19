@@ -45,10 +45,12 @@ import { FilerPanel } from "./components/panels/FilerPanel";
 import { SenderPanel } from "./components/panels/SenderPanel";
 import { SessionPanel } from "./components/panels/SessionPanel";
 import { applyFonts, symbolFallbacks } from "./fonts";
+import { focusNextRegion } from "./focusRegions";
 import { commandHistory } from "./history";
 import type { PanelDock } from "./panelDock";
 import { IS_WINDOWS } from "./platform";
 import { matchAppShortcut } from "./shortcuts";
+import { clampBottom, fitSides, loadPanelSizing, resizeSides, savePanelSizing } from "./panelSizing";
 import { type PanelName, tabTitle, useStore, type Tab } from "./store";
 import { allControllers, getController, setWebglEnabled } from "./terminalRegistry";
 import { isFileSession, type SessionProfile, type SessionState } from "./types";
@@ -67,9 +69,6 @@ const REPO_URL = "https://github.com/miskin-lee/EdgeTerm";
 
 /** Stable empty result for the closing-tabs selector (see `useShallow`). */
 const EMPTY_CLOSING_TABS: Tab[] = [];
-
-const clamp = (value: number, min: number, max: number) =>
-  Math.min(max, Math.max(min, value));
 
 const hasLiveSessions = () =>
   useStore
@@ -161,10 +160,56 @@ export default function App() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [quitPromptOpen, setQuitPromptOpen] = useState(false);
 
-  const [leftWidth, setLeftWidth] = useState(220);
-  const [rightWidth, setRightWidth] = useState(220);
-  const [bottomHeight, setBottomHeight] = useState(160);
-  const [senderExpanded, setSenderExpanded] = useState(false);
+  // The layout the user arranged last time; reloaded when settings are
+  // imported or restored (the revision bump), and saved below after a drag.
+  const [initialSizing] = useState(loadPanelSizing);
+  const [leftWidth, setLeftWidth] = useState(initialSizing.left);
+  const [rightWidth, setRightWidth] = useState(initialSizing.right);
+  const [bottomHeight, setBottomHeight] = useState(initialSizing.bottom);
+  const [senderExpanded, setSenderExpanded] = useState(initialSizing.senderExpanded);
+  const panelPreferencesRevision = useStore((s) => s.panelPreferencesRevision);
+  const widthRefs = useRef({ left: leftWidth, right: rightWidth });
+  widthRefs.current = { left: leftWidth, right: rightWidth };
+
+  useEffect(() => {
+    const next = loadPanelSizing();
+    setLeftWidth(next.left);
+    setRightWidth(next.right);
+    setBottomHeight(next.bottom);
+    setSenderExpanded(next.senderExpanded);
+  }, [panelPreferencesRevision]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () =>
+        savePanelSizing({
+          left: leftWidth,
+          right: rightWidth,
+          bottom: bottomHeight,
+          senderExpanded,
+        }),
+      250,
+    );
+    return () => window.clearTimeout(timer);
+  }, [leftWidth, rightWidth, bottomHeight, senderExpanded]);
+
+  // A smaller window must not keep a dock width that no longer leaves room
+  // for the terminal; fit both sides together rather than one against a
+  // stale value of the other.
+  useEffect(() => {
+    const onResize = () => {
+      const sides = fitSides(
+        widthRefs.current.left,
+        widthRefs.current.right,
+        window.innerWidth,
+      );
+      setLeftWidth(sides.left);
+      setRightWidth(sides.right);
+      setBottomHeight((height) => clampBottom(height, window.innerHeight));
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   // --- backend events -------------------------------------------------------
 
@@ -278,14 +323,14 @@ export default function App() {
   useEffect(() => {
     const unlisten = api.onRecordingError(({ id, path, message }) => {
       const store = useStore.getState();
-      store.setError(`Recording stopped: ${message} (${path})`, id);
+      store.setError(t("status.recordingStopped", { error: message, path }), id);
       const tab = store.tabs.find((item) => item.info.id === id);
       if (tab) store.updateTabInfo(id, { ...tab.info, recording: null });
     });
     return () => {
       void unlisten.then((off) => off());
     };
-  }, []);
+  }, [t]);
 
   // A tab-close prompt open underneath would race this dialog for
   // Enter/Esc (both listen on window in the capture phase), so drop it.
@@ -375,6 +420,9 @@ export default function App() {
       if (!shortcut) return;
 
       switch (shortcut.kind) {
+        case "focusRegion":
+          if (focusNextRegion(1)) event.preventDefault();
+          return;
         case "tabStep":
           event.preventDefault();
           activateAdjacentTab(shortcut.step);
@@ -455,6 +503,33 @@ export default function App() {
     togglePanel,
   ]);
 
+  // F6 / Shift+F6 cycle the focus regions. This runs in the capture phase
+  // because xterm answers function keys itself and keeps the event from
+  // reaching a bubble-phase listener: the terminal is exactly where the key
+  // is needed, since Tab inside it belongs to the shell. F6 stays reserved
+  // even if the rebindable focusRegion command is moved to another chord.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.key !== "F6" ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.metaKey
+      ) {
+        return;
+      }
+      if (useWorkbench.getState().view === "workbench") return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("dialog[open]")) return;
+      const moved = event.shiftKey ? focusNextRegion(-1) : focusNextRegion(1);
+      if (!moved) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, []);
+
   // --- layout ---------------------------------------------------------------
 
   // Each panel sits in the dock the user put it in (see panelDock.ts);
@@ -519,9 +594,16 @@ export default function App() {
               />
               <Splitter
                 orientation="vertical"
-                onResize={(delta) =>
-                  setLeftWidth((width) => clamp(width + delta, 150, 720))
-                }
+                onResize={(delta) => {
+                  const sides = resizeSides(
+                    "left",
+                    leftWidth + delta,
+                    right.length > 0 ? rightWidth : 0,
+                    window.innerWidth,
+                  );
+                  setLeftWidth(sides.left);
+                  if (right.length > 0) setRightWidth(sides.right);
+                }}
               />
             </>
           )}
@@ -544,9 +626,16 @@ export default function App() {
             <>
               <Splitter
                 orientation="vertical"
-                onResize={(delta) =>
-                  setRightWidth((width) => clamp(width - delta, 150, 720))
-                }
+                onResize={(delta) => {
+                  const sides = resizeSides(
+                    "right",
+                    rightWidth - delta,
+                    left.length > 0 ? leftWidth : 0,
+                    window.innerWidth,
+                  );
+                  setRightWidth(sides.right);
+                  if (left.length > 0) setLeftWidth(sides.left);
+                }}
               />
               <DockArea
                 dock="right"
@@ -566,10 +655,10 @@ export default function App() {
                 if (senderCompact) {
                   if (delta < 0) {
                     setSenderExpanded(true);
-                    setBottomHeight((height) => clamp(height - delta, 120, 600));
+                    setBottomHeight((height) => clampBottom(height - delta, window.innerHeight));
                   }
                 } else {
-                  setBottomHeight((height) => clamp(height - delta, 80, 600));
+                  setBottomHeight((height) => clampBottom(height - delta, window.innerHeight));
                 }
               }}
             />
