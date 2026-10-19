@@ -26,25 +26,70 @@ function StatusBarBase({ showResources = true }: { showResources?: boolean }) {
   const tab = useActiveTab();
   const status = useStore((s) => s.status);
   const error = useStore((s) => s.error);
+  const setError = useStore((s) => s.setError);
   const [clock, setClock] = useState(() => new Date());
 
+  // The stamp only shows minutes, so ticking every second would re-render the
+  // whole bar 59 times for no visible change. Wake up on the next minute
+  // boundary, then once per minute; both timer kinds are cleared on unmount.
   useEffect(() => {
-    const timer = window.setInterval(() => setClock(new Date()), 1000);
-    return () => window.clearInterval(timer);
+    const now = new Date();
+    const toNextMinute = 60_000 - (now.getSeconds() * 1000 + now.getMilliseconds());
+    let interval: number | undefined;
+    const timeout = window.setTimeout(() => {
+      setClock(new Date());
+      interval = window.setInterval(() => setClock(new Date()), 60_000);
+    }, toNextMinute);
+    return () => {
+      window.clearTimeout(timeout);
+      if (interval !== undefined) window.clearInterval(interval);
+    };
   }, []);
 
   const pad = (n: number) => String(n).padStart(2, "0");
-  const stamp = `${clock.getFullYear()}/${clock.getMonth() + 1}/${clock.getDate()} ${pad(
-    clock.getHours(),
-  )}:${pad(clock.getMinutes())}`;
+  // Locale-aware stamp: the previous hand-rolled YYYY/M/D read as a
+  // non-localized format in en and jittered against the protocol width.
+  // toLocaleString follows the OS locale; fall back to the old shape only
+  // when Intl is unavailable.
+  let stamp: string;
+  try {
+    stamp = clock.toLocaleString(undefined, {
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+  } catch {
+    stamp = `${clock.getFullYear()}/${clock.getMonth() + 1}/${clock.getDate()} ${pad(
+      clock.getHours(),
+    )}:${pad(clock.getMinutes())}`;
+  }
 
   const recording = tab?.state === "connected" ? tab.info.recording : null;
   const legacy = tab?.state === "connected" ? tab.info.legacyAlgorithms : [];
 
   return (
-    <div className="statusbar">
-      <span className={`status-item${error ? " is-error" : ""}`} title={error ?? status}>
-        {error ?? status}
+    <div className="statusbar" data-focus-region="status" tabIndex={-1}>
+      <span
+        className={`status-item status-message${error ? " is-error" : ""}`}
+        title={error ?? status}
+        role={error ? "alert" : "status"}
+        aria-live="polite"
+      >
+        <span className="status-message-text">{error ?? status}</span>
+        {error && (
+          <button
+            type="button"
+            className="status-dismiss"
+            title={t("status.dismissError")}
+            aria-label={t("status.dismissError")}
+            onClick={() => setError(null)}
+          >
+            <Icon name="close" />
+          </button>
+        )}
       </span>
       <div className="status-spacer" />
       {showResources && <ResourceMonitorBar tab={tab} />}
@@ -68,17 +113,22 @@ function StatusBarBase({ showResources = true }: { showResources?: boolean }) {
               }
             >
               <Icon name="record" />
-              REC
+              {t("status.recording")}
             </button>
           )}
           {isFileSession(tab.info.kind) ? (
             <span className="status-item">{t("status.dualPane")}</span>
           ) : (
             <span className="status-item">
-              {t("status.window", { rows: tab.rows, cols: tab.cols })}
+              {t("status.window", { cols: tab.cols, rows: tab.rows })}
             </span>
           )}
-          <span className="status-item">{tab.info.protocol}</span>
+          <span
+            className="status-item status-protocol"
+            title={tab.info.protocol.toUpperCase()}
+          >
+            {t("status.protocol")}: {tab.info.protocol.toUpperCase()}
+          </span>
         </>
       )}
       <span className="status-item">{stamp}</span>
