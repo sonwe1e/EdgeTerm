@@ -15,9 +15,12 @@ try {
   if (missing.length) throw new Error(`Unclassified commands: ${missing.join(", ")}`);
   if (manual.some(n => !registered.includes(n))) throw new Error("Manual exception inventory is stale");
   const target = check ? path.join(temporary, "bindings.ts") : path.resolve("src/bindings.ts");
-  const run = spawnSync("cargo", ["test", "--locked", "--manifest-path", "src-tauri/Cargo.toml", "--features", "bindings", "--lib", "bindings::export_bindings", "--", "--exact"], {
+  const run = spawnSync(process.env.EDGETERM_CARGO || "cargo", ["test", "--locked", "--manifest-path", "src-tauri/Cargo.toml", "--features", "bindings", "--lib", "bindings::export_bindings", "--", "--exact"], {
     cwd: root, env: { ...process.env, RUST_MIN_STACK: "16777216", EDGETERM_BINDINGS_OUT: target },
-    encoding: "utf8", timeout: 180000, maxBuffer: 16 * 1024 * 1024,
+    // A cold, resource-bounded Rust build legitimately takes over 3 minutes.
+    // Let the managed task own its lifetime instead of timing out only Cargo
+    // and leaving its compiler children behind.
+    encoding: "utf8", maxBuffer: 16 * 1024 * 1024,
   });
   if (run.status !== 0) throw new Error(`Rust export failed (${run.status}): ${run.error ?? ""}\n${run.stdout}\n${run.stderr}`);
   // Specta's multi-line unions end lines with a space. Strip it so the

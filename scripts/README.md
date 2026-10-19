@@ -1,5 +1,14 @@
 # Validation and diagnostics
 
+Use the managed task entry for builds/tests and diagnostics. On Windows,
+`./dev.ps1 doctor` reports the selected Node/npm, Rust, MSVC, Windows SDK and
+resource budget even when the current shell has an incomplete PATH. Existing
+`npm run` commands use the same entry. For standalone harnesses below, use
+`./dev.ps1 script scripts/check-review-ui.mjs` (or another script path).
+Run independent tasks sequentially; Windows rejects a second managed task
+while a build/test/dev server is active. Tauri's nested frontend hooks remain
+allowed. See [build environment and limits](../docs/build-environment.zh-CN.md).
+
 `check-review-ui.mjs` and `check-file-performance.mjs` start an isolated Vite
 server and headless browser. Playwright is a devDependency, so the scripts
 resolve it from `node_modules` (no `NODE_PATH` needed). They drive an

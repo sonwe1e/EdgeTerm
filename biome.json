@@ -5,7 +5,10 @@
       "src/**",
       "scripts/**",
       "*.ts",
-      "*.mjs"
+      "*.mjs",
+      "!!.tmp",
+      "!!artifacts",
+      "!!src-tauri/target"
     ],
     "ignoreUnknown": true
   },

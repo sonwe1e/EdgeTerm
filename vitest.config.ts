@@ -61,6 +61,9 @@ const channel = process.env.PERF_BROWSER?.trim();
 
 export default defineConfig({
   test: {
+    // Keep the default runner safe even when invoked through npx directly.
+    maxWorkers: 2,
+    maxConcurrency: 2,
     projects: [
       {
         test: {
@@ -79,6 +82,7 @@ export default defineConfig({
           css: { include: [/styles\.css/] },
           include: ["src/**/*.browser.test.ts"],
           browser: {
+            fileParallelism: false,
             enabled: true,
             headless: true,
             provider: playwright({ launchOptions: channel ? { channel } : {} }),

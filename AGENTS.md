@@ -13,6 +13,21 @@ EdgeTerm is a React 19/TypeScript terminal client with a Rust/Tauri 2 backend.
 
 Use Node.js/npm, Rust/Cargo, and the platform's Tauri build prerequisites. Run from the repository root:
 
+On Windows, use the managed npm scripts below, or `./dev.ps1 <task> [args]`
+when Node/npm are missing from the current terminal PATH. Start with
+`./dev.ps1 doctor`. This selects installed Node plus its npm, resolves Rust
+through rustup, and loads MSVC/Windows SDK for native tasks. Do not prepend
+agent-bundled runtimes or guess versioned tool directories. See
+[build environment](docs/build-environment.zh-CN.md).
+
+The Windows runner uses at most 4 logical CPUs, below-normal priority, and
+one independent managed task at a time (including across worktrees). Cargo
+jobs and test threads default to 2; Vitest uses at most 2 workers, and browser
+files run serially. Run validation commands sequentially. Stop a managed dev
+server before starting another managed task. Tauri frontend hooks share the
+parent's budget. Use `./dev.ps1 script scripts/<name>.mjs` for diagnostic
+scripts; do not bypass the runner with bare npx/cargo for heavy work.
+
 - `npm ci`: install locked frontend dependencies.
 - `npm run tauri:dev`: launch the desktop app with Vite.
 - `npm run dev`: serve the frontend at port 1420; native IPC requires Tauri.
@@ -20,8 +35,8 @@ Use Node.js/npm, Rust/Cargo, and the platform's Tauri build prerequisites. Run f
 - `npm test`: run Vitest with jsdom.
 - `npm run build`: type-check and build frontend assets.
 - `npm run tauri:build`: build desktop bundles.
-- `cargo test --manifest-path src-tauri/Cargo.toml --lib`: run backend tests.
-- `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`: check Rust formatting.
+- `npm run test:rust`: run backend tests with the managed toolchain.
+- `npm run cargo -- fmt --manifest-path src-tauri/Cargo.toml -- --check`: check Rust formatting.
 - `git diff --check`: detect whitespace errors.
 
 ## Coding Style & Naming Conventions
