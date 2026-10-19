@@ -5,10 +5,15 @@ import type { FileList } from "./types";
 
 export function QuickOpen({
   files,
+  error,
+  onRetry,
   onOpen,
   onClose,
 }: {
   files: FileList | null;
+  /** Why the listing failed, when it did; null while loading or after it. */
+  error: string | null;
+  onRetry: () => void;
   onOpen: (path: string) => void;
   onClose: () => void;
 }) {
@@ -70,9 +75,16 @@ export function QuickOpen({
         />
         <div className="wb-quickopen-results" role="listbox">
           {results.length === 0 && (
-            <p className="wb-quickopen-empty">
-              {files ? t("wb.searchEmpty") : t("wb.loading")}
-            </p>
+            <div className="wb-quickopen-empty">
+              <p className={error ? "is-error" : undefined}>
+                {error ?? (files ? t("wb.searchEmpty") : t("wb.loading"))}
+              </p>
+              {error && (
+                <button type="button" className="wb-quickopen-retry" onClick={onRetry}>
+                  {t("common.retry")}
+                </button>
+              )}
+            </div>
           )}
           {results.map((path, index) => (
             <button

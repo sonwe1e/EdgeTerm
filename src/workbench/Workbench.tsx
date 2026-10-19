@@ -41,6 +41,7 @@ export function Workbench() {
   const draftsOpen = useWorkbench((state) => state.draftsOpen);
   const setDraftsOpen = useWorkbench((state) => state.setDraftsOpen);
   const files = useWorkbench((state) => state.files);
+  const filesErrors = useWorkbench((state) => state.filesErrors);
   const init = useWorkbench((state) => state.init);
   const setView = useWorkbench((state) => state.setView);
   const setNotice = useWorkbench((state) => state.setNotice);
@@ -166,9 +167,16 @@ export function Workbench() {
   }, [notice, setNotice]);
 
   const quickFiles = listing;
+  const quickError = workspace
+    ? (filesErrors[`${workspace.id}:${root}`] ?? null)
+    : null;
 
   const openQuickOpen = () => {
-    if (workspace && !listing) void refreshFiles(workspace.id);
+    if (!workspace) {
+      setNotice(t("wb.openProjectFirst"));
+      return;
+    }
+    if (!listing) void refreshFiles(workspace.id);
     setQuickOpenOpen(true);
   };
 
@@ -428,6 +436,8 @@ export function Workbench() {
       {quickOpenOpen && (
         <QuickOpen
           files={quickFiles}
+          error={quickError}
+          onRetry={() => void refreshFiles(workspace!.id)}
           onOpen={(path) => open(path)}
           onClose={() => setQuickOpenOpen(false)}
         />
