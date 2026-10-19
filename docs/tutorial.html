@@ -64,6 +64,13 @@
     .doc-layout { flex-direction: column; }
     .toc { position: static; flex: none; width: 100%; max-height: none; }
   }
+  @media (max-width: 640px) {
+    /* Let tables and key chords wrap instead of widening the whole layout viewport. */
+    .doc table { min-width: 0; }
+    .doc kbd, .doc .menu-path { white-space: normal; }
+    /* Keep the contents list usable without pushing the article a screen down. */
+    .toc { max-height: 38vh; overflow-y: auto; }
+  }
 </style>
 </head>
 <body data-lang="en">
@@ -121,14 +128,14 @@
         <span data-i18n="zh">从 <a href="https://github.com/miskin-lee/EdgeTerm/releases/latest">GitHub Releases</a> 下载对应平台的安装包：</span>
       </p>
       <ul>
-        <li><strong>Windows</strong> — <span data-i18n="en">run the NSIS <code>.exe</code> installer (x64).</span><span data-i18n="zh">运行 NSIS <code>.exe</code> 安装程序（x64）。</span></li>
+        <li><strong>Windows</strong> — <span data-i18n="en">run the NSIS <code>.exe</code> installer (x64), or unzip the portable build. EdgeTerm renders with Microsoft's WebView2 runtime, which ships with Windows 11 and with a current Microsoft Edge on Windows 10.</span><span data-i18n="zh">运行 NSIS <code>.exe</code> 安装程序（x64），或解压便携版使用。EdgeTerm 使用 Microsoft WebView2 运行时渲染；Windows 11 自带，Windows 10 随较新的 Microsoft Edge 提供。</span></li>
         <li><strong>macOS</strong> — <span data-i18n="en">open the <code>.dmg</code> and drag EdgeTerm into Applications (Apple Silicon).</span><span data-i18n="zh">打开 <code>.dmg</code>，把 EdgeTerm 拖入「应用程序」（Apple Silicon）。</span></li>
         <li><strong>Linux</strong> — <span data-i18n="en">install the <code>.deb</code> (Debian, Ubuntu) or the <code>.rpm</code> (Fedora, RHEL), or <code>chmod +x</code> the <code>.AppImage</code> and run it directly (x64 / ARM64).</span><span data-i18n="zh">安装 <code>.deb</code>（Debian、Ubuntu）或 <code>.rpm</code>（Fedora、RHEL），或给 <code>.AppImage</code> 加执行权限（<code>chmod +x</code>）后直接运行（x64 / ARM64）。</span></li>
       </ul>
       <div class="callout warn">
         <span class="callout-tag"><span data-i18n="en">Note</span><span data-i18n="zh">注意</span></span>
-        <span data-i18n="en">Releases are not yet notarized on macOS or Authenticode-signed on Windows, so the OS may warn on first launch. On macOS, right-click the app and choose <em>Open</em>; on Windows, click <em>More info → Run anyway</em>. Automatic updates are still cryptographically signed and verified.</span>
-        <span data-i18n="zh">当前版本尚未做 macOS 公证 / Windows 代码签名，首次启动系统可能弹出安全提示。macOS 下右键应用选择「打开」；Windows 下点击「更多信息 → 仍要运行」。应用内自动更新仍然经过签名校验，安全性不受影响。</span>
+        <span data-i18n="en">Releases are not yet notarized on macOS or Authenticode-signed on Windows, so the OS may warn on first launch. On macOS, right-click the app and choose <em>Open</em>; on Windows, click <em>More info → Run anyway</em>. In-app updates are signature-verified, but the installer you download first is not signed.</span>
+        <span data-i18n="zh">当前版本尚未做 macOS 公证 / Windows 代码签名，首次启动系统可能弹出安全提示。macOS 下右键应用选择「打开」；Windows 下点击「更多信息 → 仍要运行」。应用内更新经过签名校验，但首次下载的安装包本身没有签名。</span>
       </div>
     </section>
 
@@ -178,10 +185,14 @@
         <li><span data-i18n="en"><strong>Public key</strong> — point <strong>Private key</strong> to your key file (e.g. <code>~/.ssh/id_ed25519</code>) and enter the <strong>Passphrase</strong> if the key has one;</span><span data-i18n="zh"><strong>Public key</strong> —— 在 <strong>Private key</strong> 中填写私钥路径（如 <code>~/.ssh/id_ed25519</code>），如私钥有口令则填写 <strong>Passphrase</strong>；</span></li>
         <li><span data-i18n="en"><strong>SSH agent</strong> — use the keys already loaded in your local ssh-agent, no secrets stored.</span><span data-i18n="zh"><strong>SSH agent</strong> —— 直接使用本机 ssh-agent 中已加载的密钥，不保存任何秘密。</span></li>
       </ul>
+      <p>
+        <span data-i18n="en"><strong>Host keys:</strong> the first connection to a host records its key in your OpenSSH <code>known_hosts</code>. If that key later changes, EdgeTerm stops the connection and shows the old and the new fingerprint before you can accept — a changed key can mean the server was reinstalled, or that the connection is being intercepted.</span>
+        <span data-i18n="zh"><strong>主机密钥：</strong>首次连接会把主机密钥记录到 OpenSSH 的 <code>known_hosts</code>。之后若密钥变化，EdgeTerm 会中止连接并显示新旧指纹，由你决定是否接受——密钥变化可能意味着服务器重装，也可能意味着连接被拦截。</span>
+      </p>
       <div class="callout">
         <span class="callout-tag"><span data-i18n="en">Security</span><span data-i18n="zh">安全</span></span>
-        <span data-i18n="en">Passwords and passphrases are stored in <code>credentials.json</code> inside the app's config directory, readable only by your system user. They are never sent to the frontend or written into <code>sessions.json</code>, and saved sessions reconnect after a restart without triggering the macOS Keychain password dialog. The file is sealed (ChaCha20-Poly1305) with a key derived from the machine id and your account name, so it opens automatically here and is useless when copied elsewhere; it protects the file at rest, not against programs running under your own account.</span>
-        <span data-i18n="zh">密码和私钥口令保存在应用配置目录下的 <code>credentials.json</code> 中，仅当前系统用户可读；不会返回给前端，也不会写入 <code>sessions.json</code>。重启后已保存会话可直接重连，不会触发 macOS 钥匙串的电脑密码授权框。该文件以机器 ID 和当前用户名派生的密钥加密（ChaCha20-Poly1305），本机自动打开、拷到别处无法解密；它保护的是静态文件，不防同一账户下运行的程序。</span>
+        <span data-i18n="en">Passwords and passphrases are stored in <code>credentials.json</code> inside the app's config directory, readable only by your system user. They are never sent to the frontend or written into <code>sessions.json</code>, and saved sessions reconnect after a restart without triggering the macOS Keychain password dialog. The file is sealed with ChaCha20-Poly1305 under a random master key kept in the OS credential store (Windows Credential Manager, macOS Keychain, Secret Service), so the file alone is useless elsewhere. In a portable copy, or when that store cannot be reached, secrets are kept for the current run only and never written to disk. This protects the file at rest, not against programs running under your own account.</span>
+        <span data-i18n="zh">密码和私钥口令保存在应用配置目录下的 <code>credentials.json</code> 中，仅当前系统用户可读；不会返回给前端，也不会写入 <code>sessions.json</code>。重启后已保存会话可直接重连，不会触发 macOS 钥匙串的电脑密码授权框。该文件以 ChaCha20-Poly1305 加密，主密钥随机生成并保存在系统凭据库（Windows 凭据管理器、macOS 钥匙串、Secret Service），因此单独拷走文件无法解密。便携版或系统凭据库不可用时，密码只在本次运行期间保留，不写入磁盘。它保护的是静态文件，不防同一账户下运行的程序。</span>
       </div>
 
       <h3>FTP</h3>
@@ -402,7 +413,7 @@
     <section id="faq">
       <h2><span class="sec-icon">❓</span><span data-i18n="en">Limitations &amp; FAQ</span><span data-i18n="zh">限制与常见问题</span></h2>
       <ul>
-        <li><span data-i18n="en"><strong>Not yet implemented</strong> — port forwarding / tunneling, session recording and playback, split panes with multiple tabs.</span><span data-i18n="zh"><strong>尚未实现</strong> —— 端口转发 / 隧道、会话录制回放、多标签分屏。</span></li>
+        <li><span data-i18n="en"><strong>Session recording is capture-only</strong> — a recorded session writes a plain log of what the terminal received. There is no built-in playback window; the log replays in any terminal with <code>cat</code>.</span><span data-i18n="zh"><strong>会话录制只做记录</strong> —— 录制会写出终端收到的原始日志。应用内没有回放窗口；把日志用 <code>cat</code> 输出到终端即可重放。</span></li>
         <li><span data-i18n="en"><strong>ZMODEM resume</strong> — not supported; restart interrupted transfers from the beginning.</span><span data-i18n="zh"><strong>ZMODEM 断点续传</strong> —— 暂不支持，中断后需从头重传。</span></li>
         <li><span data-i18n="en"><strong>FTP delete is non-recursive</strong> — empty a directory before deleting it.</span><span data-i18n="zh"><strong>FTP 删除为非递归</strong> —— 删除目录前需先清空其内容。</span></li>
         <li><span data-i18n="en"><strong>OS warning on first install</strong> — expected while releases are not notarized / Authenticode-signed; see <a href="#getting-started">Getting Started</a>.</span><span data-i18n="zh"><strong>首次安装的系统警告</strong> —— 由于版本暂未做公证 / 代码签名，属预期现象；见<a href="#getting-started">快速上手</a>。</span></li>

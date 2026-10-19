@@ -61,6 +61,8 @@ header {
 .btn-ghost:hover { border-color: var(--accent); }
 
 section { padding: 64px 0; }
+/* A section that is itself the container must keep the container's side padding. */
+section.container { padding: 64px 24px; }
 h2 { font-size: 30px; font-weight: 700; text-align: center; margin-bottom: 8px; }
 .section-sub { text-align: center; color: var(--text-dim); margin-bottom: 44px; font-size: 15px; }
 
@@ -70,6 +72,65 @@ footer {
 }
 footer a { color: var(--accent); text-decoration: none; }
 
+.trust-line {
+  margin-top: 16px; color: var(--text-dim); font-size: 14px;
+  display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
+}
+
+/* "which file" guidance + install prerequisites, next to the download cards */
+.install-help {
+  max-width: 940px; margin: 34px auto 0; padding: 22px 24px;
+  background: var(--bg-soft); border: 1px solid var(--panel-border); border-radius: 12px;
+  text-align: left;
+}
+.install-help h3 { font-size: 16px; margin-bottom: 10px; }
+.install-help p { color: var(--text-dim); font-size: 14px; }
+.install-help ul { margin: 12px 0 0 18px; color: var(--text-dim); font-size: 13.5px; }
+.install-help li { margin-bottom: 7px; }
+.install-help code {
+  font-family: var(--mono); font-size: 12.5px; color: var(--accent);
+  background: rgba(34, 211, 238, 0.08); border-radius: 4px; padding: 1px 5px;
+  overflow-wrap: anywhere;
+}
+.install-warn {
+  margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--panel-border);
+  color: var(--text) !important; font-size: 13.5px !important;
+}
+.install-warn strong { color: var(--yellow); }
+.install-first-run {
+  margin-top: 12px; color: var(--text) !important; font-size: 13.5px !important;
+}
+.install-first-run kbd {
+  font-family: var(--mono); font-size: 12px; color: var(--text);
+  background: var(--bg); border: 1px solid var(--panel-border); border-bottom-width: 2px;
+  border-radius: 4px; padding: 0 4px;
+}
+
+.trust-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 18px; max-width: 940px; margin: 26px auto 0;
+}
+.trust-card {
+  background: var(--panel); border: 1px solid var(--panel-border);
+  border-radius: 12px; padding: 20px 20px 18px; text-align: left;
+}
+.trust-card h4 { font-size: 15px; margin-bottom: 8px; color: var(--text); }
+.trust-card p { color: var(--text-dim); font-size: 13.5px; }
+.trust-card a { color: var(--accent); text-decoration: none; }
+.trust-card code {
+  font-family: var(--mono); font-size: 12px; color: var(--text);
+  background: rgba(255, 255, 255, 0.06); border-radius: 4px; padding: 1px 4px;
+}
+
 @media (max-width: 640px) {
-  .nav-links a.nav-item { display: none; }
+  /* Keep the way to the download reachable: only the secondary nav items fold. */
+  .nav-links a.nav-item:not(.keep) { display: none; }
+  .nav-links { gap: 8px; }
+  /* Finger-sized targets: a 14px text link is not a touch target. */
+  .nav-links a, .lang-btn {
+    min-height: 40px; display: inline-flex; align-items: center; padding: 0 6px;
+  }
+  footer a { display: inline-block; padding: 6px 2px; }
+  .install-help { padding: 18px 16px; }
+  .trust-grid { grid-template-columns: 1fr; }
 }

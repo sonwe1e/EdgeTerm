@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" href="icon.png?v=2">
 <link rel="stylesheet" href="style.css">
 <style>
-  .hero { padding: 84px 0 40px; text-align: center; }
+  .hero { padding: 84px 24px 40px; text-align: center; }
   .hero h1 {
     font-size: clamp(36px, 6vw, 56px); font-weight: 800; letter-spacing: -1px;
     background: linear-gradient(90deg, var(--accent), var(--accent-2));
@@ -31,6 +31,7 @@
     border: 1px solid var(--panel-border); border-radius: 12px;
     max-width: 1000px; width: 100%; margin: 0 auto; overflow: hidden;
     box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+    background: linear-gradient(135deg, #12203a, #0e1626);
   }
   .shot img { display: block; width: 100%; height: auto; }
   .shot-caption { text-align: center; color: var(--text-dim); font-size: 13px; margin-top: 12px; }
@@ -63,7 +64,7 @@
     </a>
     <nav class="nav-links">
       <a class="nav-item" href="tutorial.html"><span data-i18n="en">Tutorial</span><span data-i18n="zh">使用教程</span></a>
-      <a class="nav-item" href="#download"><span data-i18n="en">Download</span><span data-i18n="zh">下载</span></a>
+      <a class="nav-item keep" href="#download"><span data-i18n="en">Download</span><span data-i18n="zh">下载</span></a>
       <a class="nav-item" href="https://github.com/miskin-lee/EdgeTerm">GitHub</a>
       <button class="lang-btn" id="langBtn" type="button">中文</button>
     </nav>
@@ -88,7 +89,7 @@
     <span class="badge">GPL-3.0 License</span>
   </div>
   <div class="cta">
-    <a class="btn btn-primary" href="https://github.com/miskin-lee/EdgeTerm/releases/latest">
+    <a class="btn btn-primary" href="#download">
       <span data-i18n="en">⬇ Download</span><span data-i18n="zh">⬇ 立即下载</span>
     </a>
     <a class="btn btn-ghost" href="tutorial.html">
@@ -98,41 +99,24 @@
       <span data-i18n="en">★ Star on GitHub</span><span data-i18n="zh">★ GitHub 源码</span>
     </a>
   </div>
+  <p class="trust-line">
+    <span data-i18n="en">Free and open source · GPL-3.0 · No account, no telemetry</span>
+    <span data-i18n="zh">免费开源 · GPL-3.0 · 无需账号、无遥测</span>
+  </p>
   <p class="platforms-line">Windows x64 · macOS Apple Silicon · Linux x64 / ARM64</p>
 </section>
-
-<div class="shot-wrap container">
-  <figure>
-    <div class="shot">
-      <img src="screenshot-dark.png" alt="EdgeTerm dark theme: Session panel, SSH terminal with timestamp gutter, Filer and Sender" width="3024" height="1716">
-    </div>
-    <figcaption class="shot-caption">
-      <span data-i18n="en">Dark theme — Session panel on the left, terminal with timestamp and line-number gutter in the middle, SFTP Filer on the right, Sender at the bottom.</span>
-      <span data-i18n="zh">深色主题 —— 左侧 Session 面板，中间带时间戳与行号侧栏的终端，右侧 SFTP Filer，底部 Sender。</span>
-    </figcaption>
-  </figure>
-  <figure>
-    <div class="shot">
-      <img src="screenshot-light.png" alt="EdgeTerm light theme: Session panel, SSH terminal with timestamp gutter, Filer and Sender" width="3024" height="1716" loading="lazy">
-    </div>
-    <figcaption class="shot-caption">
-      <span data-i18n="en">Light theme.</span>
-      <span data-i18n="zh">浅色主题。</span>
-    </figcaption>
-  </figure>
-</div>
 
 <section id="download" class="container">
   <h2><span data-i18n="en">Download</span><span data-i18n="zh">下载</span></h2>
   <p class="section-sub">
-    <span data-i18n="en">Native installers for every supported platform, signed for automatic updates.</span>
-    <span data-i18n="zh">各平台原生安装包，均附带自动更新签名。</span>
+    <span data-i18n="en">Installers for every supported platform. In-app updates are cryptographically signed; the installers themselves are not code-signed yet.</span>
+    <span data-i18n="zh">各平台原生安装包，应用内更新经过签名校验；安装包本身暂未做代码签名。</span>
   </p>
   <div class="dl-grid">
     <a class="dl-card" href="https://github.com/miskin-lee/EdgeTerm/releases/latest">
-      <div class="os">🪟</div>
+      <div class="os" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><path d="M3 4.6 10.6 3.5v8.1H3zM11.9 3.3 21 2v9.6h-9.1zM3 12.9h7.6v8.1L3 19.9zM11.9 12.9H21V22l-9.1-1.2z"/></svg></div>
       <h3>Windows</h3>
-      <p>x64 · NSIS .exe</p>
+      <p>x64 · installer .exe<br>or portable .zip</p>
     </a>
     <a class="dl-card" href="https://github.com/miskin-lee/EdgeTerm/releases/latest">
       <div class="os">🍎</div>
@@ -145,11 +129,87 @@
       <p>x64 / ARM64 · .AppImage / .deb / .rpm</p>
     </a>
   </div>
+
+  <div class="install-help">
+    <h3>
+      <span data-i18n="en">Which file do I need?</span>
+      <span data-i18n="zh">该下载哪个文件？</span>
+    </h3>
+    <p>
+      <span data-i18n="en">Every download goes to the same GitHub Releases page; the newest release is at the top. Pick the file that matches your platform:</span>
+      <span data-i18n="zh">所有下载都指向同一个 GitHub Releases 页面，最新版本在最上方。按平台选择文件：</span>
+    </p>
+    <ul>
+      <li><span data-i18n="en"><code>EdgeTerm_&lt;version&gt;_x64-setup.exe</code> — Windows installer (recommended).</span><span data-i18n="zh"><code>EdgeTerm_&lt;version&gt;_x64-setup.exe</code> —— Windows 安装程序（推荐）。</span></li>
+      <li><span data-i18n="en"><code>EdgeTerm_&lt;version&gt;_x64-portable.zip</code> — Windows portable build; unzip anywhere, data stays in its <code>data</code> folder (saved passwords last for the session only).</span><span data-i18n="zh"><code>EdgeTerm_&lt;version&gt;_x64-portable.zip</code> —— Windows 便携版，解压即用，数据保存在旁边的 <code>data</code> 文件夹（保存的密码仅在本次运行有效）。</span></li>
+      <li><span data-i18n="en"><code>EdgeTerm_&lt;version&gt;_aarch64.dmg</code> — macOS on Apple Silicon.</span><span data-i18n="zh"><code>EdgeTerm_&lt;version&gt;_aarch64.dmg</code> —— Apple Silicon 上的 macOS。</span></li>
+      <li><span data-i18n="en"><code>EdgeTerm_&lt;version&gt;_amd64.AppImage</code>, <code>…_amd64.deb</code>, <code>…_x86_64.rpm</code> — Linux, with matching <code>aarch64</code> / <code>arm64</code> builds.</span><span data-i18n="zh"><code>EdgeTerm_&lt;version&gt;_amd64.AppImage</code>、<code>…_amd64.deb</code>、<code>…_x86_64.rpm</code> —— Linux；ARM 平台对应 <code>aarch64</code> / <code>arm64</code> 版本。</span></li>
+    </ul>
+    <p class="install-warn">
+      <span data-i18n="en"><strong>Before you install:</strong> Windows needs the Microsoft WebView2 runtime, which ships with Windows 11 and with a current Microsoft Edge on Windows 10. Because the installers are not code-signed yet, Windows SmartScreen and macOS Gatekeeper will warn on first launch — the tutorial shows the two clicks to continue.</span>
+      <span data-i18n="zh"><strong>安装前请知悉：</strong>Windows 需要 Microsoft WebView2 运行时（Windows 11 自带；Windows 10 随较新的 Microsoft Edge 提供）。安装包暂未做代码签名，首次启动时 Windows SmartScreen 与 macOS Gatekeeper 会提示风险；教程中写明了继续的两步操作。</span>
+    </p>
+    <p class="install-first-run">
+      <span data-i18n="en"><strong>After it opens:</strong> you get an empty workspace. Press <kbd>Alt</kbd>+<kbd>N</kbd> (or the New Session button), choose <em>Local Shell</em> for a terminal on this machine, or fill in host and user for SSH. The first successful connection is a shell prompt you can type into — nothing needs an account.</span>
+      <span data-i18n="zh"><strong>打开之后：</strong>会看到一个空工作区。按 <kbd>Alt</kbd>+<kbd>N</kbd>（或点 New Session），选 <em>Local Shell</em> 得到本机终端；SSH 则填写主机与用户名。首次成功的标志是可以输入命令的 shell 提示符——全程不需要账号。</span>
+    </p>
+  </div>
+
+  <div class="trust-grid">
+    <div class="trust-card">
+      <h4><span data-i18n="en">Free, with a real licence</span><span data-i18n="zh">免费，且有明确许可</span></h4>
+      <p>
+        <span data-i18n="en">No account, no subscription, no paid tier. The source is on GitHub under GPL-3.0; that licence, not a separate contract, is what you agree to.</span>
+        <span data-i18n="zh">无需账号、无订阅、无付费版。源码以 GPL-3.0 发布；你接受的是这份许可证，而不是另一份单独条款。</span>
+      </p>
+    </div>
+    <div class="trust-card">
+      <h4><span data-i18n="en">Your servers stay yours</span><span data-i18n="zh">服务器信息留在本机</span></h4>
+      <p>
+        <span data-i18n="en">No telemetry. Saved passwords never enter the page or <code>sessions.json</code>: they are sealed in <code>credentials.json</code>, with the key held by the OS credential store. The only automatic network request the app makes is the update check to GitHub.</span>
+        <span data-i18n="zh">没有遥测。保存的密码不会进入页面或 <code>sessions.json</code>：它们被封存在 <code>credentials.json</code>，密钥由系统凭据库保管。应用唯一的自动网络请求是向 GitHub 检查更新。</span>
+      </p>
+    </div>
+    <div class="trust-card">
+      <h4><span data-i18n="en">Who makes it, and where to ask</span><span data-i18n="zh">谁在做，去哪里问</span></h4>
+      <p>
+        <span data-i18n="en">Built and maintained by miskin on <a href="https://github.com/miskin-lee/EdgeTerm">GitHub</a>. Bugs and questions go to <a href="https://github.com/miskin-lee/EdgeTerm/issues">GitHub Issues</a>; there is also a QQ group linked from the repository.</span>
+        <span data-i18n="zh">由 miskin 在 <a href="https://github.com/miskin-lee/EdgeTerm">GitHub</a> 上开发维护。问题与建议请到 <a href="https://github.com/miskin-lee/EdgeTerm/issues">GitHub Issues</a>；仓库里也有 QQ 群入口。</span>
+      </p>
+    </div>
+  </div>
   <p class="dl-note">
     <span data-i18n="en">All builds on the <a href="https://github.com/miskin-lee/EdgeTerm/releases">GitHub Releases</a> page. New to EdgeTerm? Start with the <a href="tutorial.html">tutorial</a>.</span>
     <span data-i18n="zh">全部版本见 <a href="https://github.com/miskin-lee/EdgeTerm/releases">GitHub Releases</a> 页面。第一次使用？请从<a href="tutorial.html">使用教程</a>开始。</span>
   </p>
 </section>
+
+<div class="shot-wrap container">
+  <figure>
+    <div class="shot">
+      <picture>
+        <source type="image/webp" srcset="screenshot-dark-720.webp 720w, screenshot-dark-1440.webp 1440w" sizes="(max-width: 720px) 100vw, 1000px">
+        <img src="screenshot-dark-1440.webp" alt="EdgeTerm dark theme: Session panel, SSH terminal with timestamp gutter, Filer and Sender" width="1440" height="817" loading="lazy" decoding="async">
+      </picture>
+    </div>
+    <figcaption class="shot-caption">
+      <span data-i18n="en">Dark theme — Session panel on the left, terminal with timestamp and line-number gutter in the middle, SFTP Filer on the right, Sender at the bottom.</span>
+      <span data-i18n="zh">深色主题 —— 左侧 Session 面板，中间带时间戳与行号侧栏的终端，右侧 SFTP Filer，底部 Sender。</span>
+    </figcaption>
+  </figure>
+  <figure>
+    <div class="shot">
+      <picture>
+        <source type="image/webp" srcset="screenshot-light-720.webp 720w, screenshot-light-1440.webp 1440w" sizes="(max-width: 720px) 100vw, 1000px">
+        <img src="screenshot-light-1440.webp" alt="EdgeTerm light theme: Session panel, SSH terminal with timestamp gutter, Filer and Sender" width="1440" height="817" loading="lazy" decoding="async">
+      </picture>
+    </div>
+    <figcaption class="shot-caption">
+      <span data-i18n="en">Light theme.</span>
+      <span data-i18n="zh">浅色主题。</span>
+    </figcaption>
+  </figure>
+</div>
 
 <footer>
   <div class="container">
@@ -157,12 +217,14 @@
       EdgeTerm · GPL-3.0 License ·
       <a href="tutorial.html"><span data-i18n="en">Tutorial</span><span data-i18n="zh">使用教程</span></a> ·
       <a href="https://github.com/miskin-lee/EdgeTerm">GitHub</a> ·
+      <a href="https://github.com/miskin-lee/EdgeTerm/blob/main/LICENSE"><span data-i18n="en">Licence</span><span data-i18n="zh">许可证</span></a> ·
+      <a href="https://github.com/miskin-lee/EdgeTerm/issues"><span data-i18n="en">Issues</span><span data-i18n="zh">问题反馈</span></a> ·
       <a href="https://github.com/miskin-lee/EdgeTerm/blob/main/README.md">README</a> ·
       <a href="https://github.com/miskin-lee/EdgeTerm/blob/main/README.zh-CN.md">简体中文文档</a>
     </p>
     <p style="margin-top: 6px;">
-      <span data-i18n="en">Built with Rust + Tauri.</span>
-      <span data-i18n="zh">使用 Rust + Tauri 构建。</span>
+      <span data-i18n="en">Built with Rust + Tauri. © 2026 miskin.</span>
+      <span data-i18n="zh">使用 Rust + Tauri 构建。© 2026 miskin。</span>
     </p>
   </div>
 </footer>
