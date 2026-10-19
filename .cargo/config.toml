@@ -1,0 +1,8 @@
+# Also covers direct Cargo invocations from the repository or src-tauri.
+# Use the project runner for Windows CPU affinity, tool discovery and exclusion.
+[build]
+jobs = 2
+
+[env]
+RUST_TEST_THREADS = { value = "2", force = false }
+CMAKE_BUILD_PARALLEL_LEVEL = { value = "2", force = false }
