@@ -1069,6 +1069,30 @@ fn every_algorithm_russh_offers_by_default_is_still_offered() {
     assert_eq!(ours.key, defaults.key);
 }
 
+/// A peer that stops answering is dropped rather than left looking live.
+/// russh declares the transport dead once `keepalive_max + 1` keepalives go
+/// unanswered and resets the count on any data received, so the interval in
+/// `client_config` is the whole detection latency for a silently-dropped
+/// connection (a NAT/firewall drop, a rebooted host). It must be short enough
+/// to read as disconnected rather than hung, with enough missed intervals
+/// that a lossy or high-latency link is not mistaken for a dead one. The
+/// real wall-clock time depends on russh's timer and the link, so only the
+/// configured window is pinned here.
+#[test]
+fn a_silent_peer_is_declared_dead_within_the_keepalive_window() {
+    let config = client_config();
+    let interval = config
+        .keepalive_interval
+        .expect("keepalive must be configured so a silent peer is noticed");
+    assert_eq!(interval, Duration::from_secs(15));
+    assert_eq!(config.keepalive_max, 3);
+    // Four unanswered intervals (max + 1) before russh gives up: ~60 s.
+    assert_eq!(
+        interval * (config.keepalive_max as u32 + 1),
+        Duration::from_secs(60)
+    );
+}
+
 #[test]
 fn legacy_choices_name_what_is_weak_and_nothing_else() {
     let sha2_mac = [&mac::HMAC_SHA256, &mac::HMAC_SHA256];

@@ -87,7 +87,20 @@ pub(super) fn client_config() -> client::Config {
     let gex = GexParams::default();
     client::Config {
         inactivity_timeout: None,
-        keepalive_interval: Some(Duration::from_secs(30)),
+        // How long a peer that has gone quiet — a NAT/firewall drop, a pulled
+        // cable, a rebooted host — stays shown as a live session. russh sends
+        // a keepalive every interval and declares the transport dead once
+        // `keepalive_max + 1` of them go unanswered, resetting the count on
+        // *any* data received (not just keepalive replies), so this interval
+        // is the whole detection latency: `interval * (keepalive_max + 1)`.
+        // 15 s lands a silently-dead peer at ~60 s — fast enough to read as
+        // disconnected rather than hung — while still tolerating three missed
+        // intervals (~45 s) so a lossy or high-latency path is not mistaken
+        // for a dead one. A server that answers keepalives (every OpenSSH and
+        // nearly every embedded stack) never trips it, idle or busy. The
+        // real wall-clock detection depends on russh's timer and the link, so
+        // it is asserted only as the configured window in `ssh::tests`.
+        keepalive_interval: Some(Duration::from_secs(15)),
         keepalive_max: 3,
         nodelay: true,
         // Match the bounded transfer pipeline on high-latency links.
