@@ -11,6 +11,10 @@ mod file_promise;
 mod file_transfer;
 mod fonts;
 mod fs_local;
+// Unix test builds compile it too: the decision is pure, mirroring
+// `nvidia_quirk`.
+#[cfg(any(target_os = "windows", all(test, unix)))]
+mod gpu_fallback;
 mod key_check;
 mod model;
 mod port_forward;
@@ -330,10 +334,10 @@ pub fn run() {
             std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", dir.join("webview"));
         }
     }
-    // Linux + NVIDIA Wayland startup crash: same spirit as the block above —
-    // detect the crashing combination before GTK/WebKit are initialised and
-    // inject the escape variable ourselves. See the module docs for the
-    // upstream tickets.
+    // Linux + NVIDIA Wayland startup crash: same spirit as the GPU sandbox
+    // fallback in `gpu_fallback` — detect the crashing combination before
+    // GTK/WebKit are initialised and inject the escape variable ourselves.
+    // See the module docs for the upstream tickets.
     #[cfg(target_os = "linux")]
     nvidia_quirk::apply();
     let builder = tauri::Builder::default();
@@ -354,6 +358,14 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
+            // After the single-instance plugin (a second launch exits in
+            // that plugin's own setup, before this runs, so it cannot
+            // overwrite the running app's marker) and before the webview is
+            // created: this picks this launch's WebView2 browser arguments
+            // from whether the previous launch's page became ready. See
+            // `gpu_fallback`.
+            #[cfg(target_os = "windows")]
+            gpu_fallback::apply();
             #[cfg(desktop)]
             app.handle()
                 .plugin(tauri_plugin_updater::Builder::new().build())?;

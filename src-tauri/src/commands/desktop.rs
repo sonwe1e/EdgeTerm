@@ -14,6 +14,12 @@ pub fn set_startup_theme(theme: Theme) -> Result<()> {
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
 pub fn show_main_window(window: tauri::WebviewWindow) -> Result<()> {
+    // The frontend committed its first render: the launch's page is ready.
+    // `gpu_fallback` only counts acknowledgements inside its time window, so
+    // a page that arrives after the crashed browser process was relaunched
+    // does not pass as healthy.
+    #[cfg(target_os = "windows")]
+    crate::gpu_fallback::mark_ready();
     window.show().map_err(err)?;
     #[cfg(target_os = "windows")]
     {
