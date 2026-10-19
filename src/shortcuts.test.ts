@@ -179,6 +179,11 @@ describe("chords", () => {
     expect(chordProblem(chord("Insert", {}))).toMatch(/⌘/);
     expect(chordLabel(chord("Insert", { shift: true }))).toBe("⇧Ins");
   });
+
+  it("keeps plain F6 rebindable: the app reserves it for focus cycling", () => {
+    expect(chordProblem(chord("F6", {}))).toBeNull();
+    expect(chordProblem(chord("F6", { shift: true }))).toBeNull();
+  });
 });
 
 describe("storage", () => {

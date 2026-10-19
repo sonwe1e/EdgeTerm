@@ -101,7 +101,29 @@ export function FontSizeDialog({
     min: number,
     max: number,
   ) => {
+    // A Backspace-cleared number field reports NaN via valueAsNumber while the
+    // raw string is "". Ignoring it leaves the old value on screen, so the
+    // field looks dead. Fall back to min so the clear is visible and the user
+    // can keep typing a replacement.
+    if (Number.isNaN(value)) {
+      setValue(min);
+      return;
+    }
     if (Number.isFinite(value)) setValue(clamp(Math.round(value), min, max));
+  };
+
+  const updateNumberInput = (
+    raw: string,
+    valueAsNumber: number,
+    setValue: (value: number) => void,
+    min: number,
+    max: number,
+  ) => {
+    if (raw.trim() === "") {
+      setValue(min);
+      return;
+    }
+    updateNumber(valueAsNumber, setValue, min, max);
   };
 
   return (
@@ -149,7 +171,8 @@ export function FontSizeDialog({
               max={PANEL_FONT_SIZE.max}
               value={panelSize}
               onChange={(event) =>
-                updateNumber(
+                updateNumberInput(
+                  event.target.value,
                   event.target.valueAsNumber,
                   setPanelSize,
                   PANEL_FONT_SIZE.min,
@@ -190,7 +213,8 @@ export function FontSizeDialog({
               max={BUFFER_FONT_SIZE.max}
               value={bufferSize}
               onChange={(event) =>
-                updateNumber(
+                updateNumberInput(
+                  event.target.value,
                   event.target.valueAsNumber,
                   setBufferSize,
                   BUFFER_FONT_SIZE.min,
@@ -272,7 +296,8 @@ export function FontSizeDialog({
               step={1000}
               value={scrollback}
               onChange={(event) =>
-                updateNumber(
+                updateNumberInput(
+                  event.target.value,
                   event.target.valueAsNumber,
                   setScrollback,
                   TERMINAL_SCROLLBACK.min,
@@ -338,6 +363,7 @@ function FontFamilyField({
 }) {
   const listId = `${id}-list`;
   const systemMonoFamily = useStore((s) => s.systemMonoFamily);
+  const symbolFontFamilies = useStore((s) => s.symbolFontFamilies);
   const t = useT();
   return (
     <label className="font-size-setting">
@@ -354,7 +380,14 @@ function FontFamilyField({
         autoComplete="off"
         placeholder={t("fontDialog.systemDefault")}
         value={value}
-        style={{ fontFamily: fontStack(role, value, [], systemMonoFamily) }}
+        style={{
+          fontFamily: fontStack(
+            role,
+            value,
+            role === "mono" ? symbolFontFamilies : [],
+            systemMonoFamily,
+          ),
+        }}
         onChange={(event) => onChange(event.target.value)}
       />
       <datalist id={listId}>

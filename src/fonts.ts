@@ -26,8 +26,9 @@ export const MONO_FONT_FAMILY = `${MONO_FACES}, monospace`;
  * fallbacks. `styles.css` carries the same value as the pre-script default.
  */
 export const UI_FONT_FAMILY =
-  "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', " +
-  "'Microsoft YaHei', Roboto, sans-serif";
+  "-apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', 'PingFang SC', " +
+  "'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', " +
+  "'Source Han Sans SC', Roboto, sans-serif";
 
 /**
  * Families Display Settings offers for the buffer. Nothing here is bundled:

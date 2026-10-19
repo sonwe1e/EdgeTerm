@@ -420,9 +420,14 @@ const SHIFT_ONLY_KEYS = /^(Insert|Delete|Home|End|PageUp|PageDown|F([1-9]|1\d|2[
  * Why `binding` cannot be given to `command`, or null when it can. Chords
  * without a real modifier are refused because they would swallow ordinary
  * typing, and chords the system already answers are refused because the
- * command would never run.
+ * command would never run. F6 is the exception: the app reserves it for
+ * focus-region cycling (see App.tsx), so rebinding back to plain F6 must stay
+ * legal even though it carries no modifier.
  */
 export function chordProblem(binding: KeyChord): string | null {
+  if (binding.code === "F6" && !binding.ctrl && !binding.alt && !binding.meta) {
+    return null;
+  }
   const bareShift = binding.shift && SHIFT_ONLY_KEYS.test(binding.code);
   if (!binding.ctrl && !binding.alt && !binding.meta && !bareShift) {
     return IS_MAC
