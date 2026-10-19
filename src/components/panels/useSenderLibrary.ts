@@ -266,8 +266,10 @@ export function useSenderLibrary({
     if (libraryBusy) return;
     setLibraryBusy(true);
     try {
+      const removed = savedCommands.find((command) => command.id === id);
       await api.deleteSenderCommand(id);
       setSavedCommands((current) => current.filter((command) => command.id !== id));
+      setStatus(t("sender.deleted", { name: removed?.name ?? "" }));
       if (selectedCommandId === id) setSelectedCommandId(null);
       if (contextMenu?.commandId === id) setContextMenu(null);
       if (editing?.command.id === id) cancelEdit();

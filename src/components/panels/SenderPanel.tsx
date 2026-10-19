@@ -12,6 +12,7 @@ import {
 import { useSenderLibrary } from "./useSenderLibrary";
 import { useSenderSend } from "./useSenderSend";
 
+import { ask } from "../../nativeDialog";
 import { sameScope, scopeForLevel } from "../../senderScope";
 import { endingLabel } from "../../senderUnits";
 import { useStore } from "../../store";
@@ -554,7 +555,18 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
               icon: "trash",
               danger: true,
               disabled: libraryBusy,
-              action: () => void removeCommand(command.id),
+              action: () =>
+                void ask(
+                  t("sender.deleteConfirm", { name: command.name }),
+                  {
+                    title: t("sender.deleteConfirmTitle"),
+                    kind: "warning",
+                    okLabel: t("common.delete"),
+                    cancelLabel: t("common.cancel"),
+                  },
+                ).then((confirmed) => {
+                  if (confirmed) void removeCommand(command.id);
+                }),
             },
           ];
           return (
