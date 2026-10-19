@@ -56,6 +56,12 @@ ttf-parser = { version = "0.25", default-features = false }
 drag = "2.1.1"
 
 parking_lot = "0.12"
+# Already in the tree through russh; used directly to arm TCP keepalive on a
+# telnet socket (see `session/telnet.rs`). std's own setter takes only an
+# on/off flag and leaves the timing to the OS — two hours on Windows, and
+# often disabled outright on Linux — which is too slow to tell a silently
+# dropped device from an idle one.
+socket2 = "0.6"
 uuid = { version = "1", features = ["v4", "serde"] }
 # Already in the tree through russh-sftp and suppaftp; used directly for the
 # local time in a session recording's file name and header.

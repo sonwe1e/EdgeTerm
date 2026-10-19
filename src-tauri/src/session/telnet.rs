@@ -36,6 +36,16 @@ use crate::model::{SessionKind, SessionProfile};
 
 pub const DEFAULT_PORT: u16 = 23;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+/// How long a telnet connection may sit idle before the OS arms TCP keepalive
+/// probes. This is not an application idle timeout — a telnet console is often
+/// quiet for a long time (an idle switch, a device that only prints on an
+/// event) and that silence is normal. It only makes the OS eventually probe a
+/// peer that has silently vanished (a NAT/firewall drop, a rebooted device)
+/// instead of leaving the read loop blocked on a half-open socket forever,
+/// which is the one way a telnet session can look connected while being dead.
+/// A live peer's own OS answers the probes, so a quiet-but-alive connection is
+/// never dropped by this.
+const TCP_KEEPALIVE: Duration = Duration::from_secs(30);
 /// How long after connecting a login prompt is still answered. Long enough
 /// for a slow device's banner; past it, a "password:" in the output is a
 /// command's (`enable`, `su`) and is the user's to answer.
@@ -678,7 +688,30 @@ pub async fn connect(profile: &SessionProfile) -> Result<TcpStream> {
         .map_err(|_| AppError::new(format!("connecting to {host}:{port} timed out")))?
         .map_err(|e| AppError::new(format!("cannot connect to {host}:{port}: {e}")))?;
     let _ = stream.set_nodelay(true);
-    Ok(stream)
+    // A telnet peer that silently disappears is otherwise indistinguishable
+    // from an idle one; see `arm_keepalive`.
+    Ok(arm_keepalive(stream)
+        .map_err(|e| AppError::new(format!("cannot configure {host}:{port}: {e}")))?)
+}
+
+/// Arms TCP keepalive on a freshly connected socket. tokio's `TcpStream`
+/// exposes no keepalive setter and std's takes only an on/off flag, which
+/// leaves the timing to the OS — two hours on Windows, and often disabled
+/// outright on Linux — so the socket is taken out to std, configured through
+/// socket2, and handed back to tokio (it comes back in the non-blocking mode
+/// `into_std` left it in, which is what `from_std` requires). Best-effort: a
+/// platform that refuses the option leaves the stream exactly as connected
+/// rather than failing the session — only the std round-trip itself fails,
+/// and that only when the runtime is shutting down, when the connection is
+/// moot anyway.
+fn arm_keepalive(stream: TcpStream) -> std::io::Result<TcpStream> {
+    let socket = socket2::Socket::from(stream.into_std()?);
+    let _ = socket.set_tcp_keepalive(
+        &socket2::TcpKeepalive::new()
+            .with_time(TCP_KEEPALIVE)
+            .with_interval(TCP_KEEPALIVE / 3),
+    );
+    TcpStream::from_std(socket.into())
 }
 
 /// Runs the session on a connected socket. `recorder` is the session's
@@ -1099,5 +1132,32 @@ mod tests {
         let accept = tokio::spawn(async move { listener.accept().await.map(|_| ()) });
         connect(&profile).await.expect("connect");
         accept.await.unwrap().expect("accepted");
+    }
+
+    // The keepalive round-trip takes the socket out to std and back; this
+    // proves that detour leaves a working tokio stream behind (the OS-level
+    // dead-peer detection it enables cannot be exercised on a live loopback
+    // peer, so it is not asserted here).
+    #[tokio::test]
+    async fn keepalive_is_armed_and_the_socket_still_round_trips() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut byte = [0u8; 1];
+            socket.read_exact(&mut byte).await.unwrap();
+            socket.write_all(&byte).await.unwrap();
+        });
+        let mut client = arm_keepalive(
+            tokio::net::TcpStream::connect(("127.0.0.1", port))
+                .await
+                .unwrap(),
+        )
+        .expect("a connected socket re-wraps for tokio");
+        client.write_all(b"z").await.unwrap();
+        let mut echoed = [0u8; 1];
+        client.read_exact(&mut echoed).await.unwrap();
+        assert_eq!(&echoed, b"z");
+        server.await.unwrap();
     }
 }
