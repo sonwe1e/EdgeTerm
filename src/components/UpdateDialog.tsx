@@ -28,8 +28,7 @@ export function UpdateDialog({
   const t = useT();
   if (state.phase === "idle") return null;
 
-  const busy = state.phase === "checking" || state.phase === "downloading";
-  const dismissible = state.phase !== "downloading" && state.phase !== "installing";
+  const dismissible = state.phase !== "installing";
   const progress =
     state.phase === "downloading" && state.total && state.total > 0
       ? Math.min(100, (state.downloaded / state.total) * 100)
@@ -111,27 +110,35 @@ export function UpdateDialog({
           )}
         </div>
 
-        {!busy && state.phase !== "installing" && (
+        {state.phase !== "installing" && (
           <div className="dialog-footer">
-            {state.phase === "error" && (
-              <button className="btn" onClick={onCheckAgain}>
-                {t("update.tryAgain")}
-              </button>
-            )}
-            {state.phase === "available" && (
+            {state.phase === "downloading" ? (
               <button className="btn" onClick={onDismiss}>
-                {t("update.later")}
+                {t("update.hide")}
               </button>
-            )}
-            {state.phase !== "available" && (
-              <button className="btn" onClick={onDismiss}>
-                {t("common.close")}
-              </button>
-            )}
-            {state.phase === "available" && (
-              <button className="btn is-primary" onClick={onInstall}>
-                {portable ? t("update.openDownload") : t("update.downloadInstall")}
-              </button>
+            ) : (
+              <>
+                {state.phase === "error" && (
+                  <button className="btn" onClick={onCheckAgain}>
+                    {t("update.tryAgain")}
+                  </button>
+                )}
+                {state.phase === "available" && (
+                  <button className="btn" onClick={onDismiss}>
+                    {t("update.later")}
+                  </button>
+                )}
+                {state.phase !== "available" && (
+                  <button className="btn" onClick={onDismiss}>
+                    {t("common.close")}
+                  </button>
+                )}
+                {state.phase === "available" && (
+                  <button className="btn is-primary" onClick={onInstall}>
+                    {portable ? t("update.openDownload") : t("update.downloadInstall")}
+                  </button>
+                )}
+              </>
             )}
           </div>
         )}

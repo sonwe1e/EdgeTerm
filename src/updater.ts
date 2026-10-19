@@ -37,6 +37,8 @@ export function useUpdater() {
   const [portable, setPortable] = useState(false);
   const [state, setState] = useState<UpdaterState>({ phase: "idle" });
   const updateRef = useRef<Update | null>(null);
+  /** The download continues while its dialog is hidden. */
+  const dialogHidden = useRef(false);
   const checkPromiseRef = useRef<Promise<void> | null>(null);
   const showCheckResultRef = useRef(false);
 
@@ -101,7 +103,15 @@ export function useUpdater() {
   );
 
   const dismiss = useCallback(() => {
-    if (state.phase === "downloading" || state.phase === "installing") return;
+    if (state.phase === "installing") return;
+    if (state.phase === "downloading") {
+      // Hiding is not cancelling: the download keeps running and the dialog
+      // returns when installation starts. There is no abort handle to offer.
+      dialogHidden.current = true;
+      setState({ phase: "idle" });
+      return;
+    }
+    dialogHidden.current = false;
     const update = updateRef.current;
     updateRef.current = null;
     setState({ phase: "idle" });
@@ -111,6 +121,7 @@ export function useUpdater() {
   const installUpdate = useCallback(async () => {
     const update = updateRef.current;
     if (!update) return;
+    dialogHidden.current = false;
 
     if (portable) {
       // A portable copy must not run the NSIS installer the updater target
@@ -146,7 +157,7 @@ export function useUpdater() {
         }
 
         const now = Date.now();
-        if (event.event !== "Progress" || now - lastRenderedAt >= 80) {
+        if (!dialogHidden.current && (event.event !== "Progress" || now - lastRenderedAt >= 80)) {
           lastRenderedAt = now;
           setState({
             phase: "downloading",
