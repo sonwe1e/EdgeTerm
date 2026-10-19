@@ -7,6 +7,7 @@ vi.mock("./platform", () => ({
   IS_WINDOWS: false,
 }));
 
+import { detectLanguage } from "./i18n";
 import { scrollbackMegabytes, TERMINAL_SCROLLBACK, useStore } from "./store";
 
 const initialState = useStore.getState();
@@ -201,5 +202,15 @@ describe("registered panel preferences", () => {
     ]) {
       expect(localStorage.getItem(key)).toBeNull();
     }
+  });
+});
+
+describe("restore default settings", () => {
+  it("returns the interface to the system language and forgets the choice", () => {
+    useStore.getState().setLanguage("zh-CN");
+    expect(localStorage.getItem("edgeterm.language")).toBe("zh-CN");
+    useStore.getState().resetSettings();
+    expect(useStore.getState().language).toBe(detectLanguage());
+    expect(localStorage.getItem("edgeterm.language")).toBeNull();
   });
 });

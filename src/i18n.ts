@@ -94,6 +94,11 @@ let activeLanguage: Language = "en";
 
 export function setCurrentLanguage(language: Language): void {
   activeLanguage = language;
+  // <html lang> is what screen readers use to pick a voice, and what the
+  // stylesheet uses to drop Latin-only typographic devices (see :lang(zh)).
+  if (typeof document !== "undefined") {
+    document.documentElement.lang = language;
+  }
 }
 
 /** Translator for non-React code; reads the store's published language. */

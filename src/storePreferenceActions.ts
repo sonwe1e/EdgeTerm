@@ -1,7 +1,7 @@
 import type { StateCreator } from "zustand";
 import { DEFAULT_FILE_SORT, parseFileSort, saveFileSort } from "./fileSort";
 import { commandHistory } from "./history";
-import { parseLanguage, setCurrentLanguage } from "./i18n";
+import { detectLanguage, parseLanguage, setCurrentLanguage } from "./i18n";
 import { parseProgramClipboardMode } from "./osc52";
 import {
   defaultPanelDocks,
@@ -280,8 +280,11 @@ export const createPreferenceActions: StateCreator<
 
   resetSettings() {
     const shortcuts = defaultShortcuts();
+    const language = detectLanguage();
     setActiveShortcuts(shortcuts);
+    setCurrentLanguage(language);
     set({
+      language,
       shortcuts,
       panels: { ...DEFAULT_PANELS },
       panelDocks: defaultPanelDocks(),
@@ -325,6 +328,7 @@ export const createPreferenceActions: StateCreator<
       localStorage.removeItem(COPY_ON_SELECT_KEY);
       localStorage.removeItem(PROGRAM_CLIPBOARD_KEY);
       localStorage.removeItem(RIGHT_CLICK_KEY);
+      localStorage.removeItem(LANGUAGE_KEY);
       localStorage.removeItem(SHORTCUTS_KEY);
     } catch {
       // The defaults still apply for this run when storage is unavailable.
