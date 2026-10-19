@@ -1,10 +1,16 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { transferBytes } from "../fileTransfers";
 import { useT } from "../useT";
 import { formatClock, hostIdentities } from "./model";
 import { useHostSampling, useHostSamples } from "./hostSampling";
+import { Sparkline } from "./Sparkline";
+import { pressureOf, series, type TrendPoint } from "./resourceTrend";
 import { useWorkbench } from "./store";
 import type { ServerIdentity } from "./types";
+
+// A stable empty window so the detail's memoised series keep a fixed identity
+// before the first sample lands.
+const NO_HISTORY: TrendPoint[] = [];
 
 const percent = (value: number | null | undefined): string =>
   value === null || value === undefined ? "—" : `${value.toFixed(0)}%`;
@@ -32,6 +38,9 @@ export function HostStrip() {
         const metrics = sample?.metrics;
         const gpu = metrics?.gpuStatus === "ok" ? metrics.gpus[0] : undefined;
         const stale = sample?.at ? Date.now() - sample.at > 20_000 : false;
+        const memPercent = metrics?.memory && metrics.memory.totalBytes > 0 ? (metrics.memory.usedBytes / metrics.memory.totalBytes) * 100 : null;
+        const cpuTone = pressureOf(metrics?.cpuPercent ?? null, "cpu");
+        const memTone = pressureOf(memPercent, "memory");
         return (
           <div className="wb-host" key={host.key}>
             <button
@@ -44,10 +53,8 @@ export function HostStrip() {
               <span className="wb-host-name">{host.server.name || host.server.host}</span>
               <span className="wb-host-user">{host.key}</span>
               <span className="wb-host-metrics">
-                CPU {percent(metrics?.cpuPercent)} · RAM{" "}
-                {metrics?.memory
-                  ? percent((metrics.memory.usedBytes / metrics.memory.totalBytes) * 100)
-                  : "—"}{" "}
+                CPU <span className={`metric-${cpuTone}`}>{percent(metrics?.cpuPercent)}</span> · RAM{" "}
+                <span className={`metric-${memTone}`}>{percent(memPercent)}</span>{" "}
                 · GPU {gpu ? percent(gpu.utilization) : metrics ? metrics.gpuStatus : "—"}
               </span>
               {host.workspaceIds.length > 1 && (
@@ -82,6 +89,11 @@ function HostDetail({
 }) {
   const t = useT();
   const metrics = sample?.metrics;
+  const cpuSeries = useMemo(() => series(sample?.history ?? NO_HISTORY, "cpu"), [sample?.history]);
+  const memSeries = useMemo(() => series(sample?.history ?? NO_HISTORY, "memory"), [sample?.history]);
+  const memPercent = metrics?.memory && metrics.memory.totalBytes > 0 ? (metrics.memory.usedBytes / metrics.memory.totalBytes) * 100 : null;
+  const cpuTone = pressureOf(metrics?.cpuPercent ?? null, "cpu");
+  const memTone = pressureOf(memPercent, "memory");
   return (
     <div className="wb-host-detail">
       <strong>{host.server.name || host.server.host}</strong>
@@ -90,13 +102,20 @@ function HostDetail({
       <dl>
         <dt>{t("wb.cpu")}</dt>
         <dd>
-          {percent(metrics?.cpuPercent)} · {metrics?.cpuStatus ?? "—"}
+          <span className={`metric-${cpuTone}`}>{percent(metrics?.cpuPercent)}</span> · {metrics?.cpuStatus ?? "—"}
+          <Sparkline values={cpuSeries} tone={cpuTone} />
         </dd>
         <dt>{t("wb.memory")}</dt>
         <dd>
-          {metrics?.memory
-            ? `${transferBytes(metrics.memory.usedBytes)} / ${transferBytes(metrics.memory.totalBytes)}`
-            : "—"}
+          {metrics?.memory ? (
+            <>
+              <span className={`metric-${memTone}`}>{percent(memPercent)}</span> ·{" "}
+              {`${transferBytes(metrics.memory.usedBytes)} / ${transferBytes(metrics.memory.totalBytes)}`}
+            </>
+          ) : (
+            "—"
+          )}
+          <Sparkline values={memSeries} tone={memTone} />
         </dd>
         <dt>{t("wb.disk")}</dt>
         <dd>

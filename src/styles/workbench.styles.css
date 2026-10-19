@@ -298,6 +298,70 @@
   color: var(--red);
 }
 
+/* --- resource trend sparklines -------------------------------------------
+   Shared by the status-bar resource monitor (ResourceMonitorBar) and the
+   workbench host strip. They live in this sheet because it is the one globally
+   imported (see styles.css) that is in scope for the monitor UI; the colour
+   always comes from the semantic tokens, so all four themes hold and no hex
+   value is hard-coded here. The SVG is decorative — the number beside it is
+   the accessible value — so these rules only draw, and never carry meaning the
+   text does not already state. */
+
+.spark {
+  display: inline-block;
+  flex: none;
+  margin-left: var(--sp-6);
+  vertical-align: middle;
+  overflow: visible;
+}
+
+/* Not enough samples yet (the first delta reading): a faint baseline reads as
+   "warming up" rather than a broken widget. */
+.spark.is-empty {
+  border-bottom: 1px dashed color-mix(in srgb, var(--fg-faint) 45%, transparent);
+}
+
+.spark-line {
+  fill: none;
+  stroke: var(--green);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.spark-area {
+  stroke: none;
+  fill: var(--green);
+  opacity: 0.14;
+}
+
+.spark.tone-warn .spark-line {
+  stroke: var(--yellow);
+}
+
+.spark.tone-warn .spark-area {
+  fill: var(--yellow);
+}
+
+.spark.tone-crit .spark-line {
+  stroke: var(--red);
+}
+
+.spark.tone-crit .spark-area {
+  fill: var(--red);
+}
+
+/* Threshold colouring for the numeric value itself. An "ok" tier keeps the
+   inherited colour; warn/crit borrow the same semantic tokens the rest of the
+   app uses for "look soon" and "look now". */
+.metric-warn {
+  color: var(--yellow);
+}
+
+.metric-crit {
+  color: var(--red);
+}
+
 /* --- sidebar ----------------------------------------------------------- */
 
 .wb-sidebar {

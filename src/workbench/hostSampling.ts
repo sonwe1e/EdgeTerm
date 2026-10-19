@@ -5,6 +5,7 @@ import { errorText } from "../errorInfo";
 import { t } from "../i18n";
 import { connectedTabFor } from "./session";
 import { samplingIntervalMs, staleAfterMs } from "./model";
+import { pushTrend, trendPointFrom, type TrendPoint } from "./resourceTrend";
 import type { ServerIdentity } from "./types";
 
 export interface HostSample {
@@ -13,6 +14,8 @@ export interface HostSample {
   metrics: api.ResourceMetrics | null;
   at: number;
   error: string | null;
+  /** A bounded trend window for the host, so the detail can draw a sparkline. */
+  history: TrendPoint[];
 }
 
 interface HostSampleState {
@@ -32,34 +35,41 @@ const inFlight = new Set<string>();
 
 async function sampleHost(host: ServerIdentity): Promise<void> {
   if (inFlight.has(host.key)) return;
+  // Read the previous sample once: the in-flight guard keeps this the only
+  // writer for the host, so the trend history below is not racing a second poll.
+  const previous = useHostSamples.getState().samples[host.key];
   const tab = connectedTabFor(host.server);
   if (!tab) {
     useHostSamples.getState().setSample({
       key: host.key,
       server: host.server,
-      metrics: useHostSamples.getState().samples[host.key]?.metrics ?? null,
-      at: useHostSamples.getState().samples[host.key]?.at ?? 0,
+      metrics: previous?.metrics ?? null,
+      at: previous?.at ?? 0,
       error: t("wb.noSession"),
+      history: previous?.history ?? [],
     });
     return;
   }
   inFlight.add(host.key);
   try {
     const metrics = await api.sampleResources(tab.info.id, crypto.randomUUID());
+    const at = Date.now();
     useHostSamples.getState().setSample({
       key: host.key,
       server: host.server,
       metrics,
-      at: Date.now(),
+      at,
       error: null,
+      history: pushTrend(previous?.history ?? [], trendPointFrom(metrics, at)),
     });
   } catch (error) {
     useHostSamples.getState().setSample({
       key: host.key,
       server: host.server,
-      metrics: useHostSamples.getState().samples[host.key]?.metrics ?? null,
-      at: useHostSamples.getState().samples[host.key]?.at ?? 0,
+      metrics: previous?.metrics ?? null,
+      at: previous?.at ?? 0,
       error: errorText(error),
+      history: previous?.history ?? [],
     });
   } finally {
     inFlight.delete(host.key);
