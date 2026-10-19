@@ -388,12 +388,44 @@
   opacity: 0.6;
 }
 
-.tab.is-connecting .tab-label {
-  color: var(--yellow);
+/* Idle tabs are quiet italic at text weight. A tab whose connection needs
+   attention joins the upright vocabulary `.is-active` and
+   `.is-command-complete` already use, and takes the one weight step above
+   them, so a session that dropped in the background reads as the heaviest
+   thing in the strip instead of whispering between its neighbours.
+   There is deliberately no state-coloured tint on the tab itself: at any
+   strength that reads, the tint costs the label its contrast in the light
+   themes (yellow 4.84:1 → 4.29:1, red 4.69:1 → 4.06:1, and the serialX
+   light red only starts at 4.13:1), and the label colour is already the
+   state channel. The active tab keeps its terminal surface — there the
+   state is the label colour alone, and a tint would eat the session-
+   coloured top edge. */
+.tab.is-connecting .tab-label,
+.tab.is-error .tab-label {
+  font-style: normal;
+  font-weight: 600;
 }
 
-.tab.is-error .tab-label {
-  color: var(--red);
+/* The shape half of the same signal, for a state tab that is not the one on
+   screen: a 2px state-coloured edge down its leading side. It is the only
+   state mark that survives the strip being scrolled or the label being
+   ellipsised, and as a non-text mark it needs 3:1 rather than 4.5:1, which
+   every theme's state colour clears against --bg-app. The active tab is
+   left out: it already wears the session-coloured top edge, and a second
+   edge would read as two different alerts. */
+.tab.is-connecting:not(.is-active)::before,
+.tab.is-error:not(.is-active)::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  background: var(--yellow);
+}
+
+.tab.is-error:not(.is-active)::before {
+  background: var(--red);
 }
 
 .tab-index {
