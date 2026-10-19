@@ -104,6 +104,10 @@ export const FilerRow = memo(function FilerRow({
     >
       <FilerEntryIcon name={entry.name} isDir={entry.isDir} theme={theme} />
       <span className="row-label">{entry.name}</span>
+      {/* A folder has no size of its own, the way the dual-pane rows show it. */}
+      <span className="filer-col-size row-meta">
+        {entry.isDir ? "—" : formatBytes(entry.size)}
+      </span>
       <span className="filer-col-date row-meta">{formatDate(entry.modified)}</span>
     </div>
   );
@@ -177,6 +181,39 @@ export function localFileName(path: string): string {
 export function joinLocal(base: string, name: string): string {
   const separator = base.includes("\\") && !base.includes("/") ? "\\" : "/";
   return `${base.replace(/[\\/]+$/, "")}${separator}${name}`;
+}
+
+/** One stop of a breadcrumb trail: what it shows and where it leads. */
+export interface PathSegment {
+  label: string;
+  target: string;
+}
+
+/**
+ * The ancestors of `path`, outermost first, the way a file manager's address
+ * bar shows them: `/var/log/nginx` becomes `/`, `var`, `log`, `nginx`, and
+ * `C:\Users\me` becomes `C:`, `Users`, `me`. The Windows drives root is not
+ * a real path and has no ancestors, so it yields nothing; the panel draws no
+ * trail for it either.
+ */
+export function pathSegments(path: string): PathSegment[] {
+  if (!path || path === "This PC") return [];
+  const windows = path.includes("\\");
+  const parts = path.split(/[\\/]+/).filter(Boolean);
+  const segments: PathSegment[] = [];
+  // A POSIX root is a segment of its own, the way every breadcrumb bar draws
+  // it; a Windows drive already carries its own root inside the first part.
+  if (!windows && path.startsWith("/")) segments.push({ label: "/", target: "/" });
+  let target = windows ? "" : "/";
+  for (const part of parts) {
+    target = windows
+      ? target === ""
+        ? part
+        : `${target}\\${part}`
+      : `${target === "/" ? "" : target}/${part}`;
+    segments.push({ label: part, target });
+  }
+  return segments;
 }
 
 export function pickedPaths(picked: string | string[] | null): string[] {

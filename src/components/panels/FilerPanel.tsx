@@ -17,8 +17,9 @@ import {
   formatBytes,
   formatEntrySummary,
   loadOpenWithApps,
+  pathSegments,
 } from "./filerPresentation";
-import { MenuState, NewEntryDraft } from "./filerTypes";
+import { MenuState, NewEntryDraft, type RenameDraft } from "./filerTypes";
 import { useFilerActions } from "./useFilerActions";
 import { useFilerDirectory } from "./useFilerDirectory";
 import { useFilerDrag } from "./useFilerDrag";
@@ -96,11 +97,34 @@ function FilerPanelBase() {
   const collapseSelection = useRef<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Before the hooks that report through it: `reportError` carries every
+  // error that is not the footer's own transfer failure (see the hook).
+  const {
+    beginTransfer,
+    progressFor,
+    finishTransfer,
+    failTransfer,
+    ownsTransfer,
+    updateTransferProgress,
+    activeTransfer,
+    cancelTransfer,
+    retryTransfer,
+    retryAvailable,
+    reportError,
+    transfer,
+    transferLabel,
+    transferPercent,
+    backgroundTransfer,
+  } = useFilerTransfer({ setError, error, t });
   const { download: downloadEntries, choosing: choosingDownload } = useFilerDownloads(
     remoteId,
-    setError,
+    reportError,
   );
   const [creating, setCreating] = useState<NewEntryDraft | null>(null);
+  const [renaming, setRenaming] = useState<RenameDraft | null>(null);
+  // A rename belongs to one directory of one session; leaving either closes
+  // the editor, the way a pending delete confirmation is closed.
+  useEffect(() => setRenaming(null), [remoteId, path]);
   const [uploadMenu, setUploadMenu] = useState<{ x: number; y: number } | null>(null);
   // ContextMenu closes itself on any outside mousedown, so by the time the
   // upload button's click fires the menu is already gone; remember whether it
@@ -112,20 +136,6 @@ function FilerPanelBase() {
   const [openWithApps, setOpenWithApps] = useState<string[]>(loadOpenWithApps);
   const preferencesRevision = useStore((s) => s.panelPreferencesRevision);
   useEffect(() => setOpenWithApps(loadOpenWithApps()), [preferencesRevision]);
-  const {
-    beginTransfer,
-    progressFor,
-    finishTransfer,
-    failTransfer,
-    ownsTransfer,
-    updateTransferProgress,
-    activeTransfer,
-    cancelTransfer,
-    transfer,
-    transferLabel,
-    transferPercent,
-    backgroundTransfer,
-  } = useFilerTransfer({ setError, t });
   const remoteIdRef = useRef(remoteId);
   const offlineReasonRef = useRef(offlineReason);
   const pathRef = useRef(path);
@@ -151,12 +161,20 @@ function FilerPanelBase() {
     clearSelection();
     collapseSelection.current = null;
   });
-  const { load, goUp } = useFilerDirectory({
+  /** Opens the inline rename editor on one entry; F2, the toolbar, the menu. */
+  const startRename = useStableCallback((entry: FileEntry) => {
+    if (busy || atDrivesRoot) return;
+    setRenaming({ entry, name: entry.name });
+    // The row becomes an input rather than an option, so the listbox must
+    // stop pointing at it.
+    setActiveDescendant(null);
+  });
+  const { load, goUp, goHome } = useFilerDirectory({
     offline,
     remoteId,
     clearSelection: resetSelection,
     setBusy,
-    setError,
+    setError: reportError,
     setPath,
     setDraft,
     setEntries,
@@ -169,7 +187,7 @@ function FilerPanelBase() {
     entries,
     busyRef,
     setBusy,
-    setError,
+    setError: reportError,
     beginTransfer,
     progressFor,
     finishTransfer,
@@ -191,7 +209,7 @@ function FilerPanelBase() {
     t,
     remoteIdRef,
     busyRef,
-    setError,
+    setError: reportError,
     setBusy,
     beginTransfer,
     progressFor,
@@ -207,14 +225,14 @@ function FilerPanelBase() {
     cancelTransfer,
     busy,
   });
-  const { activate, openMenu, entryMenu, folderMenu, commitNewEntry, removeEntries } =
+  const { activate, openMenu, entryMenu, folderMenu, commitNewEntry, commitRename, removeEntries } =
     useFilerActions({
       setPendingDelete,
       remoteId,
       path,
       busyRef,
       setBusy,
-      setError,
+      setError: reportError,
       remoteIdRef,
       pathRef,
       load,
@@ -234,6 +252,9 @@ function FilerPanelBase() {
       downloadEntries,
       atDrivesRoot,
       setCreating,
+      startRename,
+      renaming,
+      setRenaming,
       upload,
       uploadFolder,
       creating,
@@ -249,6 +270,11 @@ function FilerPanelBase() {
   // The footer walks every entry; a large directory must not pay that on
   // each of the app's re-renders.
   const entrySummary = useMemo(() => formatEntrySummary(entries), [entries]);
+  /**
+   * Every ancestor of the open folder, for the trail under the path box.
+   * Empty at the drives root, which is not a real path.
+   */
+  const breadcrumbs = path && !atDrivesRoot ? pathSegments(path) : [];
 
   /** Re-sorts the list for a clicked column caption and remembers the choice. */
   const sortBy = (key: SortKey) => {
@@ -449,6 +475,25 @@ function FilerPanelBase() {
         );
         return;
       }
+      case "F2": {
+        event.preventDefault();
+        // The keyboard cursor, or the one selected entry, is what gets
+        // renamed; a group cannot be, so a wider selection does nothing.
+        const focused =
+          activePathRef.current ?? (selected.size === 1 ? selectedEntries[0]?.path : null);
+        const entry =
+          focused === null ? undefined : sortedEntries.find((item) => item.path === focused);
+        if (entry) startRename(entry);
+        return;
+      }
+      case "Delete": {
+        // The key every file manager binds to removing the selection. The
+        // confirmation dialog and the drives-root guard are the toolbar's,
+        // so the keyboard reaches exactly the same path.
+        event.preventDefault();
+        if (!atDrivesRoot && selectedEntries.length > 0) setPendingDelete(selectedEntries);
+        return;
+      }
       case "Enter": {
         event.preventDefault();
         const entry = active >= 0 ? sortedEntries[active] : undefined;
@@ -531,6 +576,18 @@ function FilerPanelBase() {
           <Icon name="refresh" />
         </button>
         <button
+          className="panel-action filer-action"
+          onClick={() => {
+            const entry = selectedEntries[0];
+            if (entry) startRename(entry);
+          }}
+          title={t("filer.rename")}
+          aria-label={t("filer.rename")}
+          disabled={selectedEntries.length !== 1 || busy || atDrivesRoot}
+        >
+          <Icon name="edit" />
+        </button>
+        <button
           className="panel-action filer-action filer-action-danger"
           onClick={() => setPendingDelete(selectedEntries)}
           title={t("common.delete")}
@@ -572,6 +629,15 @@ function FilerPanelBase() {
         </button>
         <button
           className="panel-action filer-action"
+          onClick={() => void goHome()}
+          title={t("filer.home")}
+          aria-label={t("filer.home")}
+          disabled={busy || offline}
+        >
+          <Icon name="home" />
+        </button>
+        <button
+          className="panel-action filer-action"
           onClick={() => tab && void revealCwdInFiler(tab.info.id)}
           title={
             revealKey ? `${t("filer.terminalFolder")} (${revealKey})` : t("filer.terminalFolder")
@@ -591,6 +657,37 @@ function FilerPanelBase() {
         />
       </div>
 
+      {breadcrumbs.length > 0 && (
+        <nav className="filer-breadcrumbs" aria-label={path}>
+          {breadcrumbs.flatMap((segment, index) => [
+            ...(index > 0
+              ? [
+                  <span
+                    key={`separator-${segment.target}`}
+                    className="filer-crumb-separator"
+                    aria-hidden="true"
+                  >
+                    ›
+                  </span>,
+                ]
+              : []),
+            <button
+              key={segment.target}
+              type="button"
+              className="filer-crumb"
+              // The full path rides along: a deep segment is ellipsised in a
+              // narrow panel, and its target is the one thing worth showing.
+              title={segment.target}
+              disabled={busy}
+              aria-current={index === breadcrumbs.length - 1 ? "location" : undefined}
+              onClick={() => void load(segment.target)}
+            >
+              {segment.label}
+            </button>,
+          ])}
+        </nav>
+      )}
+
       <div className="filer-columns">
         <button
           type="button"
@@ -600,6 +697,15 @@ function FilerPanelBase() {
         >
           {t("session.name")}
           <SortIndicator sort={sort} column="name" />
+        </button>
+        <button
+          type="button"
+          className={`filer-col-size${sort.key === "size" ? " is-sorted" : ""}`}
+          onClick={() => sortBy("size")}
+          aria-label={t("filer.sortBySize")}
+        >
+          {t("filer.size")}
+          <SortIndicator sort={sort} column="size" />
         </button>
         <button
           type="button"
@@ -657,7 +763,7 @@ function FilerPanelBase() {
             <button
               type="button"
               className="panel-empty-action"
-              onClick={() => void load(path || draft)}
+              onClick={() => (retryAvailable ? retryTransfer() : void load(path || draft))}
             >
               {t("common.retry")}
             </button>
@@ -691,20 +797,41 @@ function FilerPanelBase() {
           rowHeight={rowHeight}
           resetKey={`${remoteId ?? "local"}:${path}:${sort.key}:${sort.direction}:${!!sort.explicit}`}
         >
-          {(entry) => (
-            <FilerRow
-              key={entry.path}
-              entry={entry}
-              selected={selected.has(entry.path)}
-              draggingOut={dragOut?.path === entry.path}
-              theme={theme}
-              onSelect={rowSelect}
-              onActivate={rowActivate}
-              onPointerDown={rowPointerDown}
-              onPointerMove={rowPointerMove}
-              onContextMenu={rowContextMenu}
-            />
-          )}
+          {(entry) => {
+            const draft = renaming && renaming.entry.path === entry.path ? renaming : null;
+            // The row itself becomes the editor, the way a file manager
+            // renames in place.
+            return draft ? (
+              <div className="row filer-new-entry" key={entry.path}>
+                <FilerEntryIcon name={entry.name} isDir={entry.isDir} theme={theme} />
+                <input
+                  autoFocus
+                  value={draft.name}
+                  placeholder={t("filer.renameName")}
+                  onFocus={(event) => event.currentTarget.select()}
+                  onChange={(event) => setRenaming({ ...draft, name: event.target.value })}
+                  onBlur={() => void commitRename()}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") void commitRename();
+                    if (event.key === "Escape") setRenaming(null);
+                  }}
+                />
+              </div>
+            ) : (
+              <FilerRow
+                key={entry.path}
+                entry={entry}
+                selected={selected.has(entry.path)}
+                draggingOut={dragOut?.path === entry.path}
+                theme={theme}
+                onSelect={rowSelect}
+                onActivate={rowActivate}
+                onPointerDown={rowPointerDown}
+                onPointerMove={rowPointerMove}
+                onContextMenu={rowContextMenu}
+              />
+            );
+          }}
         </VirtualFileRows>
       </div>
 
@@ -771,7 +898,7 @@ function FilerPanelBase() {
                           id,
                           backgroundTransfer?.status === "paused" ? "resume" : "pause",
                         )
-                        .catch((e) => setError(errorText(e)));
+                        .catch((e) => reportError(errorText(e)));
                   }}
                   title={
                     backgroundTransfer?.status === "paused" ? t("filer.resume") : t("filer.pause")
@@ -793,6 +920,17 @@ function FilerPanelBase() {
                   aria-label={t("filer.cancelName", { name: transfer.name })}
                 >
                   <Icon name="close" />
+                </button>
+              )}
+              {transfer.status === "error" && retryAvailable && (
+                <button
+                  type="button"
+                  className="panel-action filer-action filer-transfer-retry"
+                  onClick={retryTransfer}
+                  title={t("filer.retryName", { name: transfer.name })}
+                  aria-label={t("filer.retryName", { name: transfer.name })}
+                >
+                  <Icon name="debug-restart" />
                 </button>
               )}
             </div>

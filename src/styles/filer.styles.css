@@ -78,6 +78,59 @@
   border-color: var(--accent);
 }
 
+/* Every ancestor of the open folder, one click away: the address-bar idiom
+   of Explorer and Finder, so a deep path no longer has to be typed out or
+   walked one level at a time. */
+.filer-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: var(--h-control-sm);
+  padding: 0 var(--sp-12);
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  color: var(--fg-faint);
+  font-size: var(--fs-xs);
+  scrollbar-width: none;
+}
+
+.filer-breadcrumbs::-webkit-scrollbar {
+  display: none;
+}
+
+.filer-crumb {
+  max-width: 180px;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.filer-crumb:hover:not(:disabled) {
+  color: var(--fg);
+}
+
+.filer-crumb:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* The folder on screen: still a click, which reloads it, but it reads as
+   where you are rather than as a destination. */
+.filer-crumb[aria-current="location"] {
+  color: var(--fg-dim);
+}
+
+.filer-crumb-separator {
+  color: var(--fg-faint);
+  user-select: none;
+}
+
 /* Column captions, aligned with the row content (6px inset + 6px padding). */
 .filer-columns {
   display: flex;
@@ -141,6 +194,14 @@
 
 .filer-col-date {
   min-width: 74px;
+  flex-shrink: 0;
+  text-align: right;
+  padding-left: var(--sp-8);
+}
+
+/* Between the name and the date, the order the dual-pane rows use. */
+.filer-col-size {
+  min-width: 58px;
   flex-shrink: 0;
   text-align: right;
   padding-left: var(--sp-8);
@@ -212,6 +273,12 @@
 
 .filer-entry .filer-col-date {
   /* Keep all ten date characters visible as the panel font grows. */
+  flex: 0 0 auto;
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.filer-entry .filer-col-size {
   flex: 0 0 auto;
   font-size: var(--fs-xs);
   font-variant-numeric: tabular-nums;
@@ -341,7 +408,8 @@
 }
 
 /* Sits in the label row without making it taller than the text. */
-.filer-transfer-cancel {
+.filer-transfer-cancel,
+.filer-transfer-retry {
   flex: 0 0 20px;
   width: 20px;
   height: var(--h-control-xs);
@@ -409,6 +477,9 @@
 .ssh-reuse-setting input[type="checkbox"] { width: 16px; height: 16px; margin: 0; }
 .ssh-reuse-setting p { margin: 6px 0; line-height: 1.5; opacity: .7; }
 .transfer-center-heading, .transfer-job-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+/* The whole queue on one line, above the per-job cards. */
+.transfer-center-total { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-8); margin: 10px 0 0; padding-bottom: 8px; border-bottom: 1px solid var(--border); color: var(--fg-dim); font-variant-numeric: tabular-nums; }
+.transfer-center-total strong { color: var(--fg); }
 .transfer-center-popover p { line-height: 1.5; opacity: .8; white-space: normal; }
 .transfer-center-jobs { max-height: 384px; overflow: auto; position: relative; }
 .transfer-center-jobs .transfer-job { height: 192px; box-sizing: border-box; overflow: hidden; }

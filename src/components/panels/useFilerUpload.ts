@@ -1,5 +1,4 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
-import { errorText } from "../../errorInfo";
 import * as api from "../../api";
 import type { Translate } from "../../i18n";
 import { ask, open as openDialog } from "../../nativeDialog";
@@ -19,6 +18,7 @@ interface Options {
     kind: TransferState["kind"],
     name: string,
     cancellable?: boolean,
+    retry?: () => void,
   ) => string | undefined;
   progressFor: (id: string | undefined) => (progress: api.TransferProgress) => void;
   finishTransfer: (status: "complete" | "error" | "cancelled", id?: string | undefined) => void;
@@ -49,11 +49,13 @@ export function useFilerUpload({
   updateTransferProgress,
   t,
 }: Options) {
-  const uploadPaths = async (localPaths: string[]) => {
-    if (!remoteId || !path || busyRef.current || localPaths.length === 0) {
-      return;
-    }
-    const destination = path;
+  /**
+   * The upload itself, against an explicit destination. The retry the footer
+   * offers after a failure runs this with the folder the upload was started
+   * for, so browsing somewhere else in the meantime cannot silently redirect
+   * it.
+   */
+  const runUpload = async (sessionId: string, localPaths: string[], destination: string) => {
     // The backend replaces a same-named file in place. Ask once for the whole
     // batch, the way a file manager does, instead of letting a drag overwrite
     // silently.
@@ -79,6 +81,7 @@ export function useFilerUpload({
       "upload",
       localPaths.length === 1 ? localFileName(localPaths[0]) : `${localPaths.length} items`,
       true,
+      () => void runUpload(sessionId, localPaths, destination),
     );
     try {
       const items: api.TransferItem[] = localPaths.map((localPath) => ({
@@ -86,7 +89,7 @@ export function useFilerUpload({
         remote: joinRemote(destination, localFileName(localPath)),
         upload: true,
       }));
-      await api.transferFiles(remoteId, items, progressFor(transfer), transfer);
+      await api.transferFiles(sessionId, items, progressFor(transfer), transfer);
       finishTransfer("complete", transfer);
       await load(destination);
     } catch (e) {
@@ -97,6 +100,53 @@ export function useFilerUpload({
     } finally {
       if (ownsTransfer(transfer)) busyRef.current = false;
       if (ownsTransfer(transfer)) setBusy(false);
+    }
+  };
+
+  const uploadPaths = async (localPaths: string[]) => {
+    if (!remoteId || !path || busyRef.current || localPaths.length === 0) {
+      return;
+    }
+    await runUpload(remoteId, localPaths, path);
+  };
+
+  /**
+   * The local copy itself, against an explicit destination, so the footer's
+   * retry after a failure lands where the drop was made.
+   */
+  const runCopy = async (sources: string[], destination: string) => {
+    busyRef.current = true;
+    setBusy(true);
+    setError(null);
+    let skipped = 0;
+    const retry = () => void runCopy(sources, destination);
+    try {
+      for (const source of sources) {
+        beginTransfer("copy", localFileName(source), false, retry);
+        const summary = await api.localCopyInto(source, destination, updateTransferProgress);
+        if (summary.files === 0 && summary.skipped > 0) skipped += 1;
+        finishTransfer("complete");
+      }
+      await load(destination);
+      if (skipped > 0) {
+        setError(
+          skipped === sources.length
+            ? t("filer.alreadyHere")
+            : t("filer.someAlready", {
+                skipped,
+                total: sources.length,
+              }),
+        );
+      }
+    } catch (e) {
+      // Reload first: it clears the error line, and what did arrive should
+      // show; the failure then keeps the footer's retry, the way an upload's
+      // does.
+      await load(destination);
+      failTransfer(e);
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
     }
   };
 
@@ -115,37 +165,7 @@ export function useFilerUpload({
     ) {
       return;
     }
-    const destination = path;
-    busyRef.current = true;
-    setBusy(true);
-    setError(null);
-    let skipped = 0;
-    try {
-      for (const source of sources) {
-        beginTransfer("copy", localFileName(source));
-        const summary = await api.localCopyInto(source, destination, updateTransferProgress);
-        if (summary.files === 0 && summary.skipped > 0) skipped += 1;
-        finishTransfer("complete");
-      }
-      await load(destination);
-      if (skipped > 0) {
-        setError(
-          skipped === sources.length
-            ? t("filer.alreadyHere")
-            : t("filer.someAlready", {
-                skipped,
-                total: sources.length,
-              }),
-        );
-      }
-    } catch (e) {
-      finishTransfer("error");
-      await load(destination);
-      setError(errorText(e));
-    } finally {
-      busyRef.current = false;
-      setBusy(false);
-    }
+    await runCopy(sources, path);
   };
 
   const upload = async () => {

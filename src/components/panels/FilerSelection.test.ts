@@ -15,6 +15,7 @@ vi.mock("../../api", async (original) => ({
   localHome: vi.fn(), localList: vi.fn(), localRemove: vi.fn(), sftpRemove: vi.fn(),
   sftpHome: vi.fn(), sftpList: vi.fn(), transferFiles: vi.fn(), startFileDrag: vi.fn(),
   dragStagingPath: vi.fn(), cancelTransfer: vi.fn(),
+  localRename: vi.fn(), sftpRename: vi.fn(),
   sftpDownload: vi.fn(), sftpDownloadDirectory: vi.fn(),
   onFileTransfer: vi.fn(async () => () => {}), onFileTransferRemoved: vi.fn(async () => () => {}),
   listFileTransfers: vi.fn(async () => []), listRecoverableTransfers: vi.fn(async () => []),
@@ -27,6 +28,7 @@ import * as nativeDialog from "../../nativeDialog";
 import { useStore, type Tab } from "../../store";
 import type { FileEntry } from "../../types";
 import { FilerPanel } from "./FilerPanel";
+import { lastPaths, listingCache } from "./filerDirectoryCache";
 import { useFileTransfers } from "../../fileTransfers";
 import { TransferCenter } from "../TransferCenter";
 
@@ -51,6 +53,17 @@ const context = (name: string) => act(() => {
 });
 const menuItem = (label: string) => [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')]
   .find((element) => element.textContent?.trim() === label)!;
+/** Rename surfaces print the message key until the locales carry it. */
+const RENAME_LABELS = ["filer.rename", "Rename"];
+const renameButton = () => [...host.querySelectorAll<HTMLButtonElement>(".filer-toolbar button")]
+  .find((button) => RENAME_LABELS.includes(button.getAttribute("aria-label") ?? ""))!;
+const renameMenuItem = () => [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')]
+  .find((element) => RENAME_LABELS.includes(element.textContent?.trim() ?? ""))!;
+/** Types into an input the way a user would, through React's value tracker. */
+const type = (input: HTMLInputElement, value: string) => act(() => {
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+});
 const remoteTab = (id = "selection-ssh"): Tab => ({
   info: { id, profileId: null, name: id, kind: "ssh", protocol: "ssh", address: "fixture",
     color: "", supportsRemoteFiles: true, recording: null, legacyAlgorithms: [], sharedConnection: false },
@@ -81,12 +94,19 @@ beforeEach(() => {
   useStore.setState({ ...initialState, language: "en", tabs: [], activeId: null }, true);
   useFileTransfers.setState({ jobs: {}, open: false });
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+  // The panel remembers the last directory per source in module scope, the way
+  // a hidden panel keeps it; without this a test that navigates (Home, a
+  // double-click into a folder) would leave its path behind for the next one.
+  lastPaths.clear();
+  listingCache.clear();
   vi.mocked(api.localHome).mockResolvedValue("/selection");
   vi.mocked(api.localList).mockImplementation(async (path) => ({ path, entries }));
   vi.mocked(api.sftpHome).mockResolvedValue("/selection");
   vi.mocked(api.sftpList).mockImplementation(async (_id, path) => ({ path, entries }));
   vi.mocked(api.localRemove).mockResolvedValue();
   vi.mocked(api.sftpRemove).mockResolvedValue();
+  vi.mocked(api.localRename).mockResolvedValue();
+  vi.mocked(api.sftpRename).mockResolvedValue();
   vi.mocked(api.transferFiles).mockResolvedValue();
   vi.mocked(api.sftpDownload).mockImplementation((id, remote, local, progress, transfer) =>
     api.transferFiles(id, [{ local, remote, upload: false, directory: false }], progress, transfer));
@@ -409,6 +429,229 @@ describe("Filer state surfaces", () => {
     await mount();
     await act(async () => {});
     expect(host.querySelector(".panel-empty")?.textContent).toBe("This folder is empty.");
+  });
+});
+
+describe("Filer transfer failure recovery", () => {
+  /** Picks one local file and uploads it; settles once the attempt is over. */
+  const startUpload = async () => {
+    vi.mocked(nativeDialog.open).mockResolvedValue(["/local/notes.txt"]);
+    await act(async () => { toolbar("Upload files or folders").click(); });
+    await act(async () => { menuItem("Upload Files…").click(); });
+    await act(async () => {});
+  };
+
+  it("keeps a failed upload in the footer and retries it into the same folder", async () => {
+    useRemote();
+    let attempts = 0;
+    vi.mocked(api.transferFiles).mockImplementation(async () => {
+      attempts += 1;
+      if (attempts === 1) throw Error("connection lost");
+    });
+    await mount();
+    await startUpload();
+    expect(attempts).toBe(1);
+    expect(host.querySelector<HTMLElement>(".filer-transfer.is-error")!.textContent)
+      .toContain("Upload failed");
+    const retry = host.querySelector<HTMLButtonElement>(".filer-transfer-retry")!;
+    expect(retry).not.toBeNull();
+    await act(async () => { retry.click(); });
+    await act(async () => {});
+    expect(attempts).toBe(2);
+    expect(vi.mocked(api.transferFiles).mock.calls[1][1]).toEqual([
+      { local: "/local/notes.txt", remote: "/selection/notes.txt", upload: true },
+    ]);
+    expect(host.querySelector(".filer-transfer.is-error")).toBeNull();
+  });
+
+  it("reruns a failed upload from the error line's Retry instead of only reloading", async () => {
+    useRemote();
+    let attempts = 0;
+    vi.mocked(api.transferFiles).mockImplementation(async () => {
+      attempts += 1;
+      throw Error("connection lost");
+    });
+    await mount();
+    await startUpload();
+    expect(attempts).toBe(1);
+    const retry = host.querySelector<HTMLButtonElement>(
+      ".panel-empty.is-error .panel-empty-action",
+    )!;
+    expect(retry.textContent).toBe("Retry");
+    await act(async () => { retry.click(); });
+    await act(async () => {});
+    expect(attempts).toBe(2);
+  });
+});
+
+describe("Filer browsing surfaces", () => {
+  it("shows a size column and sorts by it the way the dual-pane rows do", async () => {
+    const sized = entries.map((entry, index) => ({ ...entry, size: [30, 10, 20, 0][index] }));
+    vi.mocked(api.localList).mockResolvedValue({ path: "/selection", entries: sized });
+    await mount();
+    await act(async () => {});
+    const size = (name: string) => row(name).querySelector(".filer-col-size")!.textContent;
+    expect(size("file10.txt")).toBe("30 B");
+    // A folder has no size of its own, the way the dual-pane rows show it.
+    expect(size("folder")).toBe("—");
+    const caption = host.querySelector<HTMLButtonElement>('.filer-columns [aria-label="Sort by size"]')!;
+    await act(async () => { caption.click(); });
+    await act(async () => { caption.click(); });
+    expect(rows().map((element) => element.querySelector(".row-label")!.textContent))
+      .toEqual(["folder", "file10.txt", "file3.txt", "file2.txt"]);
+  });
+
+  it("opens the home folder from the path row", async () => {
+    await mount();
+    await act(async () => {});
+    vi.mocked(api.localHome).mockResolvedValue("/home/tester");
+    const listed: string[] = [];
+    vi.mocked(api.localList).mockImplementation(async (path) => {
+      listed.push(path);
+      return { path, entries };
+    });
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('.filer-path [aria-label="Home folder"]')!.click();
+    });
+    await act(async () => {});
+    expect(listed[listed.length - 1]).toBe("/home/tester");
+    expect(host.querySelector<HTMLInputElement>(".filer-path input")!.value).toBe("/home/tester");
+  });
+
+  it("offers every ancestor of the open folder and navigates to the clicked one", async () => {
+    const listed: string[] = [];
+    vi.mocked(api.localList).mockImplementation(async (path) => {
+      listed.push(path);
+      return { path, entries };
+    });
+    await mount();
+    await act(async () => {});
+    const crumbs = () => [...host.querySelectorAll<HTMLElement>(".filer-crumb")]
+      .map((crumb) => crumb.textContent);
+    expect(crumbs()).toEqual(["/", "selection"]);
+    await act(async () => { host.querySelectorAll<HTMLButtonElement>(".filer-crumb")[0].click(); });
+    await act(async () => {});
+    expect(listed[listed.length - 1]).toBe("/");
+    expect(crumbs()).toEqual(["/"]);
+  });
+
+  it("splits a Windows path into drive and folders and titles each full target", async () => {
+    vi.mocked(api.localList).mockImplementation(async (path) => ({ path, entries }));
+    await mount();
+    await act(async () => {});
+    const input = host.querySelector<HTMLInputElement>(".filer-path input")!;
+    type(input, "C:\\Users\\me");
+    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    await act(async () => {});
+    const crumbs = [...host.querySelectorAll<HTMLElement>(".filer-crumb")];
+    expect(crumbs.map((crumb) => crumb.textContent)).toEqual(["C:", "Users", "me"]);
+    expect(crumbs.map((crumb) => crumb.getAttribute("title")))
+      .toEqual(["C:", "C:\\Users", "C:\\Users\\me"]);
+  });
+
+  it("draws no trail at the drives root and keeps Delete refused there", async () => {
+    vi.mocked(api.localHome).mockResolvedValue(api.LOCAL_DRIVES_ROOT);
+    await mount();
+    await act(async () => {});
+    expect(host.querySelector(".filer-breadcrumbs")).toBeNull();
+    press("file10.txt");
+    act(() => host.querySelector<HTMLElement>(".filer-list")!
+      .dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true })));
+    expect(host.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(api.localRemove).not.toHaveBeenCalled();
+  });
+
+  it("removes the selection with the Delete key through the same confirmation", async () => {
+    await mount();
+    press("file10.txt"); press("file3.txt", { ctrlKey: true });
+    act(() => host.querySelector<HTMLElement>(".filer-list")!
+      .dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true })));
+    const dialog = host.querySelector<HTMLElement>('[role="alertdialog"]')!;
+    expect(dialog.textContent).toContain("2 selected items");
+    expect(api.localRemove).not.toHaveBeenCalled();
+    await act(async () => [...dialog.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent === "Cancel")!.click());
+    expect(api.localRemove).not.toHaveBeenCalled();
+  });
+});
+
+describe("Filer rename", () => {
+  const editor = () => host.querySelector<HTMLInputElement>(".filer-new-entry input");
+  const list = () => host.querySelector<HTMLElement>(".filer-list")!;
+  /** A full press-and-release, the way a real click arrives. The group a
+   *  second click collapses is decided on the release, not the press. */
+  const click = (name: string, options: MouseEventInit = {}) => act(() => {
+    const element = row(name);
+    element.setPointerCapture = vi.fn();
+    element.hasPointerCapture = () => false;
+    element.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0, ...options }));
+    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0, ...options }));
+    element.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, button: 0, ...options }));
+  });
+
+  for (const remote of [false, true]) it(`renames the focused ${remote ? "remote" : "local"} entry in place`, async () => {
+    if (remote) useRemote();
+    await mount();
+    press("file2.txt");
+    act(() => list().dispatchEvent(new KeyboardEvent("keydown", { key: "F2", bubbles: true })));
+    const input = editor()!;
+    expect(input.value).toBe("file2.txt");
+    type(input, "renamed.txt");
+    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    if (remote) {
+      expect(api.sftpRename).toHaveBeenCalledWith(
+        "selection-ssh", "/selection/file2.txt", "/selection/renamed.txt",
+      );
+    } else {
+      expect(api.localRename).toHaveBeenCalledWith(
+        "/selection/file2.txt", "/selection/renamed.txt",
+      );
+    }
+    expect(editor()).toBeNull();
+  });
+
+  it("renames from the toolbar and the context menu, one entry at a time", async () => {
+    await mount();
+    expect(renameButton().disabled).toBe(true);
+    click("file2.txt");
+    expect(renameButton().disabled).toBe(false);
+    press("file3.txt", { ctrlKey: true });
+    expect(renameButton().disabled).toBe(true);
+    // A plain press on a row that is already part of a group keeps the group,
+    // so the gesture that starts a group drag cannot shrink it; the release
+    // that follows collapses it to that row.
+    click("file2.txt");
+    expect(renameButton().disabled).toBe(false);
+    await act(async () => { renameButton().click(); });
+    expect(editor()!.value).toBe("file2.txt");
+    act(() => editor()!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(editor()).toBeNull();
+    context("file3.txt");
+    await act(async () => { renameMenuItem().click(); });
+    expect(editor()!.value).toBe("file3.txt");
+    type(editor()!, "notes.md");
+    await act(async () => editor()!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    expect(api.localRename).toHaveBeenCalledWith("/selection/file3.txt", "/selection/notes.md");
+  });
+
+  it("keeps the editor open on a rejected name and closes it on Escape", async () => {
+    await mount();
+    press("file2.txt");
+    act(() => list().dispatchEvent(new KeyboardEvent("keydown", { key: "F2", bubbles: true })));
+    const input = editor()!;
+    type(input, "nested/name.txt");
+    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    expect(api.localRename).not.toHaveBeenCalled();
+    expect(editor()!.value).toBe("nested/name.txt");
+    expect(host.querySelector(".panel-empty.is-error")!.textContent).toContain("not a valid");
+    type(input, "file3.txt");
+    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    expect(api.localRename).not.toHaveBeenCalled();
+    expect(editor()!.value).toBe("file3.txt");
+    expect(host.querySelector(".panel-empty.is-error")!.textContent).toContain("already exists");
+    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(editor()).toBeNull();
+    expect(api.localRename).not.toHaveBeenCalled();
   });
 });
 });

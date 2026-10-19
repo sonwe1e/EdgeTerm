@@ -9,7 +9,7 @@ import { IS_MAC, IS_WINDOWS } from "../../platform";
 import type { FileEntry } from "../../types";
 import { type MenuItem } from "../ContextMenu";
 import { appDisplayName, joinLocal, joinRemote, rememberOpenWithApp } from "./filerPresentation";
-import type { MenuState, NewEntryDraft, TransferState } from "./filerTypes";
+import type { MenuState, NewEntryDraft, RenameDraft, TransferState } from "./filerTypes";
 
 interface Options {
   setPendingDelete: Dispatch<SetStateAction<readonly FileEntry[] | null>>;
@@ -41,6 +41,11 @@ interface Options {
   downloadEntries: (entries: readonly FileEntry[]) => Promise<void>;
   atDrivesRoot: boolean;
   setCreating: Dispatch<SetStateAction<NewEntryDraft | null>>;
+  /** Opens the inline rename editor on `entry`; owned by the panel. */
+  startRename: (entry: FileEntry) => void;
+  /** The rename in progress, with its draft text; null when none is. */
+  renaming: RenameDraft | null;
+  setRenaming: Dispatch<SetStateAction<RenameDraft | null>>;
   upload: () => Promise<void>;
   uploadFolder: () => Promise<void>;
   creating: NewEntryDraft | null;
@@ -73,6 +78,9 @@ export function useFilerActions({
   downloadEntries,
   atDrivesRoot,
   setCreating,
+  startRename,
+  renaming,
+  setRenaming,
   upload,
   uploadFolder,
   creating,
@@ -230,6 +238,12 @@ export function useFilerActions({
                 action: () => void openEntry(entry),
               },
           ...(entry.isDir ? [] : [openWithMenu(entry)]),
+          {
+            label: t("filer.rename"),
+            icon: "edit" as const,
+            disabled: busy || atDrivesRoot,
+            action: () => startRename(entry),
+          },
         ]),
     ...(remote
       ? [
@@ -340,5 +354,46 @@ export function useFilerActions({
     }
   };
 
-  return { activate, openMenu, entryMenu, folderMenu, commitNewEntry, removeEntries };
+  /**
+   * Renames the one entry the inline editor holds. The checks are the ones
+   * `commitNewEntry` makes — a name that is empty, a path, or already taken
+   * keeps the editor open with its text — and the rename itself is the same
+   * backend call the dual-pane browsers use.
+   */
+  const commitRename = async () => {
+    const draft = renaming;
+    const name = draft?.name.trim();
+    if (!draft || !name || !path || atDrivesRoot) return;
+    const from = draft.entry.path;
+    if (name === draft.entry.name) {
+      setRenaming(null);
+      return;
+    }
+    const kindWord = draft.entry.isDir ? t("filer.folder") : t("filer.file");
+    if (name === "." || name === ".." || /[\\/]/.test(name)) {
+      setError(t("filer.invalidName", { name, kind: kindWord }));
+      return;
+    }
+    if (entries.some((entry) => entry.name === name)) {
+      setError(t("filer.alreadyExists", { name }));
+      return;
+    }
+    setRenaming(null);
+    busyRef.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const to = remoteId ? joinRemote(path, name) : joinLocal(path, name);
+      if (remoteId) await api.sftpRename(remoteId, from, to);
+      else await api.localRename(from, to);
+      await load(path);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  };
+
+  return { activate, openMenu, entryMenu, folderMenu, commitNewEntry, commitRename, removeEntries };
 }

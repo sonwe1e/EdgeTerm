@@ -166,5 +166,15 @@ export function useFilerDirectory({
     await load(parent);
   };
 
-  return { load, goUp };
+  /** The session's home directory, the way the dual-pane browsers' Home works. */
+  const goHome = async () => {
+    try {
+      const home = remoteId ? await api.sftpHome(remoteId) : await api.localHome();
+      await load(home);
+    } catch (e) {
+      setError(errorText(e));
+    }
+  };
+
+  return { load, goUp, goHome };
 }

@@ -69,3 +69,9 @@ export type FilerEntryKind = "directory" | "file" | "symlink";
 
 /** An entry being named inline at the top of the list before it exists. */
 export type NewEntryDraft = { kind: "file" | "folder"; name: string };
+
+/** An entry being renamed in place; `name` is the text being edited. */
+export interface RenameDraft {
+  entry: FileEntry;
+  name: string;
+}

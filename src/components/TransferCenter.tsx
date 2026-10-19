@@ -83,6 +83,13 @@ export function TransferCenter() {
       })
       .catch((e) => { if (alive.current && recoveryRequest.current === request) setRecoveryError(errorText(e)); });
   }, []);
+  // Once on mount: an interrupted transfer waiting to be resumed is worth
+  // naming on the status bar, not only inside the popover the user has to
+  // open first. `refreshRecoverable` never changes identity, so this is the
+  // one startup discovery.
+  useEffect(() => {
+    refreshRecoverable();
+  }, [refreshRecoverable]);
   useEffect(() => {
     if (open) refreshRecoverable();
   }, [open, refreshRecoverable]);
@@ -108,6 +115,49 @@ export function TransferCenter() {
   const jobRows = useMemo(() => jobs.map((job) => ({ ...job, path: job.id })),[jobs]);
   const active = jobs.filter((j) => transferActive(j.status)).length;
   const failed = jobs.filter((j) => j.status === "error").length;
+  // One line for the whole queue: the cards below carry the per-job detail,
+  // and a queue of five files used to ask the reader to add up five bars.
+  const queueTotals = useMemo(() => {
+    let done = 0;
+    let total = 0;
+    let transferred = 0;
+    let bytes = 0;
+    let rate = 0;
+    let remaining = 0;
+    for (const job of jobs) {
+      done += job.completedFiles;
+      total += job.totalFiles;
+      transferred += job.transferred;
+      bytes += job.total;
+      if (job.status === "running") rate += job.bytesPerSecond;
+      // Only work that will still move counts toward the estimate: a paused
+      // or finished job's remainder would never arrive.
+      if (transferActive(job.status)) remaining += Math.max(0, job.total - job.transferred);
+    }
+    return { done, total, transferred, bytes, rate, remaining };
+  }, [jobs]);
+  const queueEta = queueTotals.rate > 0 && queueTotals.remaining > 0
+    ? Math.ceil(queueTotals.remaining / queueTotals.rate)
+    : null;
+  // What the status bar item says. Running work counts first, then failures;
+  // an interrupted transfer waiting to be resumed names itself, because the
+  // popover that would tell the user is closed until asked for.
+  const statusCount = active > 0
+    ? ` (${active})`
+    : failed > 0
+      ? t("transfer.failedCountParen", { count: failed })
+      : recoverable.length > 0
+        ? ` (${recoverable.length})`
+        : "";
+  const statusName = active > 0 || failed > 0 || recoverable.length === 0
+    ? t("transfer.transfers")
+    : t("transfer.interrupted");
+  const statusTitle = [
+    t("transfer.backgroundTitle"),
+    active > 0 ? ` (${active})` : "",
+    failed > 0 ? t("transfer.failedCountParen", { count: failed }) : "",
+    recoverable.length > 0 ? ` · ${t("transfer.interrupted")} (${recoverable.length})` : "",
+  ].join("");
   const control = async (id: string, action: Parameters<typeof api.controlFileTransfer>[1]) => {
     setError(null);
     try {
@@ -116,8 +166,14 @@ export function TransferCenter() {
     } catch (e) { setError(errorText(e)); }
   };
   return <div className="transfer-center" ref={container}>
-    <button className="status-item" type="button" aria-expanded={open} onClick={() => setOpen(!open)} title={t("transfer.backgroundTitle")}>
-      <Icon name="cloud-download" /> {t("transfer.transfers")}{active > 0 ? ` (${active})` : failed > 0 ? t("transfer.failedCountParen", { count: failed }) : ""}
+    <button
+      className={`status-item${failed > 0 ? " is-error" : ""}`}
+      type="button"
+      aria-expanded={open}
+      onClick={() => setOpen(!open)}
+      title={statusTitle}
+    >
+      <Icon name="cloud-download" /> {statusName}{statusCount}
     </button>
     {open && <section className="transfer-center-popover" aria-label={t("transfer.backgroundTitle")}>
       <div className="transfer-center-heading"><strong>{t("transfer.transfers")}</strong><button type="button" onClick={() => setOpen(false)} aria-label={t("transfer.closeTransfers")}>×</button></div>
@@ -173,6 +229,13 @@ export function TransferCenter() {
         </article>; }}</VirtualFileRows></div>
       </details>}
       {jobs.length === 0 && recoverable.length === 0 && <p>{t("transfer.noTransfers")}</p>}
+      {jobs.length > 0 && <div className="transfer-center-total">
+        <strong>{t("transfer.transfers")}</strong>
+        <span>{t("transfer.filesCount", { done: queueTotals.done, total: queueTotals.total })}</span>
+        <span>{transferBytes(queueTotals.transferred)} / {transferBytes(queueTotals.bytes)}</span>
+        {queueTotals.rate > 0 && <span>{transferBytes(queueTotals.rate)}/s</span>}
+        {queueEta !== null && <span>{t("transfer.etaRemaining", { seconds: queueEta })}</span>}
+      </div>}
       <div className="transfer-center-jobs">
         <VirtualFileRows entries={jobRows} rowHeight={192} resetKey="transfer-jobs">{(job) => {
           const percent = job.total > 0 ? Math.min(100, job.transferred / job.total * 100) : 0;

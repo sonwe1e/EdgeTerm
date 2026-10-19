@@ -158,7 +158,9 @@ describe("background transfer state", () => {
   it("keeps a forgotten journal removed when older discovery resolves", async () => {
     const entry = { id: "forget-race", name: "forgotten tree", kind: "sftp", endpoint: "fixture", host: "host", port: 22, username: "u", items: 1, checkpoints: 1, unrecognized: false };
     let resolveOld!: (found: typeof entry[]) => void;
-    api.listRecoverableTransfers.mockResolvedValueOnce([entry]).mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve; }));
+    // The startup discovery already listed the entry once; the popover's
+    // refresh is the request still in flight when the user forgets it.
+    api.listRecoverableTransfers.mockResolvedValueOnce([entry]).mockResolvedValueOnce([entry]).mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve; }));
     const host = document.createElement("div"); const root = createRoot(host);
     const button = (label: string) => [...host.querySelectorAll("button")].find((b) => b.textContent === label)!;
     try {
@@ -173,7 +175,9 @@ describe("background transfer state", () => {
     } finally { act(() => root.unmount()); }
   });
   it("shows discovery failure and clears it after a successful retry", async () => {
-    api.listRecoverableTransfers.mockRejectedValueOnce(new Error("discovery denied")).mockResolvedValueOnce([]);
+    // The startup discovery fails, and so does the popover's first refresh,
+    // so opening the bar names the reason; the next open succeeds.
+    api.listRecoverableTransfers.mockRejectedValueOnce(new Error("discovery denied")).mockRejectedValueOnce(new Error("discovery denied")).mockResolvedValue([]);
     const host = document.createElement("div"); const root = createRoot(host);
     try {
       await act(async () => root.render(h(TransferCenter)));
@@ -186,7 +190,9 @@ describe("background transfer state", () => {
   });
   it("displays a recovered job arriving through the production subscription", async () => {
     const entry = { id: "recover-event", name: "recovered.bin", kind: "sftp", endpoint: "fixture", host: "host", port: 22, username: "u", items: 1, checkpoints: 1, unrecognized: false };
-    api.listRecoverableTransfers.mockResolvedValueOnce([entry]).mockResolvedValueOnce([]);
+    // The startup discovery lists it too, so the entry survives the popover's
+    // own refresh until the resume clears it.
+    api.listRecoverableTransfers.mockResolvedValue([entry]);
     api.recoverTransfer.mockImplementationOnce(async () => changed(job("recover-event", { name: "recovered.bin", status: "running", transferred: 600 })));
     const host = document.createElement("div"); const root = createRoot(host);
     try {
@@ -222,5 +228,47 @@ describe("background transfer state", () => {
       expect(useFileTransfers.getState().jobs.controls).toBeUndefined();
     } finally { act(() => root.unmount()); host.remove(); }
     expect(unlisten).toHaveBeenCalledOnce();
+  });
+  it("summarises the whole queue on one line above the per-job cards", async () => {
+    api.listFileTransfers.mockResolvedValue([
+      job("sum-a", { transferred: 400 }),
+      job("sum-b", { transferred: 250, totalFiles: 2 }),
+    ]);
+    const host = document.createElement("div"); const root = createRoot(host);
+    try {
+      await act(async () => root.render(h(TransferCenter)));
+      await act(async () => {});
+      await act(async () => host.querySelector("button")!.click());
+      const total = host.querySelector(".transfer-center-total")!;
+      // None of the three files done yet, 650 B of the 2.0 KiB on the wire.
+      expect(total.textContent).toContain("0/3 files");
+      expect(total.textContent).toContain("650 B / 2.0 KiB");
+      // The cards below keep their own detail.
+      expect(host.querySelectorAll(".transfer-center-jobs .transfer-job")).toHaveLength(2);
+    } finally { act(() => root.unmount()); host.remove(); }
+  });
+  it("marks the status item red once a job has failed", async () => {
+    api.listFileTransfers.mockResolvedValue([job("failed-one", { status: "error" })]);
+    const host = document.createElement("div"); const root = createRoot(host);
+    try {
+      await act(async () => root.render(h(TransferCenter)));
+      await act(async () => {});
+      const item = host.querySelector<HTMLButtonElement>("button.status-item")!;
+      expect(item.classList.contains("is-error")).toBe(true);
+      expect(item.textContent).toContain("1 failed");
+    } finally { act(() => root.unmount()); host.remove(); }
+  });
+  it("names interrupted transfers on the status item before the popover is opened", async () => {
+    api.listRecoverableTransfers.mockResolvedValue([
+      { id: "journal-1", name: "backup.tar", kind: "sftp", endpoint: "sftp://u@host:22", host: "host", port: 22, username: "u", items: 3, checkpoints: 2, unrecognized: false },
+    ]);
+    const host = document.createElement("div"); const root = createRoot(host);
+    try {
+      await act(async () => root.render(h(TransferCenter)));
+      await act(async () => {});
+      const item = host.querySelector<HTMLButtonElement>("button.status-item")!;
+      expect(item.textContent).toContain("Interrupted transfers (1)");
+      expect(item.getAttribute("title")).toContain("Interrupted transfers (1)");
+    } finally { act(() => root.unmount()); host.remove(); }
   });
 });

@@ -11,33 +11,46 @@ import { TransferRateSample } from "./filerTypes";
 
 interface Options {
   setError: Dispatch<SetStateAction<string | null>>;
+  /** The line the panel is showing, so a functional update can be resolved. */
+  error: string | null;
   t: Translate;
 }
 
-export function useFilerTransfer({ setError, t }: Options) {
+export function useFilerTransfer({ setError, error, t }: Options) {
   const [transfer, setTransfer] = useState<TransferState | null>(null);
   const remoteEditRef = useRef<(event: api.RemoteEditEvent) => void>(() => {});
   const transferClearTimer = useRef<number | null>(null);
   const transferRateSamples = useRef<TransferRateSample[]>([]);
   const activeTransfer = useRef<ActiveTransfer | null>(null);
   const visibleTransferId = useRef<string | undefined>(undefined);
+  /**
+   * How to run the failed transfer again, registered by the caller that
+   * started it. A failure used to leave the user with an error line whose
+   * Retry only reloaded the listing, so the upload had to be rebuilt by hand
+   * from the file picker; the footer now keeps the failed transfer and the
+   * operation that produced it.
+   */
+  const retryRef = useRef<(() => void) | null>(null);
   const ownsTransfer = (id: string | undefined) => visibleTransferId.current === id;
   const backgroundTransfer = useFileTransfers((s) => s.jobs[activeTransfer.current?.id ?? ""]);
 
   /**
    * Shows `kind` starting in the footer. A cancellable transfer (the SFTP
    * and FTP copies) gets the id to pass along; the footer's Cancel button
-   * and a released drag reach it through `cancelTransfer`.
+   * and a released drag reach it through `cancelTransfer`. `retry` is what
+   * the footer's Retry button runs after a failure.
    */
   const beginTransfer = (
     kind: TransferState["kind"],
     name: string,
     cancellable = false,
+    retry?: () => void,
   ): string | undefined => {
     if (transferClearTimer.current !== null) {
       window.clearTimeout(transferClearTimer.current);
       transferClearTimer.current = null;
     }
+    retryRef.current = retry ?? null;
     activeTransfer.current = cancellable ? { id: api.newTransferId(), cancelled: false } : null;
     visibleTransferId.current = activeTransfer.current?.id;
     setTransfer({
@@ -99,6 +112,7 @@ export function useFilerTransfer({ setError, t }: Options) {
   ) => {
     if (!ownsTransfer(id)) return;
     activeTransfer.current = null;
+    if (status !== "error") retryRef.current = null;
     setTransfer((current) =>
       current
         ? {
@@ -109,12 +123,16 @@ export function useFilerTransfer({ setError, t }: Options) {
           }
         : current,
     );
+    // A failure stays in the footer until the next transfer replaces it: the
+    // three-second blink it used to get was over before the user had read
+    // it, and the Retry button needs a stable target to sit beside.
+    if (status === "error") return;
     transferClearTimer.current = window.setTimeout(
       () => {
         setTransfer(null);
         transferClearTimer.current = null;
       },
-      status === "error" ? 3000 : 1800,
+      1800,
     );
   };
 
@@ -128,6 +146,25 @@ export function useFilerTransfer({ setError, t }: Options) {
     if (!active || active.cancelled) return;
     active.cancelled = true;
     void api.cancelTransfer(active.id);
+  });
+
+  /** Runs the failed transfer again; a no-op when none is on offer. */
+  const retryTransfer = useStableCallback(() => {
+    retryRef.current?.();
+  });
+
+  /**
+   * Reports an error that is not the footer's transfer. It takes the error
+   * line over from a transfer that failed earlier, so the line's Retry goes
+   * back to reloading the listing instead of re-running that transfer.
+   * Clearing the line (a reload that succeeded) leaves the retry alone.
+   * It fills a `setError` slot, so React's functional form is accepted and
+   * resolved against the line the panel already shows.
+   */
+  const reportError = useStableCallback((message: SetStateAction<string | null>) => {
+    const line = typeof message === "function" ? message(error) : message;
+    if (line !== null) retryRef.current = null;
+    setError(line);
   });
 
   /** Ends the transfer a rejection belongs to: cancelled, or failed with `e`. */
@@ -159,14 +196,14 @@ export function useFilerTransfer({ setError, t }: Options) {
     } else if (event.status === "synced") {
       finishTransfer("complete");
     } else if (event.status === "kept") {
-      setError(
+      reportError(
         t("filer.remoteEditKept", {
           name: event.name,
           message: event.message ?? t("filer.localCopyKept"),
         }),
       );
     } else {
-      setError(
+      reportError(
         t("filer.remoteEditSync", {
           name: event.name,
           message: event.message ?? t("filer.syncFailed"),
@@ -191,6 +228,9 @@ export function useFilerTransfer({ setError, t }: Options) {
         : null
     : null;
   const transferLabel = transfer ? transferLabels(t)[transfer.kind][transfer.status] : "";
+  // Whether the footer's failure can be run again. The ref rides along with
+  // the transfer state, so the two never disagree about what is on offer.
+  const retryAvailable = transfer?.status === "error" && retryRef.current !== null;
 
   return {
     beginTransfer,
@@ -201,6 +241,9 @@ export function useFilerTransfer({ setError, t }: Options) {
     updateTransferProgress,
     activeTransfer,
     cancelTransfer,
+    retryTransfer,
+    retryAvailable,
+    reportError,
     transfer,
     transferLabel,
     transferPercent,
