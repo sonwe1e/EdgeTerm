@@ -1,4 +1,3 @@
-import { type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { tabTitle, useStore } from "../store";
 import { useT } from "../useT";
 import { ModalDialog } from "./ModalDialog";
@@ -13,7 +12,8 @@ const LISTED_SESSIONS = 4;
 /**
  * Confirmation shown when the app is asked to quit (window ✕, ⌘Q, Alt+F4)
  * while session tabs are still connecting or connected, so one stray gesture
- * cannot drop every open connection at once. Enter quits and Esc cancels.
+ * cannot drop every open connection at once. Cancel holds initial focus, so
+ * Enter on an untouched dialog cancels rather than quits.
  */
 export function QuitConfirmDialog({ onConfirm, onCancel }: Props) {
   const tabs = useStore((s) => s.tabs);
@@ -21,15 +21,6 @@ export function QuitConfirmDialog({ onConfirm, onCancel }: Props) {
   const live = tabs.filter(
     (tab) => tab.state === "connecting" || tab.state === "connected",
   );
-
-  const onKeyDown = (event: ReactKeyboardEvent<HTMLDialogElement>) => {
-    if (event.key === "Enter") {
-      // preventDefault keeps the focused button from also firing a click.
-      event.preventDefault();
-      event.stopPropagation();
-      onConfirm();
-    }
-  };
 
   const shown = live.slice(0, LISTED_SESSIONS);
   const extra = live.length - shown.length;
@@ -41,7 +32,7 @@ export function QuitConfirmDialog({ onConfirm, onCancel }: Props) {
       labelledBy="quit-app-title"
       contentClassName="confirm-dialog"
       onClose={onCancel}
-      onKeyDown={onKeyDown}
+      initialFocus=".btn:not(.is-danger)"
     >
       <div className="dialog-header" id="quit-app-title">
         {t("quit.title")}
@@ -69,14 +60,12 @@ export function QuitConfirmDialog({ onConfirm, onCancel }: Props) {
       </div>
       <div className="dialog-footer confirm-dialog-footer">
         <span className="confirm-dialog-keys">
-          <kbd>Enter</kbd> {t("keys.quit")} · <kbd>Esc</kbd>{" "}
-          {t("keys.cancel")}
+          <kbd>Esc</kbd> {t("keys.cancel")}
         </span>
         <button type="button" className="btn" onClick={onCancel}>
           {t("common.cancel")}
         </button>
         <button
-          autoFocus
           type="button"
           className="btn is-danger"
           onClick={onConfirm}

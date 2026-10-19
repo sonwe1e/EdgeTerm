@@ -2,6 +2,8 @@ import { createElement as h, StrictMode, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 import { browserAfterEach, mount, twoFrames } from "./browserHarness";
+import { ClipboardWriteDialog } from "../components/ClipboardWriteDialog";
+import { DeleteEntryDialog } from "../components/DeleteEntryDialog";
 import { HostKeyDialog } from "../components/HostKeyDialog";
 import { ModalDialog } from "../components/ModalDialog";
 import "../styles.css";
@@ -85,4 +87,38 @@ it("host-key acceptance stays explicit and busy dismissal is blocked", async () 
   await userEvent.keyboard("{Escape}");
   expect(cancel).toHaveBeenCalledTimes(1);
   finish();
+});
+
+it("a destructive delete starts on Cancel, so Enter does not delete", async () => {
+  const confirm = vi.fn(), cancel = vi.fn();
+  mount(h(DeleteEntryDialog, {
+    entry: { name: "deploy.sh", path: "/srv/deploy.sh", isDir: false, isSymlink: false, size: 12, modified: 0, permissions: null, owner: null, group: null },
+    location: "fixture",
+    onConfirm: confirm,
+    onCancel: cancel,
+  }));
+  await twoFrames();
+  const focused = document.activeElement as HTMLButtonElement;
+  expect(focused.className).toContain("btn");
+  expect(focused.className).not.toContain("is-danger");
+  await userEvent.keyboard("{Enter}");
+  expect(confirm).not.toHaveBeenCalled();
+  expect(cancel).toHaveBeenCalledTimes(1);
+});
+
+it("a remote clipboard request starts on Deny, so Enter cannot allow it", async () => {
+  const allow = vi.fn(), deny = vi.fn();
+  mount(h(ClipboardWriteDialog, {
+    session: "fixture",
+    text: "copied from the server",
+    onAllow: allow,
+    onDeny: deny,
+  }));
+  await twoFrames();
+  const focused = document.activeElement as HTMLButtonElement;
+  expect(focused.className).toContain("btn");
+  expect(focused.className).not.toContain("is-primary");
+  await userEvent.keyboard("{Enter}");
+  expect(allow).not.toHaveBeenCalled();
+  expect(deny).toHaveBeenCalledTimes(1);
 });

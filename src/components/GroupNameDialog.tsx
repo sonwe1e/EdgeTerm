@@ -9,17 +9,23 @@ interface Props {
   /** Where the group lives, e.g. "SSH Sessions / prod". */
   location: string;
   initialName?: string;
+  /** Overrides the group-specific field label for other naming prompts. */
+  label?: string;
+  /** Overrides the "in {location}" hint when the caller has a better one. */
+  hint?: string;
   submitLabel: string;
   /** Rejections are shown inline and keep the dialog open. */
   onSubmit: (name: string) => Promise<void>;
   onCancel: () => void;
 }
 
-/** Asks for a group name when creating or renaming a Session panel group. */
+/** Asks for a name when creating or renaming a group, folder or remote item. */
 export function GroupNameDialog({
   title,
   location,
   initialName = "",
+  label,
+  hint,
   submitLabel,
   onSubmit,
   onCancel,
@@ -59,11 +65,9 @@ export function GroupNameDialog({
       labelledBy="group-name-title"
       contentClassName="confirm-dialog"
       onClose={onCancel}
+      dismissable={false}
     >
       <form
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="group-name-title"
         onSubmit={(event) => {
           event.preventDefault();
           void submit();
@@ -74,7 +78,9 @@ export function GroupNameDialog({
         </div>
         <div className="dialog-body confirm-dialog-body">
           <label className="session-field is-wide">
-            <span className="session-field-label">{t("groupName.nameLabel")}</span>
+            <span className="session-field-label">
+              {label ?? t("groupName.nameLabel")}
+            </span>
             <input
               ref={inputRef}
               autoFocus
@@ -87,7 +93,7 @@ export function GroupNameDialog({
             />
           </label>
           <span className="confirm-dialog-hint">
-            {t("groupName.in", { location })}
+            {hint ?? t("groupName.in", { location })}
           </span>
           {error && <div className="dialog-error">{error}</div>}
         </div>

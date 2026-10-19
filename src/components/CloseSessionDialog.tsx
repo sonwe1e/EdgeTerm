@@ -1,4 +1,3 @@
-import { type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { tabTitle, type Tab } from "../store";
 import { useT } from "../useT";
 import { ModalDialog } from "./ModalDialog";
@@ -14,21 +13,13 @@ interface Props {
 const LISTED_TABS = 6;
 
 /**
- * Confirmation shown before a live session tab is closed. Enter confirms and
- * Esc cancels, so a stray ⌘W or a mis-click on the tab's ✕ can no longer
- * drop an open SSH / serial / FTP session and its scrollback without asking.
+ * Confirmation shown before a live session tab is closed. Cancel holds
+ * initial focus, so a stray Enter (from a ⌘W or a mis-click) cannot drop an
+ * open SSH / serial / FTP session and its scrollback; the close button still
+ * answers Enter once focused.
  */
 export function CloseSessionDialog({ tabs, onConfirm, onCancel }: Props) {
   const t = useT();
-
-  const onKeyDown = (event: ReactKeyboardEvent<HTMLDialogElement>) => {
-    if (event.key === "Enter") {
-      // preventDefault keeps the focused button from also firing a click.
-      event.preventDefault();
-      event.stopPropagation();
-      onConfirm();
-    }
-  };
 
   const single = tabs.length === 1 ? tabs[0] : null;
   const connecting = tabs.some((tab) => tab.state === "connecting");
@@ -53,7 +44,7 @@ export function CloseSessionDialog({ tabs, onConfirm, onCancel }: Props) {
       labelledBy="close-session-title"
       contentClassName="confirm-dialog"
       onClose={onCancel}
-      onKeyDown={onKeyDown}
+      initialFocus=".btn:not(.is-danger)"
     >
       <div className="dialog-header" id="close-session-title">
         {single
@@ -94,14 +85,12 @@ export function CloseSessionDialog({ tabs, onConfirm, onCancel }: Props) {
       </div>
       <div className="dialog-footer confirm-dialog-footer">
         <span className="confirm-dialog-keys">
-          <kbd>Enter</kbd> {t("keys.close")} · <kbd>Esc</kbd>{" "}
-          {t("keys.cancel")}
+          <kbd>Esc</kbd> {t("keys.cancel")}
         </span>
         <button type="button" className="btn" onClick={onCancel}>
           {t("common.cancel")}
         </button>
         <button
-          autoFocus
           type="button"
           className="btn is-danger"
           onClick={onConfirm}

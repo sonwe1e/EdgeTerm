@@ -1,5 +1,3 @@
-import { type KeyboardEvent as ReactKeyboardEvent } from "react";
-
 import type { FileEntry } from "../types";
 import { useT } from "../useT";
 import { ModalDialog } from "./ModalDialog";
@@ -15,9 +13,9 @@ interface Props {
 
 /**
  * Confirmation shown before the Filer deletes a file or folder, whether the
- * request came from the toolbar or the row's context menu. Enter confirms
- * and Esc cancels, so a stray click can no longer remove something on a
- * remote host without a second look.
+ * request came from the toolbar or the row's context menu. The safe choice
+ * (Cancel) holds initial focus, so Enter on an untouched dialog cancels; the
+ * danger button still answers Enter once it is focused itself.
  */
 export function DeleteEntryDialog({
   entry,
@@ -28,15 +26,6 @@ export function DeleteEntryDialog({
 }: Props) {
   const t = useT();
   const multiple = entries && entries.length > 1;
-
-  const onKeyDown = (event: ReactKeyboardEvent<HTMLDialogElement>) => {
-    if (event.key === "Enter") {
-      // preventDefault keeps the focused button from also firing a click.
-      event.preventDefault();
-      event.stopPropagation();
-      onConfirm();
-    }
-  };
 
   const kind = entry.isSymlink ? "link" : entry.isDir ? "folder" : "file";
   const title =
@@ -67,7 +56,7 @@ export function DeleteEntryDialog({
       labelledBy="delete-entry-title"
       contentClassName="confirm-dialog"
       onClose={onCancel}
-      onKeyDown={onKeyDown}
+      initialFocus=".btn:not(.is-danger)"
     >
       <div className="dialog-header" id="delete-entry-title">
         {multiple ? t("deleteEntry.titleMany", { count: entries.length }) : title}
@@ -86,14 +75,12 @@ export function DeleteEntryDialog({
       </div>
       <div className="dialog-footer confirm-dialog-footer">
         <span className="confirm-dialog-keys">
-          <kbd>Enter</kbd> {t("keys.delete")} · <kbd>Esc</kbd>{" "}
-          {t("keys.cancel")}
+          <kbd>Esc</kbd> {t("keys.cancel")}
         </span>
         <button type="button" className="btn" onClick={onCancel}>
           {t("common.cancel")}
         </button>
         <button
-          autoFocus
           type="button"
           className="btn is-danger"
           onClick={onConfirm}

@@ -25,8 +25,20 @@ interface Props {
    * buttons.
    */
   onClose: () => void;
-  /** A backdrop press closes (confirmations) or only flashes (forms). */
+  /**
+   * A backdrop press closes (confirmations) or only flashes (forms). A press
+   * is an accident — a form answers it with a ring instead of discarding what
+   * was typed. It is NOT the same gesture as Escape, which is a deliberate
+   * cancel and keeps its own switch (closeOnEscape).
+   */
   dismissable?: boolean;
+  /**
+   * Escape (and a native cancel event) requests a close. Deliberate cancels
+   * stay available on dialogs whose backdrop press only flashes, so adding a
+   * form does not trap the user; pass false only when even Escape must not
+   * discard the content.
+   */
+  closeOnEscape?: boolean;
   /** The dialog-header element a drag handle is attached to. */
   title?: ReactNode;
   /** Makes the header drag the content box around (useDialogDrag). */
@@ -68,7 +80,9 @@ const fallbackStack: HTMLDialogElement[] = [];
  * Controlled modal with native top-layer inertness, a React keyboard boundary,
  * Tab wrapping, focus return and matching outside press/release dismissal.
  * Escape is handled before the browser default (repeated cancel gestures may
- * otherwise escalate). Native cancel still accepts platform close requests.
+ * otherwise escalate) and is a separate gesture from a backdrop press:
+ * dismissable gates the press, closeOnEscape gates the key. Native cancel
+ * still accepts platform close requests.
  * The fallback uses a full-viewport overlay, focus ownership and a stack;
  * it does not claim native inertness or platform WebView equivalence.
  */
@@ -76,6 +90,7 @@ export function ModalDialog({
   open,
   onClose,
   dismissable = true,
+  closeOnEscape = true,
   title,
   draggable = false,
   role = "dialog",
@@ -112,6 +127,8 @@ export function ModalDialog({
   initialFocusRef.current = initialFocus;
   const dismissableRef = useRef(dismissable);
   dismissableRef.current = dismissable;
+  const closeOnEscapeRef = useRef(closeOnEscape);
+  closeOnEscapeRef.current = closeOnEscape;
   /**
    * The focusable that had focus before this dialog opened, captured in the
    * element ref callback — before showModal's autofocus can move focus — so
@@ -226,10 +243,13 @@ export function ModalDialog({
       if (!dialog.open) notify();
     };
     // Native path only: the fallback has no cancel event, its Escape is
-    // handled by the dialog key listener below.
+    // handled by the dialog key listener below. `cancel` is the platform's
+    // Escape-equivalent close request, so it obeys the same switch; the
+    // default is always prevented because the controlled `open` flip owns
+    // the actual close.
     const onDialogCancel = (event: Event) => {
       event.preventDefault();
-      notify();
+      if (closeOnEscapeRef.current) notify();
     };
     dialog.addEventListener("close", onDialogClose);
     dialog.addEventListener("cancel", onDialogCancel);
@@ -248,8 +268,9 @@ export function ModalDialog({
   // before re-entering (verified against a bare showModal dialog), which
   // violates the top-layer boundary this primitive must guarantee. The
   // fallback's Escape/Tab handling also lives here; Escape only ever
-  // *requests* the close (the controlled `open` flip performs it), so a
-  // caller deferring the close keeps its state consistent.
+  // *requests* the close — and only when closeOnEscape allows it — because
+  // the controlled `open` flip performs it, so a caller deferring the close
+  // keeps its state consistent.
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDialogElement>) => {
     if (!event.nativeEvent.isComposing) onKeyDownRef.current?.(event);
     // Native path: stop the key here so window-level shortcut listeners
@@ -260,8 +281,10 @@ export function ModalDialog({
     // through this dialog.
     event.stopPropagation();
     if (event.key === "Escape" && !event.defaultPrevented && !event.nativeEvent.defaultPrevented && !event.nativeEvent.isComposing) {
+      // The default is suppressed either way: letting the platform handle
+      // Escape would fire `cancel` and close a dialog that opted out.
       event.preventDefault();
-      onCloseRef.current();
+      if (closeOnEscapeRef.current) onCloseRef.current();
     }
     if (event.key === "Tab" && !event.defaultPrevented && !event.nativeEvent.defaultPrevented) {
       containTab(event.nativeEvent, dialogRef.current!);
@@ -313,7 +336,7 @@ export function ModalDialog({
       focusContent();
       if (event.key === "Escape" && !event.isComposing) {
         event.preventDefault();
-        onCloseRef.current();
+        if (closeOnEscapeRef.current) onCloseRef.current();
       } else if (event.key === "Tab") containTab(event, dialog);
     };
     window.addEventListener("keydown", onWindowKeyDown, true);

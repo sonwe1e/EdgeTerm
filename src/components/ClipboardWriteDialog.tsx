@@ -1,4 +1,4 @@
-import { useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useState } from "react";
 
 import { pasteLines } from "../terminalPaste";
 import { useT } from "../useT";
@@ -23,21 +23,14 @@ const PREVIEW_COLUMNS = 120;
  * session, since a program that copies (tmux, an agent's copy mode) does so
  * on every selection.
  *
- * Enter allows and Esc denies.
+ * Deny holds initial focus and Enter is not bound to Allow: the prompt is
+ * raised by a remote program, so a keystroke meant for the shell must not
+ * grant a clipboard write. Esc denies; Allow is an explicit click or Enter
+ * on the focused Allow button.
  */
 export function ClipboardWriteDialog({ session, text, onAllow, onDeny }: Props) {
   const [always, setAlways] = useState(false);
-  const alwaysRef = useRef(always);
-  alwaysRef.current = always;
   const t = useT();
-
-  const onKeyDown = (event: ReactKeyboardEvent<HTMLDialogElement>) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      event.stopPropagation();
-      onAllow(alwaysRef.current);
-    }
-  };
 
   const preview = pasteLines(text);
   const shown = preview.slice(0, PREVIEW_LINES);
@@ -49,7 +42,7 @@ export function ClipboardWriteDialog({ session, text, onAllow, onDeny }: Props) 
       labelledBy="clipboard-write-title"
       contentClassName="confirm-dialog paste-warning-dialog"
       onClose={onDeny}
-      onKeyDown={onKeyDown}
+      initialFocus=".confirm-dialog-footer .btn:not(.is-primary)"
     >
       <div className="dialog-header" id="clipboard-write-title">
         {t("clipboardWrite.title")}
@@ -90,13 +83,12 @@ export function ClipboardWriteDialog({ session, text, onAllow, onDeny }: Props) 
       </div>
       <div className="dialog-footer confirm-dialog-footer">
         <span className="confirm-dialog-keys">
-          <kbd>Enter</kbd> {t("keys.allow")} · <kbd>Esc</kbd> {t("keys.deny")}
+          <kbd>Esc</kbd> {t("keys.deny")}
         </span>
         <button type="button" className="btn" onClick={onDeny}>
           {t("clipboard.deny")}
         </button>
         <button
-          autoFocus
           type="button"
           className="btn is-primary"
           onClick={() => onAllow(always)}

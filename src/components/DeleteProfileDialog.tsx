@@ -1,5 +1,3 @@
-import { type KeyboardEvent as ReactKeyboardEvent } from "react";
-
 import type { SessionProfile } from "../types";
 import { useT } from "../useT";
 import { ModalDialog } from "./ModalDialog";
@@ -15,10 +13,10 @@ interface Props {
 }
 
 /**
- * Confirmation shown before a saved session profile is deleted. Enter
- * confirms and Esc cancels, so a stray click on the ✕ button no longer
- * silently drops a saved host and its credentials. Everything that belongs
- * to the profile goes with it, so the dialog spells out what that is.
+ * Confirmation shown before a saved session profile is deleted. Cancel holds
+ * initial focus, so Enter on an untouched dialog cancels; the danger button
+ * answers Enter once focused. Everything that belongs to the profile goes
+ * with it, so the dialog spells out what that is.
  */
 export function DeleteProfileDialog({
   profile,
@@ -28,15 +26,6 @@ export function DeleteProfileDialog({
   onCancel,
 }: Props) {
   const t = useT();
-
-  const onKeyDown = (event: ReactKeyboardEvent<HTMLDialogElement>) => {
-    if (event.key === "Enter") {
-      // preventDefault keeps the focused button from also firing a click.
-      event.preventDefault();
-      event.stopPropagation();
-      onConfirm();
-    }
-  };
 
   const commands =
     scopedCommands === 0
@@ -52,7 +41,7 @@ export function DeleteProfileDialog({
       labelledBy="delete-profile-title"
       contentClassName="confirm-dialog"
       onClose={onCancel}
-      onKeyDown={onKeyDown}
+      initialFocus=".btn:not(.is-danger)"
     >
       <div className="dialog-header" id="delete-profile-title">
         {t("deleteProfile.title")}
@@ -73,14 +62,12 @@ export function DeleteProfileDialog({
       </div>
       <div className="dialog-footer confirm-dialog-footer">
         <span className="confirm-dialog-keys">
-          <kbd>Enter</kbd> {t("keys.delete")} · <kbd>Esc</kbd>{" "}
-          {t("keys.cancel")}
+          <kbd>Esc</kbd> {t("keys.cancel")}
         </span>
         <button type="button" className="btn" onClick={onCancel}>
           {t("common.cancel")}
         </button>
         <button
-          autoFocus
           type="button"
           className="btn is-danger"
           onClick={onConfirm}
