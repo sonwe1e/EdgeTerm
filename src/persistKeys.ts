@@ -14,6 +14,9 @@
 /** Column order of the Filer and dual-pane file lists; see fileSort.ts. */
 export const SORT_STORAGE_KEY = "edgeterm.filerSort";
 
+/** Dock widths and the Sender's expanded state; see panelSizing.ts. */
+export const PANEL_SIZING_KEY = "edgeterm.panelSizing";
+
 /** The Sender's last repeat interval and count; see senderSchedule.ts. */
 export const SENDER_REPEAT_KEY = "edgeterm.senderRepeat";
 
@@ -40,6 +43,7 @@ export const RESOURCE_MONITOR_KEY = "edgeterm.resource-monitor";
  * its own keys in `resetSettings`.
  */
 export const PANEL_PREFERENCE_KEYS: readonly string[] = [
+  PANEL_SIZING_KEY,
   SENDER_REPEAT_KEY,
   SENDER_SAVE_LEVEL_KEY,
   FILER_OPEN_WITH_KEY,
