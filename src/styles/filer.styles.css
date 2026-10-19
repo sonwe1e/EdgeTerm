@@ -5,8 +5,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 30px;
-  padding: 0 8px;
+  height: var(--h-bar);
+  padding: 0 var(--sp-8);
   border-bottom: 1px solid var(--border);
 }
 
@@ -16,7 +16,7 @@
   align-items: center;
   justify-content: center;
   width: 24px;
-  height: 24px;
+  height: var(--h-control);
   padding: 0;
   color: var(--fg-dim);
 }
@@ -28,7 +28,9 @@
 
 .filer-action:active:not(:disabled),
 .filer-action.is-open {
-  color: var(--accent);
+  /* --accent only clears 3.9:1 on the dark tint; the lifted twin is the
+     readable one for a glyph that has to be identified. */
+  color: var(--accent-bright);
   background: var(--accent-soft);
 }
 
@@ -51,8 +53,8 @@
 .filer-path {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 5px 8px 5px 6px;
+  gap: var(--sp-2);
+  padding: 5px var(--sp-8) 5px var(--sp-6);
 }
 
 .filer-path input {
@@ -60,11 +62,11 @@
   min-width: 0;
   height: 26px;
   margin-left: 2px;
-  border-color: transparent;
-  border-radius: 5px;
+  border-color: var(--border);
+  border-radius: var(--radius-md);
   background: var(--bg-field);
   font-family: var(--font-mono);
-  font-size: calc(var(--panel-font-size) - 1px);
+  font-size: var(--fs-sm);
   user-select: text;
 }
 
@@ -80,11 +82,11 @@
 .filer-columns {
   display: flex;
   align-items: center;
-  height: 22px;
-  padding: 0 12px;
+  height: var(--h-control-sm);
+  padding: 0 var(--sp-12);
   border-bottom: 1px solid var(--border);
   color: var(--fg-faint);
-  font-size: 10px;
+  font-size: var(--fs-xs);
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -115,7 +117,7 @@
 }
 
 .filer-drop-message {
-  color: var(--accent);
+  color: var(--accent-bright);
 }
 
 .filer-drop-blocked {
@@ -141,7 +143,7 @@
   min-width: 74px;
   flex-shrink: 0;
   text-align: right;
-  padding-left: 8px;
+  padding-left: var(--sp-8);
 }
 
 /* Column captions are buttons so they can sort the list; they restyle to the
@@ -188,7 +190,7 @@
 }
 
 .filer-new-entry {
-  gap: 7px;
+  gap: var(--sp-6);
 }
 
 .filer-new-entry input {
@@ -196,7 +198,7 @@
 }
 
 .filer-entry {
-  gap: 7px;
+  gap: var(--sp-6);
   height: max(24px, calc(var(--panel-font-size) + 10px));
 }
 
@@ -211,7 +213,7 @@
 .filer-entry .filer-col-date {
   /* Keep all ten date characters visible as the panel font grows. */
   flex: 0 0 auto;
-  font-size: calc(var(--panel-font-size) - 2px);
+  font-size: var(--fs-xs);
   font-variant-numeric: tabular-nums;
 }
 
@@ -220,23 +222,23 @@
   flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  min-height: 24px;
-  padding: 0 12px;
+  gap: var(--sp-10);
+  min-height: var(--h-control);
+  padding: 0 var(--sp-12);
   border-top: 1px solid var(--border);
   color: var(--fg-faint);
-  font-size: calc(var(--panel-font-size) - 1px);
+  font-size: var(--fs-sm);
 }
 
 .filer-transfer-summary {
   flex-shrink: 0;
-  padding: 5px 10px;
+  padding: 5px var(--sp-10);
   border-top: 1px solid var(--border);
 }
 .filer-transfer-summary button {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-6);
   width: 100%;
   color: var(--fg-dim);
   text-align: left;
@@ -255,7 +257,7 @@
 .filer-footer.has-transfer {
   display: block;
   min-height: 59px;
-  padding: 6px 12px 7px;
+  padding: var(--sp-6) var(--sp-12) 7px;
   background: var(--bg-panel-alt);
 }
 
@@ -263,7 +265,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--sp-8);
 }
 
 .filer-transfer-name {
@@ -286,7 +288,7 @@
   height: 5px;
   margin-top: 7px;
   overflow: hidden;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   background: var(--border-strong);
 }
 
@@ -303,11 +305,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--sp-8);
   margin-top: 4px;
   color: var(--fg-faint);
   font-family: var(--font-mono);
-  font-size: calc(var(--panel-font-size) - 2px);
+  font-size: var(--fs-xs);
   font-variant-numeric: tabular-nums;
 }
 
@@ -342,7 +344,7 @@
 .filer-transfer-cancel {
   flex: 0 0 20px;
   width: 20px;
-  height: 20px;
+  height: var(--h-control-xs);
   margin: -3px -4px -3px 0;
 }
 
@@ -361,6 +363,16 @@
   }
 }
 
+/* A sweeping bar is the one thing a reduced-motion user asked not to see.
+   The bar still says "in progress" by filling the track at low opacity. */
+@media (prefers-reduced-motion: reduce) {
+  .filer-transfer-track.is-indeterminate .filer-transfer-bar {
+    width: 100%;
+    opacity: 0.45;
+    animation: none;
+  }
+}
+
 .about-link {
   color: inherit;
   text-decoration: underline;
@@ -372,17 +384,17 @@
   color: var(--fg);
 }
 :root .transfer-center { position: relative; }
-.transfer-center-popover { position: fixed; bottom: 32px; right: 12px; width: min(560px, 90vw); max-height: 70vh; overflow: auto; z-index: 1000; padding: 14px; background: var(--bg-panel, var(--bg-app)); color: var(--fg, inherit); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 8px 32px #0005; font-size: 12px; }
-.ssh-connection-options { padding: 6px 10px; font-size: 11px; border-bottom: 1px solid var(--border); }
+.transfer-center-popover { position: fixed; bottom: 32px; right: 12px; width: min(560px, 90vw); max-height: 70vh; overflow: auto; z-index: 1000; padding: 14px; background: var(--bg-panel, var(--bg-app)); color: var(--fg, inherit); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: 0 8px 32px #0005; font-size: 12px; }
+.ssh-connection-options { padding: var(--sp-6) var(--sp-10); font-size: var(--fs-sm); border-bottom: 1px solid var(--border); }
 .resource-monitor { position: relative; min-width: 0; }
 .resource-summary { max-width: 650px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: inherit; background: none; border: 0; cursor: pointer; font-size: inherit; }
 .resource-summary.is-stale { opacity: .65; }
 .resource-compact { display: none; }
-.resource-popover { position: fixed; right: 12px; bottom: 30px; width: min(480px, 90vw); max-height: 75vh; overflow: auto; z-index: 1000; padding: 14px; background: var(--bg-panel); color: var(--fg, inherit); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 8px 32px #0005; font-size: 12px; }
-.resource-popover button, .resource-popover input, .resource-popover select { color: inherit; background: var(--bg-app); border: 1px solid var(--border); border-radius: 3px; padding: 4px 6px; }
-.resource-popover label { display: flex; align-items: center; gap: 6px; margin: 8px 0; }
+.resource-popover { position: fixed; right: 12px; bottom: 30px; width: min(480px, 90vw); max-height: 75vh; overflow: auto; z-index: 1000; padding: 14px; background: var(--bg-panel); color: var(--fg, inherit); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: 0 8px 32px #0005; font-size: 12px; }
+.resource-popover button, .resource-popover input, .resource-popover select { color: inherit; background: var(--bg-app); border: 1px solid var(--border); border-radius: var(--radius-xs); padding: var(--sp-4) var(--sp-6); }
+.resource-popover label { display: flex; align-items: center; gap: var(--sp-6); margin: 8px 0; }
 .resource-popover input[type=number] { width: 55px; }
-.resource-popover dl { display: grid; grid-template-columns: minmax(85px,auto) minmax(0,1fr); gap: 8px 12px; }
+.resource-popover dl { display: grid; grid-template-columns: minmax(85px,auto) minmax(0,1fr); gap: var(--sp-8) var(--sp-12); }
 .resource-popover dd { margin: 0; overflow-wrap: anywhere; }
 .resource-popover dt { opacity: .7; }
 .resource-popover select { display: block; max-width: 100%; margin: 5px 0; }
@@ -391,7 +403,10 @@
 @media(max-width:1100px) { .resource-wide { display: none; } .resource-compact { display: inline; } }
 .ssh-connection-options summary { cursor: pointer; }
 .ssh-reuse-setting { padding-top: 8px; }
-.ssh-reuse-setting label { display: flex; align-items: center; gap: 6px; }
+.ssh-reuse-setting label { display: flex; align-items: center; gap: 6px; min-height: 24px; }
+/* The native box is 13px; 16px keeps the glyph but meets the desktop target
+   together with its (already clickable) label row. */
+.ssh-reuse-setting input[type="checkbox"] { width: 16px; height: 16px; margin: 0; }
 .ssh-reuse-setting p { margin: 6px 0; line-height: 1.5; opacity: .7; }
 .transfer-center-heading, .transfer-job-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .transfer-center-popover p { line-height: 1.5; opacity: .8; white-space: normal; }
@@ -412,7 +427,7 @@
 .transfer-job-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .transfer-durable { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .transfer-center-popover button { padding: 3px 8px; color: inherit; background: var(--bg-app); border: 1px solid var(--border); border-radius: 3px; cursor: pointer; }
-.transfer-job-error { color: var(--danger, #e66); margin-top: 6px; white-space: normal; overflow-wrap: anywhere; }
+.transfer-job-error { color: var(--red); margin-top: 6px; white-space: normal; overflow-wrap: anywhere; }
 .transfer-job details { margin-top: 6px; white-space: normal; }
 .transfer-settings { margin-bottom: 12px; white-space: normal; }
 .transfer-settings label { display: flex; align-items: center; gap: 5px; }
@@ -421,7 +436,7 @@
 .forward-popover { position: fixed; z-index: 1000; right: 12px; bottom: 30px; width: min(540px, calc(100vw - 32px)); max-height: calc(100vh - 70px); overflow: auto; padding: 16px; background: var(--bg-panel); color: var(--fg); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 30px #0004; font-size: 12px; }
 .forward-popover p { white-space: normal; line-height: 1.5; color: var(--fg-dim); }
 .forward-popover h4 { margin: 16px 0 8px; }
-.forward-popover button, .forward-popover input, .forward-popover select { font: inherit; color: inherit; background: var(--bg-field); border: 1px solid var(--border); border-radius: 3px; padding: 4px 6px; }
+.forward-popover button, .forward-popover input, .forward-popover select { font: inherit; color: inherit; background: var(--bg-field); border: 1px solid var(--border); border-radius: var(--radius-xs); padding: var(--sp-4) var(--sp-6); }
 .forward-popover button { cursor: pointer; }
 .forward-popover button:disabled { opacity: .5; cursor: default; }
 .forward-fields { display: grid; grid-template-columns: minmax(0, 1fr) 100px; gap: 12px; margin: 12px 0; }

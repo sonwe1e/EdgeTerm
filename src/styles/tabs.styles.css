@@ -18,6 +18,13 @@
   display: none;
 }
 
+/* F6 lands on the strip itself; the ring has to say so even before the user
+   steps into a tab. */
+.tabstrip:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
 /* Edge fades hint that more tabs are hidden past either side. Both are hung
    off zero-width sticky anchors so they stay put while the tabs scroll under
    them; the right one lives on the already-sticky actions block. */
@@ -79,8 +86,12 @@
   isolation: isolate;
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 0 10px;
+  gap: var(--sp-6);
+  padding: 0 var(--sp-10);
+  /* Never shrink below a readable title: past that the strip scrolls and
+     offers the all-sessions list instead of squeezing every label to 0px. */
+  flex: 0 0 auto;
+  min-width: 112px;
   max-width: 220px;
   border-right: 1px solid var(--border);
   color: var(--fg-dim);
@@ -133,7 +144,7 @@
   left: 18%;
   width: 3px;
   height: 4px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   opacity: 0;
   background: var(--session-color, var(--accent));
   box-shadow: 0 0 5px var(--session-color, var(--accent));
@@ -316,6 +327,22 @@
   background: var(--bg-hover);
 }
 
+/* Keyboard focus: the tab is the strip's only Tab stop, so the ring has to
+   read clearly inside a surface that clips its own children. */
+.tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* A pointer user sees it on hover; a keyboard user only when focus reaches
+   the tab, so the close target stays reachable either way. */
+.tab:hover .tab-close,
+.tab.is-active .tab-close,
+.tab:focus-visible .tab-close,
+.tab:focus-within .tab-close {
+  visibility: visible;
+}
+
 /* Dragged tab: lifted above its neighbours while it follows the pointer; the
    strip drops hover feedback so the reflowing tabs stay calm. */
 .tabstrip.is-reordering {
@@ -387,6 +414,7 @@
 }
 
 .tab-label {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -395,17 +423,26 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  flex: 0 0 22px;
+  width: 22px;
+  height: var(--h-control-sm);
   padding: 0;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   color: var(--fg-faint);
   visibility: hidden;
 }
 
-.tab:hover .tab-close,
-.tab.is-active .tab-close {
-  visibility: visible;
+.tab-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Touch has no hover: without this the close target is undiscoverable and
+   reachable only via context menu or keyboard. */
+@media (pointer: coarse) {
+  .tab-close {
+    visibility: visible;
+  }
 }
 
 .tab-close:hover {
@@ -416,9 +453,9 @@
 .tabstrip-actions {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--sp-2);
   margin-left: auto;
-  padding: 0 8px;
+  padding: 0 var(--sp-8);
   position: sticky;
   right: 0;
   background: var(--bg-app);
@@ -430,14 +467,17 @@
 .tab-workspace {
   max-width: 84px;
   margin-left: 2px;
-  padding: 0 5px;
-  border-radius: 8px;
+  padding: 0 var(--sp-4);
+  border-radius: var(--radius-lg);
   background: color-mix(in srgb, var(--accent) 20%, transparent);
   color: var(--accent-bright);
-  font-size: 9px;
+  font-size: var(--fs-2xs);
   line-height: 15px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex: none;
+  /* Shrinks (and ellipsises) before the close button is pushed out of a tab
+     held at its minimum width. */
+  flex: 0 1 auto;
+  min-width: 0;
 }

@@ -24,11 +24,11 @@
 }
 
 .menubar {
-  height: 28px;
-  flex: 0 0 28px;
+  height: var(--h-control-lg);
+  flex: 0 0 var(--h-control-lg);
   display: flex;
   align-items: center;
-  padding: 0 8px;
+  padding: 0 var(--sp-8);
   background: var(--bg-app);
   border-bottom: 1px solid var(--border);
 }
@@ -42,7 +42,7 @@
   display: flex;
   align-items: center;
   align-self: stretch;
-  gap: 2px;
+  gap: var(--sp-2);
   flex: 2 1 20%;
 }
 
@@ -56,7 +56,7 @@
 }
 
 .menubar-title {
-  font-size: 12px;
+  font-size: var(--fs);
   color: var(--fg-dim);
   white-space: nowrap;
   overflow: hidden;
@@ -67,7 +67,7 @@
 /* macOS: the traffic lights sit ~2px below the bar's midline, so nudge the
    menu titles down onto their centre line. */
 .menubar.is-mac {
-  padding-top: 4px;
+  padding-top: var(--sp-4);
 }
 
 /* Leave room for the macOS traffic lights drawn over the overlay title bar
@@ -98,7 +98,7 @@
 .layout-actions {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--sp-2);
   margin: 0 4px;
 }
 
@@ -145,11 +145,24 @@
   color: #fff;
 }
 
+/* The title button and its panel. A button cannot hold the menu (it may not
+   contain interactive content), so this wrapper is the panel's positioning
+   box and keeps the title and dropdown on one row. */
+.menu-item-slot {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
 .menu-item {
   position: relative;
   padding: 3px 9px;
   border-radius: 4px;
   color: var(--fg);
+  background: none;
+  border: none;
+  font: inherit;
+  cursor: default;
   white-space: nowrap;
   transition: background-color 80ms ease;
 }
@@ -157,6 +170,14 @@
 .menu-item:hover,
 .menu-item.is-open {
   background: var(--bg-hover);
+}
+
+/* Reached with Alt / F10 or by tabbing: the title has to show where focus is
+   without the pointer being over it. */
+.menu-item:focus-visible {
+  background: var(--bg-hover);
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 /* Dropdowns follow the macOS / VS Code menu idiom: a raised, slightly
@@ -190,13 +211,16 @@
   }
 }
 
-/* The menubar's dropdowns share one fixed, narrow width so the panels do
-   not step in and out as the pointer moves along the bar; a label that does
-   not fit is cut with an ellipsis (the shortcut stays whole). Submenus and
-   context menus stay content-sized. */
-.menu-item > .menu-dropdown {
-  width: 224px;
-  min-width: 0;
+/* The menubar's dropdowns share one width per menu so the panels do not
+   step in and out as the pointer moves along the bar, but they are no longer
+   cut to a fixed 224px: a long label widens the panel up to the window
+   edge, and only then gets the ellipsis (the shortcut stays whole).
+   Submenus and context menus stay content-sized. */
+.menu-item > .menu-dropdown,
+.menu-item + .menu-dropdown {
+  min-width: 224px;
+  width: max-content;
+  max-width: min(440px, calc(100vw - 24px));
 }
 
 @keyframes menu-in {
@@ -277,9 +301,10 @@
   display: none;
 }
 
-/* Opened by the pointer (submenuHover.ts) or by keyboard focus inside it. */
-.menu-submenu-entry.is-open > .menu-submenu,
-.menu-submenu-entry:focus-within > .menu-submenu {
+/* Opened by the pointer (submenuHover.ts) or by the keyboard, both of which
+   mark the row `is-open`. Focus alone must not keep it open: ArrowLeft
+   closes the submenu and returns focus to this row. */
+.menu-submenu-entry.is-open > .menu-submenu {
   display: block;
 }
 
@@ -335,10 +360,13 @@
   transform: translate(-50%, -50%);
 }
 
+/* The leading column is line art: command icons are 1px codicons, so a
+   chosen box draws an accent frame and an accent tick instead of a solid
+   block that would outweigh every icon beside it. Radio choices already
+   read this way (ring plus dot), so both controls sit in one weight. */
 .menu-check.is-check.is-checked {
-  background: var(--accent);
   border-color: var(--accent);
-  color: var(--accent-contrast);
+  color: var(--accent);
 }
 
 .menu-check.is-radio.is-checked {
@@ -372,9 +400,9 @@
 
 .menu-entry:hover .menu-check.is-check.is-checked,
 .menu-entry:focus-visible .menu-check.is-check.is-checked {
-  background: var(--accent-contrast);
+  background: transparent;
   border-color: var(--accent-contrast);
-  color: var(--accent);
+  color: var(--accent-contrast);
 }
 
 .menu-entry:hover .menu-check.is-radio.is-checked,
@@ -396,9 +424,10 @@
 }
 
 .menu-shortcut {
+  flex: none;
   margin-left: 24px;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
 }
@@ -414,7 +443,7 @@
 .menu-heading {
   padding: 6px 10px 3px;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   font-weight: 500;
   letter-spacing: 0.01em;
   white-space: nowrap;
@@ -446,7 +475,7 @@
   flex-direction: column;
   background: var(--bg-panel);
   min-height: 0;
-  font-size: var(--panel-font-size);
+  font-size: var(--fs);
 }
 
 /* The terminal area with the docks around it; the drop overlay of a panel
@@ -513,14 +542,14 @@
   height: auto;
   min-height: 36px;
   flex-wrap: wrap;
-  row-gap: 4px;
-  padding-top: 6px;
-  padding-bottom: 6px;
+  row-gap: var(--sp-4);
+  padding-top: var(--sp-6);
+  padding-bottom: var(--sp-6);
 }
 
 .sidebar .sender-options {
   flex-wrap: wrap;
-  row-gap: 4px;
+  row-gap: var(--sp-4);
 }
 
 .sidebar .sender-compose {

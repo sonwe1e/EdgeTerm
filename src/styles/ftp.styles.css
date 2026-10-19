@@ -20,7 +20,7 @@
   display: grid;
   flex: 1;
   place-content: center;
-  gap: 7px;
+  gap: var(--sp-6);
   text-align: center;
   color: var(--fg-dim);
 }
@@ -32,6 +32,12 @@
 
 .ftp-session-state.is-error strong {
   color: var(--red);
+}
+
+/* The reconnect action sits under the explanation, centred like the text. */
+.ftp-session-state .btn {
+  justify-self: center;
+  margin-top: 4px;
 }
 
 .ftp-dual-pane {
@@ -56,8 +62,8 @@
   flex: 0 0 48px;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 6px 10px;
+  gap: var(--sp-10);
+  padding: var(--sp-6) var(--sp-10);
   background: var(--bg-panel-alt);
   border-bottom: 1px solid var(--border);
 }
@@ -83,14 +89,14 @@
 
 .ftp-browser-header > div:first-child > span {
   color: var(--fg-faint);
-  font-size: 10px;
+  font-size: var(--fs-xs);
 }
 
 .ftp-browser-actions {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 2px;
+  gap: var(--sp-2);
 }
 
 .ftp-tool-button {
@@ -100,7 +106,7 @@
   align-items: center;
   justify-content: center;
   padding: 0;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   color: var(--fg-dim);
 }
 
@@ -123,7 +129,7 @@
   display: flex;
   flex: 0 0 35px;
   align-items: center;
-  padding: 4px 8px;
+  padding: var(--sp-4) var(--sp-8);
   border-bottom: 1px solid var(--border);
 }
 
@@ -132,7 +138,7 @@
   min-width: 0;
   background: var(--bg-field);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-sm);
 }
 
 .ftp-browser-columns,
@@ -144,10 +150,10 @@
 .ftp-browser-columns {
   flex: 0 0 24px;
   align-items: center;
-  padding: 0 9px;
+  padding: 0 var(--sp-8);
   border-bottom: 1px solid var(--border);
   color: var(--fg-faint);
-  font-size: 10px;
+  font-size: var(--fs-xs);
 }
 
 .ftp-browser-columns > :nth-child(n + 2),
@@ -192,10 +198,10 @@
   min-height: 29px;
   height: 29px;
   align-items: center;
-  padding: 3px 9px;
+  padding: var(--sp-3) var(--sp-8);
   border-bottom: 1px solid var(--row-separator);
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   cursor: default;
 }
 
@@ -249,7 +255,7 @@
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 7px;
+  gap: var(--sp-6);
   overflow: hidden;
 }
 
@@ -277,7 +283,7 @@
 }
 
 .ftp-browser-message {
-  padding: 18px 12px;
+  padding: 18px var(--sp-12);
   color: var(--fg-faint);
   text-align: center;
   white-space: pre-wrap;
@@ -292,11 +298,11 @@
   flex: 0 0 25px;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 0 9px;
+  gap: var(--sp-12);
+  padding: 0 var(--sp-8);
   border-top: 1px solid var(--border);
   color: var(--fg-faint);
-  font-size: 10px;
+  font-size: var(--fs-xs);
 }
 
 .ftp-browser-footer span:last-child {
@@ -312,8 +318,8 @@
   align-items: center;
   justify-content: center;
   flex-direction: column;
-  gap: 10px;
-  padding: 10px;
+  gap: var(--sp-10);
+  padding: var(--sp-10);
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   background: var(--bg-app);
@@ -325,13 +331,13 @@
   min-height: 32px;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 5px 7px;
+  gap: var(--sp-6);
+  padding: var(--sp-4) var(--sp-6);
   border: 1px solid var(--border-strong);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--bg-panel-alt);
   color: var(--fg);
-  font-size: 11px;
+  font-size: var(--fs-sm);
 }
 
 .ftp-transfer-button:hover:not(:disabled) {
@@ -349,25 +355,25 @@
   display: flex;
   flex: 0 0 28px;
   align-items: center;
-  padding: 0 10px;
+  padding: 0 var(--sp-10);
   border-top: 1px solid var(--border);
   background: var(--bg-panel-alt);
   color: var(--fg-faint);
-  font-size: 10px;
+  font-size: var(--fs-xs);
 }
 
 .ftp-transfer-status.has-transfer {
   display: block;
   flex-basis: auto;
   min-height: 49px;
-  padding: 6px 10px;
+  padding: var(--sp-6) var(--sp-10);
 }
 
 .ftp-transfer-summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--sp-12);
   color: var(--fg-dim);
 }
 
@@ -387,7 +393,7 @@
   height: 5px;
   margin-top: 6px;
   overflow: hidden;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   background: var(--border-strong);
 }
 
@@ -421,13 +427,21 @@
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .ftp-transfer-progress > span.is-indeterminate {
+    width: 100%;
+    opacity: 0.45;
+    animation: none;
+  }
+}
+
 @media (max-width: 800px) {
   .ftp-dual-pane {
     grid-template-columns: minmax(220px, 1fr) 74px minmax(220px, 1fr);
   }
 
   .ftp-transfer-rail {
-    padding: 6px;
+    padding: var(--sp-6);
   }
 
   .ftp-transfer-button {
@@ -452,7 +466,7 @@
 .term-gutter {
   position: relative;
   flex: 0 0 auto;
-  padding: 0 8px 0 6px;
+  padding: 0 var(--sp-8) 0 var(--sp-6);
   background: var(--bg-terminal);
   border-right: 1px solid var(--gutter-border);
   font-family: var(--font-mono);
@@ -469,7 +483,7 @@
 .gutter-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-8);
   /* Set on .term-gutter by TerminalController.measureCell. */
   height: var(--gutter-cell);
   line-height: var(--gutter-cell);
@@ -509,7 +523,7 @@
   position: relative; /* anchors the completion popup */
   flex: 1;
   min-width: 0;
-  padding-left: 6px;
+  padding-left: var(--sp-6);
 }
 
 /* IDE-style completion popup: history commands matching the typed input,
@@ -525,7 +539,7 @@
   position: absolute;
   z-index: 7;
   min-width: 180px;
-  padding: 3px;
+  padding: var(--sp-3);
   overflow: hidden;
   background: color-mix(
     in srgb,
@@ -533,7 +547,7 @@
     transparent
   );
   border: 1px solid color-mix(in srgb, var(--border-strong) 70%, transparent);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   -webkit-backdrop-filter: blur(1px);
   backdrop-filter: blur(1px);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
@@ -566,9 +580,9 @@
 .term-suggest-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 4px 3px 10px;
-  border-radius: 4px;
+  gap: var(--sp-6);
+  padding: var(--sp-3) var(--sp-4) var(--sp-3) var(--sp-10);
+  border-radius: var(--radius-sm);
   color: var(--fg);
   cursor: pointer;
   /* Glow in the panel color separates the row text from the output showing
@@ -593,7 +607,7 @@
   flex: none;
   width: 16px;
   height: 16px;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   color: var(--fg-dim);
   visibility: hidden;
 }
@@ -630,7 +644,7 @@
 }
 
 .term-suggest-match {
-  color: var(--accent);
+  color: var(--accent-bright);
   font-weight: 600;
 }
 
@@ -675,14 +689,14 @@
   z-index: 8;
   max-width: min(520px, calc(100% - 32px));
   overflow: hidden;
-  padding: 7px 11px;
+  padding: var(--sp-6) var(--sp-12);
   border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
-  border-radius: 5px;
+  border-radius: var(--radius-md);
   background: var(--notice-info-bg);
   box-shadow: var(--shadow-notice);
   color: var(--notice-info-fg);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   line-height: 1.4;
   pointer-events: none;
   text-overflow: ellipsis;
@@ -737,12 +751,12 @@
 
 .term-empty kbd {
   display: inline-block;
-  padding: 1px 5px;
+  padding: 1px var(--sp-4);
   border: 1px solid var(--border-strong);
   border-bottom-width: 2px;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   background: var(--bg-panel-alt);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-sm);
 }
 

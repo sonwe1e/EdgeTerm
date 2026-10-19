@@ -7,6 +7,13 @@
   overflow: hidden;
 }
 
+/* A dock is an F6 region: it takes focus as a whole so the next Tab enters
+   the panel, and shows a hairline while it holds it. */
+.dock-slot:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
 .panel + .panel {
   border-top: 1px solid var(--border);
 }
@@ -18,8 +25,8 @@
   height: 36px;
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 0 6px 0 12px;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-6) 0 var(--sp-12);
   color: var(--fg-dim);
   background: var(--bg-panel);
 }
@@ -29,11 +36,13 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-6);
+  overflow: hidden;
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   font-weight: 600;
   letter-spacing: 0.06em;
+  text-overflow: ellipsis;
   text-transform: uppercase;
   white-space: nowrap;
 }
@@ -46,10 +55,10 @@
    dense chrome: colour identifies the workspace without tinting its data. */
 .panel-title:is(.is-session, .is-sender, .is-filer) {
   flex: 0 1 auto;
-  height: 24px;
+  height: var(--h-control);
   margin-right: auto;
-  padding: 0 8px;
-  border-radius: 8px;
+  padding: 0 var(--sp-8);
+  border-radius: var(--radius-lg);
   letter-spacing: 0.035em;
 }
 
@@ -74,11 +83,11 @@
 
 /* Secondary word beside a title ("local", "ssh"): a lowercase pill. */
 .panel-badge {
-  padding: 1px 6px;
-  border-radius: 999px;
+  padding: 1px var(--sp-6);
+  border-radius: var(--radius-pill);
   background: color-mix(in srgb, var(--fg) 9%, transparent);
   color: var(--fg-faint);
-  font-size: 10px;
+  font-size: var(--fs-xs);
   font-weight: 500;
   letter-spacing: 0.02em;
   text-transform: none;
@@ -88,10 +97,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: var(--h-control-sm);
+  height: var(--h-control-sm);
   padding: 0;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   color: var(--fg-faint);
   line-height: 1;
   transition:
@@ -129,15 +138,15 @@
 
 .panel-filter {
   position: relative;
-  padding: 2px 10px 8px;
+  padding: var(--sp-2) var(--sp-10) var(--sp-8);
 }
 
 .panel-filter input {
   width: 100%;
-  height: 28px;
-  padding: 0 8px 0 30px;
-  border-color: transparent;
-  border-radius: 8px;
+  height: var(--h-control-lg);
+  padding: 0 var(--sp-8) 0 30px;
+  border-color: var(--border);
+  border-radius: var(--radius-lg);
   background: var(--bg-field);
 }
 
@@ -155,16 +164,40 @@
   left: 17px;
   display: flex;
   align-items: center;
-  height: 28px;
+  height: var(--h-control-lg);
   color: var(--fg-faint);
   pointer-events: none;
 }
 
 .panel-empty {
-  padding: 12px;
+  padding: var(--sp-12);
   color: var(--fg-faint);
   text-align: center;
   line-height: 1.6;
+}
+
+/* A failed listing is not the same surface as an empty folder: it must read
+   as a failure at a glance and carry the one action that can recover. */
+.panel-empty.is-error {
+  color: var(--red);
+}
+.panel-empty-action {
+  display: block;
+  margin: 8px auto 0;
+  height: var(--h-control);
+  padding: 0 var(--sp-10);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel-alt);
+  color: var(--fg);
+  font-size: var(--fs-sm);
+}
+.panel-empty-action:hover {
+  background: var(--bg-hover);
+}
+.panel-empty-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* --- tree / list rows ----------------------------------------------------- */
@@ -174,11 +207,11 @@
 .row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-6);
   height: var(--row-h);
   margin: 1px 6px;
-  padding: 0 6px;
-  border-radius: 6px;
+  padding: 0 var(--sp-6);
+  border-radius: var(--radius-md);
   white-space: nowrap;
   cursor: default;
 }
@@ -212,7 +245,7 @@
   flex: 0 0 8px;
   width: 8px;
   height: 8px;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
 }
 
 .row-label {
@@ -223,7 +256,7 @@
 
 .row-meta {
   color: var(--fg-faint);
-  font-size: calc(var(--panel-font-size) - 1px);
+  font-size: var(--fs-sm);
 }
 
 .row-caret {
@@ -300,7 +333,7 @@
 .menu-entry.is-danger:hover,
 .menu-entry.is-danger:focus-visible {
   background: var(--red);
-  color: #ffffff;
+  color: var(--danger-contrast);
 }
 
 .menu-entry:disabled {

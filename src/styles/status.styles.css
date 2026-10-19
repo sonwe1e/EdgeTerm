@@ -2,22 +2,33 @@
 
 .statusbar {
   flex: 0 0 24px;
-  height: 24px;
+  height: var(--h-control);
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 0 12px;
+  gap: var(--sp-16);
+  padding: 0 var(--sp-12);
   background: var(--bg-app);
   border-top: 1px solid var(--border);
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--fs-sm);
 }
 
+/* F6 can focus the bar as a region (data-focus-region); a browser-default
+   focus ring around a full-width strip reads as a broken white frame, so the
+   region is marked with a hairline of accent inside its own edge instead. */
+.statusbar:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* The bar never grows to fit its contents: the message absorbs the free
+   space and ellipsises, while every fixed item keeps its width. */
 .status-spacer {
-  flex: 1;
+  flex: 0 0 0;
 }
 
 .status-item {
+  flex: none;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -25,7 +36,66 @@
 .status-item.is-error {
   color: var(--red);
 }
-.statusbar > .status-item:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* The message may carry a dismiss control; the text, not the row, ellipsises.
+   It is the only item allowed to shrink: a long status or error must never
+   push the resource summary or the session details off the bar. */
+.status-message {
+  display: inline-flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--sp-6);
+  min-width: 0;
+}
+.status-message-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.status-dismiss {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  /* A 20px target around the 16px icon: the icon keeps its size, the button
+     meets the pointer more easily without changing the bar's rhythm. */
+  width: 20px;
+  height: var(--h-control-xs);
+  border-radius: var(--radius-xs);
+  color: inherit;
+  opacity: 0.7;
+}
+.status-dismiss:hover {
+  opacity: 1;
+  background: var(--bg-hover);
+}
+.status-dismiss:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Transfers, tunnels and the resource summary are buttons, so they get the
+   same hover/open affordance as every other clickable item in the chrome.
+   The negative margin keeps the bar's rhythm while the tint grows outward. */
+button.status-item {
+  margin: 0 -4px;
+  padding: 0 var(--sp-4);
+  border-radius: var(--radius-sm);
+}
+button.status-item:hover {
+  background: var(--bg-hover);
+}
+button.status-item[aria-expanded="true"] {
+  background: var(--bg-active);
+}
+button.status-item:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+/* The message slot is the shrinkable one; the ellipsis lives on its text so
+   the dismiss button keeps its full hit area. */
+.statusbar > .status-item:first-child { min-width: 0; }
 .statusbar .resource-monitor, .statusbar .forward-center, .statusbar .transfer-center { flex-shrink: 0; }
 
 /* The active session is being recorded to a file; the button opens the
@@ -33,9 +103,9 @@
 .status-recording {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 0 4px;
-  border-radius: 4px;
+  gap: var(--sp-3);
+  padding: 0 var(--sp-4);
+  border-radius: var(--radius-sm);
   color: var(--fg);
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -53,11 +123,16 @@
 .status-legacy {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: var(--sp-3);
   cursor: default;
 }
 .status-legacy .icon {
   color: var(--yellow);
+}
+
+/* A popover's own failure reads as a failure, not as body copy. */
+.status-popover-error {
+  color: var(--red);
 }
 
 /* --- splitters ------------------------------------------------------------ */
@@ -77,7 +152,15 @@
   position: relative;
   z-index: 5;
   flex: 0 0 1px;
-  background: var(--border);
+  /* The resting line is deliberately visible: at --border it barely cleared
+     the panel edges, so the boundary read as a seam rather than a sash. */
+  background: var(--border-strong);
+}
+
+/* Keyboard focus is shown by the same 3px accent line the pointer gets, so
+   the browser's default ring (which would trace a 1px-wide strip) is off. */
+.splitter:focus-visible {
+  outline: none;
 }
 
 .splitter::before,
@@ -132,6 +215,7 @@
 }
 
 .splitter:hover::before,
+.splitter:focus-visible::before,
 .splitter.is-dragging::before {
   opacity: 1;
 }

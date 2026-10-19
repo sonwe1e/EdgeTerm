@@ -7,10 +7,10 @@
   z-index: 10;
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 5px;
+  gap: var(--sp-4);
+  padding: var(--sp-4);
   border: 1px solid var(--border-strong);
-  border-radius: 5px;
+  border-radius: var(--radius-md);
   background: var(--bg-panel);
   box-shadow: var(--shadow-pop);
 }
@@ -22,10 +22,10 @@
 
 .terminal-search .search-count {
   min-width: 56px;
-  padding: 0 2px;
+  padding: 0 var(--sp-2);
   text-align: center;
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -48,7 +48,9 @@
  * pane for its strip.
  */
 .workspace {
-  --tabstrip-height: 30px;
+  /* The strip grows with the interface type so a large panel font does not
+     sit in a 30px band; 30px stays the floor at the default 12px. */
+  --tabstrip-height: max(30px, calc(var(--panel-font-size) + 18px));
   position: relative;
   flex: 1;
   min-height: 0;
@@ -177,9 +179,9 @@
   z-index: 1000;
   pointer-events: none;
   max-width: 220px;
-  padding: 4px 10px;
+  padding: var(--sp-4) var(--sp-10);
   border: 1px solid var(--border-strong);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--bg-panel);
   box-shadow: var(--shadow-pop);
   color: var(--fg);
