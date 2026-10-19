@@ -21,6 +21,11 @@ pub fn spawn(
         let mut pump = OutputPump::new(output, recorder);
         let sftp = Arc::new(tokio::sync::Mutex::new(None));
         let mut exit_status: Option<u32> = None;
+        // Why the session ended on its own when it was not a clean remote
+        // exit: the transport dropped under it. Reported so the user is told
+        // a lost connection rather than left with a bare "closed"; see
+        // `close_reason`.
+        let mut lost: Option<String> = None;
         // Set when the frontend asked for the close; see `emit_state`.
         let mut close_requested = false;
 
@@ -38,20 +43,37 @@ pub fn spawn(
                         Some(ChannelMsg::Data { data }) => pump.push(&data),
                         Some(ChannelMsg::ExtendedData { data, .. }) => pump.push(&data),
                         Some(ChannelMsg::ExitStatus { exit_status: code }) => exit_status = Some(code),
-                        Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) | None => break,
+                        // The remote closed the shell — a normal exit, or the
+                        // channel closing — whose exit status, if any, is the
+                        // reason reported below.
+                        Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) => break,
+                        // The transport ended with no channel close: a dropped
+                        // connection, not a clean exit, so it is reported lost.
+                        None => {
+                            lost = Some("the connection was lost".to_string());
+                            break;
+                        }
                         Some(_) => {}
                     }
                 }
                 cmd = rx.recv() => {
                     match cmd {
                         Some(SessionCommand::Write(data)) => {
-                            if writer.data_bytes(data).await.is_err() {
+                            if let Err(e) = writer.data_bytes(data).await {
+                                lost = Some(format!(
+                                    "the connection was lost while sending input: {e}"
+                                ));
                                 break;
                             }
                         }
                         Some(SessionCommand::WriteConfirmed { data, reply }) => {
                             let result = writer.data_bytes(data).await.map_err(AppError::from);
                             let failed = result.is_err();
+                            if let Err(e) = &result {
+                                lost = Some(format!(
+                                    "the connection was lost while sending input: {e}"
+                                ));
+                            }
                             let _ = reply.send(result);
                             if failed {
                                 break;
@@ -90,16 +112,48 @@ pub fn spawn(
 
         pump.finish().await;
         if !close_requested && !pump.is_closed() {
-            emit_state(
-                &app,
-                &id,
-                "closed",
-                exit_status.map(|c| format!("exit status {c}")),
-            );
+            emit_state(&app, &id, "closed", close_reason(lost, exit_status));
         }
         // Only the channel is this session's own; whether the connection
         // under it closes now depends on the other tabs sharing it.
         drop(handle);
         drop(transport);
     });
+}
+
+/// What a shell session reports when it ends on its own: the reason the
+/// transport was lost if it dropped under the session, otherwise the remote's
+/// exit status. A lost connection is the more useful of the two when a stalled
+/// transfer or a killed session leaves both a dropped transport and a stale
+/// exit code behind — the user reconnects on a lost link, not on an exit code.
+fn close_reason(lost: Option<String>, exit_status: Option<u32>) -> Option<String> {
+    lost.or_else(|| exit_status.map(|code| format!("exit status {code}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::close_reason;
+
+    #[test]
+    fn a_lost_connection_is_reported_over_a_missing_or_stale_exit_status() {
+        // The transport dropped and no exit status ever arrived: the loss is
+        // all there is to report.
+        assert_eq!(
+            close_reason(Some("the connection was lost".to_string()), None),
+            Some("the connection was lost".to_string())
+        );
+        // A clean remote exit keeps its exit status.
+        assert_eq!(
+            close_reason(None, Some(0)),
+            Some("exit status 0".to_string())
+        );
+        // When the transport dropped, that reason wins over any exit status
+        // the session happened to record before it went.
+        assert_eq!(
+            close_reason(Some("lost".to_string()), Some(1)),
+            Some("lost".to_string())
+        );
+        // A bare channel close with neither reports nothing extra.
+        assert_eq!(close_reason(None, None), None);
+    }
 }
