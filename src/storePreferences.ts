@@ -15,7 +15,13 @@ import type { CursorStyle, GutterMode, RightClickAction } from "./terminal";
 import type { ThemeMode } from "./types";
 import { THEME_MODES } from "./types";
 
-export const PANEL_FONT_SIZE = { min: 9, max: 18, default: 12 } as const;
+/**
+ * The panel chrome is set in this size, and the steps below it derive from
+ * it with a floor (see --fs-* in foundation.styles.css). 10px is the
+ * smallest base that still leaves a readable 8px step; the old 9px setting
+ * rendered derived text at 7px, below any usable minimum.
+ */
+export const PANEL_FONT_SIZE = { min: 10, max: 18, default: 12 } as const;
 
 export const BUFFER_FONT_SIZE = { min: 8, max: 32, default: 14 } as const;
 

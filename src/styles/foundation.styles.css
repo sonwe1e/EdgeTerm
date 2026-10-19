@@ -18,7 +18,9 @@
   --border-strong: #3c3c3c;
   --fg: #cccccc;
   --fg-dim: #9d9d9d;
-  --fg-faint: #6e7681;
+  /* Secondary text: every value here clears 4.5:1 on its own canvas, so a
+     hint or an empty-state line is readable, not just decoration. */
+  --fg-faint: #8b9199;
   --accent: #0078d4;
   /* --accent on its own tint is muddy here; the suggestion list's match
      highlight uses this lifted twin instead. Palettes whose accent stays
@@ -32,10 +34,15 @@
   --green: #89d185;
   --yellow: #cca700;
   --red: #f85149;
+  /* Text drawn on --red. White is only 3.35:1 on this red; a near-black ink
+     reads at 5.2:1 and keeps the button legible. */
+  --danger-contrast: #1a1a1a;
 
-  --scrollbar-thumb: #424242;
-  --scrollbar-thumb-hover: #4f4f4f;
-  --term-scrollbar-thumb-hover: #7a7a7a;
+  /* Scrollbars are controls: the thumb has to clear 3:1 against the panel
+     it sits on, or it is not findable without hunting for it. */
+  --scrollbar-thumb: #6a6a6a;
+  --scrollbar-thumb-hover: #7a7a7a;
+  --term-scrollbar-thumb-hover: #8b8b8b;
   --row-separator: rgba(255, 255, 255, 0.07);
   --swatch-ring: rgba(255, 255, 255, 0.1);
 
@@ -49,15 +56,15 @@
   --menu-separator: rgba(255, 255, 255, 0.09);
   --menu-mark: rgba(255, 255, 255, 0.32);
   --bg-track: #2d2d2d;
-  --bg-knob: #4b4b4b;
-  --shadow-knob: 0 1px 2px rgba(0, 0, 0, 0.4);
 
   --dir-label: #9cdcfe;
   --symlink-label: #c586c0;
 
   --gutter-border: #2b2b2b;
-  --gutter-time-fg: #5a5d63;
-  --gutter-line-fg: #6e7681;
+  /* Gutter text is text: both roles clear 4.5:1 on --bg-terminal, with the
+     line number kept stronger than the timestamp. */
+  --gutter-time-fg: #868b94;
+  --gutter-line-fg: #9aa1aa;
 
   --notice-info-bg: rgba(24, 33, 44, 0.95);
   --notice-info-fg: #85b6ff;
@@ -74,15 +81,47 @@
   --shadow-dialog: 0 20px 60px rgba(0, 0, 0, 0.5);
 
   --row-h: 26px;
+
+  /* Metrics. The values are pixel sizes, not rung numbers, so a declaration
+     reading var(--sp-6) renders 6px and nobody has to remember whether rung
+     3 is 8 or 10. A rung only exists because a value occurs three or more
+     times across the chrome; anything off the ladder stays a literal beside
+     the rule that needs it, since a token used once only names noise. These
+     are theme-independent: every [data-theme] block changes colors only.
+     Heights are never "snapped" to a neighbouring rung — a 1px change to a
+     control or row height shifts everything stacked below it. */
+  --sp-2: 2px;
+  --sp-3: 3px;
+  --sp-4: 4px;
+  --sp-6: 6px;
+  --sp-8: 8px;
+  --sp-10: 10px;
+  --sp-12: 12px;
+  --sp-16: 16px;
+
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --radius-pill: 999px;
+
+  --h-control-xs: 20px;
+  --h-control-sm: 22px;
+  --h-control: 24px;
+  --h-control-lg: 28px;
+  --h-bar: 30px;
+
   --panel-font-size: 12px;
   --buffer-font-size: 14px;
   /* Safety nets only: main.tsx overrides both with the stacks from fonts.ts
      — the platform's VS Code defaults, behind whatever family the user chose
      in Display Settings — before React mounts. */
   --font-ui:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-    "Microsoft YaHei", Roboto, sans-serif;
-  --font-mono: monospace;
+    -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC",
+    "Source Han Sans SC", Roboto, sans-serif;
+  --font-mono: Consolas, Menlo, Monaco, "Courier New", monospace;
 }
 
 /* The light palette follows VS Code Light Modern's strategy: a white editor
@@ -104,7 +143,7 @@
   --border-strong: #cecece;
   --fg: #3b3b3b;
   --fg-dim: #616161;
-  --fg-faint: #868686;
+  --fg-faint: #6f6f6f;
   --accent: #005fb8;
   --accent-bright: var(--accent);
   --accent-soft: #bed6ed;
@@ -113,11 +152,14 @@
   --panel-sender: #c2410c;
   --panel-filer: #087f6b;
   --green: #107c10;
-  --yellow: #bf8803;
+  /* 2.93:1 on the previous #bf8803 made "connecting" and warning text read
+     as decoration; this clears 5:1 without turning the hue into brown. */
+  --yellow: #8a6500;
   --red: #cd3131;
+  --danger-contrast: #ffffff;
 
-  --scrollbar-thumb: #c1c1c1;
-  --scrollbar-thumb-hover: #9a9a9a;
+  --scrollbar-thumb: #8f8f8f;
+  --scrollbar-thumb-hover: #7d7d7d;
   --term-scrollbar-thumb-hover: #6f6f6f;
   --row-separator: rgba(0, 0, 0, 0.08);
   --swatch-ring: rgba(0, 0, 0, 0.15);
@@ -125,19 +167,19 @@
   --bg-menu: #ffffff;
   --bg-menu-glass: rgba(255, 255, 255, 0.86);
   --border-menu: #d6d6d6;
-  --menu-highlight: rgba(255, 255, 255, 0.9);
+  /* A white highlight on white did nothing: the menu's top edge had no lit
+     line at all in the light theme. */
+  --menu-highlight: rgba(0, 0, 0, 0.05);
   --menu-separator: rgba(0, 0, 0, 0.09);
   --menu-mark: rgba(0, 0, 0, 0.32);
   --bg-track: #e6e6e6;
-  --bg-knob: #ffffff;
-  --shadow-knob: 0 1px 2px rgba(0, 0, 0, 0.14);
 
   --dir-label: #26569e;
   --symlink-label: #652d90;
 
   --gutter-border: #e5e5e5;
-  --gutter-time-fg: #a3a8ae;
-  --gutter-line-fg: #6e7681;
+  --gutter-time-fg: #6f747a;
+  --gutter-line-fg: #5b6167;
 
   --notice-info-bg: rgba(238, 246, 255, 0.96);
   --notice-info-fg: #005fb8;
@@ -175,7 +217,7 @@
   --border-strong: #252a34;
   --fg: #b2b8c4;
   --fg-dim: #767d8c;
-  --fg-faint: #555c6a;
+  --fg-faint: #7b8494;
   --accent: #8b87ff;
   --accent-bright: #a3a0ff;
   --accent-soft: #34365e;
@@ -186,9 +228,11 @@
   --green: #4fc38a;
   --yellow: #e0b070;
   --red: #ef8a83;
+  /* White on this soft red was 2.43:1 — the worst pair in the audit. */
+  --danger-contrast: #241416;
 
-  --scrollbar-thumb: #3d434f;
-  --scrollbar-thumb-hover: #4d5462;
+  --scrollbar-thumb: #5a6270;
+  --scrollbar-thumb-hover: #6a7383;
   --term-scrollbar-thumb-hover: #767d8c;
   --row-separator: rgba(255, 255, 255, 0.07);
   --swatch-ring: rgba(255, 255, 255, 0.1);
@@ -200,15 +244,13 @@
   --menu-separator: rgba(255, 255, 255, 0.09);
   --menu-mark: rgba(255, 255, 255, 0.32);
   --bg-track: #1f242e;
-  --bg-knob: #4f5665;
-  --shadow-knob: 0 1px 2px rgba(0, 0, 0, 0.4);
 
   --dir-label: #62b0f5;
   --symlink-label: #b98af5;
 
   --gutter-border: #1f232c;
-  --gutter-time-fg: #555c6a;
-  --gutter-line-fg: #767d8c;
+  --gutter-time-fg: #7b8494;
+  --gutter-line-fg: #98a1b0;
 
   --notice-info-bg: rgba(18, 26, 44, 0.95);
   --notice-info-fg: #8ab6f5;
@@ -234,21 +276,24 @@
   --border: #e4e4e0;
   --border-strong: #dededa;
   --fg: #3b3b42;
-  --fg-dim: #86868f;
-  --fg-faint: #acacb4;
+  /* Both secondary roles clear 4.5:1 on the paper canvas; the old
+     #86868f stopped at 3.28:1 and the status bar read as a watermark. */
+  --fg-dim: #66666f;
+  --fg-faint: #6f6f77;
   --accent: #5b57d8;
   --accent-bright: var(--accent);
   --accent-soft: #c4c2f2;
   --accent-contrast: #ffffff;
-  --panel-session: #2f7fd4;
-  --panel-sender: #b2740b;
-  --panel-filer: #0f8593;
+  --panel-session: #2a6fbc;
+  --panel-sender: #8f5c00;
+  --panel-filer: #0d7581;
   --green: #2f8a5b;
-  --yellow: #a8730f;
+  --yellow: #8a6500;
   --red: #cb4b40;
+  --danger-contrast: #ffffff;
 
-  --scrollbar-thumb: #c6c6cd;
-  --scrollbar-thumb-hover: #a8a8b1;
+  --scrollbar-thumb: #8e8e96;
+  --scrollbar-thumb-hover: #7a7a84;
   --term-scrollbar-thumb-hover: #86868f;
   --row-separator: rgba(0, 0, 0, 0.08);
   --swatch-ring: rgba(0, 0, 0, 0.15);
@@ -256,19 +301,17 @@
   --bg-menu: #ffffff;
   --bg-menu-glass: rgba(255, 255, 255, 0.86);
   --border-menu: #dededa;
-  --menu-highlight: rgba(255, 255, 255, 0.9);
+  --menu-highlight: rgba(0, 0, 0, 0.05);
   --menu-separator: rgba(0, 0, 0, 0.09);
   --menu-mark: rgba(0, 0, 0, 0.32);
   --bg-track: #eeeeea;
-  --bg-knob: #ffffff;
-  --shadow-knob: 0 1px 2px rgba(0, 0, 0, 0.14);
 
   --dir-label: #2f7fd4;
   --symlink-label: #8a3ee0;
 
   --gutter-border: #e4e4e0;
-  --gutter-time-fg: #acacb4;
-  --gutter-line-fg: #86868f;
+  --gutter-time-fg: #6f747a;
+  --gutter-line-fg: #5b6167;
 
   --notice-info-bg: rgba(240, 240, 253, 0.96);
   --notice-info-fg: #4d49cc;
@@ -306,12 +349,63 @@ body {
   user-select: none;
 }
 
+/* The interface type scale. It is declared on .app, not :root, because the
+   custom properties are resolved where they are declared: a value declared
+   on :root would freeze at the 12px default and never follow the panel font
+   setting the app writes on this element. Every step has a floor, so the
+   smallest setting can no longer produce 7px text. */
+.app {
+  --fs-2xs: max(8px, calc(var(--panel-font-size) - 3px));
+  --fs-xs: max(9px, calc(var(--panel-font-size) - 2px));
+  --fs-sm: max(10px, calc(var(--panel-font-size) - 1px));
+  --fs: var(--panel-font-size);
+  --fs-md: calc(var(--panel-font-size) + 2px);
+  /* Dense rows grow with the text they hold instead of clipping it. */
+  --row-h: max(26px, calc(var(--panel-font-size) + 14px));
+  /* Chrome text that never declared a size follows the setting too. */
+  font-size: var(--panel-font-size);
+}
+
+/* Wide letter-spacing is a Latin small-caps device; on CJK it only loosens
+   glyphs that are already square. The interface language is published on
+   <html> by setCurrentLanguage. */
+:lang(zh) .panel-title,
+:lang(zh) .panel-badge,
+:lang(zh) .wb-sidebar-heading,
+:lang(zh) .wb-hosts-label,
+:lang(zh) .filer-columns,
+:lang(zh) .menu-shortcut,
+:lang(zh) .menu-heading,
+:lang(zh) .term-empty h1 {
+  letter-spacing: 0;
+}
+
 button {
   font: inherit;
   color: inherit;
   background: none;
   border: none;
   cursor: pointer;
+}
+
+/* Keyboard focus is a first-class state across the chrome. The earlier
+   stylesheet had 88 :hover rules and 24 :focus-visible declarations, so
+   most controls changed nothing when reached by Tab. Transparent outline
+   colours are not an option here: a control that draws its own ring (menu
+   rows, tabs) still overrides this rule. */
+:where(
+    button,
+    a[href],
+    [role="tab"],
+    [role="treeitem"],
+    [role="option"],
+    [role="menuitem"],
+    [role="menuitemradio"],
+    [role="separator"],
+    [tabindex]:not([tabindex="-1"])
+  ):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 input,
@@ -321,8 +415,8 @@ textarea {
   color: var(--fg);
   background: var(--bg-field);
   border: 1px solid var(--border);
-  border-radius: 7px;
-  padding: 3px 6px;
+  border-radius: var(--radius-md);
+  padding: var(--sp-3) var(--sp-6);
   outline: none;
 }
 
@@ -340,6 +434,16 @@ input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--accent);
+}
+
+/* The three search/filter fields that used to clear the browser outline had
+   no replacement at all: Tab reached them and the screen did not change.
+   The ring is kept outside the border so the field does not shift. */
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 65%, transparent);
+  outline-offset: 1px;
 }
 
 ::-webkit-scrollbar {
