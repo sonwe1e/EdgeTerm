@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 
@@ -174,6 +175,58 @@ export function TabStrip({ paneId }: Props) {
   const splitDownKey = useAccelerator("splitDown");
   const stripRef = useRef<HTMLDivElement>(null);
 
+  // Roving tabindex: the strip is one Tab stop, and the arrows move both the
+  // shown tab and the focus along it, wrapping at either end the way the
+  // shortcut that steps tabs does.
+  const focusTab = useCallback(
+    (index: number) => {
+      const count = tabs.length;
+      if (count === 0) return;
+      const next = (index + count) % count;
+      setActive(tabs[next].info.id);
+      stripRef.current?.querySelectorAll<HTMLElement>(".tab")[next]?.focus();
+    },
+    [setActive, tabs],
+  );
+
+  // Keys are consumed here so they cannot also drive the browser (Backspace
+  // navigating back) or the window's shortcut handler. A drag only starts
+  // from a pointer press, so none of these can begin one.
+  const onTabKeyDown = (
+    event: ReactKeyboardEvent<HTMLDivElement>,
+    index: number,
+    id: string,
+  ) => {
+    switch (event.key) {
+      case "ArrowLeft":
+        event.preventDefault();
+        focusTab(index - 1);
+        return;
+      case "ArrowRight":
+        event.preventDefault();
+        focusTab(index + 1);
+        return;
+      case "Home":
+        event.preventDefault();
+        focusTab(0);
+        return;
+      case "End":
+        event.preventDefault();
+        focusTab(tabs.length - 1);
+        return;
+      case "Delete":
+      case "Backspace":
+        event.preventDefault();
+        requestCloseTabs([id]);
+        return;
+      case "Enter":
+      case " ":
+        event.preventDefault();
+        setActive(id);
+        return;
+    }
+  };
+
   // Which edges hide further tabs; drives the fade hints since the native
   // scrollbar is hidden and a mouse user otherwise has no cue that the strip
   // scrolls at all.
@@ -232,25 +285,33 @@ export function TabStrip({ paneId }: Props) {
     return [
       {
         label: t("common.close"),
+        icon: "close",
         shortcut: closeKey,
         action: () => requestCloseTabs([id]),
       },
       {
         label: t("tab.closeOthers"),
+        icon: "close-all",
         disabled: ids.length < 2,
         action: () => requestCloseTabs(ids.filter((other) => other !== id)),
       },
       {
         label: t("tab.closeLeft"),
+        icon: "arrow-left",
         disabled: index <= 0,
         action: () => requestCloseTabs(ids.slice(0, index)),
       },
       {
         label: t("tab.closeRight"),
+        icon: "arrow-right",
         disabled: index >= ids.length - 1,
         action: () => requestCloseTabs(ids.slice(index + 1)),
       },
-      { label: t("tab.closeAll"), action: () => requestCloseTabs(ids) },
+      {
+        label: t("tab.closeAll"),
+        icon: "clear-all",
+        action: () => requestCloseTabs(ids),
+      },
       "separator",
       // Only a live SSH tab has a connection to open another channel on.
       ...(tab && canDuplicateSshChannel(tab)
@@ -491,6 +552,10 @@ export function TabStrip({ paneId }: Props) {
         .filter(Boolean)
         .join(" ")}
       ref={stripRef}
+      role="tablist"
+      aria-label={t("tab.strip")}
+      data-focus-region="tabs"
+      tabIndex={-1}
       data-pane-id={paneId}
       onScroll={updateOverflow}
       onPointerDown={handlePointerDown}
@@ -518,14 +583,19 @@ export function TabStrip({ paneId }: Props) {
               .filter(Boolean)
               .join(" ")}
             style={{ "--session-color": sessionColor } as CSSProperties}
+            id={`tab-${tab.info.id}`}
+            role="tab"
+            aria-selected={active}
+            tabIndex={active ? 0 : -1}
             data-tab-id={tab.info.id}
             onMouseDown={() => setActive(tab.info.id)}
+            onKeyDown={(event) => onTabKeyDown(event, index, tab.info.id)}
             title={`${tab.info.protocol} · ${tab.info.address} · ${
               tab.commandActivity === "running"
                 ? activityLabel(tab)
                 : tab.commandActivity === "complete"
                   ? `${activityLabel(tab)}${t("tab.selectToView")}`
-                  : (tab.message ?? tab.state)
+                  : (tab.message ?? t(`tab.state.${tab.state}`))
             }`}
           >
             <span className="tab-command-activity" aria-hidden="true">
@@ -543,7 +613,12 @@ export function TabStrip({ paneId }: Props) {
             )}
             <button
               className="tab-close"
-              onMouseDown={(event) => {
+              // Kept out of the tab order: the strip is one Tab stop, and the
+              // tab's own Delete/Backspace close it.
+              tabIndex={-1}
+              // Guards the tab's own mousedown: closing must not select it.
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
                 event.stopPropagation();
                 requestCloseTabs([tab.info.id]);
               }}

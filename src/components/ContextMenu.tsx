@@ -65,17 +65,29 @@ function isAction(item: MenuItem): item is MenuAction {
   return typeof item !== "string" && "label" in item;
 }
 
+/** What the leading-column rule reads: an icon, a check state, nothing else. */
+interface LeadingCandidate {
+  icon?: IconName;
+  checked?: boolean;
+}
+
 /**
  * Whether one menu level needs the leading column. Any entry with an icon
  * or a check mark gives every row of that level the column, so the labels
- * share one left edge; levels without either stay compact.
+ * share one left edge; levels without either stay compact. Shared with the
+ * menubar so both surfaces answer the question the same way.
+ *
+ * Takes `unknown[]` because the menubar and the context menus carry their
+ * own entry types (entries, headings, separators); the rule only looks at
+ * two fields, and both call sites are already typed where the items are
+ * written.
  */
-function hasLeading(items: MenuItem[]): boolean {
-  return items.some(
-    (item) =>
-      isAction(item) &&
-      (item.icon !== undefined || item.checked !== undefined),
-  );
+export function hasLeading(items: readonly unknown[]): boolean {
+  return items.some((item) => {
+    if (typeof item !== "object" || item === null) return false;
+    const { icon, checked } = item as LeadingCandidate;
+    return icon !== undefined || checked !== undefined;
+  });
 }
 
 /**
@@ -114,9 +126,15 @@ export function menuRole(item: {
   return item.mark === "radio" ? "menuitemradio" : "menuitemcheckbox";
 }
 
-/** The leading column: the entry's icon, else its check mark or a blank. */
-function MenuLeading({ entry }: { entry: MenuAction }) {
-  if (entry.icon) {
+/** The leading column: a choice's check mark, else the entry's icon. */
+export function MenuLeading({
+  entry,
+}: {
+  entry: { icon?: IconName; checked?: boolean; mark?: MenuMark };
+}) {
+  // A choice owns the column: drawing an icon instead would hide the state
+  // the row exists to show, so a checkable entry never yields to one.
+  if (entry.checked === undefined && entry.icon) {
     return (
       <span className="menu-icon" aria-hidden="true">
         <Icon name={entry.icon} />

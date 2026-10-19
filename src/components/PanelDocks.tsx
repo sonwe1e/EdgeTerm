@@ -380,6 +380,7 @@ export function DockArea({ dock, panels, size, render }: DockAreaProps) {
       "separator",
       {
         label: `${t("dock.hide")} ${panels[panel]}`,
+        icon: "eye-closed",
         action: () => togglePanel(panel),
       },
     ];
@@ -403,6 +404,8 @@ export function DockArea({ dock, panels, size, render }: DockAreaProps) {
           <div
             className={`dock-slot${dragging === panel ? " is-dragging" : ""}`}
             data-panel={panel}
+            data-focus-region="panel"
+            tabIndex={-1}
             style={{ flex: `${weights[panel] ?? 1} 1 0px` }}
             onPointerDown={(event) => onPointerDown(panel, event)}
             onPointerMove={onPointerMove}

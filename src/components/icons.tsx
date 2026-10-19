@@ -6,38 +6,56 @@
 // Filer's file-type icons are a separate set (`FileIcon`).
 import add from "@vscode/codicons/src/icons/add.svg?raw";
 import arrowDown from "@vscode/codicons/src/icons/arrow-down.svg?raw";
+import arrowLeft from "@vscode/codicons/src/icons/arrow-left.svg?raw";
+import arrowRight from "@vscode/codicons/src/icons/arrow-right.svg?raw";
+import arrowSwap from "@vscode/codicons/src/icons/arrow-swap.svg?raw";
 import arrowUp from "@vscode/codicons/src/icons/arrow-up.svg?raw";
+import book from "@vscode/codicons/src/icons/book.svg?raw";
 import caseSensitive from "@vscode/codicons/src/icons/case-sensitive.svg?raw";
 import check from "@vscode/codicons/src/icons/check.svg?raw";
 import chevronDown from "@vscode/codicons/src/icons/chevron-down.svg?raw";
 import chevronLeft from "@vscode/codicons/src/icons/chevron-left.svg?raw";
 import chevronRight from "@vscode/codicons/src/icons/chevron-right.svg?raw";
 import circuitBoard from "@vscode/codicons/src/icons/circuit-board.svg?raw";
+import clockface from "@vscode/codicons/src/icons/clockface.svg?raw";
+import closeAll from "@vscode/codicons/src/icons/close-all.svg?raw";
 import clearAll from "@vscode/codicons/src/icons/clear-all.svg?raw";
 import clippy from "@vscode/codicons/src/icons/clippy.svg?raw";
 import close from "@vscode/codicons/src/icons/close.svg?raw";
 import cloudDownload from "@vscode/codicons/src/icons/cloud-download.svg?raw";
 import cloudUpload from "@vscode/codicons/src/icons/cloud-upload.svg?raw";
 import copy from "@vscode/codicons/src/icons/copy.svg?raw";
+import cursor from "@vscode/codicons/src/icons/cursor.svg?raw";
+import multipleWindows from "@vscode/codicons/src/icons/multiple-windows.svg?raw";
+import debugDisconnect from "@vscode/codicons/src/icons/debug-disconnect.svg?raw";
 import debugStop from "@vscode/codicons/src/icons/debug-stop.svg?raw";
 import diff from "@vscode/codicons/src/icons/diff.svg?raw";
+import discard from "@vscode/codicons/src/icons/discard.svg?raw";
 import findInFiles from "@vscode/codicons/src/icons/search-fuzzy.svg?raw";
 import debugPause from "@vscode/codicons/src/icons/debug-pause.svg?raw";
+import debugRestart from "@vscode/codicons/src/icons/debug-restart.svg?raw";
 import play from "@vscode/codicons/src/icons/play.svg?raw";
 import edit from "@vscode/codicons/src/icons/edit.svg?raw";
 import ellipsis from "@vscode/codicons/src/icons/ellipsis.svg?raw";
 import error from "@vscode/codicons/src/icons/error.svg?raw";
+// `export` is a reserved word, so the binding carries the suffix.
+import exportIcon from "@vscode/codicons/src/icons/export.svg?raw";
+import eyeClosed from "@vscode/codicons/src/icons/eye-closed.svg?raw";
 import folder from "@vscode/codicons/src/icons/folder.svg?raw";
 import folderOpened from "@vscode/codicons/src/icons/folder-opened.svg?raw";
+import globe from "@vscode/codicons/src/icons/globe.svg?raw";
 import goToFile from "@vscode/codicons/src/icons/go-to-file.svg?raw";
+import history from "@vscode/codicons/src/icons/history.svg?raw";
 import home from "@vscode/codicons/src/icons/home.svg?raw";
 import info from "@vscode/codicons/src/icons/info.svg?raw";
 import key from "@vscode/codicons/src/icons/key.svg?raw";
+import keyboardTab from "@vscode/codicons/src/icons/keyboard-tab.svg?raw";
 import linkExternal from "@vscode/codicons/src/icons/link-external.svg?raw";
 import listSelection from "@vscode/codicons/src/icons/list-selection.svg?raw";
 import move from "@vscode/codicons/src/icons/move.svg?raw";
 import newFile from "@vscode/codicons/src/icons/new-file.svg?raw";
 import newFolder from "@vscode/codicons/src/icons/new-folder.svg?raw";
+import newSession from "@vscode/codicons/src/icons/new-session.svg?raw";
 import newline from "@vscode/codicons/src/icons/newline.svg?raw";
 import plug from "@vscode/codicons/src/icons/plug.svg?raw";
 import record from "@vscode/codicons/src/icons/record.svg?raw";
@@ -49,11 +67,15 @@ import save from "@vscode/codicons/src/icons/save.svg?raw";
 import search from "@vscode/codicons/src/icons/search.svg?raw";
 import send from "@vscode/codicons/src/icons/send.svg?raw";
 import server from "@vscode/codicons/src/icons/server.svg?raw";
+import serverEnvironment from "@vscode/codicons/src/icons/server-environment.svg?raw";
+import shield from "@vscode/codicons/src/icons/shield.svg?raw";
 import splitHorizontal from "@vscode/codicons/src/icons/split-horizontal.svg?raw";
 import splitVertical from "@vscode/codicons/src/icons/split-vertical.svg?raw";
+import symbolColor from "@vscode/codicons/src/icons/symbol-color.svg?raw";
 import tag from "@vscode/codicons/src/icons/tag.svg?raw";
 import target from "@vscode/codicons/src/icons/target.svg?raw";
 import terminal from "@vscode/codicons/src/icons/terminal.svg?raw";
+import textSize from "@vscode/codicons/src/icons/text-size.svg?raw";
 import trash from "@vscode/codicons/src/icons/trash.svg?raw";
 import warning from "@vscode/codicons/src/icons/warning.svg?raw";
 import watch from "@vscode/codicons/src/icons/watch.svg?raw";
@@ -63,38 +85,55 @@ import wholeWord from "@vscode/codicons/src/icons/whole-word.svg?raw";
 const SVGS = {
   add,
   "arrow-down": arrowDown,
+  "arrow-left": arrowLeft,
+  "arrow-right": arrowRight,
+  "arrow-swap": arrowSwap,
   "arrow-up": arrowUp,
+  book,
   "case-sensitive": caseSensitive,
   check,
   "chevron-down": chevronDown,
   "chevron-left": chevronLeft,
   "chevron-right": chevronRight,
   "circuit-board": circuitBoard,
+  clockface,
+  "close-all": closeAll,
   "clear-all": clearAll,
   clippy,
   close,
   "cloud-download": cloudDownload,
   "cloud-upload": cloudUpload,
   copy,
+  cursor,
+  "debug-disconnect": debugDisconnect,
   "debug-stop": debugStop,
   diff,
+  discard,
   "find-in-files": findInFiles,
   "debug-pause": debugPause,
+  "debug-restart": debugRestart,
   play,
   edit,
   ellipsis,
   error,
+  export: exportIcon,
+  "eye-closed": eyeClosed,
   folder,
   "folder-opened": folderOpened,
+  globe,
   "go-to-file": goToFile,
+  history,
   home,
   info,
   key,
+  keyboard: keyboardTab,
   "link-external": linkExternal,
   "list-selection": listSelection,
   move,
+  "multiple-windows": multipleWindows,
   "new-file": newFile,
   "new-folder": newFolder,
+  "new-session": newSession,
   newline,
   plug,
   record,
@@ -106,11 +145,15 @@ const SVGS = {
   search,
   send,
   server,
+  "server-environment": serverEnvironment,
+  shield,
   "split-horizontal": splitHorizontal,
   "split-vertical": splitVertical,
+  "symbol-color": symbolColor,
   tag,
   target,
   terminal,
+  "text-size": textSize,
   trash,
   warning,
   watch,

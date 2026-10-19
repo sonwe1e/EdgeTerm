@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { createFrameBatch } from "../frameBatch";
+import { useT } from "../useT";
+
+/** One arrow keypress moves the separator by this many pixels. */
+const KEY_STEP = 8;
+/** Shift turns a keypress into a coarse adjustment. */
+const KEY_STEP_LARGE = 32;
 
 interface Props {
   orientation: "vertical" | "horizontal";
@@ -16,6 +22,7 @@ interface Drag {
 }
 
 export function Splitter({ orientation, onResize }: Props) {
+  const t = useT();
   const [dragging, setDragging] = useState(false);
   const drag = useRef<Drag | null>(null);
 
@@ -125,9 +132,31 @@ export function Splitter({ orientation, onResize }: Props) {
     if (event.pointerId === drag.current?.pointerId) finish(false);
   }, [finish]);
 
+  // Keyboard resizing goes through the same frame batch as the pointer, so a
+  // burst of auto-repeat is folded into one state update per frame. The press
+  // is flushed immediately: an arrow key must land without waiting a frame.
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (drag.current) return;
+      const before = orientation === "vertical" ? "ArrowLeft" : "ArrowUp";
+      const after = orientation === "vertical" ? "ArrowRight" : "ArrowDown";
+      if (event.key !== before && event.key !== after) return;
+      event.preventDefault();
+      const step = event.shiftKey ? KEY_STEP_LARGE : KEY_STEP;
+      batch.current!.push(event.key === after ? step : -step);
+      batch.current!.flush();
+    },
+    [orientation],
+  );
+
   return (
     <div
       className={`splitter is-${orientation}${dragging ? " is-dragging" : ""}`}
+      role="separator"
+      aria-orientation={orientation}
+      aria-label={t("splitter.resize")}
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
       onPointerDown={handleDown}
       onPointerMove={handleMove}
       onLostPointerCapture={handleLostCapture}
