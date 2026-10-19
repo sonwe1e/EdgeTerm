@@ -50,7 +50,8 @@ export type ShortcutCommand =
   | "selectAll"
   | "panelSessions"
   | "panelFiler"
-  | "panelSender";
+  | "panelSender"
+  | "focusRegion";
 
 /** The chord bound to each command; null for a command left unassigned. */
 export type ShortcutBindings = Record<ShortcutCommand, KeyChord | null>;
@@ -69,7 +70,8 @@ export type AppShortcut =
   | { kind: "copy" }
   | { kind: "paste" }
   | { kind: "selectAll" }
-  | { kind: "togglePanel"; panel: PanelName };
+  | { kind: "togglePanel"; panel: PanelName }
+  | { kind: "focusRegion" };
 
 /** Every action a user can put on a key, in the order the settings dialog lists them. */
 export const SHORTCUT_COMMANDS: {
@@ -94,6 +96,7 @@ export const SHORTCUT_COMMANDS: {
   { id: "panelSessions", action: { kind: "togglePanel", panel: "sessions" } },
   { id: "panelFiler", action: { kind: "togglePanel", panel: "filer" } },
   { id: "panelSender", action: { kind: "togglePanel", panel: "sender" } },
+  { id: "focusRegion", action: { kind: "focusRegion" } },
 ];
 
 /** Display name of each command, in the current language. */
@@ -118,6 +121,7 @@ export const shortcutLabels = (
   panelSessions: t("sc.panelSessions.label"),
   panelFiler: t("sc.panelFiler.label"),
   panelSender: t("sc.panelSender.label"),
+  focusRegion: t("sc.focusRegion.label"),
 });
 
 /** One-line description of each command, in the current language. */
@@ -142,6 +146,7 @@ export const shortcutHints = (
   panelSessions: t("sc.panelSessions.hint"),
   panelFiler: t("sc.panelFiler.hint"),
   panelSender: t("sc.panelSender.hint"),
+  focusRegion: t("sc.focusRegion.hint"),
 });
 
 const chord = (
@@ -181,6 +186,7 @@ const MAC_DEFAULTS: ShortcutBindings = {
   panelSessions: chord("ArrowLeft", { meta: true, alt: true }),
   panelFiler: chord("ArrowRight", { meta: true, alt: true }),
   panelSender: chord("ArrowDown", { meta: true, alt: true }),
+  focusRegion: chord("F6", {}),
 };
 
 /**
@@ -221,6 +227,9 @@ const OTHER_DEFAULTS: ShortcutBindings = {
   panelSessions: chord("ArrowLeft", { ctrl: true, alt: true }),
   panelFiler: chord("ArrowRight", { ctrl: true, alt: true }),
   panelSender: chord("ArrowDown", { ctrl: true, alt: true }),
+  // F6 is not a shell key and every desktop convention reserves it for
+  // moving focus between panes; Shift+F6 walks back (handled in App).
+  focusRegion: chord("F6", {}),
 };
 
 /**

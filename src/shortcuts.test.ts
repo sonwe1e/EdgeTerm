@@ -184,6 +184,10 @@ describe("chords", () => {
     expect(chordProblem(chord("F6", {}))).toBeNull();
     expect(chordProblem(chord("F6", { shift: true }))).toBeNull();
   });
+
+  it("binds F6 to the focusRegion command by default", () => {
+    expect(matchAppShortcut(press("F6"))).toEqual({ kind: "focusRegion" });
+  });
 });
 
 describe("storage", () => {
