@@ -2,6 +2,8 @@ import type { Dispatch, SetStateAction } from "react";
 import { errorText, isCancelled } from "../errorInfo";
 import { useRef, useState } from "react";
 import * as api from "../api";
+import { t } from "../i18n";
+import { ask } from "../nativeDialog";
 import { useFileTransfers } from "../fileTransfers";
 import { type PaneSide } from "../paneDrop";
 import type { FileEntry } from "../types";
@@ -69,29 +71,39 @@ export function useFtpTransfer({
    * The gate every landing shares: same-name checks with the target pane's
    * wording. False means stop — an error was shown or the user declined.
    */
-  const mayLand = (
+  const mayLand = async (
     side: PaneSide,
     incoming: FileEntry,
     existing: FileEntry | undefined,
-  ): boolean => {
+  ): Promise<boolean> => {
     const setError = side === "remote" ? setRemoteError : setLocalError;
     if (!existing) return true;
+    const sideLabel = side === "remote" ? t("ftp.sideRemote") : t("ftp.sideLocal");
     if (side === "local" && existing.isSymlink) {
-      setError(`Refusing to replace local symlink “${incoming.name}”.`);
+      setError(t("ftp.refuseSymlink", { name: incoming.name }));
       return false;
     }
     if (existing.isDir !== incoming.isDir) {
       setError(
-        incoming.isDir
-          ? `A ${side} file named “${incoming.name}” already exists.`
-          : `A ${side} folder named “${incoming.name}” already exists.`,
+        t(incoming.isDir ? "ftp.fileExists" : "ftp.folderExists", {
+          side: sideLabel,
+          name: incoming.name,
+        }),
       );
       return false;
     }
-    const prompt = incoming.isDir
-      ? `Merge into ${side} folder “${incoming.name}”? Existing files with the same names will be replaced.`
-      : `Replace ${side} file “${incoming.name}”?`;
-    return window.confirm(prompt);
+    return ask(
+      t(incoming.isDir ? "ftp.mergeFolder" : "ftp.replaceFile", {
+        side: sideLabel,
+        name: incoming.name,
+      }),
+      {
+        title: t("filer.replaceTitle"),
+        kind: "warning",
+        okLabel: t("filer.downloadReplace"),
+        cancelLabel: t("common.cancel"),
+      },
+    );
   };
 
   const runUpload = async (incoming: FileEntry, destDir: string) => {
@@ -103,7 +115,7 @@ export function useFtpTransfer({
       setRemoteError(friendlyFtpError(error));
       return;
     }
-    if (!mayLand("remote", incoming, existing)) return;
+    if (!(await mayLand("remote", incoming, existing))) return;
 
     setRemoteError(null);
     setTransferring(true);
@@ -161,7 +173,7 @@ export function useFtpTransfer({
       setLocalError(errorText(error));
       return;
     }
-    if (!mayLand("local", incoming, existing)) return;
+    if (!(await mayLand("local", incoming, existing))) return;
 
     setLocalError(null);
     setTransferring(true);

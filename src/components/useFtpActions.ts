@@ -1,6 +1,8 @@
 import type { Dispatch, SetStateAction } from "react";
 import { errorText } from "../errorInfo";
 import * as api from "../api";
+import { t } from "../i18n";
+import { ask } from "../nativeDialog";
 import type { FileEntry } from "../types";
 import { friendlyFtpError, joinLocal, joinRemote } from "./ftpPresentation";
 
@@ -17,6 +19,12 @@ interface Options {
   selectedLocal: FileEntry | undefined;
 }
 
+/**
+ * Mutations behind the dual-pane toolbars. Create and rename take the name
+ * from the dialog the caller shows, so a rejected name stays in its field and
+ * a failure surfaces there instead of only in the panel's error line. Delete
+ * asks first and reports into the panel.
+ */
 export function useFtpActions({
   remotePath,
   transferring,
@@ -29,35 +37,44 @@ export function useFtpActions({
   loadLocal,
   selectedLocal,
 }: Options) {
-  const createRemoteFolder = async () => {
+  const createRemoteFolder = async (name: string) => {
     if (!remotePath || transferring) return;
-    const name = window.prompt("New remote folder name")?.trim();
-    if (!name) return;
     setRemoteError(null);
     try {
       await api.sftpMkdir(sessionId, joinRemote(remotePath, name));
       await loadRemote(remotePath);
     } catch (error) {
-      setRemoteError(friendlyFtpError(error));
+      throw new Error(friendlyFtpError(error));
     }
   };
 
-  const renameRemote = async () => {
-    if (!selectedRemote || transferring) return;
-    const name = window.prompt("Rename remote item", selectedRemote.name)?.trim();
-    if (!name || name === selectedRemote.name) return;
+  const renameRemote = async (name: string) => {
+    if (!selectedRemote || transferring || name === selectedRemote.name) return;
     setRemoteError(null);
     try {
-      await api.sftpRename(sessionId, selectedRemote.path, joinRemote(remotePath, name));
+      await api.sftpRename(
+        sessionId,
+        selectedRemote.path,
+        joinRemote(remotePath, name),
+      );
       await loadRemote(remotePath);
     } catch (error) {
-      setRemoteError(friendlyFtpError(error));
+      throw new Error(friendlyFtpError(error));
     }
   };
 
   const removeRemote = async () => {
     if (!selectedRemote || transferring) return;
-    if (!window.confirm(`Delete remote ${selectedRemote.name}?`)) return;
+    const confirmed = await ask(
+      t("ftp.deleteRemoteConfirm", { name: selectedRemote.name }),
+      {
+        title: t("ftp.deleteTitle"),
+        kind: "warning",
+        okLabel: t("common.delete"),
+        cancelLabel: t("common.cancel"),
+      },
+    );
+    if (!confirmed) return;
     setRemoteError(null);
     try {
       await api.sftpRemove(sessionId, selectedRemote.path, selectedRemote.isDir);
@@ -67,36 +84,40 @@ export function useFtpActions({
     }
   };
 
-  const createLocalFolder = async () => {
+  const createLocalFolder = async (name: string) => {
     if (!localPath || transferring) return;
-    const name = window.prompt("New local folder name")?.trim();
-    if (!name) return;
     setLocalError(null);
     try {
       await api.localMkdir(joinLocal(localPath, name));
       await loadLocal(localPath);
     } catch (error) {
-      setLocalError(errorText(error));
+      throw new Error(errorText(error));
     }
   };
 
-  const renameLocal = async () => {
-    if (!selectedLocal || transferring) return;
-    const name = window.prompt("Rename local item", selectedLocal.name)?.trim();
-    if (!name || name === selectedLocal.name) return;
+  const renameLocal = async (name: string) => {
+    if (!selectedLocal || transferring || name === selectedLocal.name) return;
     setLocalError(null);
     try {
       await api.localRename(selectedLocal.path, joinLocal(localPath, name));
       await loadLocal(localPath);
     } catch (error) {
-      setLocalError(errorText(error));
+      throw new Error(errorText(error));
     }
   };
 
   const removeLocal = async () => {
     if (!selectedLocal || transferring) return;
-    const type = selectedLocal.isDir ? "empty local folder" : "local file";
-    if (!window.confirm(`Delete ${type} “${selectedLocal.name}”?`)) return;
+    const confirmed = await ask(
+      t("ftp.deleteLocalConfirm", { name: selectedLocal.name }),
+      {
+        title: t("ftp.deleteTitle"),
+        kind: "warning",
+        okLabel: t("common.delete"),
+        cancelLabel: t("common.cancel"),
+      },
+    );
+    if (!confirmed) return;
     setLocalError(null);
     try {
       await api.localRemove(selectedLocal.path, selectedLocal.isDir);

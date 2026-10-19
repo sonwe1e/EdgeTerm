@@ -49,6 +49,7 @@ vi.mock("../api", async (original) => ({
   }),
 }));
 vi.mock("../nativeDialog", () => ({
+  ask: vi.fn(async () => true),
   save: vi.fn(async ({ defaultPath }: { defaultPath: string }) => `/downloads/${defaultPath}`),
   open: vi.fn(async () => "/downloads"),
 }));

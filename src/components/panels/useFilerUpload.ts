@@ -2,13 +2,16 @@ import type { Dispatch, RefObject, SetStateAction } from "react";
 import { errorText } from "../../errorInfo";
 import * as api from "../../api";
 import type { Translate } from "../../i18n";
-import { open as openDialog } from "../../nativeDialog";
+import { ask, open as openDialog } from "../../nativeDialog";
+import type { FileEntry } from "../../types";
 import { joinRemote, localFileName, pickedPaths } from "./filerPresentation";
 import type { TransferState } from "./filerTypes";
 
 interface Options {
   remoteId: string | null;
   path: string;
+  /** The listing on screen, to warn before an upload replaces an entry. */
+  entries: readonly FileEntry[];
   busyRef: RefObject<boolean>;
   setBusy: Dispatch<SetStateAction<boolean>>;
   setError: Dispatch<SetStateAction<string | null>>;
@@ -31,6 +34,7 @@ interface Options {
 export function useFilerUpload({
   remoteId,
   path,
+  entries,
   busyRef,
   setBusy,
   setError,
@@ -50,6 +54,24 @@ export function useFilerUpload({
       return;
     }
     const destination = path;
+    // The backend replaces a same-named file in place. Ask once for the whole
+    // batch, the way a file manager does, instead of letting a drag overwrite
+    // silently.
+    const clashes = localPaths.filter((localPath) =>
+      entries.some((entry) => entry.name === localFileName(localPath)),
+    );
+    if (clashes.length > 0) {
+      const confirmed = await ask(
+        t("filer.replaceConfirm", { count: clashes.length }),
+        {
+          title: t("filer.replaceTitle"),
+          kind: "warning",
+          okLabel: t("filer.replace"),
+          cancelLabel: t("common.cancel"),
+        },
+      );
+      if (!confirmed) return;
+    }
     busyRef.current = true;
     setBusy(true);
     setError(null);

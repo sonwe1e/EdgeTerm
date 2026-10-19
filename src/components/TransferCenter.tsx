@@ -8,14 +8,39 @@ import { useStore } from "../store";
 import { VirtualFileRows } from "./VirtualFileRows";
 import { usePopoverDismiss } from "./usePopoverDismiss";
 import { useT } from "../useT";
+import type { MessageKey } from "../i18n";
 
 /** KiB/s the user typed, or 0 for unlimited; the backend stores bytes per second. */
 function rateKib(options: api.TransferOptions): number {
   return Math.round(options.rateLimitBps / 1024);
 }
 
+
+/** The wire status is a stable token; the popover shows a phrase. */
+const STATUS_LABEL: Record<string, MessageKey> = {
+  queued: "transfer.statusQueued",
+  running: "transfer.statusRunning",
+  retrying: "transfer.statusRetrying",
+  paused: "transfer.statusPaused",
+  complete: "transfer.statusComplete",
+  error: "transfer.statusError",
+  cancelled: "transfer.statusCancelled",
+  cancelling: "transfer.statusCancelling",
+  dismissed: "transfer.dismissed",
+};
+
 export function TransferCenter() {
   const t = useT();
+  const statusLabel = (status: string) => {
+    const key = STATUS_LABEL[status];
+    return key ? t(key) : status;
+  };
+  const kindLabel = (kind: string | null) =>
+    kind === "upload"
+      ? t("transfer.kindUpload")
+      : kind === "download"
+        ? t("transfer.kindDownload")
+        : (kind ?? "");
   const records = useFileTransfers((s) => s.jobs);
   const open = useFileTransfers((s) => s.open);
   const setOpen = useFileTransfers((s) => s.setOpen);
@@ -134,7 +159,7 @@ export function TransferCenter() {
         <div className="transfer-recovery-rows"><VirtualFileRows entries={recoveryRows} rowHeight={112} resetKey="recovery">{(entry) => {
           const whom = [entry.username, entry.host].filter(Boolean).join("@") + (entry.port ? `:${entry.port}` : "");
           return <article className="transfer-job" key={entry.id}>
-          <div className="transfer-job-title"><strong title={entry.name}>{entry.name}</strong><span>{entry.unrecognized ? t("transfer.unrecognized") : entry.kind}</span></div>
+          <div className="transfer-job-title"><strong title={entry.name}>{entry.name}</strong><span>{entry.unrecognized ? t("transfer.unrecognized") : kindLabel(entry.kind)}</span></div>
           <div className="transfer-job-details">{entry.unrecognized
             ? t("transfer.unrecognizedNote")
             : `${whom || t("transfer.unknownEndpoint")} · ${t("transfer.itemsCount", { count: entry.items })} · ${t("transfer.checkpointsCount", { count: entry.checkpoints })}`}</div>
@@ -154,8 +179,8 @@ export function TransferCenter() {
           const eta = job.bytesPerSecond > 0 && job.total > job.transferred ? Math.ceil((job.total - job.transferred) / job.bytesPerSecond) : null;
           const limit = job.options.rateLimitBps > 0 ? t("transfer.rateLimit", { value: transferBytes(job.options.rateLimitBps) }) : t("transfer.noLimit");
           return <article className="transfer-job" key={job.id}>
-            <div className="transfer-job-title"><strong title={job.name}>{job.name}</strong><span>{job.status}</span></div>
-            <div className="transfer-job-details">{job.phase} · {t("transfer.filesCount", { done: job.completedFiles, total: job.totalFiles })} · {transferBytes(job.transferred)} / {transferBytes(job.total)}</div>
+            <div className="transfer-job-title"><strong title={job.name}>{job.name}</strong><span>{statusLabel(job.status)}</span></div>
+            <div className="transfer-job-details">{t("transfer.filesCount", { done: job.completedFiles, total: job.totalFiles })} · {transferBytes(job.transferred)} / {transferBytes(job.total)}</div>
             <progress max={100} value={percent} aria-label={t("transfer.jobProgress", { name: job.name })} />
             {job.status === "running" && <div className="transfer-job-details">{transferBytes(job.bytesPerSecond)}/s · {limit}{eta !== null ? t("transfer.etaRemaining", { seconds: eta }) : ""}</div>}
             {job.status !== "running" && job.options.rateLimitBps > 0 && <div className="transfer-job-details">{limit}{t("transfer.limitKept")}</div>}

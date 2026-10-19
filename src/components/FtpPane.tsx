@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { reconnectSession } from "../actions";
 import { errorText } from "../errorInfo";
 import { FileBrowser, Props, ToolButton, formatBytes, remoteParent } from "./ftpPresentation";
 import { useFtpActions } from "./useFtpActions";
@@ -10,15 +11,37 @@ export { FileBrowser } from "./ftpPresentation";
 import * as api from "../api";
 import type { FileEntry } from "../types";
 import { useStableCallback } from "../useStableCallback";
+import { useT } from "../useT";
 import { FileDiffDialog } from "./FileDiffDialog";
+import { GroupNameDialog } from "./GroupNameDialog";
 import { Icon } from "./icons";
 
+interface NamePrompt {
+  title: string;
+  label: string;
+  hint: string;
+  initialName?: string;
+  submitLabel: string;
+  submit: (name: string) => Promise<void>;
+}
+
 export function FtpPane({ tab, active }: Props) {
+  const t = useT();
   const sessionId = tab.info.id;
+  const [namePrompt, setNamePrompt] = useState<NamePrompt | null>(null);
   const [comparison, setComparison] = useState<{ local: string; remote: string } | null>(null);
   useEffect(() => {
-    if (tab.state !== "connected") setComparison(null);
+    if (tab.state !== "connected") {
+      setComparison(null);
+      setNamePrompt(null);
+    }
   }, [tab.state]);
+
+  // A prompt belongs to the tab that raised it; switching tabs must not
+  // leave a modal naming a path from the pane behind it.
+  useEffect(() => {
+    if (!active) setNamePrompt(null);
+  }, [active]);
   // The pane serves both FTP and SFTP file sessions; only the labels differ.
   const protocolLabel = tab.info.kind === "sftp" ? "SFTP" : "FTP";
   const {
@@ -107,22 +130,56 @@ export function FtpPane({ tab, active }: Props) {
     selectedLocal,
   });
 
+  const requestName = (side: "remote" | "local", mode: "create" | "rename") => {
+    const remote = side === "remote";
+    const base = remote ? remotePath : localPath;
+    const selected = remote ? selectedRemote : selectedLocal;
+    if (!base || (mode === "rename" && !selected)) return;
+    setNamePrompt({
+      title: mode === "create" ? t("ftp.newFolderTitle") : t("ftp.renameTitle"),
+      label: mode === "create" ? t("ftp.folderName") : t("ftp.itemName"),
+      hint: base,
+      initialName: mode === "rename" ? selected?.name : "",
+      submitLabel: mode === "create" ? t("ftp.create") : t("ftp.rename"),
+      submit: async (name) => {
+        if (remote) {
+          if (mode === "create") await createRemoteFolder(name);
+          else await renameRemote(name);
+        } else if (mode === "create") {
+          await createLocalFolder(name);
+        } else {
+          await renameLocal(name);
+        }
+        setNamePrompt(null);
+      },
+    });
+  };
+
   return (
     <div className={`ftp-workspace${active ? "" : " is-hidden"}`}>
       {tab.state !== "connected" ? (
-        <div className={`ftp-session-state is-${tab.state}`}>
+        <div className={`ftp-session-state is-${tab.state}`} role="status">
           <strong>
             {tab.state === "connecting"
-              ? `Connecting to ${protocolLabel}…`
-              : `${protocolLabel} unavailable`}
+              ? t("ftp.connecting", { protocol: protocolLabel })
+              : t("ftp.unavailable", { protocol: protocolLabel })}
           </strong>
           <span>{tab.message ?? tab.info.address}</span>
+          {(tab.state === "closed" || tab.state === "error") && (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => void reconnectSession(sessionId)}
+            >
+              {t("common.reconnect")}
+            </button>
+          )}
         </div>
       ) : (
         <>
           <div className={`ftp-dual-pane${dragging ? " is-dragging" : ""}`}>
             <FileBrowser
-              title={`${protocolLabel} Server`}
+              title={t("ftp.serverTitle", { protocol: protocolLabel })}
               subtitle={tab.info.address}
               side="remote"
               listRef={remoteListRef}
@@ -148,21 +205,21 @@ export function FtpPane({ tab, active }: Props) {
               actions={
                 <>
                   <ToolButton
-                    label="New remote folder"
-                    onClick={() => void createRemoteFolder()}
+                    label={t("ftp.newRemoteFolder")}
+                    onClick={() => requestName("remote", "create")}
                     disabled={remoteLoading || transferring}
                   >
                     <Icon name="new-folder" />
                   </ToolButton>
                   <ToolButton
-                    label="Rename remote item"
-                    onClick={() => void renameRemote()}
+                    label={t("ftp.renameRemote")}
+                    onClick={() => requestName("remote", "rename")}
                     disabled={!selectedRemote || remoteLoading || transferring}
                   >
                     <Icon name="edit" />
                   </ToolButton>
                   <ToolButton
-                    label="Delete remote item"
+                    label={t("ftp.deleteRemote")}
                     onClick={() => void removeRemote()}
                     disabled={!selectedRemote || remoteLoading || transferring}
                     danger
@@ -173,7 +230,7 @@ export function FtpPane({ tab, active }: Props) {
               }
             />
 
-            <div className="ftp-transfer-rail" aria-label="File transfer actions">
+            <div className="ftp-transfer-rail" aria-label={t("ftp.transferActions")}>
               <button
                 className="ftp-transfer-button"
                 type="button"
@@ -189,33 +246,33 @@ export function FtpPane({ tab, active }: Props) {
                   if (selectedLocal && selectedRemote)
                     setComparison({ local: selectedLocal.path, remote: selectedRemote.path });
                 }}
-                title="Compare selected local and remote files"
+                title={t("ftp.compareTitle")}
               >
-                Compare
+                {t("ftp.compare")}
               </button>
               <button
                 className="ftp-transfer-button"
                 onClick={() => void upload()}
                 disabled={!selectedLocal || transferring}
-                title="Upload selected local file or folder"
+                title={t("ftp.uploadTitle")}
               >
                 <span>←</span>
-                Upload
+                {t("ftp.upload")}
               </button>
               <button
                 className="ftp-transfer-button"
                 onClick={() => void download()}
                 disabled={!selectedRemote || transferring}
-                title={`Download selected ${protocolLabel} file or folder`}
+                title={t("ftp.downloadTitle", { protocol: protocolLabel })}
               >
-                Download
+                {t("ftp.download")}
                 <span>→</span>
               </button>
             </div>
 
             <FileBrowser
-              title="Local Computer"
-              subtitle="This device"
+              title={t("ftp.localComputer")}
+              subtitle={t("ftp.thisDevice")}
               side="local"
               listRef={localListRef}
               onItemPointerDown={itemPointerDown}
@@ -242,21 +299,21 @@ export function FtpPane({ tab, active }: Props) {
               actions={
                 <>
                   <ToolButton
-                    label="New local folder"
-                    onClick={() => void createLocalFolder()}
+                    label={t("ftp.newLocalFolder")}
+                    onClick={() => requestName("local", "create")}
                     disabled={localLoading || transferring}
                   >
                     <Icon name="new-folder" />
                   </ToolButton>
                   <ToolButton
-                    label="Rename local item"
-                    onClick={() => void renameLocal()}
+                    label={t("ftp.renameLocal")}
+                    onClick={() => requestName("local", "rename")}
                     disabled={!selectedLocal || localLoading || transferring}
                   >
                     <Icon name="edit" />
                   </ToolButton>
                   <ToolButton
-                    label="Delete local item"
+                    label={t("ftp.deleteLocal")}
                     onClick={() => void removeLocal()}
                     disabled={!selectedLocal || localLoading || transferring}
                     danger
@@ -283,14 +340,14 @@ export function FtpPane({ tab, active }: Props) {
                 <div className="ftp-transfer-summary">
                   <span>
                     {transfer.status === "complete"
-                      ? "Complete"
+                      ? t("ftp.complete")
                       : transfer.status === "error"
-                        ? "Failed"
+                        ? t("ftp.failed")
                         : transfer.status === "cancelled"
-                          ? "Cancelled"
+                          ? t("ftp.cancelled")
                           : transfer.direction === "upload"
-                            ? "Uploading"
-                            : "Downloading"}
+                            ? t("ftp.uploading")
+                            : t("ftp.downloading")}
                     : {transfer.name}
                   </span>
                   <span>
@@ -307,7 +364,16 @@ export function FtpPane({ tab, active }: Props) {
                 {transfer.message && <div className="ftp-transfer-error">{transfer.message}</div>}
                 {transferring && transferId.current && (
                   <div className="transfer-job-actions">
-                    <span>{transferJob?.status === "paused" ? "Paused" : transferJob?.phase}</span>
+                    <span>
+                      {transferJob?.status === "paused"
+                        ? t("ftp.paused")
+                        : transferJob && transferJob.totalFiles > 0
+                          ? t("ftp.filesProgress", {
+                              done: transferJob.completedFiles,
+                              total: transferJob.totalFiles,
+                            })
+                          : null}
+                    </span>
                     <button
                       type="button"
                       disabled={
@@ -323,7 +389,7 @@ export function FtpPane({ tab, active }: Props) {
                           .catch((e) => setRemoteError(errorText(e)))
                       }
                     >
-                      {transferJob?.status === "paused" ? "Resume" : "Pause"}
+                      {transferJob?.status === "paused" ? t("ftp.resume") : t("ftp.pause")}
                     </button>
                     <button
                       type="button"
@@ -333,16 +399,28 @@ export function FtpPane({ tab, active }: Props) {
                           .catch((e) => setRemoteError(errorText(e)))
                       }
                     >
-                      Cancel
+                      {t("common.cancel")}
                     </button>
                   </div>
                 )}
               </>
             ) : (
-              <span>{`Select a local file or folder to upload, or a ${protocolLabel} file or folder to download.`}</span>
+              <span>{t("ftp.selectToTransfer", { protocol: protocolLabel })}</span>
             )}
           </div>
         </>
+      )}
+      {namePrompt && (
+        <GroupNameDialog
+          title={namePrompt.title}
+          location={namePrompt.hint}
+          label={namePrompt.label}
+          hint={namePrompt.hint}
+          initialName={namePrompt.initialName}
+          submitLabel={namePrompt.submitLabel}
+          onSubmit={namePrompt.submit}
+          onCancel={() => setNamePrompt(null)}
+        />
       )}
     </div>
   );

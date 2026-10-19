@@ -131,7 +131,7 @@ describe("dragging between and within the dual panes, through FtpPane", () => {
   });
   it("uploads a local file dropped on the remote list (the harness works)", async () => {
     expect(row("/local/up.txt")).not.toBeNull();
-    await drag(row("/local/up.txt"), list("SFTP Server files"));
+    await drag(row("/local/up.txt"), list("SFTP Server file list"));
     expect(api.sftpUpload).toHaveBeenCalledTimes(1);
     expect(vi.mocked(api.sftpUpload).mock.calls[0].slice(0, 3)).toEqual([
       "sftp1", "/local/up.txt", "/remote/up.txt",
@@ -139,7 +139,7 @@ describe("dragging between and within the dual panes, through FtpPane", () => {
   });
 
   it("downloads a remote file dropped on the local list", async () => {
-    await drag(row("/remote/a.txt"), list("Local Computer files"));
+    await drag(row("/remote/a.txt"), list("Local Computer file list"));
     expect(api.sftpDownload).toHaveBeenCalledTimes(1);
     expect(vi.mocked(api.sftpDownload).mock.calls[0].slice(0, 3)).toEqual([
       "sftp1", "/remote/a.txt", "/local/a.txt",
@@ -148,13 +148,13 @@ describe("dragging between and within the dual panes, through FtpPane", () => {
 
   it("does nothing for a remote file dropped on a remote folder or its own list", async () => {
     await drag(row("/remote/a.txt"), row("/remote/folder"));
-    await drag(row("/remote/a.txt"), list("SFTP Server files"));
+    await drag(row("/remote/a.txt"), list("SFTP Server file list"));
     expect(transfers()).toEqual([]);
   });
 
   it("does nothing for a local file dropped on a local folder or its own list", async () => {
     await drag(row("/local/up.txt"), row("/local/folder2"));
-    await drag(row("/local/up.txt"), list("Local Computer files"));
+    await drag(row("/local/up.txt"), list("Local Computer file list"));
     expect(transfers()).toEqual([]);
   });
 });

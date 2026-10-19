@@ -9,6 +9,8 @@ import { errorText } from "../errorInfo";
 import { sortFileEntries, toggleFileSort, type SortKey } from "../fileSort";
 import { type PaneSide } from "../paneDrop";
 import { useStore, type Tab } from "../store";
+import { t as translateMsg } from "../i18n";
+import { useT } from "../useT";
 import type { FileEntry, ThemeMode } from "../types";
 import { FileIcon } from "./FileIcon";
 import { Icon } from "./icons";
@@ -89,6 +91,7 @@ export function FileBrowser({
   onSelect,
   onActivate,
 }: FileBrowserProps) {
+  const t = useT();
   const theme = useStore((s) => s.theme);
   // One shared choice for both browsers and the Filer panel (see the store's
   // `filerSort`); reading the stored preference once per mount let the two
@@ -110,13 +113,13 @@ export function FileBrowser({
           <span>{subtitle}</span>
         </div>
         <div className="ftp-browser-actions">
-          <ToolButton label="Home" onClick={onHome} disabled={loading}>
+          <ToolButton label={t("filer.home")} onClick={onHome} disabled={loading}>
             <Icon name="home" />
           </ToolButton>
-          <ToolButton label="Parent folder" onClick={onParent} disabled={loading || !path}>
+          <ToolButton label={t("filer.parentFolder")} onClick={onParent} disabled={loading || !path}>
             <Icon name="arrow-up" />
           </ToolButton>
-          <ToolButton label="Refresh" onClick={onRefresh} disabled={loading}>
+          <ToolButton label={t("filer.refresh")} onClick={onRefresh} disabled={loading}>
             <Icon name="refresh" />
           </ToolButton>
           {actions}
@@ -126,7 +129,7 @@ export function FileBrowser({
       <div className="ftp-browser-path">
         <input
           value={draft}
-          aria-label={`${title} path`}
+          aria-label={t("ftp.pathAria", { title })}
           onChange={(event) => onDraftChange(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter") onOpenPath(draft);
@@ -140,27 +143,27 @@ export function FileBrowser({
           type="button"
           className={sort.key === "name" ? "is-sorted" : undefined}
           onClick={() => sortBy("name")}
-          aria-label="Sort by name"
+          aria-label={t("filer.sortByName")}
         >
-          Name
+          {t("session.name")}
           <SortIndicator sort={sort} column="name" />
         </button>
         <button
           type="button"
           className={sort.key === "size" ? "is-sorted" : undefined}
           onClick={() => sortBy("size")}
-          aria-label="Sort by size"
+          aria-label={t("filer.sortBySize")}
         >
-          Size
+          {t("filer.size")}
           <SortIndicator sort={sort} column="size" />
         </button>
         <button
           type="button"
           className={sort.key === "modified" ? "is-sorted" : undefined}
           onClick={() => sortBy("modified")}
-          aria-label="Sort by last modified"
+          aria-label={t("filer.sortByModified")}
         >
-          Modified
+          {t("filer.modified")}
           <SortIndicator sort={sort} column="modified" />
         </button>
       </div>
@@ -171,12 +174,12 @@ export function FileBrowser({
         data-drop-side={side}
         data-drop-dir={path}
         role="listbox"
-        aria-label={`${title} files`}
+        aria-label={t("ftp.filesAria", { title })}
       >
         {error && <div className="ftp-browser-message is-error">{error}</div>}
-        {!error && loading && <div className="ftp-browser-message">Loading…</div>}
+        {!error && loading && <div className="ftp-browser-message">{t("ftp.loading")}</div>}
         {!error && !loading && entries.length === 0 && (
-          <div className="ftp-browser-message">This folder is empty.</div>
+          <div className="ftp-browser-message">{t("ftp.emptyFolder")}</div>
         )}
         {!error && (
           <VirtualFileRows
@@ -209,8 +212,8 @@ export function FileBrowser({
         )}
       </div>
       <div className="ftp-browser-footer">
-        <span>{entries.length} items</span>
-        <span>{loading ? "Loading…" : path}</span>
+        <span>{t("ftp.items", { count: entries.length })}</span>
+        <span>{loading ? t("ftp.loading") : path}</span>
       </div>
     </section>
   );
@@ -354,7 +357,7 @@ export function formatDate(seconds: number | null): string {
 export function friendlyFtpError(error: unknown): string {
   const message = errorText(error);
   if (message.includes("Response contains an invalid syntax")) {
-    return "The FTP server returned a legacy or non-UTF-8 directory listing. Reconnect after updating EdgeTerm and try again.";
+    return translateMsg("ftp.legacyListing");
   }
   return message;
 }

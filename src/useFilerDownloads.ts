@@ -3,7 +3,7 @@ import { errorText, isCancelled } from "./errorInfo";
 import * as api from "./api";
 import { useFileTransfers } from "./fileTransfers";
 import { t } from "./i18n";
-import { open, save } from "./nativeDialog";
+import { ask, open, save } from "./nativeDialog";
 import { useStore } from "./store";
 import type { FileEntry } from "./types";
 import { useStableCallback } from "./useStableCallback";
@@ -42,6 +42,27 @@ export function useFilerDownloads(sessionId: string | null, onError: (error: str
         const parent = await open({ directory: true, multiple: false, title: entries.length === 1
           ? t("filer.saveFolderInto", { name }) : t("filer.saveSelectedInto") });
         if (typeof parent !== "string" || !current()) return;
+        // A directory download writes into an existing folder and replaces a
+        // same-named file in place, with no dialog of its own. Ask once when
+        // the destination already has any of these names; a failed listing
+        // (permission, not mounted) must not block the transfer.
+        const existing = await api
+          .localList(parent)
+          .then((listing) => new Set(listing.entries.map((entry) => entry.name)))
+          .catch(() => new Set<string>());
+        const clashes = entries.filter((entry) => existing.has(entry.name));
+        if (clashes.length > 0) {
+          const confirmed = await ask(
+            t("filer.downloadReplaceConfirm", { count: clashes.length }),
+            {
+              title: t("filer.downloadReplaceTitle"),
+              kind: "warning",
+              okLabel: t("filer.downloadReplace"),
+              cancelLabel: t("common.cancel"),
+            },
+          );
+          if (!confirmed || !current()) return;
+        }
         const separator = parent.includes("\\") && !parent.includes("/") ? "\\" : "/";
         items = entries.map((entry) => ({
           local: `${parent.replace(/[\\/]+$/, "")}${separator}${entry.name}`,

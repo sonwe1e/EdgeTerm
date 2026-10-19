@@ -310,7 +310,6 @@ export function useFilerActions({
 
   const commitNewEntry = async () => {
     const draft = creating;
-    setCreating(null);
     const name = draft?.name.trim();
     if (!draft || !name || !path || atDrivesRoot) return;
     const kindWord = draft.kind === "folder" ? t("filer.folder") : t("filer.file");
@@ -322,6 +321,9 @@ export function useFilerActions({
       setError(t("filer.alreadyExists", { name }));
       return;
     }
+    // Only a valid, accepted name closes the inline editor: a rejected one
+    // keeps the text so the user can correct it instead of retyping it.
+    setCreating(null);
     try {
       if (remoteId) {
         const target = joinRemote(path, name);

@@ -2,9 +2,11 @@ import {
   memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -24,7 +26,7 @@ import { useFilerTransfer } from "./useFilerTransfer";
 import { useFilerUpload } from "./useFilerUpload";
 export { sameListing } from "./filerDirectoryCache";
 
-import { revealCwdInFiler } from "../../actions";
+import { reconnectSession, revealCwdInFiler } from "../../actions";
 import * as api from "../../api";
 import { sortFileEntries, toggleFileSort, type SortKey } from "../../fileSort";
 import { IS_MAC } from "../../platform";
@@ -41,6 +43,13 @@ import { FilerTransferSummary } from "../FilerTransferSummary";
 import { Icon } from "../icons";
 import { SortIndicator } from "../SortIndicator";
 import { VirtualFileRows } from "../VirtualFileRows";
+
+/**
+ * Stable id of a rendered option. A path may hold spaces or slashes, which are
+ * not allowed in an id, so it is percent-encoded.
+ */
+const filerOptionId = (path: string): string =>
+  `filer-option-${encodeURIComponent(path)}`;
 
 function FilerPanelBase() {
   const t = useT();
@@ -121,6 +130,15 @@ function FilerPanelBase() {
   const offlineReasonRef = useRef(offlineReason);
   const pathRef = useRef(path);
   const busyRef = useRef(busy);
+  /** The listbox: the rows' scroll container and the single Tab stop. */
+  const listRef = useRef<HTMLDivElement>(null);
+  /**
+   * The row the keyboard acts on. It rides alongside the selection instead of
+   * replacing it, so Ctrl/Cmd+Arrow can move without changing the choice.
+   */
+  const activePathRef = useRef<string | null>(null);
+  /** Id of the active row, but only while that row is actually mounted. */
+  const [activeDescendant, setActiveDescendant] = useState<string | null>(null);
 
   remoteIdRef.current = remoteId;
   offlineReasonRef.current = offlineReason;
@@ -148,6 +166,7 @@ function FilerPanelBase() {
   const { upload, uploadFolder, uploadPaths, copyPaths } = useFilerUpload({
     remoteId,
     path,
+    entries,
     busyRef,
     setBusy,
     setError,
@@ -225,6 +244,8 @@ function FilerPanelBase() {
   // The Windows drive list is virtual: drives can be opened but not created,
   // deleted or navigated above.
   const panelFontSize = useStore((s) => s.panelFontSize);
+  /** Row pitch of the virtual list; also the step for scroll-into-view. */
+  const rowHeight = Math.max(24, panelFontSize + 10) + 2;
   // The footer walks every entry; a large directory must not pay that on
   // each of the app's re-renders.
   const entrySummary = useMemo(() => formatEntrySummary(entries), [entries]);
@@ -240,6 +261,8 @@ function FilerPanelBase() {
   const rowSelect = useStableCallback((path: string, event: MouseEvent) => {
     if (event.button !== 0 || busy) return;
     event.currentTarget.closest<HTMLElement>(".filer-list")?.focus({ preventScroll: true });
+    activePathRef.current = path;
+    setActiveDescendant(filerOptionId(path));
     const toggle = IS_MAC ? event.metaKey : event.ctrlKey;
     if (!toggle && !event.shiftKey && selected.size > 1 && selected.has(path)) {
       collapseSelection.current = path;
@@ -262,6 +285,178 @@ function FilerPanelBase() {
     if (!selected.has(entry.path)) selectEntry(entry.path);
     openMenu(event, entryMenu(entry, chosen));
   });
+
+  // The rows are memoised components that take no id, so the listbox stamps
+  // one on every option it has mounted. Only the virtual window is mounted,
+  // so this is a handful of writes — and it keeps the ids out of the row
+  // props, which would defeat the memo comparison.
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    for (const slot of list.querySelectorAll<HTMLElement>("[data-file-path]")) {
+      const path = slot.dataset.filePath;
+      const option = slot.firstElementChild;
+      if (path && option instanceof HTMLElement) option.id = filerOptionId(path);
+    }
+  });
+
+  // A new listing drops the active row together with the old rows.
+  useEffect(() => {
+    const path = activePathRef.current;
+    if (path !== null && !sortedEntries.some((entry) => entry.path === path)) {
+      activePathRef.current = null;
+      setActiveDescendant(null);
+    }
+  }, [sortedEntries]);
+
+  // Scrolling the window can unmount the active row; the listbox must not
+  // keep pointing at an id that is no longer in the document.
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    let frame = 0;
+    const check = () => {
+      frame = 0;
+      const path = activePathRef.current;
+      if (path !== null && !document.getElementById(filerOptionId(path))) {
+        setActiveDescendant(null);
+      }
+    };
+    const onScroll = () => {
+      if (frame === 0) frame = requestAnimationFrame(check);
+    };
+    list.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      if (frame !== 0) cancelAnimationFrame(frame);
+      list.removeEventListener("scroll", onScroll);
+    };
+  }, []);
+
+  /**
+   * Scrolls the row at `index` into view and points aria at it, but only once
+   * it is mounted. A row outside the virtual window is reached by moving the
+   * scroller first and waiting for the window to render it; until then the
+   * listbox itself holds the focus, never a dangling id.
+   */
+  const revealActiveRow = (index: number, path: string) => {
+    const id = filerOptionId(path);
+    const mounted = document.getElementById(id);
+    if (mounted) {
+      mounted.scrollIntoView({ block: "nearest" });
+      setActiveDescendant(id);
+      return;
+    }
+    const rows = listRef.current?.querySelector<HTMLElement>(".virtual-file-rows");
+    const scroller = rows?.parentElement;
+    setActiveDescendant(null);
+    if (!rows || !scroller) return;
+    // Same origin VirtualFileRows measures from: anything above the rows (the
+    // inline create row) shifts them down in the scroller.
+    const offset =
+      rows.getBoundingClientRect().top -
+      scroller.getBoundingClientRect().top +
+      scroller.scrollTop -
+      scroller.clientTop;
+    const top = offset + index * rowHeight;
+    if (top < scroller.scrollTop) scroller.scrollTop = top;
+    else if (top + rowHeight > scroller.scrollTop + scroller.clientHeight) {
+      scroller.scrollTop = top + rowHeight - scroller.clientHeight;
+    }
+    let attempts = 0;
+    const settle = () => {
+      const rendered = document.getElementById(id);
+      if (rendered) {
+        rendered.scrollIntoView({ block: "nearest" });
+        setActiveDescendant(id);
+        return;
+      }
+      if (attempts++ < 4) requestAnimationFrame(settle);
+    };
+    requestAnimationFrame(settle);
+  };
+
+  /** Moves the keyboard cursor and applies the selection mode it came with. */
+  const moveActive = (next: number, mode: "select" | "extend" | "move") => {
+    if (sortedEntries.length === 0) return;
+    const index = Math.max(0, Math.min(sortedEntries.length - 1, next));
+    const entry = sortedEntries[index];
+    if (!entry) return;
+    activePathRef.current = entry.path;
+    if (mode !== "move") {
+      collapseSelection.current = null;
+      selectEntry(entry.path, { range: mode === "extend" });
+    }
+    revealActiveRow(index, entry.path);
+  };
+
+  const onListKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (busy) return;
+    if ((event.target as HTMLElement).closest("input, textarea, [contenteditable=true]"))
+      return;
+    const ctrl = IS_MAC ? event.metaKey : event.ctrlKey;
+    if (ctrl && event.key.toLowerCase() === "a") {
+      event.preventDefault();
+      event.stopPropagation();
+      selection.selectAll();
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      clearSelection();
+      return;
+    }
+    if (event.key === "Backspace") {
+      // Works in an empty folder too, so it is handled before the list check.
+      if (atDrivesRoot || !path) return;
+      event.preventDefault();
+      void goUp();
+      return;
+    }
+    if (sortedEntries.length === 0) return;
+    const active =
+      activePathRef.current === null
+        ? -1
+        : sortedEntries.findIndex((entry) => entry.path === activePathRef.current);
+    const mode = event.shiftKey ? "extend" : ctrl ? "move" : "select";
+    switch (event.key) {
+      case "ArrowDown":
+        event.preventDefault();
+        moveActive(active < 0 ? 0 : active + 1, mode);
+        return;
+      case "ArrowUp":
+        event.preventDefault();
+        moveActive(active < 0 ? sortedEntries.length - 1 : active - 1, mode);
+        return;
+      case "Home":
+        event.preventDefault();
+        moveActive(0, mode);
+        return;
+      case "End":
+        event.preventDefault();
+        moveActive(sortedEntries.length - 1, mode);
+        return;
+      case "PageUp":
+      case "PageDown": {
+        event.preventDefault();
+        const page = Math.max(
+          1,
+          Math.floor((listRef.current?.clientHeight ?? 0) / rowHeight),
+        );
+        moveActive(
+          (active < 0 ? 0 : active) + (event.key === "PageDown" ? page : -page),
+          mode,
+        );
+        return;
+      }
+      case "Enter": {
+        event.preventDefault();
+        const entry = active >= 0 ? sortedEntries[active] : undefined;
+        if (entry) activate(entry);
+        return;
+      }
+    }
+  };
 
   return (
     <div
@@ -418,9 +613,11 @@ function FilerPanelBase() {
       </div>
 
       <div
+        ref={listRef}
         className="panel-body filer-list"
         role="listbox"
         aria-multiselectable="true"
+        aria-activedescendant={activeDescendant ?? undefined}
         tabIndex={0}
         onMouseDown={(event) => {
           if (
@@ -430,20 +627,7 @@ function FilerPanelBase() {
             clearSelection();
           }
         }}
-        onKeyDown={(event) => {
-          if (busy) return;
-          if ((event.target as HTMLElement).closest("input, textarea, [contenteditable=true]"))
-            return;
-          if ((IS_MAC ? event.metaKey : event.ctrlKey) && event.key.toLowerCase() === "a") {
-            event.preventDefault();
-            event.stopPropagation();
-            selection.selectAll();
-          } else if (event.key === "Escape") {
-            event.preventDefault();
-            event.stopPropagation();
-            clearSelection();
-          }
-        }}
+        onKeyDown={onListKeyDown}
         onContextMenu={(event) => openMenu(event, folderMenu())}
         aria-label={
           remote
@@ -453,8 +637,37 @@ function FilerPanelBase() {
             : t("filer.localListAria")
         }
       >
-        {offlineReason && !error && <div className="panel-empty">{offlineReason}</div>}
-        {error && <div className="panel-empty">{error}</div>}
+        {offlineReason && !error && (
+          <div className="panel-empty is-offline" role="status">
+            <span>{offlineReason}</span>
+            {tab && (tab.state === "closed" || tab.state === "error") && (
+              <button
+                type="button"
+                className="panel-empty-action"
+                onClick={() => void reconnectSession(tab.info.id)}
+              >
+                {t("common.reconnect")}
+              </button>
+            )}
+          </div>
+        )}
+        {error && (
+          <div className="panel-empty is-error" role="alert">
+            <span>{error}</span>
+            <button
+              type="button"
+              className="panel-empty-action"
+              onClick={() => void load(path || draft)}
+            >
+              {t("common.retry")}
+            </button>
+          </div>
+        )}
+        {!offlineReason && !error && entries.length === 0 && creating === null && (
+          <div className="panel-empty" role={busy ? "status" : undefined}>
+            {busy ? t("filer.loading") : t("filer.emptyFolder")}
+          </div>
+        )}
         {creating !== null && (
           <div className="row filer-new-entry">
             <FilerEntryIcon name={creating.name} isDir={creating.kind === "folder"} theme={theme} />
@@ -475,7 +688,7 @@ function FilerPanelBase() {
         )}
         <VirtualFileRows
           entries={sortedEntries}
-          rowHeight={Math.max(24, panelFontSize + 10) + 2}
+          rowHeight={rowHeight}
           resetKey={`${remoteId ?? "local"}:${path}:${sort.key}:${sort.direction}:${!!sort.explicit}`}
         >
           {(entry) => (

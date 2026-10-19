@@ -9,7 +9,7 @@ vi.mock("../../actions", () => ({ revealCwdInFiler: vi.fn() }));
 vi.mock("@tauri-apps/api/webview", () => ({
   getCurrentWebview: () => ({ onDragDropEvent: async () => () => {} }),
 }));
-vi.mock("../../nativeDialog", () => ({ open: vi.fn(), save: vi.fn() }));
+vi.mock("../../nativeDialog", () => ({ ask: vi.fn(async () => true), open: vi.fn(), save: vi.fn() }));
 vi.mock("../../api", async (original) => ({
   ...await original<typeof import("../../api")>(),
   localHome: vi.fn(), localList: vi.fn(), localRemove: vi.fn(), sftpRemove: vi.fn(),
@@ -116,7 +116,7 @@ describe("Filer multiple selection at the real panel entry", () => {
     await mount();
     press("file10.txt");
     press("file3.txt", { ctrlKey: true });
-    expect(chosen()).toEqual(["file10.txt", "file3.txt"]);
+    expect(chosen()).toEqual(["file3.txt", "file10.txt"]);
     press("file10.txt", { ctrlKey: true });
     expect(chosen()).toEqual(["file3.txt"]);
     press("file2.txt");
@@ -128,8 +128,8 @@ describe("Filer multiple selection at the real panel entry", () => {
 
   it("uses displayed order for Shift ranges and keeps paths selected after sorting", async () => {
     await mount();
-    press("file10.txt"); press("file3.txt", { shiftKey: true });
-    expect(chosen()).toEqual(["file10.txt", "file2.txt", "file3.txt"]);
+    press("file10.txt"); press("file2.txt", { shiftKey: true });
+    expect(chosen()).toEqual(["file2.txt", "file3.txt", "file10.txt"]);
     act(() => useStore.getState().setFilerSort({ key: "name", direction: "asc", explicit: true }));
     expect(chosen()).toEqual(["file2.txt", "file3.txt", "file10.txt"]);
     press("folder"); press("file3.txt", { shiftKey: true });
@@ -140,7 +140,7 @@ describe("Filer multiple selection at the real panel entry", () => {
     platform.mac = true;
     await mount();
     press("file10.txt"); press("file3.txt", { metaKey: true });
-    expect(chosen()).toEqual(["file10.txt", "file3.txt"]);
+    expect(chosen()).toEqual(["file3.txt", "file10.txt"]);
     press("file10.txt", { metaKey: true });
     expect(chosen()).toEqual(["file3.txt"]);
   });
@@ -165,9 +165,9 @@ describe("Filer multiple selection at the real panel entry", () => {
     await mount();
     press("file10.txt"); press("file3.txt", { ctrlKey: true });
     context("file10.txt");
-    expect(chosen()).toEqual(["file10.txt", "file3.txt"]);
+    expect(chosen()).toEqual(["file3.txt", "file10.txt"]);
     await act(async () => menuItem("Copy Path").click());
-    expect(write).toHaveBeenCalledWith("/selection/file10.txt\n/selection/file3.txt");
+    expect(write).toHaveBeenCalledWith("/selection/file3.txt\n/selection/file10.txt");
     context("file2.txt");
     expect(chosen()).toEqual(["file2.txt"]);
   });
@@ -185,10 +185,10 @@ describe("Filer multiple selection at the real panel entry", () => {
     await act(async () => dialog.querySelector<HTMLButtonElement>(".is-danger")!.click());
     if (remote) {
       expect(vi.mocked(api.sftpRemove).mock.calls).toEqual([
-        ["selection-ssh", "/selection/file10.txt", false], ["selection-ssh", "/selection/folder", true],
+        ["selection-ssh", "/selection/folder", true], ["selection-ssh", "/selection/file10.txt", false],
       ]);
     } else {
-      expect(vi.mocked(api.localRemove).mock.calls).toEqual([["/selection/file10.txt", false], ["/selection/folder", true]]);
+      expect(vi.mocked(api.localRemove).mock.calls).toEqual([["/selection/folder", true], ["/selection/file10.txt", false]]);
     }
     expect(chosen()).toEqual([]);
   });
@@ -201,7 +201,7 @@ describe("Filer multiple selection at the real panel entry", () => {
       removed.add(path);
     });
     await mount();
-    press("file10.txt"); press("file3.txt", { shiftKey: true });
+    press("file10.txt"); press("file2.txt", { shiftKey: true });
     act(() => toolbar("Delete").click());
     await act(async () => host.querySelector<HTMLButtonElement>(".confirm-dialog .is-danger")!.click());
     expect(api.localRemove).toHaveBeenCalledTimes(3);
@@ -229,9 +229,27 @@ describe("Filer multiple selection at the real panel entry", () => {
     press("file10.txt"); press("folder", { ctrlKey: true });
     await act(async () => toolbar("Download file or folder").click());
     expect(api.transferFiles).toHaveBeenCalledWith("selection-ssh", [
-      { local: "/downloads/file10.txt", remote: "/selection/file10.txt", upload: false, directory: false },
       { local: "/downloads/folder", remote: "/selection/folder", upload: false, directory: true },
+      { local: "/downloads/file10.txt", remote: "/selection/file10.txt", upload: false, directory: false },
     ], expect.any(Function), expect.any(String));
+  });
+
+  it("asks before a directory download overwrites a same-named item", async () => {
+    useRemote();
+    vi.mocked(nativeDialog.open).mockResolvedValue("/downloads");
+    vi.mocked(api.localList).mockImplementation(async (path) => ({
+      path,
+      entries: path === "/downloads" ? [entries[0]] : entries,
+    }));
+    vi.mocked(nativeDialog.ask).mockResolvedValue(false);
+    await mount();
+    press("file10.txt"); press("folder", { ctrlKey: true });
+    await act(async () => toolbar("Download file or folder").click());
+    expect(nativeDialog.ask).toHaveBeenCalledWith(
+      expect.stringContaining("1 item(s)"),
+      expect.objectContaining({ title: "Replace Existing Items" }),
+    );
+    expect(api.transferFiles).not.toHaveBeenCalled();
   });
 
   it("accepts another download while earlier downloads are still pending", async () => {
@@ -336,8 +354,8 @@ describe("Filer multiple selection at the real panel entry", () => {
     await mount();
     press("file10.txt"); press("folder", { ctrlKey: true });
     await drag("file10.txt");
-    expect(api.startFileDrag).toHaveBeenCalledWith(["/selection/file10.txt", "/selection/folder"], expect.any(Function));
-    expect(chosen()).toEqual(["file10.txt", "folder"]);
+    expect(api.startFileDrag).toHaveBeenCalledWith(["/selection/folder", "/selection/file10.txt"], expect.any(Function));
+    expect(chosen()).toEqual(["folder", "file10.txt"]);
   });
 
   it("stages every selected remote path before handing the complete group to the native drag", async () => {
@@ -346,10 +364,10 @@ describe("Filer multiple selection at the real panel entry", () => {
     press("file10.txt"); press("folder", { ctrlKey: true });
     await drag("file10.txt");
     expect(api.transferFiles).toHaveBeenCalledWith("selection-ssh", [
-      { local: "/staging/file10.txt", remote: "/selection/file10.txt", upload: false, directory: false },
       { local: "/staging/folder", remote: "/selection/folder", upload: false, directory: true },
+      { local: "/staging/file10.txt", remote: "/selection/file10.txt", upload: false, directory: false },
     ], expect.any(Function), expect.any(String));
-    expect(api.startFileDrag).toHaveBeenCalledWith(["/staging/file10.txt", "/staging/folder"], expect.any(Function));
+    expect(api.startFileDrag).toHaveBeenCalledWith(["/staging/folder", "/staging/file10.txt"], expect.any(Function));
   });
 
   it("cancels a remote group released during staging without handing partial files to the system", async () => {
@@ -366,4 +384,31 @@ describe("Filer multiple selection at the real panel entry", () => {
     expect(api.startFileDrag).not.toHaveBeenCalled();
     expect(host.textContent).toContain("Cancelled");
   });
+
+describe("Filer state surfaces", () => {
+  it("shows a failed listing as an error with a retry, not as an empty folder", async () => {
+    let fail = true;
+    vi.mocked(api.localList).mockImplementation(async (path) => {
+      if (fail) throw Error("permission denied");
+      return { path, entries };
+    });
+    await mount();
+    await act(async () => {});
+    const error = host.querySelector<HTMLElement>(".panel-empty.is-error")!;
+    expect(error.textContent).toContain("permission denied");
+    expect(host.querySelector(".panel-empty-action")!.textContent).toBe("Retry");
+    fail = false;
+    await act(async () => error.querySelector<HTMLButtonElement>(".panel-empty-action")!.click());
+    await act(async () => {});
+    expect(host.querySelectorAll(".filer-entry")).toHaveLength(entries.length);
+    expect(host.querySelector(".panel-empty.is-error")).toBeNull();
+  });
+
+  it("names an empty folder instead of rendering a blank list", async () => {
+    vi.mocked(api.localList).mockResolvedValue({ path: "/selection", entries: [] });
+    await mount();
+    await act(async () => {});
+    expect(host.querySelector(".panel-empty")?.textContent).toBe("This folder is empty.");
+  });
+});
 });

@@ -29,15 +29,20 @@ const entry = (name: string, overrides: Partial<FileEntry> = {}): FileEntry => (
 const names = (entries: FileEntry[]): string[] => entries.map((e) => e.name);
 
 describe("sortFileEntries", () => {
-  it("passes the listing through untouched at the default order", () => {
-    // The backends list directories first and names in their own
-    // case-insensitive order; a user who never touched the columns keeps
-    // seeing exactly that, including its byte-ish name order (file10
-    // before file2) instead of the collator's numeric order.
+  it("sorts naturally by default, the way Explorer and Finder do", () => {
     const entries = [entry("file10"), entry("file2"), entry("a-dir", { isDir: true })];
     const sorted = sortFileEntries(entries, DEFAULT_FILE_SORT);
-    expect(names(sorted)).toEqual(["file10", "file2", "a-dir"]);
+    expect(names(sorted)).toEqual(["a-dir", "file2", "file10"]);
     expect(sorted).not.toBe(entries);
+  });
+
+  it("still honours a legacy stored order that predates the natural default", () => {
+    // No `explicit` flag: an old stored value whose owner kept backend order.
+    const entries = [entry("file10"), entry("file2")];
+    expect(names(sortFileEntries(entries, { key: "name", direction: "asc" }))).toEqual([
+      "file10",
+      "file2",
+    ]);
   });
 
   it("sorts by name case-insensitively and in natural numeric order once asked", () => {
@@ -47,8 +52,7 @@ describe("sortFileEntries", () => {
       entry("alpha"),
       entry("file2"),
     ];
-    // Descending is the only non-default name order, so it is the one that
-    // exercises the collator; ascending name order is the passthrough above.
+    // The collator orders digit runs numerically in both directions.
     expect(names(sortFileEntries(entries, { key: "name", direction: "desc" }))).toEqual([
       "readme10.txt",
       "file2",
@@ -97,8 +101,8 @@ describe("sortFileEntries", () => {
     for (const key of ["name", "modified", "size"] as const) {
       for (const direction of ["asc", "desc"] as const) {
         if (key === "name" && direction === "asc") {
-          // The default order passes through untouched; the backend is the
-          // one that lists directories first (see the test above).
+          // A legacy stored value (no `explicit`) still passes the backend
+          // order through; the natural default is covered by the first test.
           continue;
         }
         const sorted = sortFileEntries(entries, { key, direction });
@@ -112,11 +116,13 @@ describe("sortFileEntries", () => {
 });
 
 describe("toggleFileSort", () => {
-  it("distinguishes an explicit ascending name sort from untouched backend order", () => {
+  it("distinguishes an explicit ascending name sort from legacy backend order", () => {
     const entries = [entry("file10"), entry("file2")];
     const descending = toggleFileSort(DEFAULT_FILE_SORT, "name");
     const ascending = toggleFileSort(descending, "name");
-    expect(names(sortFileEntries(entries, DEFAULT_FILE_SORT))).toEqual(["file10", "file2"]);
+    const legacy = { key: "name", direction: "asc" } as const;
+    expect(names(sortFileEntries(entries, legacy))).toEqual(["file10", "file2"]);
+    expect(names(sortFileEntries(entries, DEFAULT_FILE_SORT))).toEqual(["file2", "file10"]);
     expect(names(sortFileEntries(entries, descending))).toEqual(["file10", "file2"]);
     expect(names(sortFileEntries(entries, ascending))).toEqual(["file2", "file10"]);
     saveFileSort(ascending);
@@ -141,7 +147,7 @@ describe("parseFileSort", () => {
       key: "modified",
       direction: "desc",
     });
-    expect(parseFileSort({ key: "name", direction: "asc" })).toEqual(DEFAULT_FILE_SORT);
+    expect(parseFileSort({ key: "name", direction: "asc" })).toEqual({ key: "name", direction: "asc" });
     expect(parseFileSort({ key: "bogus", direction: "asc" })).toBeNull();
     expect(parseFileSort({ key: "name", direction: "sideways" })).toBeNull();
     expect(parseFileSort("name")).toBeNull();

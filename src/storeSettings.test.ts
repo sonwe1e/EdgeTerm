@@ -136,7 +136,7 @@ describe("filer sort preference", () => {
     expect(exported.filerSort).toEqual({ key: "size", direction: "desc" });
 
     useStore.getState().resetSettings();
-    expect(useStore.getState().filerSort).toEqual({ key: "name", direction: "asc" });
+    expect(useStore.getState().filerSort).toEqual({ key: "name", direction: "asc", explicit: true });
     expect(localStorage.getItem("edgeterm.filerSort")).toBeNull();
 
     useStore.getState().applySettings(exported);

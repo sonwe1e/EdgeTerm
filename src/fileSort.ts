@@ -11,7 +11,15 @@ export interface FileSort {
   explicit?: true;
 }
 
-export const DEFAULT_FILE_SORT: FileSort = { key: "name", direction: "asc" };
+// The default is the natural order every file manager shows. It is marked
+// explicit so it runs through the collator instead of passing the backend's
+// byte-ish order through; a stored sort from before this default (no
+// `explicit`) still keeps that legacy passthrough for its owner.
+export const DEFAULT_FILE_SORT: FileSort = {
+  key: "name",
+  direction: "asc",
+  explicit: true,
+};
 
 const SORT_KEYS: readonly SortKey[] = ["name", "modified", "size"];
 
@@ -40,11 +48,11 @@ function compareNames(a: string, b: string): number {
  * key (the backends list them that way too), and a modified time the server
  * did not report sorts last whichever way the direction points.
  *
- * The default order passes the listing through untouched: every backend
- * already lists directories first and names in case-insensitive order, and
- * that byte-ish order differs from this collator's numeric order (file10
- * before file2). A user who never touched the columns keeps seeing exactly
- * what the backend produced.
+ * A sort stored before the natural default existed carries no `explicit`
+ * flag; only that legacy value still passes the listing through untouched,
+ * because its owner explicitly kept the backend's byte-ish order before
+ * column sorting existed. Every current default (and every column click)
+ * goes through the collator, so file2 precedes file10.
  */
 export function sortFileEntries(
   entries: readonly FileEntry[],
