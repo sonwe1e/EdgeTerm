@@ -47,6 +47,21 @@ pub(super) const IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 /// shape.
 pub(super) const REQUEST_TIMEOUT_SECS: u64 = 600;
 
+/// Bytes an SFTP DATA packet spends around its payload: the packet length,
+/// the message type, the request id and the data length. A read may ask for
+/// a server's whole advertised packet budget less exactly this, because the
+/// reply that comes back is only this much larger than what was asked for
+/// (russh-sftp serialises `Data` as the request id followed by the
+/// length-prefixed payload, inside a length-prefixed, type-tagged packet).
+pub(super) const DATA_FRAMING: u64 = 13;
+
+/// Bytes a WRITE request is allowed to spend around its payload. The framing
+/// itself is 25 — the packet length, the type, the request id, the handle,
+/// the offset and the data length — but the handle belongs to the server and
+/// its length is not this client's to choose, so the allowance stays a flat
+/// kilobyte rather than the exact figure a known handle would permit.
+pub(super) const WRITE_FRAMING: u64 = 1024;
+
 impl From<Error> for Failure {
     fn from(e: Error) -> Self {
         let retry = matches!(
@@ -72,6 +87,11 @@ pub(super) struct Remote {
     write_len: usize,
     files: usize,
     requests: Semaphore,
+    /// How many reads the verification read-back keeps in flight. It is the
+    /// job's own request ceiling, not a smaller fixed number: a resumed
+    /// prefix is re-read at the width it was written at, so a large one costs
+    /// what it cost to transfer instead of a fixed fraction of that.
+    readback: usize,
     /// The job's rate budget. Every content byte this Remote moves — the
     /// copy pipelines and the signature/hash read-backs alike — draws from
     /// it here, exactly once, at the point the data moves.
@@ -115,6 +135,25 @@ pub(super) async fn dial_transfer(job: &Job) -> TransferResult<Arc<SharedTranspo
     result
 }
 
+/// The read and write payload sizes one job's session moves, from what the
+/// server advertised and the configured chunk. Both are clamped by the packet
+/// budget the server named, because russh-sftp refuses to send a packet
+/// larger than it; the read side only has to leave room for a DATA reply's
+/// framing, while the write side carries the server's handle as well. A
+/// server that advertises nothing keeps the conservative 32 KiB defaults,
+/// which is what a constrained network appliance is likely to enforce.
+pub(super) fn wire_lengths(limits: Limits, chunk_kib: usize) -> (usize, usize) {
+    let packet_len = limits.packet_len.unwrap_or(32 * 1024);
+    let configured = chunk_kib * 1024;
+    let read_len = configured
+        .min(limits.read_len.unwrap_or(32 * 1024) as usize)
+        .min(packet_len.saturating_sub(DATA_FRAMING) as usize);
+    let write_len = configured
+        .min(limits.write_len.unwrap_or(32 * 1024) as usize)
+        .min(packet_len.saturating_sub(WRITE_FRAMING) as usize);
+    (read_len, write_len)
+}
+
 impl Remote {
     /// Production dial/handshake for one job's SFTP session; also the
     /// bridge the real-server acceptance tests use to reach the engine.
@@ -154,14 +193,7 @@ impl Remote {
         }
         // Include packet framing and handle overhead, and stay conservative on
         // servers that don't advertise limits (network appliances in particular).
-        let max_packet = limits.packet_len.unwrap_or(32 * 1024).saturating_sub(1024) as usize;
-        let configured = job.options.chunk_kib * 1024;
-        let read_len = configured
-            .min(limits.read_len.unwrap_or(32 * 1024) as usize)
-            .min(max_packet);
-        let write_len = configured
-            .min(limits.write_len.unwrap_or(32 * 1024) as usize)
-            .min(max_packet);
+        let (read_len, write_len) = wire_lengths(limits, job.options.chunk_kib);
         if read_len == 0 || write_len == 0 {
             return Err(Failure::new(
                 "limits",
@@ -182,6 +214,7 @@ impl Remote {
                 None => job.options.files.min(4),
             },
             requests: Semaphore::new(job.options.requests),
+            readback: job.options.requests,
             pacer: job.pacer.clone(),
             listings: Mutex::new(HashMap::new()),
             last_response: Mutex::new(Instant::now()),
@@ -381,16 +414,27 @@ impl Remote {
             let mut context = Context::new(&SHA256);
             let length = size.min(64 * 1024) as usize;
             let tail_offset = size.saturating_sub(length as u64);
-            let head = self.read(&handle, 0, length, control).await?;
+            // The two sample windows are independent reads on one handle: a
+            // server answers them in order and may answer them in either
+            // order, so a slow link pays one round trip for both instead of
+            // two. `hash` already pipelines reads on a single handle this
+            // way, and a download takes this signature twice — once before
+            // the copy and once to check the source did not move.
+            let (head, tail) = if tail_offset == 0 {
+                let head = self.read(&handle, 0, length, control).await?;
+                (head, None)
+            } else {
+                let (head, tail) = tokio::join!(
+                    self.read(&handle, 0, length, control),
+                    self.read(&handle, tail_offset, length, control),
+                );
+                (head?, Some(tail?))
+            };
             context.update(&head);
             // A file that fits in one sample has the same bytes at both ends.
             // They are still hashed twice, so the signature a checkpoint holds
             // is unchanged, but the second read would only fetch them again.
-            if tail_offset == 0 {
-                context.update(&head);
-            } else {
-                context.update(&self.read(&handle, tail_offset, length, control).await?);
-            }
+            context.update(tail.as_ref().unwrap_or(&head));
             Ok(Some(local::Signature {
                 size,
                 modified: meta.mtime.map(|v| v as u128),
@@ -402,7 +446,10 @@ impl Remote {
         result
     }
     /// Re-reads a file this job already wrote and returns its digest: a
-    /// resumed prefix, or a destination a recovery has to recognise.
+    /// resumed prefix, or a destination a recovery has to recognise. The
+    /// reads ride the job's own request ceiling, because the prefix was
+    /// transferred at that width — a narrower read-back makes a large resume
+    /// pay several times over for verifying what it is about to append to.
     async fn hash(&self, path: &str, size: u64, control: &Control) -> TransferResult<String> {
         let handle = self.open(path, OpenFlags::READ, control).await?;
         let result = async {
@@ -410,7 +457,7 @@ impl Remote {
             let mut next = 0;
             let mut reads = FuturesOrdered::new();
             loop {
-                while reads.len() < 8 && next < size {
+                while reads.len() < self.readback && next < size {
                     let length = (size - next).min(self.read_len as u64) as usize;
                     reads.push_back(self.read(&handle, next, length, control));
                     next += length as u64;
@@ -617,6 +664,41 @@ async fn create_directories(
     Ok(created)
 }
 
+/// The size of every planned file the journal and the local disk did not
+/// already answer. Each one costs a round trip, and a flat batch of a hundred
+/// files would otherwise spend a hundred of them before the first byte moves;
+/// the answers are independent, so [`PLAN_WINDOW`] of them are in flight at
+/// once. Results come back in the order the paths were given and the first
+/// failure in that order is the one reported, exactly as a sequential loop
+/// would.
+async fn remote_sizes(
+    remote: &Remote,
+    control: &Control,
+    paths: &[&str],
+) -> TransferResult<Vec<Option<u64>>> {
+    let mut sizes = Vec::with_capacity(paths.len());
+    let mut asked = FuturesOrdered::new();
+    let mut next = 0;
+    loop {
+        control.check()?;
+        while asked.len() < PLAN_WINDOW && next < paths.len() {
+            let path = paths[next];
+            asked.push_back(async move {
+                remote
+                    .attrs(path, control)
+                    .await
+                    .map(|attrs| attrs.and_then(|attrs| attrs.size))
+            });
+            next += 1;
+        }
+        let Some(size) = asked.next().await else {
+            break;
+        };
+        sizes.push(size?);
+    }
+    Ok(sizes)
+}
+
 /// Expands the job's items into the list of files to move, freezing it in
 /// the journal before the first byte; the real-server acceptance tests
 /// share this entry point with `run`.
@@ -638,12 +720,15 @@ pub(super) async fn plan(job: &Job, remote: &Remote) -> TransferResult<Vec<Item>
             .filter(|(_, size)| size.is_none())
             .map(|(index, _)| index)
             .collect();
-        for gap in gaps {
-            job.control.check()?;
-            sizes[gap] = remote
-                .attrs(&plan[gap].remote, &job.control)
-                .await?
-                .and_then(|attrs| attrs.size);
+        let answered = {
+            let paths: Vec<&str> = gaps.iter().map(|&i| plan[i].remote.as_str()).collect();
+            remote_sizes(remote, &job.control, &paths).await?
+        };
+        for (gap, size) in gaps.into_iter().zip(answered) {
+            // A server that reports no size at all leaves the gap as it was,
+            // which the check below turns into the same conflict a sequential
+            // lookup reported.
+            sizes[gap] = size;
         }
         let sizes: Vec<u64> = sizes
             .into_iter()
@@ -750,15 +835,22 @@ pub(super) async fn plan(job: &Job, remote: &Remote) -> TransferResult<Vec<Item>
         }
     }
     // Every size still unknown is a remote file's, and each one costs a round
-    // trip. They are asked in plan order, so the first failure reported is the
-    // first one a sequential walk would have hit.
-    for (item, size) in files.iter().zip(sizes.iter_mut()) {
-        job.control.check()?;
-        if size.is_none() {
-            *size = remote
-                .attrs(&item.remote, &job.control)
-                .await?
-                .and_then(|attrs| attrs.size);
+    // trip: a flat batch of a hundred would otherwise spend a hundred of them
+    // before the first byte moved, and a restarted job pays the same for the
+    // files it never started.
+    {
+        let gaps: Vec<usize> = sizes
+            .iter()
+            .enumerate()
+            .filter(|(_, size)| size.is_none())
+            .map(|(index, _)| index)
+            .collect();
+        let answered = {
+            let paths: Vec<&str> = gaps.iter().map(|&i| files[i].remote.as_str()).collect();
+            remote_sizes(remote, &job.control, &paths).await?
+        };
+        for (gap, size) in gaps.into_iter().zip(answered) {
+            sizes[gap] = size;
         }
     }
     // Duplicate destinations in one batch are rejected before any file is written.
@@ -1642,6 +1734,7 @@ pub async fn cleanup(job: &Job) -> TransferResult<()> {
             write_len: 31 * 1024,
             files: 1,
             requests: Semaphore::new(8),
+            readback: 8,
             // Cleanup only removes partials; it reads no file content, and
             // a stopped job's control would interrupt any paced wait anyway.
             pacer: None,

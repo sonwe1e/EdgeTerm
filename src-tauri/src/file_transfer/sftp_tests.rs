@@ -183,6 +183,7 @@ impl Fixture {
             write_len,
             files: 4,
             requests: Semaphore::new(32),
+            readback: 32,
             pacer,
             listings: Mutex::new(HashMap::new()),
             last_response: Mutex::new(std::time::Instant::now()),
@@ -2563,4 +2564,164 @@ async fn restart_recovery_refuses_a_same_length_source_change() {
     // Nothing was committed over the original state.
     assert!(!f.state.lock().files.contains_key("/target"));
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A read may ask for the server's whole packet budget less the DATA
+/// framing. The previous implementation subtracted a flat kilobyte from both
+/// directions, so a server that advertises a 32 KiB packet threw away a
+/// kilobyte of every read; `authorized_keys` already accounts for the exact
+/// 13 bytes a DATA reply spends around its payload.
+#[test]
+fn read_lengths_leave_room_for_only_the_data_framing() {
+    let advertised = Limits {
+        packet_len: Some(32 * 1024),
+        read_len: Some(64 * 1024),
+        write_len: Some(64 * 1024),
+        open_handles: Some(0),
+    };
+    let (read, write) = super::wire_lengths(advertised, 128);
+    assert_eq!(read, 32 * 1024 - super::DATA_FRAMING as usize);
+    // A WRITE carries the server's handle, whose length is not this client's
+    // to choose, so the write side keeps the wider allowance.
+    assert_eq!(write, 32 * 1024 - super::WRITE_FRAMING as usize);
+
+    // A server that advertises nothing keeps the conservative defaults, and
+    // the read side gains the same kilobyte from them.
+    let (read, write) = super::wire_lengths(Limits::default(), 128);
+    assert_eq!(read, 32 * 1024 - super::DATA_FRAMING as usize);
+    assert_eq!(write, 32 * 1024 - super::WRITE_FRAMING as usize);
+
+    // A chunk below the packet budget is still the chunk.
+    let (read, _) = super::wire_lengths(advertised, 16);
+    assert_eq!(read, 16 * 1024);
+
+    // A packet budget that cannot hold a DATA reply reports zero, which
+    // `connect` turns into an unusable-limits failure.
+    let (read, _) = super::wire_lengths(
+        Limits {
+            packet_len: Some(8),
+            ..advertised
+        },
+        128,
+    );
+    assert_eq!(read, 0);
+}
+
+/// The two sample windows of a signature are independent reads on one
+/// handle. They used to be awaited one after the other, so a signature cost
+/// two round trips on a slow link — and a download takes it twice, once
+/// before the copy and once to check the source did not move.
+#[tokio::test]
+async fn a_signature_samples_both_windows_in_one_round_trip() {
+    let bytes = payload(256 * 1024);
+    let f = Fixture::new(Server {
+        delay_ms: 20,
+        files: HashMap::from([("/source".into(), bytes.clone())]),
+        ..Server::default()
+    })
+    .await;
+    let job = f.job();
+    let signature = f
+        .remote
+        .source_signature("/source", &job.control)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(signature.size, bytes.len() as u64);
+    // Both windows are outstanding at once, which is only possible if the
+    // second read was issued before the first reply came back; awaiting them
+    // one after the other leaves a peak of one.
+    assert_eq!(f.state.lock().peak_data, 2);
+    assert_eq!(f.count("read"), 2);
+    // The digest is unchanged: the head window first, the tail window second.
+    let mut context = Context::new(&SHA256);
+    context.update(&bytes[..64 * 1024]);
+    context.update(&bytes[bytes.len() - 64 * 1024..]);
+    assert_eq!(signature.sample, local::hex(context.finish().as_ref()));
+}
+
+/// A resumed file's prefix is re-read to verify it before anything is
+/// appended. The read-back used a fixed window of eight, so a large prefix
+/// was verified at a quarter of the width it was transferred at — on a slow
+/// link that costs several times what the transfer itself did. The window is
+/// now the job's own request ceiling.
+#[tokio::test]
+async fn a_resume_prefix_is_verified_at_the_jobs_request_width() {
+    let f = Fixture::new(Server {
+        delay_ms: 20,
+        fail_write_at: Some(4 * 1024 * 1024),
+        ..Server::default()
+    })
+    .await;
+    let bytes = payload(6 * 1024 * 1024 + 91);
+    let item = f.upload(&bytes);
+    let job = f.job();
+    let large = Semaphore::new(2);
+    assert!(copy(&job, &f.remote, item.clone(), 8, &large)
+        .await
+        .is_err());
+    assert_eq!(
+        job.checkpoint(&job.key(&item)).unwrap().offset,
+        4 * 1024 * 1024
+    );
+    // The interrupted run's own writes already reached the depth this test
+    // asks for (8), so a peak above that can only have come from the
+    // verification: 4 MiB at the fixture's 128 KiB read is 32 reads, and the
+    // old window of eight never let more than eight be in flight.
+    assert!(f.state.lock().peak_data <= 8);
+    // The server stops refusing the write, so the resumed run can finish; the
+    // read-back that verifies the 4 MiB prefix runs before it appends.
+    f.state.lock().fail_write_at = None;
+    copy(&job, &f.remote, item.clone(), 8, &large)
+        .await
+        .unwrap();
+    assert_eq!(f.state.lock().files["/target"], bytes);
+    assert!(job.checkpoint(&job.key(&item)).unwrap().complete);
+    let peak = f.state.lock().peak_data;
+    assert!(
+        peak > 8,
+        "the prefix read-back did not fill the pipeline: {peak}"
+    );
+}
+
+/// A flat batch's sizes are asked of the server over a window. Each one is a
+/// round trip, and a batch of a hundred files would otherwise spend a hundred
+/// of them before the first byte moved — and a restarted job pays the same
+/// for the files it never started.
+#[tokio::test]
+async fn a_flat_batch_plans_its_sizes_over_a_window() {
+    let sources: HashMap<String, Vec<u8>> = (0..16)
+        .map(|n| (format!("/file-{n}"), payload(4096)))
+        .collect();
+    let f = Fixture::new(Server {
+        delay_ms: 20,
+        files: sources,
+        ..Server::default()
+    })
+    .await;
+    let items: Vec<Item> = (0..16)
+        .map(|n| Item {
+            local: f.root.join(format!("file-{n}")).to_string_lossy().into(),
+            remote: format!("/file-{n}"),
+            upload: false,
+            directory: false,
+        })
+        .collect();
+    let job = super::super::test_job_items(f.root.clone(), items);
+    let started = std::time::Instant::now();
+    let planned = plan(&job, &f.remote).await.unwrap();
+    // Sixteen sizes at 20 ms each: one round trip apiece is 320 ms, the
+    // window of eight is two of them plus the parent resolution.
+    assert!(
+        started.elapsed() < Duration::from_millis(160),
+        "planning took {:?}",
+        started.elapsed()
+    );
+    assert_eq!(planned.len(), 16);
+    assert_eq!(job.snapshot.lock().total, 16 * 4096u64);
+    assert!(
+        f.state.lock().peak >= 8,
+        "the size lookups did not overlap: {}",
+        f.state.lock().peak
+    );
 }
