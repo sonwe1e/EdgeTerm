@@ -2414,6 +2414,7 @@ mod tests {
             private_key_path: None,
             passphrase: None,
             jump_profile_id: None,
+            forwards: Vec::new(),
             port_name: None,
             baud_rate: None,
             data_bits: None,

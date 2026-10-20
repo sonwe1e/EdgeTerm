@@ -3,6 +3,8 @@
 //! alias` resolves it: the first value found wins, so a `Host *` block sets
 //! defaults for everything after it, `Include` splices files in place and
 //! `ProxyJump` hops become the profile's jump host chain.
+//! `LocalForward`, `RemoteForward` and `DynamicForward` lines become the
+//! profile's saved forwards, established when a session opens.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -11,6 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, Result};
 use crate::model::{AuthKind, SessionKind, SessionProfile};
+use crate::port_forward::{Direction, Spec};
 use crate::store::Store;
 
 /// Files an `Include` chain may nest; OpenSSH stops at the same depth.
@@ -35,6 +38,11 @@ pub struct SshConfigEntry {
     /// `[user@]host[:port]` literals.
     #[serde(default)]
     pub jumps: Vec<String>,
+    /// `LocalForward`, `RemoteForward` and `DynamicForward` lines, in file
+    /// order. Unlike the first-value-wins options, every line applies: a
+    /// second `LocalForward` is another tunnel, not a replacement.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub forwards: Vec<Spec>,
     /// A saved SSH session that already stands for this alias — same name,
     /// or same host, port and user. Importing the alias updates it in place
     /// instead of adding a twin.
@@ -429,6 +437,114 @@ fn resolve(blocks: &[Block], alias: &str) -> HashMap<String, String> {
     options
 }
 
+/// Every option of the blocks that select `alias`, in file order, as
+/// (keyword, value) pairs. `resolve` keeps only the first value of each
+/// keyword; forwards need every line, in order.
+fn options_in_order(blocks: &[Block], alias: &str) -> Vec<(String, String)> {
+    blocks
+        .iter()
+        .filter(|block| block_applies(block, alias))
+        .flat_map(|block| block.options.iter().cloned())
+        .collect()
+}
+
+/// The forward lines that select `alias`, in file order. A line ssh itself
+/// would reject is skipped rather than failing the whole import, and every
+/// surviving spec is one `validate` accepts, so it is guaranteed startable.
+fn forwards_for(blocks: &[Block], alias: &str) -> Vec<Spec> {
+    options_in_order(blocks, alias)
+        .iter()
+        .filter_map(|(keyword, value)| match keyword.as_str() {
+            "localforward" => parse_forward(value, Direction::Local),
+            "remoteforward" => parse_forward(value, Direction::Remote),
+            "dynamicforward" => parse_dynamic_forward(value),
+            _ => None,
+        })
+        .filter(|spec| crate::port_forward::validate(spec).is_ok())
+        .collect()
+}
+
+/// One `LocalForward`/`RemoteForward` line: `[bind_address:]port
+/// host:hostport`.
+fn parse_forward(value: &str, direction: Direction) -> Option<Spec> {
+    let mut args = split_args(value);
+    if args.len() != 2 {
+        return None;
+    }
+    let target = args.pop()?;
+    let (listen_host, listen_port) = parse_listen(&args[0])?;
+    let (target_host, target_port) = parse_target(&target)?;
+    Some(Spec {
+        direction,
+        listen_host,
+        listen_port,
+        target_host: Some(target_host),
+        target_port: Some(target_port),
+    })
+}
+
+/// One `DynamicForward` line: `[bind_address:]port`. The SOCKS5 proxy
+/// names no target; each client brings its own.
+fn parse_dynamic_forward(value: &str) -> Option<Spec> {
+    let args = split_args(value);
+    if args.len() != 1 {
+        return None;
+    }
+    let (listen_host, listen_port) = parse_listen(&args[0])?;
+    Some(Spec {
+        direction: Direction::Dynamic,
+        listen_host,
+        listen_port,
+        target_host: None,
+        target_port: None,
+    })
+}
+
+/// The listener half of a forward line: `port`, `bind:port`, or the
+/// bracketed IPv6 forms. An empty bind address means loopback and `*`
+/// means every interface, the way ssh reads them.
+fn parse_listen(token: &str) -> Option<(String, u16)> {
+    let (host, port) = match token.strip_prefix('[') {
+        Some(inner) => {
+            let (host, rest) = inner.split_once(']')?;
+            (host, rest.strip_prefix(':')?)
+        }
+        None => match token.rsplit_once(':') {
+            Some((host, port)) => (host, port),
+            None => ("", token),
+        },
+    };
+    let port = port.parse::<u16>().ok().filter(|port| *port != 0)?;
+    // A host of only colons is a bare IPv6 literal that lost its port to
+    // the split; ssh requires brackets there, and so do we.
+    if !host.is_empty() && !host.contains(|c: char| c != ':') {
+        return None;
+    }
+    let host = match host {
+        "" => "127.0.0.1",
+        "*" => "0.0.0.0",
+        host => host,
+    };
+    Some((host.to_string(), port))
+}
+
+/// The target half of a forward line: `host:hostport`, with brackets
+/// around an IPv6 literal — the spelling ssh requires there.
+fn parse_target(token: &str) -> Option<(String, u16)> {
+    let (host, port) = match token.strip_prefix('[') {
+        Some(inner) => {
+            let (host, rest) = inner.split_once(']')?;
+            (host, rest.strip_prefix(':')?)
+        }
+        None => token.rsplit_once(':')?,
+    };
+    let port = port.parse::<u16>().ok().filter(|port| *port != 0)?;
+    if host.is_empty() || !host.contains(|c: char| c != ':') {
+        return None;
+    }
+    Some((host.to_string(), port))
+}
+
 fn entry_for(alias: &str, options: &HashMap<String, String>, context: &Context) -> SshConfigEntry {
     let host = options
         .get("hostname")
@@ -474,6 +590,7 @@ fn entry_for(alias: &str, options: &HashMap<String, String>, context: &Context) 
         auth,
         private_key_path,
         jumps,
+        forwards: Vec::new(),
         existing_id: None,
         existing_name: None,
     }
@@ -485,7 +602,11 @@ pub fn parse_text(text: &str, context: &Context) -> Vec<SshConfigEntry> {
     parser.feed(text, 0);
     aliases(&parser.blocks)
         .iter()
-        .map(|alias| entry_for(alias, &resolve(&parser.blocks, alias), context))
+        .map(|alias| {
+            let mut entry = entry_for(alias, &resolve(&parser.blocks, alias), context);
+            entry.forwards = forwards_for(&parser.blocks, alias);
+            entry
+        })
         .collect()
 }
 
@@ -601,6 +722,7 @@ fn new_profile(entry: &SshConfigEntry, group_id: Option<String>) -> SessionProfi
         private_key_path: entry.private_key_path.clone(),
         passphrase: None,
         jump_profile_id: None,
+        forwards: entry.forwards.clone(),
         port_name: None,
         baud_rate: None,
         data_bits: None,
@@ -614,7 +736,9 @@ fn new_profile(entry: &SshConfigEntry, group_id: Option<String>) -> SessionProfi
 /// does not speak about — name, colour, group, encoding, a jump host set
 /// by hand — stays. The authentication only changes when the file names
 /// a key: switching a password profile to the default identity would also
-/// drop its stored password.
+/// drop its stored password. Forward lines are replaced wholesale: the
+/// file is the source of truth for what it declares, so removing a line
+/// from the config drops that tunnel on the next import.
 fn update_profile(profile: &mut SessionProfile, entry: &SshConfigEntry, named_key: bool) {
     profile.host = Some(entry.host.clone());
     profile.port = Some(entry.port);
@@ -623,6 +747,7 @@ fn update_profile(profile: &mut SessionProfile, entry: &SshConfigEntry, named_ke
         profile.auth = Some(entry.auth);
         profile.private_key_path = entry.private_key_path.clone();
     }
+    profile.forwards = entry.forwards.clone();
 }
 
 /// Saves the selected aliases of `entries` as SSH profiles: a matching
@@ -784,6 +909,7 @@ fn literal_hop_profile(
         auth,
         private_key_path,
         jumps: Vec::new(),
+        forwards: Vec::new(),
         existing_id: None,
         existing_name: None,
     };

@@ -271,6 +271,30 @@ async fn open_session_inner(
     };
 
     state.file_transfers.remember(&id, &profile);
+    // Forwards the profile carries — imported from an OpenSSH config's
+    // LocalForward/RemoteForward/DynamicForward lines — are established
+    // now, the way `ssh host` establishes them: one that cannot start is
+    // reported and skipped, never fails the session.
+    if profile.is_ssh_transport() && !profile.forwards.is_empty() {
+        if let Some(transport) = state.ssh_transports.get(&id) {
+            for spec in &profile.forwards {
+                if let Err(error) = state.port_forwards.start(
+                    &id,
+                    profile.address(),
+                    transport.clone(),
+                    spec.clone(),
+                ) {
+                    request.warn(
+                        "forward",
+                        format!(
+                            "{}:{} could not start: {error}",
+                            spec.listen_host, spec.listen_port
+                        ),
+                    );
+                }
+            }
+        }
+    }
     state.sessions.insert(SessionHandle {
         info: info.clone(),
         tx,

@@ -13,6 +13,7 @@ use crate::model::{
     SessionGroup, SessionKind, SessionProfile, Theme, APP_DATA_APP, APP_DATA_EXTENSION,
     APP_DATA_FORMAT,
 };
+use crate::port_forward::Direction;
 use crate::session::{join_remote, sort_entries, TransferProgress};
 use crate::ssh_config::{self, SshConfigEntry};
 use crate::store::{
@@ -308,6 +309,7 @@ pub(crate) fn profile(kind: SessionKind) -> SessionProfile {
         private_key_path: None,
         passphrase: None,
         jump_profile_id: None,
+        forwards: Vec::new(),
         port_name: None,
         baud_rate: None,
         data_bits: None,
@@ -2788,4 +2790,96 @@ Host db
         None,
         "db is saved as a plain session; its chain was left off"
     );
+}
+
+#[test]
+fn ssh_config_parses_local_remote_and_dynamic_forward_lines() {
+    let dir = temp_dir("ssh-forwards");
+    let context = ssh_context(&dir);
+    let text = r#"
+Host lab
+  HostName lab.example.com
+  LocalForward 8888 localhost:8888
+  LocalForward 127.0.0.1:6006 localhost:6006
+  LocalForward *:9000 10.0.0.5:9000
+  LocalForward [::1]:7000 [::1]:7000
+  RemoteForward 8080 localhost:3000
+  DynamicForward 1080
+  DynamicForward 127.0.0.1:1081
+  LocalForward 8888 bad-line
+  LocalForward 0 localhost:8888
+  LocalForward 8888 localhost:0
+  LocalForward ::1 localhost:22
+"#;
+    let entries = ssh_config::parse_text(text, &context);
+    let lab = entry_named(&entries, "lab");
+    let forwards = &lab.forwards;
+    let shape: Vec<(&str, &str, u16, Option<&str>, Option<u16>)> = forwards
+        .iter()
+        .map(|spec| {
+            (
+                match spec.direction {
+                    Direction::Local => "local",
+                    Direction::Remote => "remote",
+                    Direction::Dynamic => "dynamic",
+                },
+                spec.listen_host.as_str(),
+                spec.listen_port,
+                spec.target_host.as_deref(),
+                spec.target_port,
+            )
+        })
+        .collect();
+    assert_eq!(
+        shape,
+        [
+            ("local", "127.0.0.1", 8888, Some("localhost"), Some(8888)),
+            ("local", "127.0.0.1", 6006, Some("localhost"), Some(6006)),
+            ("local", "0.0.0.0", 9000, Some("10.0.0.5"), Some(9000)),
+            ("local", "::1", 7000, Some("::1"), Some(7000)),
+            ("remote", "127.0.0.1", 8080, Some("localhost"), Some(3000)),
+            ("dynamic", "127.0.0.1", 1080, None, None),
+            ("dynamic", "127.0.0.1", 1081, None, None),
+        ],
+        "every well-formed line survives in file order; an empty bind means loopback and * means every interface"
+    );
+}
+
+#[test]
+fn ssh_config_import_carries_forwards_into_the_profile_and_replaces_them() {
+    let dir = temp_dir("ssh-forward-import");
+    let store = Store::load_from_test(dir.join("sessions.json"));
+    let context = ssh_context(&dir);
+    let text = "\
+Host lab
+  HostName lab.example.com
+  LocalForward 8888 localhost:8888
+  DynamicForward 1080
+";
+    let entries = ssh_config::parse_text(text, &context);
+    let summary =
+        ssh_config::import(&store, &entries, &["lab".to_string()], None, &context).expect("import");
+    assert_eq!(summary.added, 1);
+    let lab = store
+        .list()
+        .into_iter()
+        .find(|profile| profile.name == "lab")
+        .expect("lab saved");
+    assert_eq!(lab.forwards.len(), 2, "both forward lines ride along");
+
+    // The file is the source of truth: dropping a line drops the tunnel.
+    let trimmed = "\
+Host lab
+  HostName lab.example.com
+  LocalForward 8888 localhost:8888
+";
+    let entries = ssh_config::parse_text(trimmed, &context);
+    ssh_config::import(&store, &entries, &["lab".to_string()], None, &context).expect("re-import");
+    let lab = store
+        .list()
+        .into_iter()
+        .find(|profile| profile.name == "lab")
+        .expect("lab still saved");
+    assert_eq!(lab.forwards.len(), 1, "the removed DynamicForward is gone");
+    assert_eq!(lab.forwards[0].listen_port, 8888);
 }

@@ -1640,6 +1640,14 @@ export type SessionProfile_Deserialize = {
 	 *  `Store::jump_chain`.
 	 */
 	jumpProfileId?: string | null,
+	/**
+	 *  Port forwards saved with this profile, established when a session
+	 *  opens. Imported from an OpenSSH config's `LocalForward`,
+	 *  `RemoteForward` and `DynamicForward` lines (see `ssh_config`); a
+	 *  forward that cannot start is reported and skipped, never fails the
+	 *  session, the way `ssh host` treats one.
+	 */
+	forwards?: PortForwardSpec[],
 	portName?: string | null,
 	baudRate?: number | null,
 	dataBits?: number | null,
@@ -1716,6 +1724,14 @@ export type SessionProfile_Serialize = {
 	 *  `Store::jump_chain`.
 	 */
 	jumpProfileId?: string | null,
+	/**
+	 *  Port forwards saved with this profile, established when a session
+	 *  opens. Imported from an OpenSSH config's `LocalForward`,
+	 *  `RemoteForward` and `DynamicForward` lines (see `ssh_config`); a
+	 *  forward that cannot start is reported and skipped, never fails the
+	 *  session, the way `ssh host` treats one.
+	 */
+	forwards?: PortForwardSpec[],
 	portName: string | null,
 	baudRate: number | null,
 	dataBits: number | null,
@@ -1745,6 +1761,12 @@ export type SshConfigEntry_Deserialize = {
 	 */
 	jumps?: string[],
 	/**
+	 *  `LocalForward`, `RemoteForward` and `DynamicForward` lines, in file
+	 *  order. Unlike the first-value-wins options, every line applies: a
+	 *  second `LocalForward` is another tunnel, not a replacement.
+	 */
+	forwards?: PortForwardSpec[],
+	/**
 	 *  A saved SSH session that already stands for this alias — same name,
 	 *  or same host, port and user. Importing the alias updates it in place
 	 *  instead of adding a twin.
@@ -1766,6 +1788,12 @@ export type SshConfigEntry_Serialize = {
 	 *  `[user@]host[:port]` literals.
 	 */
 	jumps: string[],
+	/**
+	 *  `LocalForward`, `RemoteForward` and `DynamicForward` lines, in file
+	 *  order. Unlike the first-value-wins options, every line applies: a
+	 *  second `LocalForward` is another tunnel, not a replacement.
+	 */
+	forwards?: PortForwardSpec[],
 	/**
 	 *  A saved SSH session that already stands for this alias — same name,
 	 *  or same host, port and user. Importing the alias updates it in place

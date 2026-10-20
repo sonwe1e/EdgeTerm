@@ -146,6 +146,13 @@ pub struct SessionProfile {
     /// `Store::jump_chain`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub jump_profile_id: Option<String>,
+    /// Port forwards saved with this profile, established when a session
+    /// opens. Imported from an OpenSSH config's `LocalForward`,
+    /// `RemoteForward` and `DynamicForward` lines (see `ssh_config`); a
+    /// forward that cannot start is reported and skipped, never fails the
+    /// session, the way `ssh host` treats one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub forwards: Vec<crate::port_forward::Spec>,
 
     // --- serial ---
     #[serde(default)]
