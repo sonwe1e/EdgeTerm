@@ -464,6 +464,26 @@ describe("Filer transfer failure recovery", () => {
     expect(host.querySelector(".filer-transfer.is-error")).toBeNull();
   });
 
+  // A progressbar is a children-presentational role: while the bar was the
+  // footer's outer element, the cancel and retry buttons inside it were left
+  // out of the accessibility tree and a keyboard user could not reach "cancel"
+  // at all. jsdom has no accessibility tree to ask, so this pins the structure
+  // instead — the role is on the track, and no button lives under it.
+  it("leaves the footer's buttons outside the progressbar", async () => {
+    useRemote();
+    vi.mocked(api.transferFiles).mockImplementation(async () => new Promise(() => {}));
+    await mount();
+    await startUpload();
+    const bar = host.querySelector<HTMLElement>(".filer-transfer-track")!;
+    expect(bar.getAttribute("role")).toBe("progressbar");
+    expect(host.querySelector(".filer-transfer")!.getAttribute("role")).toBeNull();
+    expect(bar.querySelectorAll("button").length).toBe(0);
+    const cancel = host.querySelector<HTMLElement>(".filer-transfer-cancel")!;
+    expect(cancel.getAttribute("role")).toBeNull();
+    expect(bar.contains(cancel)).toBe(false);
+    expect(host.querySelector(".filer-transfer")!.contains(cancel)).toBe(true);
+  });
+
   it("reruns a failed upload from the error line's Retry instead of only reloading", async () => {
     useRemote();
     let attempts = 0;
@@ -492,11 +512,17 @@ describe("Filer browsing surfaces", () => {
     await act(async () => {});
     const size = (name: string) => row(name).querySelector(".filer-col-size")!.textContent;
     expect(size("file10.txt")).toBe("30 B");
-    // A folder has no size of its own, the way the dual-pane rows show it.
-    expect(size("folder")).toBe("—");
-    const caption = host.querySelector<HTMLButtonElement>('.filer-columns [aria-label="Sort by size"]')!;
+    // A folder has no size of its own, and an empty cell is read as nothing,
+    // which is what an absent size is. A dash would read as a small number.
+    expect(size("folder")).toBe("");
+    // Captions carry no aria-label: their own text is their accessible name
+    // now, the state travels as aria-sort, and data-sort-key is the handle.
+    const caption = host.querySelector<HTMLButtonElement>('.filer-columns [data-sort-key="size"]')!;
+    expect(caption.getAttribute("aria-sort")).toBe("none");
     await act(async () => { caption.click(); });
+    expect(caption.getAttribute("aria-sort")).toBe("ascending");
     await act(async () => { caption.click(); });
+    expect(caption.getAttribute("aria-sort")).toBe("descending");
     expect(rows().map((element) => element.querySelector(".row-label")!.textContent))
       .toEqual(["folder", "file10.txt", "file3.txt", "file2.txt"]);
   });
@@ -652,6 +678,97 @@ describe("Filer rename", () => {
     await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
     expect(editor()).toBeNull();
     expect(api.localRename).not.toHaveBeenCalled();
+  });
+});
+
+describe("Filer keyboard navigation", () => {
+  /** Every label the open context menu carries, in document order. */
+  const menuLabels = () =>
+    [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].map(
+      (element) => element.textContent?.trim(),
+    );
+  /** A key press on the listbox itself, the way a focused list receives it. */
+  const key = (name: string, options: KeyboardEventInit = {}) =>
+    act(() => {
+      host.querySelector<HTMLElement>(".filer-list")!.dispatchEvent(
+        new KeyboardEvent("keydown", { key: name, bubbles: true, ...options }),
+      );
+    });
+  /** Dismisses an open menu the way clicking anywhere outside it does. */
+  const dismissMenu = () => act(() => {
+    document.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+  });
+
+  it("opens the one selected entry with Enter even when no keyboard cursor is set", async () => {
+    await mount();
+    // A right-click selects a row without moving the keyboard cursor, and Enter
+    // used to act on the cursor alone — so this selection opened nothing.
+    context("folder");
+    expect(chosen()).toEqual(["folder"]);
+    key("Enter");
+    expect(vi.mocked(api.localList).mock.calls.map((call) => call[0])).toContain(
+      "/selection/folder",
+    );
+  });
+
+  it("clears the selection with Escape while a delete is still running", async () => {
+    const pending: (() => void)[] = [];
+    vi.mocked(api.localRemove).mockImplementation(
+      () => new Promise<void>((resolve) => { pending.push(resolve); }),
+    );
+    await mount();
+    press("file10.txt");
+    press("folder", { ctrlKey: true });
+    act(() => toolbar("Delete").click());
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>(".confirm-dialog .is-danger")!.click();
+    });
+    expect(chosen()).toHaveLength(2);
+    // `busy` gates every other key; Escape used to be gated too, which left the
+    // user holding a selection they could not take back for the whole delete.
+    key("Escape");
+    expect(chosen()).toEqual([]);
+    await act(async () => { pending.forEach((resolve) => resolve()); });
+  });
+
+  it("opens the row menu with the menu key and with Shift+F10", async () => {
+    await mount();
+    press("file2.txt");
+    key("ContextMenu");
+    expect(menuLabels()).toContain("Copy Path");
+    dismissMenu();
+    key("F10", { shiftKey: true });
+    expect(menuLabels()).toContain("Copy Path");
+    dismissMenu();
+  });
+
+  it("opens the folder menu with the menu key in an empty folder", async () => {
+    vi.mocked(api.localList).mockResolvedValue({ path: "/selection", entries: [] });
+    await mount();
+    await act(async () => {});
+    expect(host.querySelector(".panel-empty")?.textContent).toBe("This folder is empty.");
+    // The menu key is answered before the empty-list check, because the
+    // folder's own menu is all an empty folder has to offer.
+    key("ContextMenu");
+    expect(menuLabels()).toContain("New File…");
+    dismissMenu();
+  });
+
+  it("closes the inline create draft when the directory changes", async () => {
+    await mount();
+    await act(async () => {});
+    act(() => toolbar("New file").click());
+    expect(host.querySelector(".filer-new-entry")).not.toBeNull();
+    // An empty draft has nothing to commit, so its own blur leaves it open —
+    // and it used to ride along into the next directory, where committing it
+    // would have named the entry into a folder it was never typed for.
+    vi.mocked(api.localHome).mockResolvedValue("/home/tester");
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('.filer-path [aria-label="Home folder"]')!.click();
+    });
+    await act(async () => {});
+    expect(host.querySelector(".filer-new-entry")).toBeNull();
+    expect(host.querySelector<HTMLInputElement>(".filer-path input")!.value).toBe("/home/tester");
   });
 });
 });

@@ -24,7 +24,11 @@ export function FilerTransferSummary({ sessionId }: { sessionId: string }) {
   return <div className="filer-transfer-summary">
     <button type="button" aria-label={t("filer.openTransferQueue")} title={label}
       onClick={() => useFileTransfers.getState().setOpen(true)}>
-      <Icon name="cloud-download" /><span role="status">{label}</span><Icon name="chevron-right" />
+      <Icon name="cloud-download" /><span>{label}</span><Icon name="chevron-right" />
     </button>
+    {/* The live region cannot live inside the button: `button` is a
+        children-presentational role, so nothing within it is ever announced
+        and this region was silent however many transfers were queued. */}
+    <span className="sr-only" role="status">{label}</span>
   </div>;
 }

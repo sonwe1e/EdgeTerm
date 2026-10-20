@@ -79,7 +79,11 @@ export function useFilerUpload({
     setError(null);
     const transfer = beginTransfer(
       "upload",
-      localPaths.length === 1 ? localFileName(localPaths[0]) : `${localPaths.length} items`,
+      // Not a literal "N items": that string never went near the catalog and
+      // stayed English in a Chinese interface.
+      localPaths.length === 1
+        ? localFileName(localPaths[0])
+        : t("filer.manyItems", { count: localPaths.length }),
       true,
       () => void runUpload(sessionId, localPaths, destination),
     );

@@ -1,4 +1,5 @@
 import type { FileEntry } from "../types";
+import { useStore } from "../store";
 import { useT } from "../useT";
 import { ModalDialog } from "./ModalDialog";
 
@@ -25,6 +26,7 @@ export function DeleteEntryDialog({
   onCancel,
 }: Props) {
   const t = useT();
+  const language = useStore((s) => s.language);
   const multiple = entries && entries.length > 1;
 
   const kind = entry.isSymlink ? "link" : entry.isDir ? "folder" : "file";
@@ -64,7 +66,11 @@ export function DeleteEntryDialog({
       <div className="dialog-body confirm-dialog-body">
         <span>
           {multiple ? t("deleteEntry.confirmMany", { count: entries.length }) : <>
-            {t("deleteEntry.delete")} {kindWord} <strong>{entry.name}</strong>
+            {/* Chinese joins the verb straight to the kind word; English
+                keeps the space it has always had. */}
+            {t("deleteEntry.delete")}
+            {language === "zh-CN" ? "" : " "}
+            {kindWord} <strong>{entry.name}</strong>
             {t("common.question")}
           </>}
         </span>

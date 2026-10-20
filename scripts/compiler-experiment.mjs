@@ -57,7 +57,10 @@ try {
     await page.evaluate(()=>window.rejectSelection=false);await row.click();
     assert.equal(await page.locator('.ftp-file-row.is-selected').count(),1);
     const list=page.locator('.ftp-browser-list');await list.evaluate(e=>e.scrollTop=10000);
-    await page.getByRole('button',{name:'Sort by size',exact:true}).click();
+    // By `data-sort-key`, not the caption's accessible name (see the Filer
+    // captions' comment: the visible column text is that name, so the
+    // attribute is the stable handle for a caller).
+    await page.locator('[data-sort-key="size"]').click();
     await page.waitForFunction(()=>document.querySelector('.ftp-browser-list').scrollTop===0);
     const interactionMs=await page.evaluate(async()=>{const t=performance.now();for(let n=0;n<8;n++){document.querySelector('.ftp-browser-list').scrollTop=n%2?0:100000;await new Promise(r=>requestAnimationFrame(r));}return performance.now()-t;});
     const mountedRows=await page.locator('.ftp-file-row').count();assert.ok(mountedRows<60);

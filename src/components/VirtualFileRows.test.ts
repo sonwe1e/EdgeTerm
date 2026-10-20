@@ -187,7 +187,11 @@ describe("virtual file rows", () => {
     expect(press.mock.calls[0].slice(0, 2)).toEqual(["remote", entries[0]]);
     scroll(host.querySelector<HTMLElement>(".ftp-browser-list")!, 145000);
     expect(Number(host.querySelector("[role=option]")!.getAttribute("aria-posinset"))).toBeGreaterThan(4000);
-    act(() => host.querySelector<HTMLButtonElement>("[aria-label='Sort by name']")!.click());
+    // By `data-sort-key`, not the caption's accessible name: an `aria-label`
+    // there would replace the visible column name ("Name") with an instruction
+    // ("Sort by name") for a screen reader, which is why the captions carry
+    // the visible text as their name and this attribute as the stable handle.
+    act(() => host.querySelector<HTMLButtonElement>('[data-sort-key="name"]')!.click());
     expect(host.querySelector<HTMLElement>(".ftp-browser-list")!.scrollTop).toBe(0);
     expect(host.querySelector("[role=option]")!.textContent).toContain("file9990");
     expect(host.querySelectorAll("[role=option]").length).toBeLessThanOrEqual(22);

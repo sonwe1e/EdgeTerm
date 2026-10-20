@@ -123,7 +123,11 @@ try {
   await page.mouse.up(); await waitFrames();
   const bottom = await layout(); assert(bottom.count < 50);
   assert.equal(await page.locator('.ftp-file-row').evaluateAll((rows,path)=>rows.some(r=>r.title===path), sourcePath), false);
-  await page.getByRole('button',{name:'Sort by name',exact:true}).click(); await waitFrames();
+  // By `data-sort-key`, not the caption's accessible name: the caption carries
+  // its visible column text as that name (an `aria-label` there would replace
+  // "Name" with the instruction "Sort by name" for a screen reader), so the
+  // attribute is the stable handle a caller selects the caption by.
+  await page.locator('[data-sort-key="name"]').click(); await waitFrames();
   assert.equal(await page.locator('.ftp-browser-list').evaluate(el=>el.scrollTop), 0);
   await mkdir('artifacts/performance', {recursive:true});
   await page.screenshot({path:'artifacts/performance/file-list.png'});

@@ -162,8 +162,16 @@ export function useFilerDirectory({
 
   const goUp = async () => {
     if (!path) return;
-    const parent = remoteId ? remoteParent(path) : await api.localParent(path);
-    await load(parent);
+    try {
+      // The one navigation whose target the front end cannot compute itself:
+      // a Windows drive root's parent is the virtual drive list, and only the
+      // backend knows where a mount point's parent is. A rejection used to be
+      // dropped by the caller's `void`, so the button did nothing at all.
+      const parent = remoteId ? remoteParent(path) : await api.localParent(path);
+      await load(parent);
+    } catch (e) {
+      setError(errorText(e));
+    }
   };
 
   /** The session's home directory, the way the dual-pane browsers' Home works. */

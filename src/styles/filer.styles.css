@@ -4,7 +4,16 @@
   flex: 0 0 30px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  /* Left-packed with the same 2px step as every other icon-button group in
+     the app (.filer-path, .ftp-browser-actions). space-between with no gap
+     spread these seven 24px buttons across the whole toolbar instead: the
+     measured gap between neighbours was (W − 16 − 168) / 6, which is 9px at
+     a 240px panel but 39px at 420px and 103px at 800px — the destructive
+     button drifted to the far right of a widening field of air while the
+     path row directly below kept a 2px step. They still fit left-packed at
+     the narrowest panel: 7 × 24px + 6 × 2px = 180px inside 224px. */
+  justify-content: flex-start;
+  gap: var(--sp-2);
   height: var(--h-bar);
   padding: 0 var(--sp-8);
   border-bottom: 1px solid var(--border);
@@ -54,7 +63,9 @@
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  padding: 5px var(--sp-8) 5px var(--sp-6);
+  /* 12px on both sides, the inset every row below it starts at: the path is
+     the first thing in the panel and it is the one that has to line up. */
+  padding: 5px var(--sp-12);
 }
 
 .filer-path input {
@@ -68,6 +79,10 @@
   font-family: var(--font-mono);
   font-size: var(--fs-sm);
   user-select: text;
+  /* The same border fade the dialog fields wear (dialogs.styles.css
+     `.session-field input`): hover and focus both recolour this border, and
+     the 100ms ease is the duration that vocabulary settled on. */
+  transition: border-color 100ms ease;
 }
 
 .filer-path input:hover {
@@ -109,6 +124,11 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: pointer;
+  /* On the base state, not on :hover: a transition declared only on the
+     hover rule animates the way in and snaps the way out, because the
+     after-change style is the one that owns the transition. 120ms is the
+     duration the app's row and surface states use. */
+  transition: color 120ms ease;
 }
 
 .filer-crumb:hover:not(:disabled) {
@@ -131,15 +151,68 @@
   user-select: none;
 }
 
-/* Column captions, aligned with the row content (6px inset + 6px padding). */
-.filer-columns {
-  display: flex;
+/* One grid for the caption row and for every data row. The size and date
+   tracks have one fixed width everywhere, so `1.2 MB` and `12.4 MB` begin at
+   the same x, and every caption sits over the column it names instead of
+   over whatever width its own text happened to be.
+
+   The first track is the row's type icon (16px, see .filer-icon); the caption
+   row has none, so below it places its buttons on tracks 2 to 4 and leaves
+   the first empty — that keeps the names under a caption that starts with
+   them rather than with the icon beside them. The track widths are multiples
+   of --fs-xs, the size the cells themselves render at, so they grow with the
+   panel font instead of clipping it. */
+.filer-columns,
+.filer-entry {
+  /* `1ch` has to mean one character of the counted columns in *both* grids,
+     and ch resolves against the element's own font — so the two grids declare
+     the same font instead of inheriting two different ones, and the name and
+     the captions take the interface font back below. An em coefficient would
+     have assumed how wide a character is; the user's own monospace face is
+     allowed to be wider than the default, and this follows it. */
+  --filer-cell-fs: max(10px, var(--fs-xs, 10px));
+  font-family: var(--font-mono);
+  font-size: var(--filer-cell-fs);
+  /* The longest string either column prints, plus a little: `1023.9 KB` is
+     6 characters of number, one space, and a 2.2ch slot — 9.2ch; `Today
+     14:32` and `10-20 14:32` are 11 characters of date. The date track also
+     carries an em floor, because what has to fit in it is not only a date:
+     the caption above it is `MODIFIED` in the interface face plus a 16px sort
+     arrow, which is ~7.6em — wider than 11.4ch, and it would be clipped while
+     every date below sat comfortably inside the same track. */
+  --filer-size-track: 9.4ch;
+  --filer-date-track: max(11.4ch, calc(var(--filer-cell-fs) * 8.2));
+  display: grid;
   align-items: center;
+  grid-template-columns: 16px minmax(0, 1fr) var(--filer-size-track) var(--filer-date-track);
+  column-gap: var(--sp-6);
+}
+
+.filer-columns .filer-col-name {
+  grid-column: 2;
+}
+
+.filer-columns .filer-col-size {
+  grid-column: 3;
+}
+
+.filer-columns .filer-col-date {
+  grid-column: 4;
+}
+
+/* Column captions, aligned with the row content: a row's own box is inset by
+   its 6px margin and 6px padding, which is exactly this row's 12px padding,
+   so both grids start and end at the same x. The right edge adds the width a
+   scrollbar takes from the rows, which the panel measures at run time (see
+   FilerPanel): the list scrolls and the captions above it do not, so without
+   the correction every right-hand caption sits ~10px right of its own column
+   from the moment a listing grows long enough to scroll. */
+.filer-columns {
   height: var(--h-control-sm);
-  padding: 0 var(--sp-12);
+  padding: 0 calc(var(--sp-12) + var(--filer-sb-w, 0px)) 0 var(--sp-12);
   border-bottom: 1px solid var(--border);
   color: var(--fg-faint);
-  font-size: var(--fs-xs);
+  font-size: var(--filer-cell-fs);
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -161,6 +234,16 @@
 
 .filer-panel.is-drag-over .filer-list {
   background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+/* The listing's own states — loading, error, empty — mount as fresh nodes
+   inside the scroller. The rules themselves live on `.panel-empty` in
+   panels.styles.css, which is shared with the other panels; this scoped
+   rule adds only the appear fade, so a refresh reads as a state change
+   instead of the list being swapped for a sentence. Same 140ms settle as
+   the dialogs. */
+.filer-list .panel-empty {
+  animation: filer-fade-in 140ms cubic-bezier(0.2, 0, 0, 1);
 }
 
 /* Over the panel but nothing to upload to: the ring still says the panel is
@@ -186,45 +269,57 @@
   opacity: 0.5;
 }
 
+/* The three captions and the cells under them share one alignment: right for
+   anything counted or dated, left for names. Ellipsis rather than overflow,
+   because a caption also carries the sort arrow and must never run under its
+   neighbour. */
+.filer-col-name,
+.filer-col-size,
+.filer-col-date {
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .filer-col-name {
-  flex: 1;
   /* Left like the names under it: a button's own default is centered. */
   text-align: left;
 }
 
-.filer-col-date {
-  min-width: 74px;
-  flex-shrink: 0;
-  text-align: right;
-  padding-left: var(--sp-8);
-}
-
-/* Between the name and the date, the order the dual-pane rows use. */
-.filer-col-size {
-  min-width: 58px;
-  flex-shrink: 0;
-  text-align: right;
-  padding-left: var(--sp-8);
-}
-
 /* Column captions are buttons so they can sort the list; they restyle to the
-   span look they replaced. */
+   span look they replaced. Note there is no `min-width` here: it used to be
+   0, which outranked the min-width of the columns themselves and left every
+   caption as wide as its own text. The grid's fixed tracks size them now. */
 .filer-columns button {
   display: block;
-  min-width: 0;
   padding: 0;
   border: 0;
   background: none;
   color: inherit;
   font: inherit;
+  /* Captions are prose, not figures; the monospace face is on the container
+     only so that `ch` measures the same there as in the rows below. */
+  font-family: var(--font-ui);
   letter-spacing: inherit;
   text-transform: inherit;
   cursor: pointer;
   user-select: none;
+  /* On the base state so hover and the sorted colour fade in *and* out:
+     a transition owned only by the state rule would snap on the way back.
+     120ms is the surface-state duration the app uses elsewhere. */
+  transition: color 120ms ease;
 }
 
-.filer-columns button:hover,
-.filer-columns button.is-sorted {
+/* Three states, not two: hover and sorted used to be the same colour, so
+   pointing at an unsorted column made it look already sorted, and pointing
+   at the sorted one gave no feedback at all. */
+.filer-columns button:hover {
+  color: var(--fg-dim);
+}
+
+.filer-columns button.is-sorted,
+.filer-columns button.is-sorted:hover {
   color: var(--fg);
 }
 
@@ -252,18 +347,63 @@
 
 .filer-new-entry {
   gap: var(--sp-6);
+  /* The editor row is the same height as a data row, from the same token:
+     `.row` alone left it at --row-h (26px at the default panel font, 32px at
+     the largest), while a data row is --filer-row-h (24px / 28px) and the
+     virtualiser's slot is that plus 2px. The extra 2px made the rename row
+     spill into the slot below it — 4px at the largest font — and the create
+     row push the list down by more than one pitch when it opened. */
+  height: var(--filer-row-h, max(24px, calc(var(--panel-font-size) + 10px)));
+  /* The row that turns into an editor (new file/folder, rename) used to cut
+     in with the re-render, so the rows below it jumped a full pitch with no
+     cue that an editor had opened. It settles the way a dialog does — the
+     same 140ms cubic-bezier(0.2, 0, 0, 1) as dialog-in — and only opacity
+     and translate move, so nothing reflows while it plays. */
+  animation: filer-row-in 140ms cubic-bezier(0.2, 0, 0, 1);
 }
 
 .filer-new-entry input {
   min-width: 0;
+  /* Fills the row exactly at every panel font: the UA field is ~22px at the
+     default but ~30px at the largest, where it would otherwise stick out of
+     the row the user is typing in. */
+  height: 100%;
 }
 
+/* One box fewer than the grid above: no second column, just the icon and the
+   name being typed. The height is the `--filer-row-h` the panel writes, which
+   is also what it gives the virtualiser as its row pitch — one source for the
+   two numbers that have to agree, plus a margin either side. */
 .filer-entry {
-  gap: var(--sp-6);
-  height: max(24px, calc(var(--panel-font-size) + 10px));
+  height: var(--filer-row-h, max(24px, calc(var(--panel-font-size) + 10px)));
+  /* The hover and selection backgrounds themselves are declared on `.row`
+     in panels.styles.css, but a transition belongs to the element that
+     changes, so it rides here: pointing at a row and choosing one are state
+     changes, and at 0ms they read as the row being replaced rather than
+     changing. `opacity` is in the same declaration because the drag-out dim
+     (`.is-dragging-out`) has to fade both ways — declaring it on the state
+     rule alone would snap back on drop. 120ms is the app's surface-state
+     duration (protocol-option, kind-option, row caret). */
+  transition:
+    background-color 120ms ease,
+    opacity 120ms ease;
+}
+
+/* One row after another. In the flow list the 1px margins above collapse to
+   1px, so the pitch is 25px; the virtualised list wraps each row in its own
+   block formatting context, where nothing collapses, so the pitch there is
+   26px — the same panel at two densities, and a different total height when
+   scrolled to the bottom. 2px between neighbours makes both paths agree. */
+.filer-entry + .filer-entry {
+  margin-top: 2px;
 }
 
 .filer-entry .row-label {
+  /* The row's own font back: the grid above borrowed the monospace face so
+     that one `ch` means the same thing in the caption row and in the data
+     rows, and the name is not a counted column. */
+  font-family: var(--font-ui);
+  font-size: var(--panel-font-size);
   color: var(--fg);
 }
 
@@ -271,17 +411,102 @@
   color: var(--symlink-label);
 }
 
-.filer-entry .filer-col-date {
-  /* Keep all ten date characters visible as the panel font grows. */
-  flex: 0 0 auto;
-  font-size: var(--fs-xs);
-  font-variant-numeric: tabular-nums;
+/* A row the pointer is on, or one that is selected, has to lift its metadata
+   with it: at --fg-faint the size and the date fall under 4.5:1 on the hover
+   tint and on the selection, and those are the columns being read. */
+.filer-entry .row-meta {
+  /* The lift is a state change, so it fades: the two rules below recolour
+     these cells, and an instant swap made the row read as two different
+     rows. Declared here, on the base state, so hover and selection fade in
+     and out alike. */
+  transition: color 120ms ease;
 }
 
+.filer-entry:hover .row-meta {
+  color: var(--fg-dim);
+}
+
+.filer-entry.is-active .row-meta {
+  color: color-mix(in srgb, var(--fg) 85%, var(--bg-active));
+}
+
+/* The lift above sets the colour on the cell, and the two date halves carry
+   their own colours (see the split below), so inheritance alone never
+   reached them: the clock half of every date kept --fg-faint over the hover
+   tint and over the selection — measured 4.4:1 on --bg-hover and 3.8:1 on
+   --bg-active in the dark palette (4.5:1 and 3.5:1 in the light one), under
+   the 4.5:1 this very block asks for. Inheriting hands them the lifted ink
+   the size cell beside them already takes; the two-ink split is a resting
+   state only. */
+.filer-entry:hover .filer-date-value,
+.filer-entry:hover .filer-date-time,
+.filer-entry.is-active .filer-date-value,
+.filer-entry.is-active .filer-date-time {
+  color: inherit;
+}
+
+/* Counted columns sit on one character grid — monospace with tabular
+   figures — so `1.2 MB` and `1023.9 KB` differ in what they say and not in
+   how much room they take. This is what lets the two tracks above be fixed. */
+.filer-entry .filer-col-date,
 .filer-entry .filer-col-size {
-  flex: 0 0 auto;
-  font-size: var(--fs-xs);
+  overflow: hidden;
+  font-family: var(--font-mono);
+  /* inherit, not --fs-xs: the tracks above are measured in `ch`, and `ch`
+     resolves against the container's font. A cell that set its own size would
+     be measured with one ruler and drawn with another — at the smallest panel
+     font the container is floored at 10px and --fs-xs is 9px. */
+  font-size: inherit;
   font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+}
+
+/* Every unit gets the same slot, so the numbers before them end at the same
+   x: right-aligned on its own, `512` would sit a character to the right of
+   `1.2` purely because `B` is one letter and `KB` is two. */
+.filer-size-unit {
+  display: inline-block;
+  min-width: 2.2ch;
+  text-align: left;
+}
+
+/* The date leads in one ink and its clock time follows in another: the day is
+   what a row is read for, the hour is what refines it. Without the split, a
+   row that shows only a time — every file from today — would be the faintest
+   thing on the screen, which is backwards: it is the most recent. */
+.filer-date-value {
+  color: var(--fg-dim);
+}
+
+.filer-date-time {
+  color: var(--fg-faint);
+}
+
+/* The two halves take the cell's lifted ink on hover and selection (the
+   inherit rules above), and they have to fade with it. The cell's own
+   transition sits on `.row-meta`, which an inherited value follows on the
+   way in but not on the way out: without this, moving the pointer off a row
+   snapped the clock half back to its resting ink while the size cell beside
+   it was still easing down. Declared on the base state so it fades both
+   ways, the same 120ms ease the cell uses. */
+.filer-date-value,
+.filer-date-time {
+  transition: color 120ms ease;
+}
+
+/* Text for screen readers alone: the kind of entry an icon carries by sight,
+   and the sort direction a caption carries by its arrow. Both are 1px and
+   clipped, so they cost the grid no track and the layout no room. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 .filer-footer {
@@ -295,12 +520,34 @@
   border-top: 1px solid var(--border);
   color: var(--fg-faint);
   font-size: var(--fs-sm);
+  /* The transfer state repaints this strip (`has-transfer` below); the
+     height and display changes are layout and stay instant, but the
+     surface fading under the text keeps the swap from reading as a
+     different panel. */
+  transition: background-color 120ms ease;
+}
+
+/* The plain footer is one line, always. Its spans had no containment, so a
+   wide summary ("10 folders · 100 files · 5 links" beside "1000 selected"
+   measured ~240px against 216px of room in a 240px panel) wrapped to two
+   lines and grew the footer, shifting the list above it. The summary
+   ellipsises instead — the same containment every other status strip in the
+   app uses. The transfer footer is excluded: it is a block layout whose
+   spans are positioned by their own rules. */
+.filer-footer:not(.has-transfer) > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .filer-transfer-summary {
   flex-shrink: 0;
   padding: 5px var(--sp-10);
   border-top: 1px solid var(--border);
+  /* Mounts the moment the session's first transfer exists: a fade says
+     "this appeared", the same 140ms the dialogs settle in with. */
+  animation: filer-fade-in 140ms cubic-bezier(0.2, 0, 0, 1);
 }
 .filer-transfer-summary button {
   display: flex;
@@ -356,7 +603,9 @@
   margin-top: 7px;
   overflow: hidden;
   border-radius: var(--radius-xs);
-  background: var(--border-strong);
+  /* A groove, not a border: the track has to read against the panel it sits
+     on and against the fill inside it, and --border-strong does neither. */
+  background: var(--bg-track);
 }
 
 .filer-transfer-bar {
@@ -378,6 +627,12 @@
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
   font-variant-numeric: tabular-nums;
+}
+
+/* The card mounts in the footer when a transfer starts: the fade says the
+   footer changed state rather than being replaced by different content. */
+.filer-transfer {
+  animation: filer-fade-in 140ms cubic-bezier(0.2, 0, 0, 1);
 }
 
 .filer-transfer.is-complete .filer-transfer-name,
@@ -431,12 +686,51 @@
   }
 }
 
+/* The inline editor's row rises into place, the way a menu or dialog does.
+   `translate`, not `transform`: nothing else moves these rows, and the
+   property keeps the two keyframes free of any inherited transform. */
+@keyframes filer-row-in {
+  from {
+    opacity: 0;
+    translate: 0 -3px;
+  }
+
+  to {
+    opacity: 1;
+    translate: none;
+  }
+}
+
+/* Opacity alone, for surfaces that appear without moving: the listing's
+   states and the transfer card. */
+@keyframes filer-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
 /* A sweeping bar is the one thing a reduced-motion user asked not to see.
    The bar still says "in progress" by filling the track at low opacity. */
 @media (prefers-reduced-motion: reduce) {
   .filer-transfer-track.is-indeterminate .filer-transfer-bar {
     width: 100%;
     opacity: 0.45;
+    animation: none;
+  }
+
+  /* Entry animations are movement, so they go; the states themselves stay
+     and simply appear, which is what every panel swap in the app already
+     does. The colour and opacity transitions above are kept: they carry no
+     movement, and `.panel-action` has always kept its 80ms fade under
+     reduced motion for the same reason. */
+  .filer-new-entry,
+  .filer-list .panel-empty,
+  .filer-transfer,
+  .filer-transfer-summary {
     animation: none;
   }
 }

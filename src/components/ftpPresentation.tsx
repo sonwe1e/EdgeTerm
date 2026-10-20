@@ -1,6 +1,8 @@
 import {
   memo,
+  useLayoutEffect,
   useMemo,
+  useRef,
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
@@ -100,6 +102,35 @@ export function FileBrowser({
   const setFilerSort = useStore((s) => s.setFilerSort);
   const sortedEntries = useMemo(() => sortFileEntries(entries, sort), [entries, sort]);
 
+  const columnsRef = useRef<HTMLDivElement>(null);
+  // The caption row is a sibling of the scroll container, not a child of it,
+  // so nothing tells it how wide the list's scrollbar is and its columns sat
+  // a scrollbar to the right of the ones they named. Measured rather than
+  // assumed: the width is a platform decision, and it is 0 where the platform
+  // draws overlay scrollbars — there is nothing to compensate for there.
+  // Watched with an observer rather than on window resize, because everything
+  // that can change it is not the window: the pane splitter, a font-size
+  // change, the listing itself growing past the fold. Deps are what
+  // VirtualFileRows re-measures on for the same reason; the observer covers
+  // the rest. Mirrors FilerPanel's own caption row (see there).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable scroller ref, listing length is the signal
+  useLayoutEffect(() => {
+    const list = listRef?.current;
+    const columns = columnsRef.current;
+    if (!list || !columns) return;
+    let seen = "";
+    const measure = () => {
+      const next = `${Math.max(0, list.offsetWidth - list.clientWidth)}px`;
+      if (next === seen) return;
+      seen = next;
+      columns.style.setProperty("--ftp-sb-w", next);
+    };
+    const resize = new ResizeObserver(measure);
+    resize.observe(list);
+    measure();
+    return () => resize.disconnect();
+  }, [entries.length]);
+
   /** Re-sorts the list for a clicked column caption and remembers the choice. */
   const sortBy = (key: SortKey) => {
     setFilerSort(toggleFileSort(useStore.getState().filerSort, key));
@@ -138,33 +169,57 @@ export function FileBrowser({
         />
       </div>
 
-      <div className="ftp-browser-columns">
+      {/* Sortable captions, mirroring the Filer panel's: no `aria-label`
+          here, because replacing the visible text with an instruction made a
+          screen reader announce the verb ("sort by size") and never the
+          column's own name ("Size"). The visible text is the accessible
+          name, `aria-sort` carries which column is sorted and in which
+          direction (the arrow says it by sight alone), and the sr-only line
+          says what a click will do. `data-sort-key` is the stable handle a
+          caller selects a caption by, the way FilerPanel's captions carry. */}
+      <div className="ftp-browser-columns" ref={columnsRef}>
         <button
           type="button"
           className={sort.key === "name" ? "is-sorted" : undefined}
+          data-sort-key="name"
           onClick={() => sortBy("name")}
-          aria-label={t("filer.sortByName")}
+          aria-sort={
+            sort.key === "name" ? (sort.direction === "asc" ? "ascending" : "descending") : "none"
+          }
         >
           {t("session.name")}
           <SortIndicator sort={sort} column="name" />
+          <span className="sr-only">{t("filer.sortByName")}</span>
         </button>
         <button
           type="button"
           className={sort.key === "size" ? "is-sorted" : undefined}
+          data-sort-key="size"
           onClick={() => sortBy("size")}
-          aria-label={t("filer.sortBySize")}
+          aria-sort={
+            sort.key === "size" ? (sort.direction === "asc" ? "ascending" : "descending") : "none"
+          }
         >
           {t("filer.size")}
           <SortIndicator sort={sort} column="size" />
+          <span className="sr-only">{t("filer.sortBySize")}</span>
         </button>
         <button
           type="button"
           className={sort.key === "modified" ? "is-sorted" : undefined}
+          data-sort-key="modified"
           onClick={() => sortBy("modified")}
-          aria-label={t("filer.sortByModified")}
+          aria-sort={
+            sort.key === "modified"
+              ? sort.direction === "asc"
+                ? "ascending"
+                : "descending"
+              : "none"
+          }
         >
           {t("filer.modified")}
           <SortIndicator sort={sort} column="modified" />
+          <span className="sr-only">{t("filer.sortByModified")}</span>
         </button>
       </div>
 
@@ -281,7 +336,9 @@ export const FtpFileRow = memo(function FtpFileRow({
         </span>
         <span>{entry.name}</span>
       </span>
-      <span>{entry.isDir ? "—" : formatBytes(entry.size)}</span>
+      {/* A folder has no size of its own: an empty cell, the way the Filer
+          panel's rows show it, so the two browsers read the column alike. */}
+      <span>{entry.isDir ? "" : formatBytes(entry.size)}</span>
       <span>{formatDate(entry.modified)}</span>
     </div>
   );
@@ -349,8 +406,11 @@ export const ROW_DATE = new Intl.DateTimeFormat([], {
   minute: "2-digit",
 });
 
+// A listing that withheld the moment says "unknown" in words, the same word
+// the Filer panel's column uses: a dash means "no value the way a folder has
+// none", and a time that was asked for and not given is not that.
 export function formatDate(seconds: number | null): string {
-  if (seconds == null) return "—";
+  if (seconds == null) return translateMsg("filer.dateUnknown");
   return ROW_DATE.format(new Date(seconds * 1000));
 }
 

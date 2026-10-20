@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -51,6 +52,20 @@ import { VirtualFileRows } from "../VirtualFileRows";
  */
 const filerOptionId = (path: string): string =>
   `filer-option-${encodeURIComponent(path)}`;
+
+/**
+ * How the keyboard cursor scrolls a row into view. Smooth is the default
+ * because walking a long list with the arrow keys reads as travel and an
+ * instant jump loses where the cursor came from; the platform's reduced-motion
+ * setting turns it off. Deliberately not `scroll-behavior: smooth` on the
+ * scroller: that would also glide the scroll-to-top a directory or sort change
+ * performs, and the drag's edge auto-scroll, neither of which wants it.
+ */
+const revealBehavior = (): ScrollBehavior =>
+  typeof window.matchMedia === "function" &&
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ? "auto"
+    : "smooth";
 
 function FilerPanelBase() {
   const t = useT();
@@ -123,8 +138,17 @@ function FilerPanelBase() {
   const [creating, setCreating] = useState<NewEntryDraft | null>(null);
   const [renaming, setRenaming] = useState<RenameDraft | null>(null);
   // A rename belongs to one directory of one session; leaving either closes
-  // the editor, the way a pending delete confirmation is closed.
-  useEffect(() => setRenaming(null), [remoteId, path]);
+  // the editor, the way a pending delete confirmation is closed. The inline
+  // create draft closes with it: `commitNewEntry` acts on the folder on screen
+  // when it runs, so a draft that outlived a navigation would name its entry
+  // into whichever directory the user reached next. A pointer-driven
+  // navigation blurs the input first and commits against the folder it was
+  // typed in; this is the guard for the programmatic ones (a reveal request)
+  // that never touch focus.
+  useEffect(() => {
+    setRenaming(null);
+    setCreating(null);
+  }, [remoteId, path]);
   const [uploadMenu, setUploadMenu] = useState<{ x: number; y: number } | null>(null);
   // ContextMenu closes itself on any outside mousedown, so by the time the
   // upload button's click fires the menu is already gone; remember whether it
@@ -142,6 +166,32 @@ function FilerPanelBase() {
   const busyRef = useRef(busy);
   /** The listbox: the rows' scroll container and the single Tab stop. */
   const listRef = useRef<HTMLDivElement>(null);
+  const columnsRef = useRef<HTMLDivElement>(null);
+  // The caption row is a sibling of the scroll container, not a child of it,
+  // so nothing tells it how wide the list's scrollbar is and its columns sat
+  // a scrollbar to the right of the ones they named. Measured rather than
+  // assumed: the width is a platform decision, and it is 0 where the platform
+  // draws overlay scrollbars — there is nothing to compensate for there. Watched
+  // with an observer rather than on window resize, because everything that can
+  // change it is not the window: the splitter, a font-size change, the listing
+  // itself growing past the fold. Deps are what VirtualFileRows re-measures on
+  // for the same reason; the observer covers the rest.
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const columns = columnsRef.current;
+    if (!list || !columns) return;
+    let seen = "";
+    const measure = () => {
+      const next = `${Math.max(0, list.offsetWidth - list.clientWidth)}px`;
+      if (next === seen) return;
+      seen = next;
+      columns.style.setProperty("--filer-sb-w", next);
+    };
+    const resize = new ResizeObserver(measure);
+    resize.observe(list);
+    measure();
+    return () => resize.disconnect();
+  }, [entries.length]);
   /**
    * The row the keyboard acts on. It rides alongside the selection instead of
    * replacing it, so Ctrl/Cmd+Arrow can move without changing the choice.
@@ -269,7 +319,9 @@ function FilerPanelBase() {
   const rowHeight = Math.max(24, panelFontSize + 10) + 2;
   // The footer walks every entry; a large directory must not pay that on
   // each of the app's re-renders.
-  const entrySummary = useMemo(() => formatEntrySummary(entries), [entries]);
+  // `t` is a dependency, not a detail: it is memoised on the language, so a
+  // switch re-runs this and the summary stops speaking the old one.
+  const entrySummary = useMemo(() => formatEntrySummary(entries, t), [entries, t]);
   /**
    * Every ancestor of the open folder, for the trail under the path box.
    * Empty at the drives root, which is not a real path.
@@ -368,7 +420,10 @@ function FilerPanelBase() {
     const id = filerOptionId(path);
     const mounted = document.getElementById(id);
     if (mounted) {
-      mounted.scrollIntoView({ block: "nearest" });
+      // Smooth, unless the platform has been asked for less motion: a keyboard
+      // walk through a long list is exactly the gesture that reads as travel,
+      // and the one a reduced-motion user asked not to be made to watch.
+      mounted.scrollIntoView({ block: "nearest", behavior: revealBehavior() });
       setActiveDescendant(id);
       return;
     }
@@ -384,6 +439,8 @@ function FilerPanelBase() {
       scroller.scrollTop -
       scroller.clientTop;
     const top = offset + index * rowHeight;
+    // Instant, unlike the branch above: the row is not in the document yet, so
+    // there is nothing to glide towards — only a scroll that puts it there.
     if (top < scroller.scrollTop) scroller.scrollTop = top;
     else if (top + rowHeight > scroller.scrollTop + scroller.clientHeight) {
       scroller.scrollTop = top + rowHeight - scroller.clientHeight;
@@ -392,7 +449,7 @@ function FilerPanelBase() {
     const settle = () => {
       const rendered = document.getElementById(id);
       if (rendered) {
-        rendered.scrollIntoView({ block: "nearest" });
+        rendered.scrollIntoView({ block: "nearest", behavior: revealBehavior() });
         setActiveDescendant(id);
         return;
       }
@@ -416,9 +473,18 @@ function FilerPanelBase() {
   };
 
   const onListKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (busy) return;
     if ((event.target as HTMLElement).closest("input, textarea, [contenteditable=true]"))
       return;
+    // Escape answers even while the panel is busy: a listing, delete or upload
+    // in flight must not leave the user holding a selection they cannot take
+    // back. Everything else waits — the rows it would act on are not settled.
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      clearSelection();
+      return;
+    }
+    if (busy) return;
     const ctrl = IS_MAC ? event.metaKey : event.ctrlKey;
     if (ctrl && event.key.toLowerCase() === "a") {
       event.preventDefault();
@@ -426,17 +492,42 @@ function FilerPanelBase() {
       selection.selectAll();
       return;
     }
-    if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      clearSelection();
-      return;
-    }
     if (event.key === "Backspace") {
       // Works in an empty folder too, so it is handled before the list check.
       if (atDrivesRoot || !path) return;
       event.preventDefault();
       void goUp();
+      return;
+    }
+    // The menu key — and Shift+F10, which every platform reports as F10 with
+    // Shift held — opens what a right-click would, so a keyboard user reaches
+    // the same entries. Handled before the empty-list check because the
+    // folder's own menu is exactly what an empty folder has to offer.
+    if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+      event.preventDefault();
+      event.stopPropagation();
+      const focused =
+        activePathRef.current ?? (selected.size === 1 ? selectedEntries[0]?.path : null);
+      const entry =
+        focused === null ? undefined : sortedEntries.find((item) => item.path === focused);
+      const target = entry
+        ? document.getElementById(filerOptionId(entry.path))
+        : listRef.current;
+      const rect = target?.getBoundingClientRect();
+      // A real contextmenu on the row (or the list) so the one handler that
+      // owns the menu answers it, anchored where the cursor already is. A
+      // cursor row scrolled out of the virtual window has no element to
+      // anchor to and nothing happens — the same silence F2 gives in that
+      // state, and the reason arrow keys (which reveal as they move) are the
+      // way a keyboard user gets here.
+      target?.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          clientX: rect ? rect.left + rect.width / 2 : 0,
+          clientY: rect ? rect.top + rect.height / 2 : 0,
+        }),
+      );
       return;
     }
     if (sortedEntries.length === 0) return;
@@ -496,7 +587,18 @@ function FilerPanelBase() {
       }
       case "Enter": {
         event.preventDefault();
-        const entry = active >= 0 ? sortedEntries[active] : undefined;
+        // The row the keyboard cursor is on, or — when the selection is a
+        // single entry made without one (a right-click, Ctrl+A) — that entry:
+        // the same row F2 and the toolbar act on, so a lone selection answers
+        // Enter whichever way it was made.
+        const focused =
+          active >= 0
+            ? activePathRef.current
+            : selected.size === 1
+              ? selectedEntries[0]?.path ?? null
+              : null;
+        const entry =
+          focused === null ? undefined : sortedEntries.find((item) => item.path === focused);
         if (entry) activate(entry);
         return;
       }
@@ -507,7 +609,11 @@ function FilerPanelBase() {
     <div
       ref={panelRef}
       className={`panel filer-panel${dragOver ? (dragOver.accept ? " is-drag-over" : dragOver.reason ? " is-drag-blocked" : "") : ""}`}
-      style={{ flex: 1 }}
+      // Two values the rows need and only this component can compute: the row
+      // height the stylesheet and the virtualiser both have to work from, and
+      // the width the list's scrollbar steals from its rows. Both are handed
+      // down as tokens so neither is derived twice.
+      style={{ flex: 1, "--filer-row-h": `${rowHeight - 2}px` } as CSSProperties}
     >
       <div className="panel-header">
         <div className="panel-title is-filer">
@@ -550,7 +656,11 @@ function FilerPanelBase() {
             setUploadMenu({ x: rect.left, y: rect.bottom + 2 });
           }}
           title={remoteTitle(t("filer.uploadFilesOrFolders"))}
-          aria-label={t("filer.uploadFilesOrFolders")}
+          // The same remoteTitle the tooltip carries: on a session without
+          // remote files the button is disabled, and the reason it is
+          // disabled ("connected SSH sessions only") must reach a screen
+          // reader too, not only the mouse.
+          aria-label={remoteTitle(t("filer.uploadFilesOrFolders"))}
           aria-haspopup="menu"
           aria-expanded={uploadMenu !== null}
           disabled={!remote || busy || !path}
@@ -561,7 +671,7 @@ function FilerPanelBase() {
           className="panel-action filer-action"
           onClick={() => void downloadEntries(selectedEntries)}
           title={remoteTitle(t("filer.downloadFileOrFolder"))}
-          aria-label={t("filer.downloadFileOrFolder")}
+          aria-label={remoteTitle(t("filer.downloadFileOrFolder"))}
           disabled={!remote || selectedEntries.length === 0 || busy || choosingDownload}
         >
           <Icon name="cloud-download" />
@@ -688,33 +798,55 @@ function FilerPanelBase() {
         </nav>
       )}
 
-      <div className="filer-columns">
+      {/* Sortable captions. None of them carries an `aria-label`: replacing the
+          name with an instruction meant a screen reader said "按大小排序" and
+          never "大小", so three columns were named by their verbs. The visible
+          text is the accessible name now, `aria-sort` carries the state, and
+          the sr-only line carries what a click will do. `data-sort-key` is the
+          stable handle the row contract selects a caption by. */}
+      <div className="filer-columns" ref={columnsRef}>
         <button
           type="button"
           className={`filer-col-name${sort.key === "name" ? " is-sorted" : ""}`}
+          data-sort-key="name"
           onClick={() => sortBy("name")}
-          aria-label={t("filer.sortByName")}
+          aria-sort={
+            sort.key === "name" ? (sort.direction === "asc" ? "ascending" : "descending") : "none"
+          }
         >
           {t("session.name")}
           <SortIndicator sort={sort} column="name" />
+          <span className="sr-only">{t("filer.sortByName")}</span>
         </button>
         <button
           type="button"
           className={`filer-col-size${sort.key === "size" ? " is-sorted" : ""}`}
+          data-sort-key="size"
           onClick={() => sortBy("size")}
-          aria-label={t("filer.sortBySize")}
+          aria-sort={
+            sort.key === "size" ? (sort.direction === "asc" ? "ascending" : "descending") : "none"
+          }
         >
           {t("filer.size")}
           <SortIndicator sort={sort} column="size" />
+          <span className="sr-only">{t("filer.sortBySize")}</span>
         </button>
         <button
           type="button"
           className={`filer-col-date${sort.key === "modified" ? " is-sorted" : ""}`}
+          data-sort-key="modified"
           onClick={() => sortBy("modified")}
-          aria-label={t("filer.sortByModified")}
+          aria-sort={
+            sort.key === "modified"
+              ? sort.direction === "asc"
+                ? "ascending"
+                : "descending"
+              : "none"
+          }
         >
           {t("filer.modified")}
           <SortIndicator sort={sort} column="modified" />
+          <span className="sr-only">{t("filer.sortByModified")}</span>
         </button>
       </div>
 
@@ -763,7 +895,20 @@ function FilerPanelBase() {
             <button
               type="button"
               className="panel-empty-action"
-              onClick={() => (retryAvailable ? retryTransfer() : void load(path || draft))}
+              onClick={() => {
+                if (retryAvailable) {
+                  retryTransfer();
+                  return;
+                }
+                // Reload the folder on screen, else the path the user last
+                // asked for. With neither — a session whose very first listing
+                // failed — there is no folder to reload and `path || draft`
+                // listed "", which fails the same way every time; ask for the
+                // home again the way the first load does.
+                if (path) void load(path);
+                else if (draft) void load(draft);
+                else void goHome();
+              }}
             >
               {t("common.retry")}
             </button>
@@ -797,7 +942,7 @@ function FilerPanelBase() {
           rowHeight={rowHeight}
           resetKey={`${remoteId ?? "local"}:${path}:${sort.key}:${sort.direction}:${!!sort.explicit}`}
         >
-          {(entry) => {
+          {(entry, index) => {
             const draft = renaming && renaming.entry.path === entry.path ? renaming : null;
             // The row itself becomes the editor, the way a file manager
             // renames in place.
@@ -824,6 +969,9 @@ function FilerPanelBase() {
                 selected={selected.has(entry.path)}
                 draggingOut={dragOut?.path === entry.path}
                 theme={theme}
+                t={t}
+                setSize={sortedEntries.length}
+                posInSet={index + 1}
                 onSelect={rowSelect}
                 onActivate={rowActivate}
                 onPointerDown={rowPointerDown}
@@ -849,26 +997,13 @@ function FilerPanelBase() {
       {remoteId && <FilerTransferSummary sessionId={remoteId} />}
       <div className={`filer-footer${transfer ? " has-transfer" : ""}`}>
         {transfer ? (
-          <div
-            className={`filer-transfer is-${transfer.status}`}
-            role="progressbar"
-            aria-label={`${transferLabel}: ${transfer.name}`}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={transferPercent ?? undefined}
-            aria-valuetext={
-              transfer.total > 0
-                ? t("filer.ofAt", {
-                    transferred: formatBytes(transfer.transferred),
-                    total: formatBytes(transfer.total),
-                    rate: formatBytes(transfer.bytesPerSecond),
-                  })
-                : t("filer.atRate", {
-                    transferred: formatBytes(transfer.transferred),
-                    rate: formatBytes(transfer.bytesPerSecond),
-                  })
-            }
-          >
+          // A plain container, not a progressbar: `role="progressbar"` is a
+          // children-presentational role, so the pause, cancel and retry
+          // buttons inside it were dropped from the accessibility tree and a
+          // keyboard user could not reach "cancel" at all while a large file
+          // was moving. The role now sits on the track alone, which is the one
+          // thing here that is actually a progress bar.
+          <div className={`filer-transfer is-${transfer.status}`}>
             <div className="filer-transfer-label">
               <span className="filer-transfer-name" title={transfer.name}>
                 {transferLabel}: {transfer.name}
@@ -936,6 +1071,23 @@ function FilerPanelBase() {
             </div>
             <div
               className={`filer-transfer-track${transferPercent === null && transfer.status === "running" ? " is-indeterminate" : ""}`}
+              role="progressbar"
+              aria-label={`${transferLabel}: ${transfer.name}`}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={transferPercent ?? undefined}
+              aria-valuetext={
+                transfer.total > 0
+                  ? t("filer.ofAt", {
+                      transferred: formatBytes(transfer.transferred),
+                      total: formatBytes(transfer.total),
+                      rate: formatBytes(transfer.bytesPerSecond),
+                    })
+                  : t("filer.atRate", {
+                      transferred: formatBytes(transfer.transferred),
+                      rate: formatBytes(transfer.bytesPerSecond),
+                    })
+              }
             >
               <span
                 className="filer-transfer-bar"

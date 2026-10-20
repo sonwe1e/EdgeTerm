@@ -108,6 +108,12 @@
   padding: 0;
   border-radius: var(--radius-xs);
   color: var(--fg-dim);
+  /* The same 80ms ease `.panel-action` gives the Filer's icon buttons: these
+     are the same control at the same size, and hover used to recolor them
+     with no fade at all. Declared on the base state so it fades both ways. */
+  transition:
+    background-color 80ms ease,
+    color 80ms ease;
 }
 
 .ftp-tool-button:hover:not(:disabled) {
@@ -139,18 +145,43 @@
   background: var(--bg-field);
   font-family: var(--font-mono);
   font-size: var(--fs-sm);
+  /* The foundation input rules recolour this border on focus; the dialog
+     fields fade that change over 100ms ease and this field now does too. */
+  transition: border-color 100ms ease;
 }
 
 .ftp-browser-columns,
 .ftp-file-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 76px 130px;
+  /* The two counted tracks follow the row's own text size instead of sitting
+     at fixed pixels. The row font is --fs-sm, which the panel font setting
+     moves between 10px and 17px, and a grid track does not clip: at the old
+     fixed 130px the en-US date "10/20/2025, 02:32 PM" measured ~115px at the
+     default 11px (it fit) but ~136px at 13px and ~180px at 17px, where the
+     text ran out of its track, past the row's own background, and added
+     horizontal scroll width to the list; "1023.9 KB" likewise outgrew the
+     76px track at 17px. 11.8em is 130px at the default and 201px at 17px,
+     which is where the widest date lands. The 11px fallback is not cosmetic:
+     the browser-test mounts render outside .app, where --fs-sm is undefined
+     and an invalid track list would collapse the grid. */
+  grid-template-columns:
+    minmax(0, 1fr)
+    calc(var(--fs-sm, 11px) * 6.9)
+    calc(var(--fs-sm, 11px) * 11.8);
 }
 
 .ftp-browser-columns {
   flex: 0 0 24px;
   align-items: center;
-  padding: 0 var(--sp-8);
+  /* The right padding carries the width a classic scrollbar takes out of the
+     rows below, measured at run time and written on this element as
+     --ftp-sb-w (the same compensation the Filer panel's caption row gets).
+     The list scrolls and the captions above it do not, so without it every
+     right-hand caption sits a scrollbar right of its own column from the
+     moment a listing grows long enough to scroll. The 0px fallback keeps
+     this identical to the old fixed padding wherever nothing measures (a
+     platform with overlay scrollbars, or before the first measurement). */
+  padding: 0 calc(var(--sp-8) + var(--ftp-sb-w, 0px));
   border-bottom: 1px solid var(--border);
   color: var(--fg-faint);
   font-size: var(--fs-xs);
@@ -176,6 +207,9 @@
   text-align: left;
   cursor: pointer;
   user-select: none;
+  /* Base state, so the hover and sorted colours fade in and out alike; a
+     transition owned only by :hover would snap on the way back. */
+  transition: color 120ms ease;
 }
 
 .ftp-browser-columns button:hover,
@@ -192,6 +226,12 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
+  /* The pane background tints and grows its accent ring while a drag is
+     over it (`is-drop-target` below); both are state changes and now fade
+     like the Filer's list tint does, at the same 120ms. */
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .ftp-file-row {
@@ -203,6 +243,16 @@
   color: var(--fg-dim);
   font-size: var(--fs-sm);
   cursor: default;
+  /* Every row state used to cut in with the re-render: hover, selection
+     (background + accent rail), the drag source dimming to 0.5, and the
+     drop target's tint and ring. They are all state changes, so they fade
+     over 120ms — the duration the Filer rows and the app's other surface
+     states use. Declared on the base row so leaving a state fades too. */
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease,
+    color 120ms ease,
+    opacity 120ms ease;
 }
 
 .ftp-file-row:hover {
@@ -287,6 +337,10 @@
   color: var(--fg-faint);
   text-align: center;
   white-space: pre-wrap;
+  /* Loading, error and empty mount as fresh nodes above the rows; the fade
+     says the pane changed state instead of the listing being swapped for a
+     sentence. Same 140ms settle the dialogs use. */
+  animation: ftp-fade-in 140ms cubic-bezier(0.2, 0, 0, 1);
 }
 
 .ftp-browser-message.is-error {
@@ -338,6 +392,12 @@
   background: var(--bg-panel-alt);
   color: var(--fg);
   font-size: var(--fs-sm);
+  /* The push-button tier of the app (`.btn` in dialogs.styles.css) fades
+     its background and border over 100ms ease on hover; this is the same
+     control and now answers the same way. */
+  transition:
+    background-color 100ms ease,
+    border-color 100ms ease;
 }
 
 .ftp-transfer-button:hover:not(:disabled) {
@@ -427,10 +487,30 @@
   }
 }
 
+/* Opacity alone, for the pane's state messages: they mount as fresh nodes
+   and the fade says the pane changed state rather than being swapped. */
+@keyframes ftp-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ftp-transfer-progress > span.is-indeterminate {
     width: 100%;
     opacity: 0.45;
+    animation: none;
+  }
+
+  /* The state message fade goes with the other entry animations; the
+     message still appears, it simply does not fade in. The row and button
+     transitions above are kept: they carry no movement, the same line
+     `.panel-action` has always held under reduced motion. */
+  .ftp-browser-message {
     animation: none;
   }
 }
@@ -452,7 +532,10 @@
 
   .ftp-browser-columns,
   .ftp-file-row {
-    grid-template-columns: minmax(0, 1fr) 64px;
+    /* Same em-based size track as above (5.8em is the old 64px at the default
+       --fs-sm): the date column is gone here, so only the size column is left
+       to outgrow a fixed track at a large panel font. */
+    grid-template-columns: minmax(0, 1fr) calc(var(--fs-sm, 11px) * 5.8);
   }
 
   /* The captions are buttons, not spans (see the sorting feature); the row

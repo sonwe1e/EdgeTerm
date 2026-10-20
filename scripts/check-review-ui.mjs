@@ -118,7 +118,11 @@ try {
   assert.equal(await remote.locator('.ftp-browser-list').evaluate(e => e.scrollTop), stoppedAt);
   await page.mouse.up(); await page.evaluate(() => window.render(true)); await waitFrames();
   assert.equal(await page.evaluate(() => window.calls.length), 4);
-  await remote.getByRole('button', { name: 'Sort by last modified', exact: true }).click();
+  // By `data-sort-key`, not the caption's accessible name: the caption carries
+  // its visible column text as that name (an `aria-label` there would replace
+  // "Modified" with the instruction for a screen reader), so the attribute is
+  // the stable handle a caller selects the caption by.
+  await remote.locator('[data-sort-key="modified"]').click();
   await waitFrames();
   assert.equal(await page.locator('.ftp-browser-columns button.is-sorted,.filer-columns button.is-sorted').count(), 3);
   assert.equal(await page.locator('.ftp-browser-columns button.is-sorted,.filer-columns button.is-sorted').evaluateAll(items => items.every(e => /Modified/.test(e.textContent))), true);
