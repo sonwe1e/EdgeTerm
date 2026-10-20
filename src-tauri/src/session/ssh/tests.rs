@@ -536,8 +536,8 @@ async fn closing_a_pending_remote_forward_cancels_its_late_allocation() {
                 direction: crate::port_forward::Direction::Remote,
                 listen_host: "127.0.0.1".into(),
                 listen_port: 0,
-                target_host: "127.0.0.1".into(),
-                target_port: 80,
+                target_host: Some("127.0.0.1".into()),
+                target_port: Some(80),
             },
         )
         .unwrap();

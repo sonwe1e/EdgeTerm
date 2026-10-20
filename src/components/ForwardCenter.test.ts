@@ -30,6 +30,18 @@ it("auto-discovers listeners and only creates a tab-owned tunnel after explicit 
     expect(api.startPortForward).toHaveBeenCalledWith("ssh", { direction: "local", listenHost: "127.0.0.1", listenPort: 0, targetHost: "::1", targetPort: 8080 });
   } finally { act(() => root.unmount()); host.remove(); }
 });
+it("creates a dynamic SOCKS5 tunnel without naming a target", async () => {
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  try {
+    await act(async () => root.render(h(ForwardCenter)));
+    await act(async () => host.querySelector("button")!.click());
+    await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Use port 8080")!.click());
+    await act(async () => { const select = host.querySelector<HTMLSelectElement>('[aria-label="Tunnel direction"]')!; select.value = "dynamic"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    expect(host.querySelector('[aria-label="Tunnel target host"]')).toBeNull();
+    await act(async () => host.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    expect(api.startPortForward).toHaveBeenCalledWith("ssh", { direction: "dynamic", listenHost: "127.0.0.1", listenPort: 0 });
+  } finally { act(() => root.unmount()); host.remove(); }
+});
 it("scans periodically with one in-flight request, cancels owner switches and hidden panels, and rejects stale results", async () => {
   vi.useFakeTimers(); let release!: (value: PortDiscovery) => void; api.discoverListeningPorts.mockReturnValueOnce(new Promise((resolve) => { release = resolve; }));
   const host = document.createElement("div"); const root = createRoot(host);

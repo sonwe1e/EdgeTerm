@@ -690,7 +690,12 @@ export type DirListing = {
 	entries: FileEntry[],
 };
 
-export type Direction = "local" | "remote";
+export type Direction = "local" | "remote" |
+/**
+ *  A SOCKS5 proxy on the local machine: every connection a client makes
+ *  through it names its own far end, the way `ssh -D` works.
+ */
+"dynamic";
 
 export type Draft = {
 	docId: string,
@@ -1224,8 +1229,16 @@ export type PortForwardSpec = {
 	direction: Direction,
 	listenHost: string,
 	listenPort: number,
-	targetHost: string,
-	targetPort: number,
+	/**
+	 *  The far end a Local or Remote forward names. A Dynamic forward has
+	 *  none: each SOCKS5 client brings its own target in the CONNECT
+	 *  request. `default` alone — no `skip_serializing_if` — keeps this
+	 *  type out of specta-serde's phase split, whose renamed variants
+	 *  would land on `Snapshot`'s own exported name; a `None` therefore
+	 *  crosses the wire as `null` rather than an absent field.
+	 */
+	targetHost?: string | null,
+	targetPort?: number | null,
 };
 
 export type ProjectProbe = {

@@ -18,29 +18,40 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::{
-    io::{AsyncRead, AsyncWrite, ReadBuf},
+    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf},
     net::{TcpListener, TcpStream},
     sync::{mpsc, watch},
     task::JoinSet,
 };
 
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Direction {
     Local,
     Remote,
+    /// A SOCKS5 proxy on the local machine: every connection a client makes
+    /// through it names its own far end, the way `ssh -D` works.
+    Dynamic,
 }
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "bindings", serde(rename = "PortForwardSpec"))]
 pub struct Spec {
     pub direction: Direction,
     pub listen_host: String,
     pub listen_port: u16,
-    pub target_host: String,
-    pub target_port: u16,
+    /// The far end a Local or Remote forward names. A Dynamic forward has
+    /// none: each SOCKS5 client brings its own target in the CONNECT
+    /// request. `default` alone — no `skip_serializing_if` — keeps this
+    /// type out of specta-serde's phase split, whose renamed variants
+    /// would land on `Snapshot`'s own exported name; a `None` therefore
+    /// crosses the wire as `null` rather than an absent field.
+    #[serde(default)]
+    pub target_host: Option<String>,
+    #[serde(default)]
+    pub target_port: Option<u16>,
 }
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Serialize)]
@@ -145,8 +156,19 @@ fn valid_host(value: &str) -> bool {
             .bytes()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'-' | b':' | b'%' | b'_'))
 }
-fn validate(spec: &Spec) -> Result<()> {
-    if !valid_host(&spec.listen_host) || !valid_host(&spec.target_host) || spec.target_port == 0 {
+/// Whether a spec can start: a valid listener host, and — for everything
+/// but a Dynamic forward — a valid target host and a port from 1 to 65535.
+/// `ssh_config` reuses it so an imported forward is guaranteed startable.
+pub(crate) fn validate(spec: &Spec) -> Result<()> {
+    // A Dynamic (SOCKS5) forward names no target: each client's CONNECT
+    // request brings one, the way `ssh -D` works.
+    let target_ok = spec.direction == Direction::Dynamic
+        || (spec
+            .target_host
+            .as_deref()
+            .is_some_and(|host| valid_host(host))
+            && spec.target_port.is_some_and(|port| port != 0));
+    if !valid_host(&spec.listen_host) || !target_ok {
         return Err(AppError::new(
             "enter valid listener and target hosts and a target port from 1 to 65535",
         ));
@@ -310,23 +332,28 @@ async fn run(
         return Ok(());
     }
     let mut remote_listener = None;
-    let listener = if spec.direction == Direction::Local {
-        let listener = tokio::select! {_=job.control.stopped()=>return Ok(()),result=tokio::time::timeout(Duration::from_secs(5),TcpListener::bind((spec.listen_host.as_str(),spec.listen_port)))=>result.map_err(|_|AppError::new("local listener binding timed out"))??};
-        spec.listen_port = listener.local_addr()?.port();
-        Some(listener)
-    } else {
-        let lease = tokio::select! {_=job.control.stopped()=>return Ok(()),result=tokio::time::timeout(Duration::from_secs(8),transport.request_forward(&spec.listen_host,spec.listen_port))=>result.map_err(|_|AppError::new("remote listener request timed out"))??};
-        spec.listen_port = lease.port;
-        if let Err(error) =
-            transport
-                .forward_routes()
-                .insert(&spec.listen_host, spec.listen_port, &job)
-        {
-            let _ = lease.close().await;
-            return Err(error);
+    let listener = match spec.direction {
+        // A Dynamic forward listens locally like a Local one; only what an
+        // accepted connection is bridged to differs.
+        Direction::Local | Direction::Dynamic => {
+            let listener = tokio::select! {_=job.control.stopped()=>return Ok(()),result=tokio::time::timeout(Duration::from_secs(5),TcpListener::bind((spec.listen_host.as_str(),spec.listen_port)))=>result.map_err(|_|AppError::new("local listener binding timed out"))??};
+            spec.listen_port = listener.local_addr()?.port();
+            Some(listener)
         }
-        remote_listener = Some(lease);
-        None
+        Direction::Remote => {
+            let lease = tokio::select! {_=job.control.stopped()=>return Ok(()),result=tokio::time::timeout(Duration::from_secs(8),transport.request_forward(&spec.listen_host,spec.listen_port))=>result.map_err(|_|AppError::new("remote listener request timed out"))??};
+            spec.listen_port = lease.port;
+            if let Err(error) =
+                transport
+                    .forward_routes()
+                    .insert(&spec.listen_host, spec.listen_port, &job)
+            {
+                let _ = lease.close().await;
+                return Err(error);
+            }
+            remote_listener = Some(lease);
+            None
+        }
     };
     job.snapshot.lock().spec = spec.clone();
     if job.control.value() == 0 {
@@ -343,15 +370,22 @@ async fn run(
             Some(_)=flows.join_next(),if !flows.is_empty()=>{},
             accepted=async {listener.as_ref().unwrap().accept().await},if listener.is_some()=>{
                 match accepted {Ok((socket,origin))=>{if flows.len()>=32{drop(socket);continue;}let job=job.clone();let transport=transport.clone();let spec=spec.clone();flows.spawn(async move {
+                    // A SOCKS5 client names its own far end per connection.
+                    if spec.direction == Direction::Dynamic {
+                        serve_socks5(job,transport,socket).await;
+                        return;
+                    }
+                    let (target_host,target_port)=match (&spec.target_host,spec.target_port) {(Some(host),Some(port))=>(host.as_str(),port),_=>{job.snapshot.lock().error=Some("forward target is missing".into());return;}};
                     let origin_host=origin.ip().to_string();
-                    let channel=tokio::select!{_ =job.control.stopped()=>return, result=tokio::time::timeout(Duration::from_secs(5),transport.direct_tcpip(&spec.target_host,spec.target_port,&origin_host,origin.port()))=>result};
+                    let channel=tokio::select!{_ =job.control.stopped()=>return, result=tokio::time::timeout(Duration::from_secs(5),transport.direct_tcpip(target_host,target_port,&origin_host,origin.port()))=>result};
                     match channel {Ok(Ok(channel))=>bridge(job,channel,socket).await,Ok(Err(e))=>job.snapshot.lock().error=Some(e.to_string()),Err(_)=>job.snapshot.lock().error=Some("target connection timed out".into())}
                 });},Err(error)=>{result=Err(error.into());break;}}
             },
             Some(channel)=incoming.recv(),if listener.is_none()=>{
                 let stream=channel.into_stream();
                 if flows.len()>=32{drop(stream);continue;}let job=job.clone();let spec=spec.clone();flows.spawn(async move {
-                    let socket=tokio::select!{_=job.control.stopped()=>return,result=tokio::time::timeout(Duration::from_secs(5),TcpStream::connect((spec.target_host.as_str(),spec.target_port)))=>result};
+                    let (target_host,target_port)=match (&spec.target_host,spec.target_port) {(Some(host),Some(port))=>(host.clone(),port),_=>{job.snapshot.lock().error=Some("forward target is missing".into());return;}};
+                    let socket=tokio::select!{_=job.control.stopped()=>return,result=tokio::time::timeout(Duration::from_secs(5),TcpStream::connect((target_host.as_str(),target_port)))=>result};
                     match socket{Ok(Ok(socket))=>bridge(job,stream,socket).await,other=>{job.snapshot.lock().error=Some(format!("cannot connect to local target: {other:?}"));}}
                 });
             }
@@ -434,6 +468,130 @@ async fn bridge(job: Arc<Job>, channel: russh::ChannelStream<Msg>, socket: TcpSt
     };
     tokio::select! {_=job.control.stopped()=>{},result=tokio::io::copy_bidirectional(&mut socket,&mut channel)=>{if let Err(error)=result {job.snapshot.lock().error=Some(error.to_string());}}}
     // russh ChannelStream owns ChannelCloseOnDrop; both halves are closed here.
+}
+
+/// One SOCKS5 client on a Dynamic forward: the greeting, a CONNECT request
+/// naming the far end, then the same byte bridge a Local forward uses.
+/// Only CONNECT is served — an SSH channel carries no UDP and no second
+/// listener, so BIND and UDP ASSOCIATE are refused with SOCKS5 reply
+/// codes, exactly as `ssh -D` refuses them.
+async fn serve_socks5(job: Arc<Job>, transport: Arc<SharedTransport>, socket: TcpStream) {
+    if let Err(error) = socks5(&job, &transport, socket).await {
+        job.snapshot.lock().error = Some(error.to_string());
+    }
+}
+
+const SOCKS_VERSION: u8 = 5;
+/// "no authentication required", the only method `ssh -D` offers.
+const SOCKS_NO_AUTH: u8 = 0x00;
+const SOCKS_CONNECT: u8 = 0x01;
+
+/// A SOCKS5 reply carrying `code` and a zero bound address: the bound
+/// address is informational and clients ignore it.
+fn socks_reply(code: u8) -> [u8; 10] {
+    [SOCKS_VERSION, code, 0x00, 0x01, 0, 0, 0, 0, 0, 0]
+}
+
+async fn read_exact<R: AsyncRead + Unpin>(reader: &mut R, buffer: &mut [u8]) -> Result<()> {
+    tokio::time::timeout(Duration::from_secs(5), reader.read_exact(buffer))
+        .await
+        .map_err(|_| AppError::new("SOCKS5 client stopped responding"))?
+        // tokio's read_exact reports the filled length on success; the
+        // length is the buffer's own, so only the outcome matters here.
+        .map(|_| ())
+        .map_err(AppError::from)
+}
+
+async fn socks5(job: &Arc<Job>, transport: &SharedTransport, mut socket: TcpStream) -> Result<()> {
+    let mut greeting = [0u8; 2];
+    read_exact(&mut socket, &mut greeting).await?;
+    if greeting[0] != SOCKS_VERSION {
+        return Err(AppError::new("client is not speaking SOCKS5"));
+    }
+    let mut methods = vec![0u8; greeting[1] as usize];
+    read_exact(&mut socket, &mut methods).await?;
+    if greeting[1] == 0 {
+        let _ = socket.write_all(&[SOCKS_VERSION, 0xff]).await;
+        return Err(AppError::new(
+            "SOCKS5 client offered no authentication method",
+        ));
+    }
+    socket.write_all(&[SOCKS_VERSION, SOCKS_NO_AUTH]).await?;
+    let mut request = [0u8; 4];
+    read_exact(&mut socket, &mut request).await?;
+    if request[0] != SOCKS_VERSION {
+        return Err(AppError::new("SOCKS5 request version is not 5"));
+    }
+    let target = match read_target(&mut socket, request[3]).await {
+        Ok(target) => target,
+        Err(error) => {
+            let _ = socket.write_all(&socks_reply(0x08)).await;
+            return Err(error);
+        }
+    };
+    if request[1] != SOCKS_CONNECT {
+        let _ = socket.write_all(&socks_reply(0x07)).await;
+        return Err(AppError::new(
+            "SOCKS5 client asked for a command other than CONNECT",
+        ));
+    }
+    let origin = socket.peer_addr()?;
+    let channel = match tokio::time::timeout(
+        Duration::from_secs(5),
+        transport.direct_tcpip(&target.0, target.1, &origin.ip().to_string(), origin.port()),
+    )
+    .await
+    {
+        Ok(Ok(channel)) => channel,
+        Ok(Err(error)) => {
+            let _ = socket.write_all(&socks_reply(0x01)).await;
+            return Err(error.into());
+        }
+        Err(_) => {
+            let _ = socket.write_all(&socks_reply(0x01)).await;
+            return Err(AppError::new("target connection timed out"));
+        }
+    };
+    socket.write_all(&socks_reply(0x00)).await?;
+    bridge(job.clone(), channel, socket).await;
+    Ok(())
+}
+
+/// The DST.ADDR and DST.PORT of a SOCKS5 request. IPv4 and IPv6 arrive as
+/// raw bytes; a domain name arrives length-prefixed. Any other address
+/// type is refused with "address type not supported".
+async fn read_target<R: AsyncRead + Unpin>(
+    reader: &mut R,
+    address_type: u8,
+) -> Result<(String, u16)> {
+    let host = match address_type {
+        0x01 => {
+            let mut raw = [0u8; 4];
+            read_exact(reader, &mut raw).await?;
+            std::net::Ipv4Addr::from(raw).to_string()
+        }
+        0x03 => {
+            let mut length = [0u8; 1];
+            read_exact(reader, &mut length).await?;
+            let mut raw = vec![0u8; length[0] as usize];
+            read_exact(reader, &mut raw).await?;
+            String::from_utf8(raw)
+                .map_err(|_| AppError::new("SOCKS5 domain name is not valid UTF-8"))?
+        }
+        0x04 => {
+            let mut raw = [0u8; 16];
+            read_exact(reader, &mut raw).await?;
+            std::net::Ipv6Addr::from(raw).to_string()
+        }
+        _ => return Err(AppError::new("SOCKS5 address type is not supported")),
+    };
+    let mut raw = [0u8; 2];
+    read_exact(reader, &mut raw).await?;
+    let port = u16::from_be_bytes(raw);
+    if port == 0 {
+        return Err(AppError::new("SOCKS5 target port is 0"));
+    }
+    Ok((host, port))
 }
 
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
@@ -573,8 +731,8 @@ mod tests {
             direction: Direction::Remote,
             listen_host: "127.0.0.1".into(),
             listen_port: 0,
-            target_host: "127.0.0.1".into(),
-            target_port: port,
+            target_host: Some("127.0.0.1".into()),
+            target_port: Some(port),
         };
         let remote = manager
             .start(
@@ -698,8 +856,8 @@ mod tests {
                     direction: Direction::Remote,
                     listen_host: "127.0.0.1".into(),
                     listen_port: 0,
-                    target_host: "127.0.0.1".into(),
-                    target_port: echo_port,
+                    target_host: Some("127.0.0.1".into()),
+                    target_port: Some(echo_port),
                 },
             )
             .unwrap();
@@ -726,8 +884,8 @@ mod tests {
                     direction: Direction::Local,
                     listen_host: "127.0.0.1".into(),
                     listen_port: 0,
-                    target_host: "127.0.0.1".into(),
-                    target_port: remote.spec.listen_port,
+                    target_host: Some("127.0.0.1".into()),
+                    target_port: Some(remote.spec.listen_port),
                 },
             )
             .unwrap();
@@ -774,8 +932,8 @@ mod tests {
                     direction: Direction::Remote,
                     listen_host: "127.0.0.1".into(),
                     listen_port: port.parse().unwrap(),
-                    target_host: "127.0.0.1".into(),
-                    target_port: echo_port,
+                    target_host: Some("127.0.0.1".into()),
+                    target_port: Some(echo_port),
                 },
             )
             .unwrap();
@@ -835,6 +993,104 @@ mod tests {
         drop(transport);
         std::fs::remove_dir_all(root).unwrap();
     }
+    #[tokio::test]
+    #[ignore = "dedicated loopback OpenSSH fixture"]
+    async fn real_dynamic_forward_serves_a_socks5_client_and_refuses_udp() {
+        let var = |key: &str| std::env::var(key).unwrap();
+        let address = var("EDGETERM_REAL_SSH_ADDR");
+        let (host, port) = address.rsplit_once(':').unwrap();
+        let root =
+            std::env::temp_dir().join(format!("edgeterm-forward-dyn-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&root).unwrap();
+        let transport = crate::session::ssh::test_transport(
+            host,
+            port.parse().unwrap(),
+            &var("EDGETERM_REAL_SSH_USER"),
+            &var("EDGETERM_REAL_SSH_KEY"),
+            &root.join("known_hosts"),
+        )
+        .await;
+        let echo = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let echo_port = echo.local_addr().unwrap().port();
+        let echo_task = tokio::spawn(async move {
+            let mut children = JoinSet::new();
+            loop {
+                tokio::select! {accepted=echo.accept()=>{let(mut socket,_)=accepted.unwrap();children.spawn(async move{let mut bytes=[0u8;8192];loop{let n=socket.read(&mut bytes).await.unwrap_or(0);if n==0{break;}if socket.write_all(&bytes[..n]).await.is_err(){break;}}});},Some(_)=children.join_next(),if !children.is_empty()=>{}}
+            }
+        });
+        let manager = Forwards::default();
+        let socks = manager
+            .start(
+                "dyn-owner",
+                address.clone(),
+                transport.clone(),
+                Spec {
+                    direction: Direction::Dynamic,
+                    listen_host: "127.0.0.1".into(),
+                    listen_port: 0,
+                    target_host: None,
+                    target_port: None,
+                },
+            )
+            .unwrap();
+        let socks = settled(&manager, &socks.id).await;
+        assert_eq!(socks.status, "listening", "{:?}", socks.error);
+        let mut client = TcpStream::connect(("127.0.0.1", socks.spec.listen_port))
+            .await
+            .unwrap();
+        // Greeting: one method, no authentication.
+        client.write_all(&[5, 1, 0]).await.unwrap();
+        let mut method = [0u8; 2];
+        tokio::time::timeout(Duration::from_secs(3), client.read_exact(&mut method))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(method, [5, 0]);
+        // CONNECT to the loopback echo server through the tunnel.
+        let mut request = vec![5, 1, 0, 1, 127, 0, 0, 1];
+        request.extend_from_slice(&echo_port.to_be_bytes());
+        client.write_all(&request).await.unwrap();
+        let mut reply = [0u8; 10];
+        tokio::time::timeout(Duration::from_secs(3), client.read_exact(&mut reply))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(reply[1], 0, "SOCKS5 CONNECT must succeed: {reply:?}");
+        let payload: Vec<_> = (0..16384).map(|i| (i % 251) as u8).collect();
+        client.write_all(&payload).await.unwrap();
+        let mut returned = vec![0; payload.len()];
+        tokio::time::timeout(Duration::from_secs(5), client.read_exact(&mut returned))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(returned, payload);
+        // UDP ASSOCIATE is refused with "command not supported", as ssh -D does.
+        client
+            .write_all(&[5, 3, 0, 1, 0, 0, 0, 0, 0, 0])
+            .await
+            .unwrap();
+        let mut refused = [0u8; 10];
+        tokio::time::timeout(Duration::from_secs(3), client.read_exact(&mut refused))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(refused[1], 0x07);
+        drop(client);
+        let row = settled(&manager, &socks.id).await;
+        assert_eq!(row.sent_bytes, payload.len() as u64);
+        assert_eq!(row.received_bytes, payload.len() as u64);
+        manager.stop(&socks.id).await.unwrap();
+        assert_eq!(settled(&manager, &socks.id).await.status, "stopped");
+        assert!(TcpStream::connect(("127.0.0.1", socks.spec.listen_port))
+            .await
+            .is_err());
+        manager.remove(&socks.id).unwrap();
+        echo_task.abort();
+        let _ = echo_task.await;
+        drop(transport);
+        std::fs::remove_dir_all(root).unwrap();
+        println!("real SOCKS5 dynamic forward: {} bytes each way through a CONNECT; UDP ASSOCIATE refused", payload.len());
+    }
     #[test]
     fn listener_parser_handles_ipv4_ipv6_missing_process_and_headers() {
         let result=parse_scan("!ss\nLISTEN 0 128 127.0.0.1:8080 0.0.0.0:* users:((\"test\",pid=3,fd=4))\nLISTEN 0 128 [::]:22 [::]:*\nLISTEN 0 128 :::80 :::*\nbad\n");
@@ -855,15 +1111,59 @@ mod tests {
             direction: Direction::Local,
             listen_host: "127.0.0.1".into(),
             listen_port: 0,
-            target_host: "::1".into(),
-            target_port: 80,
+            target_host: Some("::1".into()),
+            target_port: Some(80),
         };
         assert!(validate(&spec).is_ok());
-        spec.target_host = "a;id".into();
+        spec.target_host = Some("a;id".into());
         assert!(validate(&spec).is_err());
-        spec.target_host = "localhost".into();
-        spec.target_port = 0;
+        spec.target_host = Some("localhost".into());
+        spec.target_port = Some(0);
         assert!(validate(&spec).is_err());
+        // A Dynamic forward names no target at all.
+        let mut dynamic = Spec {
+            direction: Direction::Dynamic,
+            listen_host: "127.0.0.1".into(),
+            listen_port: 1080,
+            target_host: None,
+            target_port: None,
+        };
+        assert!(validate(&dynamic).is_ok());
+        dynamic.listen_host = "a;id".into();
+        assert!(validate(&dynamic).is_err());
+    }
+    #[tokio::test]
+    async fn socks5_reads_ipv4_ipv6_and_domain_targets() {
+        // The address type is read by the caller and passed in, so these
+        // streams hold only DST.ADDR and DST.PORT.
+        let mut ipv4: &[u8] = &[10, 0, 0, 7, 0x00, 0x50];
+        assert_eq!(
+            read_target(&mut ipv4, 0x01).await.unwrap(),
+            ("10.0.0.7".to_string(), 80)
+        );
+        let mut domain: &[u8] = &[
+            10, b'e', b'x', b'a', b'm', b'p', b'l', b'e', b'.', b'd', b'e', 0x01, 0xbb,
+        ];
+        assert_eq!(
+            read_target(&mut domain, 0x03).await.unwrap(),
+            ("example.de".to_string(), 443)
+        );
+        let mut ipv6: &[u8] = &[
+            0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0x1f, 0x90,
+        ];
+        assert_eq!(
+            read_target(&mut ipv6, 0x04).await.unwrap(),
+            ("2001:db8::1".to_string(), 8080)
+        );
+        let mut unsupported: &[u8] = &[1, 2, 3, 4, 0, 80];
+        assert!(read_target(&mut unsupported, 0x02).await.is_err());
+        let mut zero: &[u8] = &[1, 2, 3, 4, 0, 0];
+        assert!(read_target(&mut zero, 0x01).await.is_err());
+    }
+    #[test]
+    fn socks5_reply_carries_the_code_and_a_zero_bound_address() {
+        assert_eq!(socks_reply(0x00), [5, 0, 0, 1, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(socks_reply(0x05), [5, 5, 0, 1, 0, 0, 0, 0, 0, 0]);
     }
     // The route key is the exact requested listen host, so a server that
     // reports the listener under any other string would silently drop every
@@ -907,8 +1207,8 @@ mod tests {
                         direction: Direction::Remote,
                         listen_host: requested.into(),
                         listen_port: 0,
-                        target_host: "127.0.0.1".into(),
-                        target_port: echo_port,
+                        target_host: Some("127.0.0.1".into()),
+                        target_port: Some(echo_port),
                     },
                 )
                 .unwrap();

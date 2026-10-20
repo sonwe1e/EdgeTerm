@@ -928,6 +928,11 @@ export const zhCN: Catalog = {
   "forward.directionAria": "隧道方向",
   "forward.dirLocal": "本地 → SSH 主机 (L)",
   "forward.dirRemote": "SSH 主机 → 本地 (R)",
+  "forward.dirDynamic": "SOCKS5 代理 (D)",
+  "forward.jobDynamic": "D · SOCKS5 代理",
+  "forward.socksProxy": "SOCKS5 代理",
+  "forward.dynamicNote":
+    "SOCKS5 代理仅支持 TCP CONNECT；UDP 与 BIND 会被拒绝，与 ssh -D 一致。把其他应用程序指向此地址和端口，即可访问 SSH 主机所在网络。",
   "forward.listenOnLabel": "监听于",
   "forward.thisComputer": "本机",
   "forward.sshHost": "SSH 主机",

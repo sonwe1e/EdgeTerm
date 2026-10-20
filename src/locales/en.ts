@@ -1015,6 +1015,11 @@ export const en = {
   "forward.directionAria": "Tunnel direction",
   "forward.dirLocal": "Local → SSH host (L)",
   "forward.dirRemote": "SSH host → local (R)",
+  "forward.dirDynamic": "SOCKS5 proxy (D)",
+  "forward.jobDynamic": "D · SOCKS5 proxy",
+  "forward.socksProxy": "SOCKS5 proxy",
+  "forward.dynamicNote":
+    "A SOCKS5 proxy serves TCP CONNECT only; UDP and BIND are refused, like ssh -D. Point other applications at this address and port to reach the SSH host's network.",
   "forward.listenOnLabel": "Listen on",
   "forward.thisComputer": "this computer",
   "forward.sshHost": "SSH host",

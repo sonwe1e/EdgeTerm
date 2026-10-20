@@ -742,11 +742,12 @@ export const showPointer = (): Promise<void> => invoke("show_pointer");
 export const portableMode = (): Promise<boolean> => invoke("portable_mode");
 
 export interface PortForwardSpec {
-  direction: "local" | "remote";
+  direction: "local" | "remote" | "dynamic";
   listenHost: string;
   listenPort: number;
-  targetHost: string;
-  targetPort: number;
+  /** Absent or null for a dynamic (SOCKS5) forward: each client names its own target. */
+  targetHost?: string | null;
+  targetPort?: number | null;
 }
 export interface PortForward {
   id: string;
