@@ -320,7 +320,17 @@ export function entryTitle(entry: FileEntry, t: Translate = translateMsg): strin
   // root:root` is only readable because you happen to know the order, so
   // every value carries its own label below.
   const attributes = [t("filer.tipType", { kind: entryKindLabel(kind, t) })];
-  if (!entry.isDir) attributes.push(t("filer.tipSize", { size: formatBytes(entry.size) }));
+  if (!entry.isDir) {
+    // The exact count beside the rounded one: the column shows `1.2 KB`, and
+    // the number of bytes is what comparing two files actually needs. A size
+    // the listing could not report stays a dash in both places rather than
+    // printing `NaN 字节`.
+    const size = formatBytes(entry.size);
+    const exact = Number.isFinite(entry.size) && entry.size >= 0;
+    attributes.push(
+      t("filer.tipSize", { size, bytes: exact ? entry.size.toLocaleString() : size }),
+    );
+  }
   if (entry.permissions !== null) {
     attributes.push(
       t("filer.mode", {

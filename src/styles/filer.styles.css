@@ -175,15 +175,15 @@
 }
 
 /* One grid for the caption row and for every data row. The size and date
-   tracks have one fixed width everywhere, so `1.2 MB` and `12.4 MB` begin at
-   the same x, and every caption sits over the column it names instead of
-   over whatever width its own text happened to be.
+   tracks have one width everywhere, so `1.2 MB` and `12.4 MB` begin at the
+   same x, and every caption sits over the column it names instead of over
+   whatever width its own text happened to be.
 
    The first track is the row's type icon (16px, see .filer-icon); the caption
-   row has none, so below it places its buttons on tracks 2 to 4 and leaves
-   the first empty — that keeps the names under a caption that starts with
-   them rather than with the icon beside them. The track widths are multiples
-   of --fs-xs, the size the cells themselves render at, so they grow with the
+   row has none, so below it places its cells on tracks 2 to 4 and leaves the
+   first empty — that keeps the names under a caption that starts with them
+   rather than with the icon beside them. The track widths are multiples of
+   --fs-xs, the size the cells themselves render at, so they grow with the
    panel font instead of clipping it. */
 .filer-columns,
 .filer-entry {
@@ -198,29 +198,106 @@
   font-size: var(--filer-cell-fs);
   /* The longest string either column prints, plus a little: `1023.9 KB` is
      6 characters of number, one space, and a 2.2ch slot — 9.2ch; `Today
-     14:32` and `10-20 14:32` are 11 characters of date. The date track also
-     carries an em floor, because what has to fit in it is not only a date:
-     the caption above it is `MODIFIED` in the interface face plus a 16px sort
+     14:32` and `10-20 14:32` are 11 characters of date. The date floor also
+     carries an em term, because what has to fit in it is not only a date: the
+     caption above it is `MODIFIED` in the interface face plus a 16px sort
      arrow, which is ~7.6em — wider than 11.4ch, and it would be clipped while
-     every date below sat comfortably inside the same track. */
-  --filer-size-track: 9.4ch;
-  --filer-date-track: max(11.4ch, calc(var(--filer-cell-fs) * 8.2));
+     every date below sat comfortably inside the same track.
+
+     Each floor is also the minimum the column may be dragged to: the track is
+     `minmax(floor, width)`, so a drag that asks for less than the floor is
+     refused by the grid rather than clipping the value it was meant to show.
+     `--filer-*-user` is set by the panel only once a column has been dragged;
+     until then the width is the floor itself, which follows the panel font. */
+  --filer-size-floor: 9.4ch;
+  --filer-date-floor: max(11.4ch, calc(var(--filer-cell-fs) * 8.2));
+  --filer-size-w: var(--filer-size-user, var(--filer-size-floor));
+  --filer-date-w: var(--filer-date-user, var(--filer-date-floor));
   display: grid;
   align-items: center;
-  grid-template-columns: 16px minmax(0, 1fr) var(--filer-size-track) var(--filer-date-track);
+  grid-template-columns:
+    16px
+    minmax(0, 1fr)
+    minmax(var(--filer-size-floor), var(--filer-size-w))
+    minmax(var(--filer-date-floor), var(--filer-date-w));
   column-gap: var(--sp-6);
 }
 
-.filer-columns .filer-col-name {
+/* One cell per counted track of the caption row, so a resize handle can
+   straddle the boundary to its right without leaving the grid. The cells
+   occupy the same tracks the rows below use, which is what makes a dragged
+   width move the captions and the rows together. */
+.filer-col-cell {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+
+.filer-col-cell.is-name {
   grid-column: 2;
 }
 
-.filer-columns .filer-col-size {
+.filer-col-cell.is-size {
   grid-column: 3;
 }
 
-.filer-columns .filer-col-date {
+.filer-col-cell.is-date {
   grid-column: 4;
+}
+
+.filer-col-cell > button {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The drag handle on a column's left boundary. It straddles the line between
+   two tracks instead of occupying a track of its own, so the caption row and
+   the rows below it stay on one grid and no width is spent on the handle.
+
+   The line is deliberately visible at rest, the way the splitter's is: a
+   boundary that only appears under the pointer is one nobody finds. It rests
+   at --border-strong and takes the accent on hover, focus and drag, fading
+   with no delay because the line lighting up is the only sign a column edge
+   can be grabbed. */
+.filer-col-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  z-index: 1;
+  width: 7px;
+  cursor: col-resize;
+}
+
+.filer-col-resize::after {
+  content: "";
+  position: absolute;
+  top: 15%;
+  bottom: 15%;
+  left: 2px;
+  width: 2px;
+  background: var(--border-strong);
+  transition: background-color 80ms ease;
+  pointer-events: none;
+}
+
+.filer-col-resize:hover::after,
+.filer-col-resize:focus-visible::after,
+.filer-col-resize.is-dragging::after {
+  background: var(--accent);
+}
+
+.filer-col-resize:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* While a column is being dragged the resize cursor holds over whatever the
+   pointer crosses, the way the splitter's does — the rows would otherwise
+   show their text cursor mid-drag. */
+.filer-columns:has(.filer-col-resize.is-dragging),
+.filer-columns:has(.filer-col-resize.is-dragging) * {
+  cursor: col-resize !important;
 }
 
 /* Column captions, aligned with the row content: a row's own box is inset by
@@ -311,9 +388,10 @@
 }
 
 /* Column captions are buttons so they can sort the list; they restyle to the
-   span look they replaced. Note there is no `min-width` here: it used to be
-   0, which outranked the min-width of the columns themselves and left every
-   caption as wide as its own text. The grid's fixed tracks size them now. */
+   span look they replaced. The `min-width: 0` on the cell's button is a flex
+   concern, not a grid one: it lets the caption shrink inside its track so the
+   ellipsis below can engage, while the track's own floor still decides how
+   wide the column is. */
 .filer-columns button {
   display: block;
   padding: 0;

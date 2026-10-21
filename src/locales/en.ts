@@ -55,6 +55,10 @@ export const en = {
   "menu.rightClickShowMenu": "Show Menu",
   "menu.rightClickCopyOrPaste": "Copy or Paste",
   "menu.rightClickPaste": "Paste",
+  "menu.closeWindow": "Close Window",
+  "menu.closeAsk": "Ask Every Time",
+  "menu.closeTray": "Minimize to Tray",
+  "menu.closeExit": "Quit Directly",
   "menu.clearBuffer": "Clear Buffer",
   "menu.commandSuggestions": "Command Suggestions",
   "menu.clearCommandHistory": "Clear Command History…",
@@ -199,6 +203,14 @@ export const en = {
   "quit.andMore": "…and {count} more",
   "quit.hint":
     "All connections will be disconnected and their terminal output discarded.",
+
+  // CloseChoiceDialog — what the window ✕ does while the setting is "ask".
+  "closeChoice.title": "Close EdgeTerm",
+  "closeChoice.body":
+    "Minimize EdgeTerm to the system tray, where every session keeps running, or quit the app?",
+  "closeChoice.tray": "Minimize to Tray",
+  "closeChoice.exit": "Quit",
+  "closeChoice.remember": "Remember my choice",
 
   // PasteWarningDialog
   "pasteWarning.linesTitle": "{count} Lines",
@@ -765,7 +777,7 @@ export const en = {
   "filer.dateToday": "Today",
   "filer.dateUnknown": "Unknown",
   "filer.tipType": "Type: {kind}",
-  "filer.tipSize": "Size: {size}",
+  "filer.tipSize": "Size: {size} ({bytes} bytes)",
   "filer.tipOwner": "Owner: {owner}",
   "filer.oneItem": "{count} item",
   "filer.manyItems": "{count} items",
@@ -773,6 +785,8 @@ export const en = {
   "filer.sortByName": "Sort by name",
   "filer.sortByModified": "Sort by last modified",
   "filer.sortBySize": "Sort by size",
+  "filer.resizeSizeColumn": "Resize the size column",
+  "filer.resizeSizeColumnRight": "Resize the size column from the right",
   "filer.remoteListAria":
     "{proto} file list. Drop files or folders here to upload, or drag an entry out of the window to download it.",
   "filer.localListAria":

@@ -26,6 +26,9 @@ export const SENDER_SAVE_LEVEL_KEY = "edgeterm.senderSaveLevel";
 /** Applications files were last opened with; see the Filer panel. */
 export const FILER_OPEN_WITH_KEY = "edgeterm.filerOpenWith";
 
+/** Dragged widths of the Filer's size and modified columns; see filerColumns.ts. */
+export const FILER_COLUMNS_KEY = "edgeterm.filerColumns";
+
 /** Workbench view, last project, experiment memory and open files. */
 export const WORKBENCH_VIEW_KEY = "edgeterm.workbench.view";
 export const WORKBENCH_LAST_PROJECT_KEY = "edgeterm.workbench.lastWorkspace";
@@ -47,6 +50,7 @@ export const PANEL_PREFERENCE_KEYS: readonly string[] = [
   SENDER_REPEAT_KEY,
   SENDER_SAVE_LEVEL_KEY,
   FILER_OPEN_WITH_KEY,
+  FILER_COLUMNS_KEY,
   TRANSFER_OPTIONS_KEY,
   RESOURCE_MONITOR_KEY,
   WORKBENCH_VIEW_KEY,

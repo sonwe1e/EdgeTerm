@@ -256,11 +256,15 @@ export function DockArea({ dock, panels, size, render }: DockAreaProps) {
   const resize = (a: PanelName, b: PanelName, delta: number) => {
     const element = ref.current;
     if (!element) return;
+    // The extent is read here, outside the updater: a state updater must be
+    // pure, and reading layout inside one forces a synchronous reflow that
+    // React may repeat on every invocation of the updater — once per render
+    // pass, not once per drag frame.
+    const extent = side ? element.clientHeight : element.clientWidth;
+    if (extent <= 0) return;
     setWeights((current) => {
       const weight = (panel: PanelName) => current[panel] ?? 1;
       const total = panels.reduce((sum, panel) => sum + weight(panel), 0);
-      const extent = side ? element.clientHeight : element.clientWidth;
-      if (extent <= 0) return current;
       const perWeight = extent / total;
       const min = MIN_SLOT_PX / perWeight;
       const wa = weight(a);

@@ -30,6 +30,14 @@ export { sameListing } from "./filerDirectoryCache";
 
 import { reconnectSession, revealCwdInFiler } from "../../actions";
 import * as api from "../../api";
+import {
+  clampColumnWidth,
+  loadFilerColumns,
+  measureCssLength,
+  saveFilerColumns,
+  tradeBoundary,
+  type FilerColumns,
+} from "../../filerColumns";
 import { sortFileEntries, toggleFileSort, type SortKey } from "../../fileSort";
 import { IS_MAC } from "../../platform";
 import { chordLabel } from "../../shortcuts";
@@ -41,6 +49,7 @@ import { useStableCallback } from "../../useStableCallback";
 import { useT } from "../../useT";
 import { ContextMenu } from "../ContextMenu";
 import { DeleteEntryDialog } from "../DeleteEntryDialog";
+import { FilerColumnResizer } from "./FilerColumnResizer";
 import { FilerTransferSummary } from "../FilerTransferSummary";
 import { Icon } from "../icons";
 import { SortIndicator } from "../SortIndicator";
@@ -102,6 +111,16 @@ function FilerPanelBase() {
   const sort = useStore((s) => s.filerSort);
   const setFilerSort = useStore((s) => s.setFilerSort);
   const sortedEntries = useMemo(() => sortFileEntries(entries, sort), [entries, sort]);
+  // The two columns whose width the user may drag; see filerColumns.ts. The
+  // name column is the grid's flexible track, so it takes whatever room these
+  // two leave — narrowing either widens the names.
+  const [columns, setColumns] = useState<FilerColumns>(loadFilerColumns);
+  // Debounced like the dock sizing: a drag writes a width per frame, and the
+  // stored value only has to be right when the drag ends.
+  useEffect(() => {
+    const timer = window.setTimeout(() => saveFilerColumns(columns), 250);
+    return () => window.clearTimeout(timer);
+  }, [columns]);
   const selection = useFileSelection(sortedEntries);
   const {
     paths: selected,
@@ -167,6 +186,18 @@ function FilerPanelBase() {
   /** The listbox: the rows' scroll container and the single Tab stop. */
   const listRef = useRef<HTMLDivElement>(null);
   const columnsRef = useRef<HTMLDivElement>(null);
+  // The size caption cell. The handle on the modified column's left edge
+  // trades room with the size column, and it can only measure its own cell —
+  // so the panel measures the size cell for it, once per adjustment (see
+  // FilerColumnResizer's `onStart`).
+  const sizeCellRef = useRef<HTMLDivElement>(null);
+  const sizeStartRef = useRef<number | null>(null);
+  // Each counted track's rendered floor in px, measured when an adjustment
+  // begins. The stylesheet states the floors in ch/em so they follow the
+  // panel fonts; the trade needs them in px to know when a column stops
+  // paying (see `measureCssLength` and `tradeBoundary`).
+  const sizeFloorRef = useRef<number | null>(null);
+  const dateFloorRef = useRef<number | null>(null);
   // The caption row is a sibling of the scroll container, not a child of it,
   // so nothing tells it how wide the list's scrollbar is and its columns sat
   // a scrollbar to the right of the ones they named. Measured rather than
@@ -612,8 +643,17 @@ function FilerPanelBase() {
       // Two values the rows need and only this component can compute: the row
       // height the stylesheet and the virtualiser both have to work from, and
       // the width the list's scrollbar steals from its rows. Both are handed
-      // down as tokens so neither is derived twice.
-      style={{ flex: 1, "--filer-row-h": `${rowHeight - 2}px` } as CSSProperties}
+      // down as tokens so neither is derived twice. The dragged column widths
+      // ride along on the same element: the caption row and every row below it
+      // read them off this one ancestor, so the two grids cannot disagree.
+      style={
+        {
+          flex: 1,
+          "--filer-row-h": `${rowHeight - 2}px`,
+          ...(columns.size !== null ? { "--filer-size-user": `${columns.size}px` } : {}),
+          ...(columns.date !== null ? { "--filer-date-user": `${columns.date}px` } : {}),
+        } as CSSProperties
+      }
     >
       <div className="panel-header">
         <div className="panel-title is-filer">
@@ -819,51 +859,124 @@ function FilerPanelBase() {
           never "大小", so three columns were named by their verbs. The visible
           text is the accessible name now, `aria-sort` carries the state, and
           the sr-only line carries what a click will do. `data-sort-key` is the
-          stable handle the row contract selects a caption by. */}
+          stable handle the row contract selects a caption by.
+
+          Each caption sits in a cell of its own so a resize handle can straddle
+          the boundary to its left without leaving the grid: the cells occupy
+          the same tracks the rows below use, so a dragged width moves the
+          captions and the rows together.
+
+          Both handles resize the *size* column, from its two edges, because
+          that is the column a user reaches for when a value is clipped. The
+          left handle trades with the names and the right handle trades with the
+          modified column, so dragging either edge outward widens the size
+          column instead of sliding it along. The right handle's trade is
+          strict, in either direction: the moment size or modified sits on its
+          floor the drag moves nothing rather than squeeze the names — the
+          boundary nobody is holding never travels on its own. The names are
+          the flexible track and take whatever the two counted columns leave. */}
       <div className="filer-columns" ref={columnsRef}>
-        <button
-          type="button"
-          className={`filer-col-name${sort.key === "name" ? " is-sorted" : ""}`}
-          data-sort-key="name"
-          onClick={() => sortBy("name")}
-          aria-sort={
-            sort.key === "name" ? (sort.direction === "asc" ? "ascending" : "descending") : "none"
-          }
-        >
-          {t("session.name")}
-          <SortIndicator sort={sort} column="name" />
-          <span className="sr-only">{t("filer.sortByName")}</span>
-        </button>
-        <button
-          type="button"
-          className={`filer-col-size${sort.key === "size" ? " is-sorted" : ""}`}
-          data-sort-key="size"
-          onClick={() => sortBy("size")}
-          aria-sort={
-            sort.key === "size" ? (sort.direction === "asc" ? "ascending" : "descending") : "none"
-          }
-        >
-          {t("filer.size")}
-          <SortIndicator sort={sort} column="size" />
-          <span className="sr-only">{t("filer.sortBySize")}</span>
-        </button>
-        <button
-          type="button"
-          className={`filer-col-date${sort.key === "modified" ? " is-sorted" : ""}`}
-          data-sort-key="modified"
-          onClick={() => sortBy("modified")}
-          aria-sort={
-            sort.key === "modified"
-              ? sort.direction === "asc"
-                ? "ascending"
-                : "descending"
-              : "none"
-          }
-        >
-          {t("filer.modified")}
-          <SortIndicator sort={sort} column="modified" />
-          <span className="sr-only">{t("filer.sortByModified")}</span>
-        </button>
+        <div className="filer-col-cell is-name">
+          <button
+            type="button"
+            className={`filer-col-name${sort.key === "name" ? " is-sorted" : ""}`}
+            data-sort-key="name"
+            onClick={() => sortBy("name")}
+            aria-sort={
+              sort.key === "name" ? (sort.direction === "asc" ? "ascending" : "descending") : "none"
+            }
+          >
+            {t("session.name")}
+            <SortIndicator sort={sort} column="name" />
+            <span className="sr-only">{t("filer.sortByName")}</span>
+          </button>
+        </div>
+        <div className="filer-col-cell is-size" ref={sizeCellRef}>
+          <FilerColumnResizer
+            label={t("filer.resizeSizeColumn")}
+            onResize={(start, delta) =>
+              setColumns((current) => ({ ...current, size: clampColumnWidth(start - delta) }))
+            }
+          />
+          <button
+            type="button"
+            className={`filer-col-size${sort.key === "size" ? " is-sorted" : ""}`}
+            data-sort-key="size"
+            onClick={() => sortBy("size")}
+            aria-sort={
+              sort.key === "size" ? (sort.direction === "asc" ? "ascending" : "descending") : "none"
+            }
+          >
+            {t("filer.size")}
+            <SortIndicator sort={sort} column="size" />
+            <span className="sr-only">{t("filer.sortBySize")}</span>
+          </button>
+        </div>
+        <div className="filer-col-cell is-date">
+          <FilerColumnResizer
+            label={t("filer.resizeSizeColumnRight")}
+            onStart={() => {
+              // The size column's width when this adjustment began, measured
+              // here because the handle can only see its own cell. A drag on
+              // this boundary trades room between the size and modified
+              // columns alone, resizes the column to its left rather than
+              // sliding the whole size column along, and needs both columns'
+              // floors to know where each side stops paying (see
+              // `dateFloorRef`).
+              sizeStartRef.current =
+                sizeCellRef.current?.getBoundingClientRect().width ?? null;
+              sizeFloorRef.current = columnsRef.current
+                ? measureCssLength(columnsRef.current, "var(--filer-size-floor)")
+                : null;
+              dateFloorRef.current = columnsRef.current
+                ? measureCssLength(columnsRef.current, "var(--filer-date-floor)")
+                : null;
+            }}
+            onResize={(start, delta) =>
+              setColumns((current) => {
+                const sizeStart = sizeStartRef.current;
+                if (sizeStart === null) {
+                  return { ...current, date: clampColumnWidth(start - delta) };
+                }
+                const trade = tradeBoundary({
+                  sizeStart,
+                  dateStart: start,
+                  dateRequested: start - delta,
+                  sizeFloor: sizeFloorRef.current,
+                  dateFloor: dateFloorRef.current,
+                });
+                if (
+                  Math.abs(trade.size - sizeStart) < 0.5 &&
+                  Math.abs(trade.date - start) < 0.5
+                ) {
+                  // The drag ran entirely into the floors and moved nothing:
+                  // keep the stored pair untouched, so a column never dragged
+                  // (state null, rendering its floor) stays undragged and
+                  // keeps following the panel font.
+                  return current;
+                }
+                return { ...current, ...trade };
+              })
+            }
+          />
+          <button
+            type="button"
+            className={`filer-col-date${sort.key === "modified" ? " is-sorted" : ""}`}
+            data-sort-key="modified"
+            onClick={() => sortBy("modified")}
+            aria-sort={
+              sort.key === "modified"
+                ? sort.direction === "asc"
+                  ? "ascending"
+                  : "descending"
+                : "none"
+            }
+          >
+            {t("filer.modified")}
+            <SortIndicator sort={sort} column="modified" />
+            <span className="sr-only">{t("filer.sortByModified")}</span>
+          </button>
+        </div>
       </div>
 
       <div
