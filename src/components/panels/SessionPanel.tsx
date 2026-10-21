@@ -742,7 +742,7 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
         <button
           className={`panel-action panel-power${
             activeTab?.state === "connected" ? " is-connected" : ""
-          }`}
+          }${activeTab?.state === "connecting" ? " is-connecting" : ""}`}
           disabled={!activeTab || activeTab.state === "connecting"}
           onClick={() => {
             if (activeTab) toggleSessionConnection(activeTab.info.id);
@@ -840,7 +840,16 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
         })}
         {filtering && sections.every((section) => section.count === 0) && (
           <div className="panel-empty">
-            {t("panel.noMatches", { filter: filter.trim() })}
+            <span>{t("panel.noMatches", { filter: filter.trim() })}</span>
+            {/* The filter is the reason the list is empty, so the way out of
+                it belongs here rather than only in the field. */}
+            <button
+              type="button"
+              className="panel-empty-action"
+              onClick={() => setFilter("")}
+            >
+              {t("panel.clearFilter")}
+            </button>
           </div>
         )}
       </div>

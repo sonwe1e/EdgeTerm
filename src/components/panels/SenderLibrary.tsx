@@ -12,6 +12,8 @@ interface Props {
   setPage: Dispatch<SetStateAction<number>>;
   pageCommands: Required<SavedCommand>[];
   emptyMessage: string;
+  /** Opens the composer, for the empty state's call to action. */
+  openComposer: () => void;
   selectedCommandId: string | null;
   editing: Editing | null;
   hideCommandTooltip: () => void;
@@ -19,7 +21,11 @@ interface Props {
   setContextMenu: Dispatch<SetStateAction<CommandContextMenu | null>>;
   running: boolean;
   showCommandTooltip: (command: SavedCommand, element: HTMLElement) => void;
-  sendCommand: (commandText: string, commandEnding: LineEnding) => Promise<void>;
+  sendCommand: (
+    commandText: string,
+    commandEnding: LineEnding,
+    commandId?: string,
+  ) => Promise<void>;
 }
 
 export function SenderLibrary({
@@ -30,6 +36,7 @@ export function SenderLibrary({
   setPage,
   pageCommands,
   emptyMessage,
+  openComposer,
   selectedCommandId,
   editing,
   hideCommandTooltip,
@@ -71,7 +78,20 @@ export function SenderLibrary({
       )}
 
       {pageCommands.length === 0 ? (
-        <div className="sender-library-empty">{emptyMessage}</div>
+        /* An unused library gets a way in; a library filtered to nothing by
+           the active session's scope only gets the explanation. */
+        <div className="sender-library-empty">
+          <p>{emptyMessage}</p>
+          {visibleCommands.length === 0 && (
+            <button
+              type="button"
+              className="sender-save-btn"
+              onClick={openComposer}
+            >
+              {t("sender.createFirst")}
+            </button>
+          )}
+        </div>
       ) : (
         <div className="sender-command-tags">
           {pageCommands.map((command) => (

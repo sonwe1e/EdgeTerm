@@ -622,6 +622,20 @@ function FilerPanelBase() {
           <span className="panel-badge">
             {remote || offline ? tab?.info.protocol : t("filer.local")}
           </span>
+          {/* A transfer in flight is named in the panel's own title bar: the
+              footer's progress bar is small and easy to miss, and this is the
+              one place the user is already looking. */}
+          {transfer && (
+            <span
+              className="panel-badge is-transfer"
+              role="status"
+              title={transferLabel}
+            >
+              {transferPercent !== null
+                ? `${transferPercent}%`
+                : t("filer.transferring")}
+            </span>
+          )}
         </div>
       </div>
 
@@ -646,7 +660,9 @@ function FilerPanelBase() {
           <Icon name="new-folder" />
         </button>
         <button
-          className={`panel-action filer-action${uploadMenu ? " is-open" : ""}`}
+          className={`panel-action filer-action${uploadMenu ? " is-open" : ""}${
+            !remote ? " is-offline" : ""
+          }`}
           onMouseDown={() => {
             uploadMenuWasOpen.current = uploadMenu !== null;
           }}
@@ -668,7 +684,7 @@ function FilerPanelBase() {
           <Icon name="cloud-upload" />
         </button>
         <button
-          className="panel-action filer-action"
+          className={`panel-action filer-action${!remote ? " is-offline" : ""}`}
           onClick={() => void downloadEntries(selectedEntries)}
           title={remoteTitle(t("filer.downloadFileOrFolder"))}
           aria-label={remoteTitle(t("filer.downloadFileOrFolder"))}
@@ -877,7 +893,8 @@ function FilerPanelBase() {
       >
         {offlineReason && !error && (
           <div className="panel-empty is-offline" role="status">
-            <span>{offlineReason}</span>
+            <Icon name="plug" className="panel-empty-icon" />
+            <span className="panel-empty-title">{offlineReason}</span>
             {tab && (tab.state === "closed" || tab.state === "error") && (
               <button
                 type="button"
@@ -891,7 +908,8 @@ function FilerPanelBase() {
         )}
         {error && (
           <div className="panel-empty is-error" role="alert">
-            <span>{error}</span>
+            <Icon name="error" className="panel-empty-icon" />
+            <span className="panel-empty-title">{error}</span>
             <button
               type="button"
               className="panel-empty-action"

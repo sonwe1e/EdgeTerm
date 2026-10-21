@@ -19,16 +19,22 @@
 }
 
 /* Panel headers: a small-caps title with a line icon on the left (the VS
-   Code / Termius section-label idiom) and quiet icon buttons on the right. */
+   Code / Termius section-label idiom) and quiet icon buttons on the right.
+   The right inset matches the rows below it (margin 6 + padding 6 = 12px),
+   so the header's action buttons line up with the list's right edge. The
+   hairline under it bounds every panel's title bar, and the header is the
+   panel's drag handle (see PanelDocks.tsx), so it carries the grab cursor. */
 .panel-header {
   flex: 0 0 36px;
   height: 36px;
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  padding: 0 var(--sp-6) 0 var(--sp-12);
+  padding: 0 var(--sp-12);
+  border-bottom: 1px solid var(--border);
   color: var(--fg-dim);
   background: var(--bg-panel);
+  cursor: grab;
 }
 
 .panel-title {
@@ -93,6 +99,14 @@
   text-transform: none;
 }
 
+/* A transfer in progress, named in the panel's own title bar: the accent tint
+   separates "something is moving" from the protocol badge beside it. */
+.panel-badge.is-transfer {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent-bright);
+  font-variant-numeric: tabular-nums;
+}
+
 .panel-action {
   display: inline-flex;
   align-items: center;
@@ -113,6 +127,14 @@
   background: var(--bg-hover);
 }
 
+/* Press feedback: the same selection tint every chrome control answers a
+   press with (see the :active rules on .btn, .sender-quick-button and
+   .wb-icon-button). */
+.panel-action:active:not(:disabled) {
+  color: var(--fg);
+  background: var(--bg-active);
+}
+
 /* Green while the active session is live ("powered on"); an ended session
    keeps a neutral icon so its colour never reads as "connected". */
 .panel-power.is-connected {
@@ -124,10 +146,31 @@
 }
 
 .panel-power:disabled {
-  opacity: 0.35;
+  opacity: 0.4;
   cursor: default;
   background: none;
   color: var(--fg-faint);
+}
+
+/* A connection in flight is the one disabled state that must not look dead:
+   the button keeps full weight and pulses in the "connecting" yellow, so
+   "working" reads without the user having to guess why it is inert. The
+   `wb-pulse` keyframe lives in workbench.styles.css and is shared by the
+   workbench run dot, this button and the Sender's sending tag. */
+.panel-power.is-connecting {
+  color: var(--yellow);
+  animation: wb-pulse 1.4s ease-in-out infinite;
+}
+
+.panel-power.is-connecting:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-power.is-connecting {
+    animation: none;
+  }
 }
 
 .panel-body {
@@ -169,21 +212,45 @@
   pointer-events: none;
 }
 
+/* The block-level empty state, shared by every panel body that has nothing to
+   show: an optional icon, an optional title, an optional hint and an optional
+   action, stacked and centred. Inline empty states (a quickbar row, a library
+   tag list) keep their own single-line treatment instead. */
 .panel-empty {
-  padding: var(--sp-12);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-8);
+  min-height: 80px;
+  padding: var(--sp-16) var(--sp-12);
   color: var(--fg-faint);
   text-align: center;
   line-height: 1.6;
 }
 
+.panel-empty-icon {
+  width: 32px;
+  height: 32px;
+  color: var(--fg-faint);
+  opacity: 0.7;
+}
+
+.panel-empty-title {
+  color: var(--fg-dim);
+  font-size: var(--fs);
+  font-weight: 500;
+}
+
 /* A failed listing is not the same surface as an empty folder: it must read
    as a failure at a glance and carry the one action that can recover. */
-.panel-empty.is-error {
+.panel-empty.is-error,
+.panel-empty.is-error .panel-empty-title {
   color: var(--red);
 }
 .panel-empty-action {
   display: block;
-  margin: 8px auto 0;
+  margin: var(--sp-2) auto 0;
   height: var(--h-control);
   padding: 0 var(--sp-10);
   border: 1px solid var(--border-strong);
@@ -224,21 +291,44 @@
   background: var(--bg-active);
 }
 
-/* Per-row buttons (edit / delete) only show for the pointed or selected row. */
+/* Per-row buttons (edit / delete) only show for the pointed or selected row.
+   They scale up as they fade in, so the row does not reflow when they
+   appear: the box is already there, only its contents grow. */
 .row > .panel-action {
   opacity: 0;
+  transform: scale(0.9);
+  transition:
+    opacity 80ms ease,
+    transform 80ms ease;
 }
 
 .row:hover > .panel-action,
 .row.is-active > .panel-action,
 .row > .panel-action:focus-visible {
   opacity: 1;
+  transform: scale(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row > .panel-action {
+    transition: none;
+  }
 }
 
 /* Kind headings of the session tree. */
 .row.is-section .row-label {
   color: var(--fg-dim);
   font-weight: 600;
+}
+
+/* Breathing room between the tree's kind sections; the first one stays flush
+   with the top of the list. */
+.row.is-section {
+  margin-top: var(--sp-6);
+}
+
+.panel-body > div:first-child > .row.is-section {
+  margin-top: 0;
 }
 
 .row-dot {

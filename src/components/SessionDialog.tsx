@@ -1384,7 +1384,7 @@ export function SessionDialog({ initial, onClose }: Props) {
           </button>
           <button
             type="button"
-            className="btn is-primary"
+            className={`btn is-primary${busy ? " is-loading" : ""}`}
             onClick={connect}
             disabled={busy}
           >

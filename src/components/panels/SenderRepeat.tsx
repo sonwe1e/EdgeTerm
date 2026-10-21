@@ -37,19 +37,30 @@ export function SenderRepeat({
       <Icon name="watch" />
       {schedule ? (
         <>
+          {/* The running schedule on one compact line: the command, then the
+              cadence and the target it goes to, then how far through it is.
+              The command ellipsises first and the meta second, so a narrow
+              panel drops text rather than pushing the numbers off the edge. */}
           <span className="sender-repeat-text">
-            {t("sender.repeatingWord")} <code>{firstLine(schedule.spec.text)}</code>{" "}
-            {t("sender.everyWord")} {describeEvery(schedule.spec.every)}
-            {" · "}
-            {schedule.spec.target === "all" ? t("sender.allSessionsWord") : t("sender.oneSession")}
-            {" · "}
-            {t("sender.sent", { count: schedule.sent })}
-            {schedule.spec.times > 0 ? t("sender.of", { total: schedule.spec.times }) : ""}
-            {schedule.nextAt !== null
-              ? t("sender.nextIn", {
+            <code>{firstLine(schedule.spec.text)}</code>
+            <span className="sender-repeat-meta">
+              {t("sender.everyWord")} {describeEvery(schedule.spec.every)}
+              {" · "}
+              {schedule.spec.target === "all"
+                ? t("sender.allSessionsWord")
+                : t("sender.oneSession")}
+            </span>
+            <span className="sender-repeat-count">
+              {schedule.sent}
+              {schedule.spec.times > 0 ? `/${schedule.spec.times}` : ""}
+            </span>
+            {schedule.nextAt !== null && (
+              <span className="sender-repeat-next">
+                {t("sender.nextIn", {
                   seconds: Math.max(0, Math.ceil((schedule.nextAt - now) / 1000)),
-                })
-              : t("sender.sendingNow")}
+                })}
+              </span>
+            )}
           </span>
           <button type="button" className="sender-save-btn" onClick={stopSchedule}>
             {t("sender.stop")}
@@ -69,6 +80,11 @@ export function SenderRepeat({
               onChange={(event) => setRepeat({ ...repeat, every: Number(event.target.value) })}
             />
             <span>s</span>
+            {/* A cadence the session's prompt cannot keep up with: the send
+                would land as typeahead rather than one command at a time. */}
+            {repeat.every < 5 && (
+              <span className="sender-repeat-warning">{t("sender.everyTooFast")}</span>
+            )}
           </label>
           <label className="sender-field">
             <span>{t("sender.times")}</span>

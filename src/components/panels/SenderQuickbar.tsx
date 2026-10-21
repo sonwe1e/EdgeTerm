@@ -14,10 +14,16 @@ interface Props {
   visibleCommands: Required<SavedCommand>[];
   emptyMessage: string;
   running: boolean;
+  /** The saved command currently being sent, so its tag can be marked. */
+  sendingId: string | null;
   showCommandTooltip: (command: SavedCommand, element: HTMLElement) => void;
   hideCommandTooltip: () => void;
   setSelectedCommandId: Dispatch<SetStateAction<string | null>>;
-  sendCommand: (commandText: string, commandEnding: LineEnding) => Promise<void>;
+  sendCommand: (
+    commandText: string,
+    commandEnding: LineEnding,
+    commandId?: string,
+  ) => Promise<void>;
   setContextMenu: Dispatch<SetStateAction<CommandContextMenu | null>>;
   moreButtonRef: RefObject<HTMLButtonElement | null>;
   moreAnchor: { left: number; bottom: number } | null;
@@ -38,6 +44,7 @@ export function SenderQuickbar({
   visibleCommands,
   emptyMessage,
   running,
+  sendingId,
   showCommandTooltip,
   hideCommandTooltip,
   setSelectedCommandId,
@@ -75,7 +82,12 @@ export function SenderQuickbar({
           <span className="sender-quick-empty">{emptyMessage}</span>
         ) : (
           visibleCommands.map((command) => (
-            <div className="sender-command-tag sender-quick-tag" key={command.id}>
+            <div
+              className={`sender-command-tag sender-quick-tag${
+                sendingId === command.id ? " is-sending" : ""
+              }`}
+              key={command.id}
+            >
               <button
                 type="button"
                 className="sender-command-load"
@@ -87,7 +99,7 @@ export function SenderQuickbar({
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => {
                   setSelectedCommandId(command.id);
-                  void sendCommand(command.text, command.ending);
+                  void sendCommand(command.text, command.ending, command.id);
                 }}
                 onContextMenu={(event) => {
                   event.preventDefault();

@@ -78,7 +78,15 @@ it("sends a compact saved command with its stored ending to the active session",
   useStore.setState({ tabs: [tab], activeId: tab.info.id });
   await render(true);
   await click(host.querySelector(".sender-command-load")!);
-  expect(sendUnits).toHaveBeenCalledWith(["sender-session"], ["status\r\n"], "crlf", expect.any(Object));
+  // The fifth argument is the per-line progress callback the quickbar's
+  // sending mark and the compose row's line counter read.
+  expect(sendUnits).toHaveBeenCalledWith(
+    ["sender-session"],
+    ["status\r\n"],
+    "crlf",
+    expect.any(Object),
+    expect.any(Function),
+  );
 });
 
 it("reloads the mounted library after imports and discards a stale edit", async () => {

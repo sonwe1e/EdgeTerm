@@ -27,7 +27,18 @@ function StatusBarBase({ showResources = true }: { showResources?: boolean }) {
   const status = useStore((s) => s.status);
   const error = useStore((s) => s.error);
   const setError = useStore((s) => s.setError);
+  const setStatus = useStore((s) => s.setStatus);
   const [clock, setClock] = useState(() => new Date());
+
+  // A success or an ordinary notice clears itself; an error stays until it is
+  // dismissed, because it says something went wrong and the user has to see
+  // what. The timer restarts on every new message, so a message arriving
+  // while another is showing still gets its full three seconds.
+  useEffect(() => {
+    if (!status || error) return;
+    const timer = window.setTimeout(() => setStatus(""), 3000);
+    return () => window.clearTimeout(timer);
+  }, [status, error, setStatus]);
 
   // The stamp only shows minutes, so ticking every second would re-render the
   // whole bar 59 times for no visible change. Wake up on the next minute
@@ -96,7 +107,9 @@ function StatusBarBase({ showResources = true }: { showResources?: boolean }) {
       <ForwardCenter />
       <TransferCenter />
       {tab && (
-        <>
+        /* The session's own details read as one cluster at the right end of
+           the bar, so they are grouped tighter than the bar's own step. */
+        <div className="status-group">
           {legacy.length > 0 && (
             <span className="status-item status-legacy" title={legacyTitle(legacy)}>
               <Icon name="warning" />
@@ -129,7 +142,7 @@ function StatusBarBase({ showResources = true }: { showResources?: boolean }) {
           >
             {t("status.protocol")}: {tab.info.protocol.toUpperCase()}
           </span>
-        </>
+        </div>
       )}
       <span className="status-item">{stamp}</span>
     </div>

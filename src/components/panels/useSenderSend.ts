@@ -26,6 +26,11 @@ interface Options {
 export function useSenderSend({ tabs, activeId, setStatus, t, activeTab }: Options) {
   const [target, setTarget] = useState<Target>("current");
   const [running, setRunning] = useState(false);
+  // Which saved command is on its way out, and how far through its lines.
+  // The quickbar marks that command's tag; the compose row reads the counter.
+  const [sendingId, setSendingId] = useState<string | null>(null);
+  const [sentLines, setSentLines] = useState(0);
+  const [totalLines, setTotalLines] = useState(0);
   // Repeat: the strip under the compose row and its settings. The schedule
   // itself lives outside the panel (`senderSchedule.ts`), so hiding the
   // panel does not stop a keepalive; the strip shows and stops it.
@@ -60,7 +65,16 @@ export function useSenderSend({ tabs, activeId, setStatus, t, activeTab }: Optio
       : [];
   };
 
-  const sendCommand = async (commandText: string, commandEnding: LineEnding) => {
+  /**
+   * Sends `commandText`. `commandId` names the saved command it came from, so
+   * the quickbar can mark that tag while the send is in flight; a typed
+   * command leaves it null and only the compose row's counter shows.
+   */
+  const sendCommand = async (
+    commandText: string,
+    commandEnding: LineEnding,
+    commandId?: string,
+  ) => {
     if (running) return;
     const targetIds = targets();
     if (targetIds.length === 0) {
@@ -74,8 +88,20 @@ export function useSenderSend({ tabs, activeId, setStatus, t, activeTab }: Optio
     const stop = newStopSignal();
     stopRef.current = stop;
     setRunning(true);
+    setSendingId(commandId ?? null);
+    setSentLines(0);
+    setTotalLines(units.length);
     try {
-      const { sent, skipped } = await sendUnits(targetIds, units, commandEnding, stop);
+      const { sent, skipped } = await sendUnits(
+        targetIds,
+        units,
+        commandEnding,
+        stop,
+        (done, total) => {
+          setSentLines(done);
+          setTotalLines(total);
+        },
+      );
       if (sent.length === 0) {
         setStatus(t("sender.blocked"));
       } else if (stop.stopped) {
@@ -96,6 +122,9 @@ export function useSenderSend({ tabs, activeId, setStatus, t, activeTab }: Optio
     } finally {
       stopRef.current = null;
       setRunning(false);
+      setSendingId(null);
+      setSentLines(0);
+      setTotalLines(0);
     }
   };
 
@@ -127,6 +156,9 @@ export function useSenderSend({ tabs, activeId, setStatus, t, activeTab }: Optio
 
   return {
     running,
+    sendingId,
+    sentLines,
+    totalLines,
     sendCommand,
     stopSending,
     schedule,

@@ -13,7 +13,7 @@ import { useSenderLibrary } from "./useSenderLibrary";
 import { useSenderSend } from "./useSenderSend";
 
 import { ask } from "../../nativeDialog";
-import { sameScope, scopeForLevel } from "../../senderScope";
+import { describeScope, sameScope, scopeForLevel } from "../../senderScope";
 import { endingLabel } from "../../senderUnits";
 import { useStore } from "../../store";
 import { getController } from "../../terminalRegistry";
@@ -136,6 +136,9 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
 
   const {
     running,
+    sendingId,
+    sentLines,
+    totalLines,
     sendCommand,
     stopSending,
     schedule,
@@ -188,6 +191,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
           visibleCommands={visibleCommands}
           emptyMessage={emptyMessage}
           running={running}
+          sendingId={sendingId}
           showCommandTooltip={showCommandTooltip}
           hideCommandTooltip={hideCommandTooltip}
           setSelectedCommandId={setSelectedCommandId}
@@ -265,7 +269,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
             <div className="sender-command">
               <textarea
                 ref={commandRef}
-                className="sender-command-input"
+                className={`sender-command-input${editing ? " is-editing" : ""}`}
                 rows={1}
                 autoCapitalize="none"
                 autoCorrect="off"
@@ -301,6 +305,14 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
                 </button>
               )}
             </div>
+            {/* Which line of a multi-line script is on its way out. A
+                single-line command has nothing to count, so the readout only
+                appears once there is more than one line to send. */}
+            {running && totalLines > 1 && (
+              <span className="sender-progress" role="status">
+                {t("sender.sendingLine", { current: sentLines, total: totalLines })}
+              </span>
+            )}
             {running ? (
               <button
                 type="button"
@@ -424,7 +436,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
               const items: MenuItem[] = [
                 { heading: editing ? t("sender.updateAndList") : t("sender.saveAndList") },
                 ...chain.map((scope) => ({
-                  label: labelOf(scope),
+                  label: `${labelOf(scope)}${describeScope(scope, t)}`,
                   checked: sameScope(scope, preselected),
                   mark: "radio" as const,
                   action: () => pickSaveScope(scope),
@@ -449,6 +461,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
             setPage={setPage}
             pageCommands={pageCommands}
             emptyMessage={emptyMessage}
+            openComposer={openComposer}
             selectedCommandId={selectedCommandId}
             editing={editing}
             hideCommandTooltip={hideCommandTooltip}

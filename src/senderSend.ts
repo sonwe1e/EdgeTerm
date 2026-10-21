@@ -61,22 +61,32 @@ export interface SendOutcome {
  * Writes `units` to each session in `ids`, in order per session and all
  * sessions in parallel. A session with a transfer or a send in progress is
  * skipped rather than interleaved. Rejects with the first write failure.
+ *
+ * `onProgress` fires once per line as it goes out, with how many lines have
+ * been written and how many the script holds. It reports the furthest line
+ * any session has reached, so a send to several sessions shows one number
+ * rather than one per session.
  */
 export async function sendUnits(
   ids: string[],
   units: SendUnit[],
   ending: LineEnding,
   stop: StopSignal,
+  onProgress?: (sent: number, total: number) => void,
 ): Promise<SendOutcome> {
   const sent = ids.filter(
     (id) => !busy.has(id) && !getController(id)?.isTransferActive(),
   );
   const skipped = ids.filter((id) => !sent.includes(id));
   for (const id of sent) busy.add(id);
+  let reached = 0;
   await Promise.all(sent.map((id) =>
     // Promise.all rejects on the first failure while other sessions can
     // still be writing. Keep their reservations until their own send ends.
-    sendSequence(id, units, ending, stop).finally(() => busy.delete(id)),
+    sendSequence(id, units, ending, stop, (index) => {
+      reached = Math.max(reached, index + 1);
+      onProgress?.(reached, units.length);
+    }).finally(() => busy.delete(id)),
   ));
   return { sent, skipped };
 }
@@ -86,6 +96,7 @@ async function sendSequence(
   units: SendUnit[],
   ending: LineEnding,
   stop: StopSignal,
+  onLine?: (index: number) => void,
 ): Promise<void> {
   for (let index = 0; index < units.length; index += 1) {
     if (stop.stopped) return;
@@ -103,6 +114,7 @@ async function sendSequence(
       if (tracked) controller.cancelCommandSent();
       throw error;
     }
+    onLine?.(index);
     if (index === units.length - 1) return;
     await Promise.race([
       tracked ? controller.waitForCommand(LINE_TIMEOUT_MS) : delay(LINE_GAP_MS),

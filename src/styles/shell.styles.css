@@ -104,7 +104,7 @@
 
 .layout-actions .panel-action:disabled {
   color: var(--fg-faint);
-  opacity: 0.5;
+  opacity: 0.4;
   background: none;
   cursor: default;
 }
@@ -140,9 +140,20 @@
   background: var(--bg-hover);
 }
 
+/* The window controls are Tab stops, so they need the ring every other chrome
+   control has. It is drawn inside the 46px cell (negative offset) because the
+   button is flush with the window edge and an outside ring would be clipped. */
+.window-control:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* The close key answers with the danger colour, and the ink on it is the
+   theme's own danger ink — the same pair .btn.is-danger uses, so the button
+   reads the same in all four palettes instead of one hardcoded red. */
 .window-control.is-close:hover {
-  background: #c42b1c;
-  color: #fff;
+  background: var(--red);
+  color: var(--danger-contrast);
 }
 
 /* The title button and its panel. A button cannot hold the menu (it may not
@@ -190,10 +201,10 @@
   left: 0;
   z-index: 100;
   min-width: 220px;
-  padding: 6px;
+  padding: var(--sp-6);
   background: var(--bg-menu);
   border: 1px solid var(--border-menu);
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
   box-shadow:
     inset 0 1px 0 var(--menu-highlight),
     var(--shadow-menu);
@@ -243,11 +254,14 @@
 .menu-entry {
   display: flex;
   align-items: center;
-  gap: 10px;
+  /* 8px: a menu row is the one place the icon-to-label step stays wider than
+     the 6px the lists use, because the leading column also holds check marks
+     and the row is 28px tall. */
+  gap: var(--sp-8);
   width: 100%;
   height: 28px;
-  padding: 0 10px 0 8px;
-  border-radius: 6px;
+  padding: 0 var(--sp-10) 0 var(--sp-8);
+  border-radius: var(--radius-md);
   color: var(--fg);
   text-align: left;
   white-space: nowrap;
@@ -451,7 +465,7 @@
 
 .menu-separator {
   height: 1px;
-  margin: 5px 8px;
+  margin: var(--sp-6) var(--sp-8);
   background: var(--menu-separator);
 }
 

@@ -25,9 +25,11 @@
   color: var(--fg-dim);
 }
 
+/* The dual-pane workspace's own hero empty state: the title scales with the
+   panel font setting like the terminal's and the workbench's. */
 .ftp-session-state strong {
   color: var(--fg);
-  font-size: 14px;
+  font-size: calc(var(--panel-font-size) + 6px);
 }
 
 .ftp-session-state.is-error strong {
@@ -128,7 +130,7 @@
 
 .ftp-tool-button:disabled {
   cursor: default;
-  opacity: 0.35;
+  opacity: 0.4;
 }
 
 .ftp-browser-path {
@@ -218,8 +220,8 @@
 }
 
 .ftp-browser-columns button:focus-visible {
-  outline: 1px solid var(--accent);
-  outline-offset: -1px;
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .ftp-browser-list {
@@ -408,7 +410,7 @@
 .ftp-transfer-button:disabled {
   color: var(--fg-faint);
   cursor: default;
-  opacity: 0.45;
+  opacity: 0.4;
 }
 
 .ftp-transfer-status {
@@ -633,7 +635,11 @@
   border-radius: var(--radius-md);
   -webkit-backdrop-filter: blur(1px);
   backdrop-filter: blur(1px);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+  /* The popover token: the suggestion list is a small floating surface, the
+     same elevation class as .sender-more-menu and .terminal-search. Its own
+     background is translucent, and the token's black component still reads
+     through it. */
+  box-shadow: var(--shadow-pop);
   font-family: var(--font-mono);
   font-size: 12px;
   animation: term-suggest-in 120ms ease-out;
@@ -809,18 +815,20 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 14px;
+  gap: var(--sp-12);
   color: var(--fg-faint);
 }
 
+/* The hero empty state: a 48px mark and a title that grows with the panel
+   font setting, so the whole workspace scales together. */
 .term-empty-icon {
-  width: 64px;
-  height: 64px;
+  width: 48px;
+  height: 48px;
 }
 
 .term-empty h1 {
   margin: 0;
-  font-size: 22px;
+  font-size: calc(var(--panel-font-size) + 6px);
   font-weight: 500;
   color: var(--fg-dim);
   letter-spacing: 0.5px;

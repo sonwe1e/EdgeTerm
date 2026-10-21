@@ -21,7 +21,7 @@ export function FilerTransferSummary({ sessionId }: { sessionId: string }) {
   const label = t("filer.transferQueueSummary", counts)
     + (counts.paused ? t("filer.transferQueuePaused", { count: counts.paused }) : "")
     + (counts.failed ? t("filer.transferQueueFailed", { count: counts.failed }) : "");
-  return <div className="filer-transfer-summary">
+  return <div className={`filer-transfer-summary${counts.failed ? " is-error" : ""}`}>
     <button type="button" aria-label={t("filer.openTransferQueue")} title={label}
       onClick={() => useFileTransfers.getState().setOpen(true)}>
       <Icon name="cloud-download" /><span>{label}</span><Icon name="chevron-right" />

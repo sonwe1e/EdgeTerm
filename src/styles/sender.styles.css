@@ -40,17 +40,22 @@
   white-space: nowrap;
 }
 
+/* Every control in the quickbar row is --h-control (24px) — the tag, its
+   buttons and the target select — so they share one baseline. The tag used to
+   be 26px while .select was 24px, which left the row subtly ragged. */
 .sender-quick-tag {
   flex: none;
   max-width: 225px;
-  height: 26px;
+  height: var(--h-control);
   border-radius: var(--radius-md);
 }
 
+/* The quickbar's load button pairs a 16px icon with the command name, so the
+   gap is the 6px every 16px icon gets (see .panel-title, .filer-icon). */
 .sender-quick-tag .sender-command-load {
   display: inline-flex;
   align-items: center;
-  gap: var(--sp-4);
+  gap: var(--sp-6);
   min-width: 0;
   max-width: 190px;
   padding: 0 var(--sp-6);
@@ -75,6 +80,31 @@
   width: 22px;
   height: 100%;
   color: var(--fg-faint);
+  /* Hidden until the tag is pointed at or focused, the way a session row's
+     edit / delete buttons behave: a chip of always-on ellipsis buttons reads
+     as noise. The hairline on its left separates it from the command name
+     without widening the chip. Touch has no hover, so it stays visible. */
+  border-left: 1px solid var(--border);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  opacity: 0;
+  transition: opacity 80ms ease;
+}
+
+.sender-quick-tag:hover .sender-quick-options,
+.sender-quick-tag:focus-within .sender-quick-options {
+  opacity: 1;
+}
+
+@media (pointer: coarse) {
+  .sender-quick-tag .sender-quick-options {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sender-quick-options {
+    transition: none;
+  }
 }
 
 .sender-quick-options:hover {
@@ -89,7 +119,7 @@
   align-items: center;
   justify-content: center;
   gap: var(--sp-4);
-  height: 26px;
+  height: var(--h-control);
   padding: 0 var(--sp-6);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
@@ -104,9 +134,31 @@
   background: var(--bg-hover);
 }
 
+/* Press feedback: the selection tint, the same one .panel-action and
+   .wb-icon-button answer a press with. A filled control is left out — pressing
+   it darkens its own fill instead (see .is-primary below), because the
+   list-selection tint would read as a different button entirely. */
+.sender-quick-button:active:not(:disabled):not(.is-primary) {
+  color: var(--fg);
+  background: var(--bg-active);
+}
+
+/* The primary action wears the interaction colour, not the panel's identity
+   colour: --panel-sender stays on the title pill, and a filled control reads
+   as "the thing to press" wherever it sits. */
 .sender-quick-button.is-primary {
-  color: var(--panel-sender);
-  border-color: color-mix(in srgb, var(--panel-sender) 40%, var(--border-strong));
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Press darkens the fill rather than swapping in the selection tint. */
+.sender-quick-button.is-primary:active:not(:disabled) {
+  filter: brightness(0.9);
+}
+
+.sender-quick-button.is-primary:hover {
+  filter: brightness(1.1);
 }
 
 .sender-quick-button.is-running {
@@ -118,7 +170,7 @@
 }
 
 .sender-quick-button.is-icon {
-  width: 26px;
+  width: var(--h-control);
   padding: 0;
 }
 
@@ -136,7 +188,7 @@
 }
 
 .sender-collapse {
-  width: 26px;
+  width: var(--h-control);
   padding: 0;
 }
 
@@ -147,33 +199,55 @@
   flex-direction: column;
   width: 340px;
   max-height: min(340px, calc(100vh - 24px));
-  padding: var(--sp-6);
+  padding: var(--sp-8);
   border: 1px solid var(--border-menu);
   border-radius: var(--radius-lg);
   background: var(--bg-app);
   box-shadow: var(--shadow-pop);
 }
 
+/* The finder is a field, not a bare row: the same surface, border and radius
+   every other field in the app wears, so the popover reads as "a box with a
+   search box in it" instead of text floating under the title bar. */
 .sender-more-search {
   display: flex;
+  flex: none;
   align-items: center;
   gap: var(--sp-6);
+  height: var(--h-control-lg);
   padding: 0 var(--sp-8);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-field);
   color: var(--fg-faint);
+}
+
+.sender-more-search:focus-within {
+  border-color: var(--accent);
 }
 
 .sender-more-search input {
   flex: 1;
   min-width: 0;
-  height: 30px;
+  height: 100%;
   border: 0;
   background: transparent;
   color: var(--fg);
+  font-size: var(--fs-sm);
   outline: none;
+}
+
+/* The wrapper's border is the focus signal; the input's own global soft ring
+   would double it — the same composite-field rule .input-with-suffix uses. */
+.sender-more-search input:focus {
+  box-shadow: none;
 }
 
 .sender-more-list {
   min-height: 0;
+  /* The gap that keeps the results from touching the finder: a list that
+     starts flush under the field reads as one cramped block. */
+  margin-top: var(--sp-6);
   overflow-y: auto;
 }
 
@@ -196,6 +270,7 @@
 
 .sender-more-item:disabled {
   opacity: 0.4;
+  cursor: default;
 }
 
 .sender-more-item > .icon {
@@ -220,11 +295,27 @@
   white-space: nowrap;
 }
 
-.sender-more-empty,
-.sender-more-foot {
-  padding: var(--sp-8);
+/* No matches: the finder's answer, centred in the room the list would have
+   taken. The padding is the point — a sentence jammed under the field reads
+   as a rendering fault, the same sentence with air around it reads as an
+   answer. */
+.sender-more-empty {
+  display: block;
+  padding: var(--sp-16) var(--sp-8);
   color: var(--fg-faint);
   font-size: var(--fs-sm);
+  text-align: center;
+}
+
+/* The count under a long list: a footer note, set off from the scrolling
+   results by a hairline so it never reads as one more row. */
+.sender-more-foot {
+  flex: none;
+  margin-top: var(--sp-6);
+  padding: var(--sp-6) var(--sp-8) 0;
+  border-top: 1px solid var(--border);
+  color: var(--fg-faint);
+  font-size: var(--fs-xs);
 }
 
 /* Three rows: the panel header carries the send options on its right (line
@@ -236,7 +327,7 @@
 }
 
 .sender-header .panel-title.is-sender {
-  margin-right: 10px;
+  margin-right: var(--sp-8);
 }
 
 .sender-options {
@@ -329,6 +420,13 @@
   border-color: var(--border-strong);
 }
 
+/* Editing a saved command: the box says so with a dashed accent border, the
+   same vocabulary the library's tag uses for the command being edited. */
+.sender-command textarea.is-editing {
+  border-style: dashed;
+  border-color: var(--accent);
+}
+
 .sender-command textarea:focus,
 .sender-label-input:focus {
   border-color: var(--accent);
@@ -351,13 +449,16 @@
   background: var(--bg-hover);
 }
 
+/* The compose row's controls all sit on the 28px baseline the textarea, the
+   label input and Save already use; these two were 24px, which left the row
+   subtly ragged against its neighbours. */
 .sender-send {
   display: inline-flex;
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: var(--h-control);
+  width: var(--h-control-lg);
+  height: var(--h-control-lg);
   padding: 0;
   border: 1px solid color-mix(in srgb, var(--green) 42%, transparent);
   border-radius: var(--radius-md);
@@ -371,7 +472,7 @@
 }
 
 .sender-send:disabled {
-  opacity: 0.35;
+  opacity: 0.4;
   cursor: default;
   filter: none;
 }
@@ -392,8 +493,8 @@
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: var(--h-control);
+  width: var(--h-control-lg);
+  height: var(--h-control-lg);
   padding: 0;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
@@ -459,15 +560,50 @@
 .sender-repeat-text {
   flex: 1 1 auto;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
+/* The running schedule on one compact line: command, cadence and target,
+   count, countdown. When the panel is too narrow the meta segment yields
+   first and the command second — hence the 2:1 shrink ratio — so the numbers
+   at the end are the last thing to go. */
 .sender-repeat-text code {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
   color: var(--fg);
   font-family: var(--font-mono);
+  text-overflow: ellipsis;
+}
+
+.sender-repeat-count,
+.sender-repeat-next {
+  flex: none;
+  color: var(--fg-faint);
+}
+
+/* The cadence and the target the schedule sends to. Neither can be read off
+   the countdown, so both stay on the line; this is the segment that
+   ellipsises before the command does. */
+.sender-repeat-meta {
+  flex: 0 2 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A frequency the session's prompt cannot keep up with. */
+.sender-repeat-warning {
+  flex: none;
+  color: var(--yellow);
+  font-size: var(--fs-sm);
 }
 
 .sender-repeat-hint {
@@ -576,14 +712,25 @@
 }
 
 .sender-pagination button:disabled {
-  opacity: 0.35;
+  opacity: 0.4;
   cursor: default;
 }
 
+/* The library's empty state: the reason it is empty, and — when the library
+   is simply unused rather than filtered to nothing — the button that starts
+   the first command. */
 .sender-library-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-8);
   padding: var(--sp-10) 0;
   color: var(--fg-faint);
   font-size: var(--fs-sm);
+}
+
+.sender-library-empty p {
+  margin: 0;
 }
 
 .sender-command-tags {
@@ -611,14 +758,16 @@
   overflow: hidden;
   transition:
     border-color 100ms ease,
-    background-color 100ms ease,
-    transform 100ms ease;
+    background-color 100ms ease;
 }
 
+/* Hover answers with the border and the fill, the way every other surface in
+   the app does. The 1px lift this used to do was the only transform-hover in
+   the interface, and it made the library's tags jump against the rows beside
+   them. */
 .sender-command-tag:hover {
   border-color: var(--fg-faint);
   background: var(--bg-hover);
-  transform: translateY(-1px);
 }
 
 /* The last tag clicked or saved: without this the selected state existed
@@ -631,6 +780,41 @@
 /* The tag whose contents are loaded in the inputs (right-click → Edit). */
 .sender-command-tag.is-editing {
   border-style: dashed;
+}
+
+/* A command in flight. The load button is disabled for the whole send, which
+   on its own says nothing about *which* command is going; the pulsing green
+   rail on the tag's leading edge names it, and it is the same wb-pulse the
+   workbench run dot and the power button use. */
+.sender-quick-tag.is-sending .sender-command-load {
+  position: relative;
+}
+
+.sender-quick-tag.is-sending .sender-command-load::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--green);
+  animation: wb-pulse 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sender-quick-tag.is-sending .sender-command-load::before {
+    animation: none;
+  }
+}
+
+/* The line counter beside the compose row's send button: which line of a
+   multi-line script is on its way out. */
+.sender-progress {
+  flex: none;
+  color: var(--fg-dim);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -720,10 +904,5 @@
   margin-top: 2px;
   color: var(--fg-faint);
   font-size: var(--fs-sm);
-}
-
-.sender-more-search input:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
 }
 

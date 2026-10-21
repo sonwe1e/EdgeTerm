@@ -95,7 +95,10 @@
   max-width: 220px;
   border-right: 1px solid var(--border);
   color: var(--fg-dim);
-  font-style: italic;
+  /* Idle reads as quiet through the dimmed ink, not through a slant: CJK has
+     no true italic (the synthesised one is blurred), and switching
+     is-connecting / is-error back to upright made the label jump. */
+  font-style: normal;
   white-space: nowrap;
   overflow: hidden;
   /* WebKit still shows an I-beam over unselectable text under cursor: auto. */
@@ -335,12 +338,14 @@
 }
 
 /* A pointer user sees it on hover; a keyboard user only when focus reaches
-   the tab, so the close target stays reachable either way. */
+   the tab, so the close target stays reachable either way. It fades in over
+   100ms rather than appearing at once. */
 .tab:hover .tab-close,
 .tab.is-active .tab-close,
 .tab:focus-visible .tab-close,
 .tab:focus-within .tab-close {
   visibility: visible;
+  opacity: 1;
 }
 
 /* Dragged tab: lifted above its neighbours while it follows the pointer; the
@@ -379,7 +384,6 @@
 .tab.is-active {
   background: var(--bg-terminal);
   color: var(--fg);
-  font-style: normal;
   box-shadow: inset 0 2px 0 var(--session-color, var(--accent));
 }
 
@@ -462,6 +466,13 @@
   border-radius: var(--radius-xs);
   color: var(--fg-faint);
   visibility: hidden;
+  /* The close target fades in with the tab it belongs to instead of
+     snapping. `visibility` is transitioned as well so the change is held for
+     the whole fade rather than cutting it short at the halfway point. */
+  transition:
+    visibility 100ms,
+    opacity 100ms ease;
+  opacity: 0;
 }
 
 .tab-close:focus-visible {
@@ -470,10 +481,12 @@
 }
 
 /* Touch has no hover: without this the close target is undiscoverable and
-   reachable only via context menu or keyboard. */
+   reachable only via context menu or keyboard. The opacity has to come back
+   too — the base rule fades the button out as well as hiding it. */
 @media (pointer: coarse) {
   .tab-close {
     visibility: visible;
+    opacity: 1;
   }
 }
 

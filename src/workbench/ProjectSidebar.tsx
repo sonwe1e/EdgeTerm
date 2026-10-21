@@ -72,6 +72,9 @@ export function ProjectSidebar({
             <span className="wb-project-root">{item.root}</span>
           </button>
         ))}
+        {/* Workbench swaps the whole body for its onboarding hero when there
+            are no projects, so this list is never empty while it is shown and
+            the hero already carries the create-project action. */}
         {data.workspaces.length === 0 && (
           <p className="wb-sidebar-note">{t("wb.noProjectsHint")}</p>
         )}

@@ -118,6 +118,24 @@ export function scopeLabel(
 }
 
 /**
+ * What a scope actually reaches, as a suffix on its name in the Save picker.
+ * "Scope" on its own does not say whether a command will follow the user to
+ * another session or stay put, and that is the one thing the choice turns on.
+ */
+export function describeScope(scope: CommandScope, t: Translate): string {
+  switch (scope.type) {
+    case "profile":
+      return t("sender.scopeSuffixProfile");
+    case "group":
+      return t("sender.scopeSuffixGroup");
+    case "kind":
+      return t("sender.scopeSuffixKind");
+    case "global":
+      return t("sender.scopeSuffixGlobal");
+  }
+}
+
+/**
  * The chain entry for a remembered level, or the nearest broader one when
  * the tab has no such level (a quick-connect tab has no profile or group).
  * "group" means the innermost group, the one holding the profile.

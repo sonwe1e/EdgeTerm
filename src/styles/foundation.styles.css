@@ -37,6 +37,11 @@
   /* Text drawn on --red. White is only 3.35:1 on this red; a near-black ink
      reads at 5.2:1 and keeps the button legible. */
   --danger-contrast: #1a1a1a;
+  /* Text drawn on a solid --yellow. The ink has to flip with the palette:
+     this yellow is light, so it takes a dark ink (about 7:1), while the light
+     themes' deeper yellow takes white. Same shape as --danger-contrast and
+     --accent-contrast above. */
+  --warn-contrast: #1f1f1f;
 
   /* Scrollbars are controls: the thumb has to clear 3:1 against the panel
      it sits on, or it is not findable without hunting for it. */
@@ -163,6 +168,9 @@
   --yellow: #8a6500;
   --red: #cd3131;
   --danger-contrast: #ffffff;
+  /* White on this deep yellow clears 5.3:1; the dark ink the dark themes use
+     would sit at about 3.1:1 and read as a watermark. */
+  --warn-contrast: #ffffff;
 
   --scrollbar-thumb: #8f8f8f;
   --scrollbar-thumb-hover: #7d7d7d;
@@ -236,6 +244,9 @@
   --red: #ef8a83;
   /* White on this soft red was 2.43:1 — the worst pair in the audit. */
   --danger-contrast: #241416;
+  /* This yellow is the lightest of the four, so it takes the darkest ink
+     (about 8:1). */
+  --warn-contrast: #1f1f1f;
 
   --scrollbar-thumb: #5a6270;
   --scrollbar-thumb-hover: #6a7383;
@@ -300,6 +311,8 @@
   --yellow: #8a6500;
   --red: #cb4b40;
   --danger-contrast: #ffffff;
+  /* The same deep yellow as the VS Code light half, so the same white ink. */
+  --warn-contrast: #ffffff;
 
   --scrollbar-thumb: #8e8e96;
   --scrollbar-thumb-hover: #7a7a84;
@@ -439,20 +452,22 @@ textarea {
   -webkit-user-select: text;
 }
 
+/* A text field's focus indicator is the soft ring, not an outline: the ring
+   is drawn outside the border so nothing in the layout shifts, and an outline
+   on top of it would read as two rings. Domain files that used to draw their
+   own field ring (`.session-field`, the workbench fields, the Sender's search)
+   drop it for the same reason — this rule is the one definition. */
 input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
-/* The three search/filter fields that used to clear the browser outline had
-   no replacement at all: Tab reached them and the screen did not change.
-   The ring is kept outside the border so the field does not shift. */
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent) 65%, transparent);
-  outline-offset: 1px;
+  outline: none;
 }
 
 ::-webkit-scrollbar {
