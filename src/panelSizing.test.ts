@@ -85,7 +85,7 @@ describe("loadPanelSizing", () => {
   it("uses the documented defaults when nothing is stored", () => {
     expect(loadPanelSizing()).toEqual({
       left: 220,
-      right: 220,
+      right: 300,
       bottom: 160,
       senderExpanded: false,
     });

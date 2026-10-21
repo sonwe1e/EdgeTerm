@@ -29,7 +29,13 @@ export interface PanelSizing {
 
 export const DEFAULT_PANEL_SIZING: PanelSizing = {
   left: 220,
-  right: 220,
+  // The Filer's column grid is fixed-track: at the largest panel font (18px)
+  // its icon, size and date tracks plus gaps need ~248px, and the rows add a
+  // 24px inset over the scroller's ~15px bar — about 287px in total. At 220px
+  // the name track collapsed to zero and the dates ran past the panel edge
+  // (the app font gate fails date containment at 18px on both viewports). The
+  // session tree on the left has no fixed-width columns, so it keeps 220px.
+  right: 300,
   bottom: 160,
   senderExpanded: false,
 };
