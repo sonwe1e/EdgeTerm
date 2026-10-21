@@ -1,6 +1,6 @@
 [package]
 name = "edgeterm"
-version = "1.2.4"
+version = "1.2.5"
 description = "EdgeTerm - a lightweight terminal, SSH, FTP and serial client built with Rust + Tauri (installer under 5 MB, fast startup)"
 authors = ["EdgeTerm contributors"]
 license = "GPL-3.0-only"
@@ -91,6 +91,12 @@ tauri = { version = "2.12", features = ["test"] }
 
 [target."cfg(any(target_os = \"macos\", windows, target_os = \"linux\"))".dependencies]
 tauri-plugin-updater = "2.12"
+
+# The system tray behind "minimize to tray" (see `tray.rs`). Linux's tray
+# backend needs a system libappindicator the bundles do not carry, so the
+# tray stays Windows / macOS only and Linux keeps its plain close.
+[target."cfg(any(windows, target_os = \"macos\"))".dependencies]
+tauri = { version = "2.12", features = ["tray-icon"] }
 
 # Already in the tree; used directly for the pty's foreground process group
 # and a process's working directory (see `session/cwd.rs`).
