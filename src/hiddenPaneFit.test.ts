@@ -2,7 +2,7 @@ import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./platform", () => ({ IS_MAC: true, IS_WINDOWS: false }));
+vi.mock("./platform", () => ({ HAS_TRAY: true, IS_MAC: true, IS_WINDOWS: false }));
 vi.mock("./api", async (original) => ({
   ...(await original<typeof import("./api")>()),
   writeSession: vi.fn(async () => undefined),

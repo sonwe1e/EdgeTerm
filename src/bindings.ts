@@ -308,6 +308,19 @@ export const commands = {
 	 */
 	finishMainWindow: () => __TAURI_INVOKE<void>("finish_main_window"),
 	/**
+	 *  Hides the main window without destroying it: the "minimize to tray" path
+	 *  (the close-choice dialog and the `CloseAction::Tray` setting). Sessions,
+	 *  transfers and the whole process keep running; the tray (see `tray.rs`)
+	 *  brings the window back.
+	 */
+	hideMainWindow: () => __TAURI_INVOKE<null>("hide_main_window"),
+	/**
+	 *  Mirrors the front end's `closeAction` setting onto the tray's check item,
+	 *  so both sides show one state. The flip from the tray's own side arrives as
+	 *  the `app:close-to-tray-changed` event instead (see `tray.rs`).
+	 */
+	setCloseToTray: (enabled: boolean) => __TAURI_INVOKE<null>("set_close_to_tray", { enabled }),
+	/**
 	 *  The clipboard's text, read by the process rather than the page. On macOS
 	 *  this is the paste path (#47): WebKit lets a page read the pasteboard only
 	 *  from inside its own paste command (⌘V, Edit → Paste on the system menu)

@@ -1,7 +1,7 @@
 import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-vi.mock("../platform", () => ({ IS_MAC: false, IS_WINDOWS: true }));
+vi.mock("../platform", () => ({ HAS_TRAY: true, IS_MAC: false, IS_WINDOWS: true }));
 vi.mock("./FileIcon", () => ({ FileIcon: () => null }));
 vi.mock("../actions", () => ({ revealCwdInFiler: vi.fn() }));
 vi.mock("@tauri-apps/api/webview", () => ({ getCurrentWebview: () => ({

@@ -667,11 +667,20 @@ export const onAuthPrompt = (
   events.sessionAuthPrompt.listen((e) => handler(e.payload));
 
 /**
- * Fired by the Rust menu handler when the user hits ⌘Q / Quit on macOS;
- * the frontend owns the confirm-and-exit flow (see App.tsx).
+ * Fired by the Rust menu handler when the user hits ⌘Q / Quit on macOS, and
+ * by the tray's Quit entry; the frontend owns the confirm-and-exit flow
+ * (see App.tsx).
  */
 export const onQuitRequested = (handler: () => void): Promise<UnlistenFn> =>
   listen("app:quit-requested", () => handler());
+
+/**
+ * Fired when the tray's "Minimize to tray" check item is flipped on the tray
+ * itself; the payload is the new state. The frontend mirrors it into its
+ * `closeAction` setting (see App.tsx).
+ */
+export const onCloseToTrayChanged = (handler: (enabled: boolean) => void): Promise<UnlistenFn> =>
+  listen("app:close-to-tray-changed", (e) => handler(Boolean(e.payload)));
 
 // --- window chrome (Windows) ------------------------------------------------
 
@@ -704,6 +713,19 @@ export const setStartupTheme = (theme: ThemeMode): Promise<void> =>
  */
 export const showMainWindow = (): Promise<void> => invoke("show_main_window");
 export const finishMainWindow = (): Promise<void> => invoke("finish_main_window");
+
+/**
+ * Hides the window into the tray ("minimize to tray"): the process, every
+ * session and every transfer keep running; the tray brings it back.
+ */
+export const hideMainWindow = (): Promise<void> => invoke("hide_main_window");
+
+/**
+ * Mirrors the front end's `closeAction` setting onto the tray's check item.
+ * The flip from the tray's own side arrives through `onCloseToTrayChanged`.
+ */
+export const setCloseToTray = (enabled: boolean): Promise<void> =>
+  invoke("set_close_to_tray", { enabled });
 
 /**
  * The clipboard's text as the process reads it. The paste path on macOS,

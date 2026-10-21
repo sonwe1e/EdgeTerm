@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const api=vi.hoisted(()=>({sampleResources:vi.fn(),cancelResourceSample:vi.fn()}));
 vi.mock("../api",()=>api);
-vi.mock("../platform",()=>({IS_MAC:false,IS_WINDOWS:true}));
+vi.mock("../platform", () => ({ HAS_TRAY: true,IS_MAC:false,IS_WINDOWS:true}));
 import { ResourceMonitorBar } from "./ResourceMonitorBar";
 import { useStore,type Tab } from "../store";
 import type { ResourceMetrics } from "../api";

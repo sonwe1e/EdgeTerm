@@ -110,6 +110,15 @@ export interface ClipboardPrompt {
 export type PanelName = "filer" | "sessions" | "sender";
 
 /**
+ * What closing the window (the menubar ✕, Alt+F4, macOS ✕) does. "ask" is the
+ * default: every close opens the choice dialog. "tray" hides the window into
+ * the system tray, keeping every session running (Windows / macOS; the tray
+ * needs a system libappindicator on Linux, so there it degrades to "ask").
+ * "exit" skips the choice but still confirms live sessions (see App.tsx).
+ */
+export type CloseAction = "ask" | "tray" | "exit";
+
+/**
  * The preferences a data export carries (Session → Export Data…). Everything
  * here lives in localStorage; saved sessions and Sender tags come from the
  * backend instead.
@@ -143,6 +152,8 @@ export interface AppSettings {
   programClipboard: ProgramClipboardMode;
   /** Windows / Linux only; macOS always opens the menu. */
   rightClickAction: RightClickAction;
+  /** What closing the window does; see `CloseAction`. */
+  closeAction: CloseAction;
   /** Only the key bindings that differ from the platform defaults. */
   shortcuts: Partial<ShortcutBindings>;
   /** Column order of the Filer and dual-pane file lists; see fileSort.ts. */
@@ -221,6 +232,8 @@ export interface AppStore {
   clipboardPrompt: ClipboardPrompt | null;
   /** What a right click in the terminal does; see `RightClickAction`. */
   rightClickAction: RightClickAction;
+  /** What closing the window does; see `CloseAction`. */
+  closeAction: CloseAction;
   /** The chord each app command answers; see `shortcuts.ts`. */
   shortcuts: ShortcutBindings;
   panels: Record<PanelName, boolean>;
@@ -376,6 +389,7 @@ export interface AppStore {
   setProgramClipboard: (mode: ProgramClipboardMode) => void;
   setClipboardPrompt: (prompt: ClipboardPrompt | null) => void;
   setRightClickAction: (action: RightClickAction) => void;
+  setCloseAction: (action: CloseAction) => void;
   setShortcuts: (bindings: ShortcutBindings) => void;
   resetSettings: () => void;
   /** The preferences a data export carries; see `applySettings`. */

@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
 const api = vi.hoisted(() => ({ listPortForwards: vi.fn(), startPortForward: vi.fn(), stopPortForward: vi.fn(), removePortForward: vi.fn(), discoverListeningPorts: vi.fn(), cancelPortDiscovery: vi.fn() }));
 vi.mock("../api", () => api);
-vi.mock("../platform", () => ({ IS_MAC: false, IS_WINDOWS: true }));
+vi.mock("../platform", () => ({ HAS_TRAY: true, IS_MAC: false, IS_WINDOWS: true }));
 import { ForwardCenter } from "./ForwardCenter";
 import { useStore, type Tab } from "../store";
 import type { PortDiscovery, PortForward } from "../api";

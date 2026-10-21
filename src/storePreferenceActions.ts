@@ -10,7 +10,7 @@ import {
   samePanelDocks,
 } from "./panelDock";
 import { PANEL_PREFERENCE_KEYS, SORT_STORAGE_KEY } from "./persistKeys";
-import { IS_MAC } from "./platform";
+import { HAS_TRAY, IS_MAC } from "./platform";
 import {
   defaultShortcuts,
   parseShortcuts,
@@ -21,6 +21,7 @@ import {
   BUFFER_FONT_FAMILY_KEY,
   BUFFER_FONT_SIZE,
   BUFFER_FONT_SIZE_KEY,
+  CLOSE_ACTION_KEY,
   COPY_ON_SELECT_KEY,
   CURSOR_BLINK_KEY,
   CURSOR_STYLE_KEY,
@@ -47,6 +48,7 @@ import {
   normalizeFontFamily,
   normalizeFontSize,
   normalizeScrollback,
+  parseCloseAction,
   parseCursorStyle,
   parseGutterMode,
   parsePanels,
@@ -93,6 +95,7 @@ export const createPreferenceActions: StateCreator<
     | "setClipboardPrompt"
     | "setSuggestionsEnabled"
     | "setRightClickAction"
+    | "setCloseAction"
     | "setShortcuts"
     | "resetSettings"
     | "exportSettings"
@@ -271,6 +274,20 @@ export const createPreferenceActions: StateCreator<
     }
   },
 
+  setCloseAction(action) {
+    // A stored "tray" already degrades to "ask" without a tray (see
+    // loadCloseAction); the setter mirrors that so an imported value cannot
+    // arm a tray the platform does not have. Syncing the tray's own check
+    // item is App's business (it owns the backend calls).
+    const next = HAS_TRAY ? action : action === "exit" ? "exit" : "ask";
+    set({ closeAction: next });
+    try {
+      localStorage.setItem(CLOSE_ACTION_KEY, next);
+    } catch {
+      // The setting still applies for this run when storage is unavailable.
+    }
+  },
+
   setShortcuts(bindings) {
     const shortcuts = { ...bindings };
     set({ shortcuts });
@@ -305,6 +322,7 @@ export const createPreferenceActions: StateCreator<
       copyOnSelect: defaultCopyOnSelect(),
       programClipboard: "ask",
       rightClickAction: defaultRightClickAction(),
+      closeAction: "ask",
     });
     try {
       localStorage.removeItem(PANELS_KEY);
@@ -328,6 +346,7 @@ export const createPreferenceActions: StateCreator<
       localStorage.removeItem(COPY_ON_SELECT_KEY);
       localStorage.removeItem(PROGRAM_CLIPBOARD_KEY);
       localStorage.removeItem(RIGHT_CLICK_KEY);
+      localStorage.removeItem(CLOSE_ACTION_KEY);
       localStorage.removeItem(LANGUAGE_KEY);
       localStorage.removeItem(SHORTCUTS_KEY);
     } catch {
@@ -377,6 +396,7 @@ export const createPreferenceActions: StateCreator<
       copyOnSelect: state.copyOnSelect,
       programClipboard: state.programClipboard,
       rightClickAction: state.rightClickAction,
+      closeAction: state.closeAction,
       shortcuts: shortcutOverrides(state.shortcuts),
     };
   },
@@ -456,6 +476,8 @@ export const createPreferenceActions: StateCreator<
     if (programClipboard) state.setProgramClipboard(programClipboard);
     const rightClickAction = parseRightClickAction(values.rightClickAction);
     if (rightClickAction) state.setRightClickAction(rightClickAction);
+    const closeAction = parseCloseAction(values.closeAction);
+    if (closeAction) state.setCloseAction(closeAction);
     const shortcuts = parseShortcuts(values.shortcuts, state.shortcuts);
     if (shortcuts) state.setShortcuts(shortcuts);
   },

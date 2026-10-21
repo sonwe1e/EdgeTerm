@@ -29,6 +29,11 @@ mod session;
 mod ssh_config;
 mod ssh_keys;
 mod store;
+// The tray rides the tray-icon feature, which the target-specific dependency
+// below enables on Windows and macOS only (see Cargo.toml): Linux has no
+// tray, and `tauri::tray` does not exist without the feature.
+#[cfg(any(windows, target_os = "macos"))]
+mod tray;
 mod window_state;
 mod workspace;
 
@@ -347,7 +352,11 @@ pub fn run() {
     #[cfg(target_os = "windows")]
     let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _, _| {
         if let Some(window) = app.get_webview_window("main") {
+            // A window parked in the tray is revealed by the same second
+            // launch; the STARTUP_REVEALED gate keeps the first launch's
+            // own hidden phase untouched (the unpainted-window guard).
             if STARTUP_REVEALED.load(Ordering::SeqCst) {
+                let _ = window.show();
                 let _ = window.unminimize();
                 let _ = window.set_focus();
             }
@@ -372,6 +381,8 @@ pub fn run() {
             create_main_window(app)?;
             #[cfg(target_os = "macos")]
             install_menu(app)?;
+            #[cfg(any(windows, target_os = "macos"))]
+            tray::install(app)?;
             // Off the startup path; no watch of this run exists yet, and no
             // drag has staged anything.
             std::thread::spawn(|| {
@@ -531,6 +542,8 @@ pub fn run() {
             commands::set_startup_theme,
             commands::show_main_window,
             commands::finish_main_window,
+            commands::hide_main_window,
+            commands::set_close_to_tray,
             commands::read_clipboard_text,
             commands::write_clipboard_text,
             commands::show_pointer,

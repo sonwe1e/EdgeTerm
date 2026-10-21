@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 // fonts.ts picks its default stacks by build platform, a constant vitest
 // does not define.
-vi.mock("./platform", () => ({ IS_MAC: true, IS_WINDOWS: false }));
+vi.mock("./platform", () => ({ HAS_TRAY: true, IS_MAC: true, IS_WINDOWS: false }));
 
 import { fontChoices, fontStack, symbolFallbacks } from "./fonts";
 

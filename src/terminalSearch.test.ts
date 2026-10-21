@@ -2,7 +2,7 @@ import { act, createElement as h } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./platform", () => ({
+vi.mock("./platform", () => ({ HAS_TRAY: true,
   IS_MAC: false,
   IS_WINDOWS: true,
 }));

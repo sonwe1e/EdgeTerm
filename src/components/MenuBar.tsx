@@ -38,7 +38,7 @@ import {
   panelLabels,
   PANEL_NAMES,
 } from "../panelDock";
-import { IS_MAC } from "../platform";
+import { HAS_TRAY, IS_MAC } from "../platform";
 import { chordLabel, type ShortcutCommand } from "../shortcuts";
 import { tabTitle, useActiveTab, useStore } from "../store";
 import type {
@@ -47,6 +47,7 @@ import type {
   TerminalController,
 } from "../terminal";
 import { getController } from "../terminalRegistry";
+import type { CloseAction } from "../storeTypes";
 import { THEME_MODES, themeLabels, type ThemeMode } from "../types";
 import { useT } from "../useT";
 import { hasLeading, MenuLeading, menuRole, type MenuMark } from "./ContextMenu";
@@ -321,6 +322,8 @@ export function MenuBar(props: Props) {
   const setSuggestionsEnabled = useStore((s) => s.setSuggestionsEnabled);
   const rightClickAction = useStore((s) => s.rightClickAction);
   const setRightClickAction = useStore((s) => s.setRightClickAction);
+  const closeAction = useStore((s) => s.closeAction);
+  const setCloseAction = useStore((s) => s.setCloseAction);
   const pasteWarning = useStore((s) => s.pasteWarning);
   const copyOnSelect = useStore((s) => s.copyOnSelect);
   const setPasteWarning = useStore((s) => s.setPasteWarning);
@@ -389,6 +392,13 @@ export function MenuBar(props: Props) {
     checked: rightClickAction === action,
     mark: "radio",
     action: () => setRightClickAction(action),
+  });
+
+  const closeEntry = (label: string, action: CloseAction): Entry => ({
+    label,
+    checked: closeAction === action,
+    mark: "radio",
+    action: () => setCloseAction(action),
   });
 
   // One radio group per panel: each sits in exactly one dock.
@@ -621,6 +631,21 @@ export function MenuBar(props: Props) {
                 ],
               },
             ]),
+        // What the window ✕ does. The tray rides Windows / macOS only (see
+        // HAS_TRAY); without it the choices degrade to close's old behaviour.
+        ...(HAS_TRAY
+          ? [
+              "separator" as const,
+              {
+                label: t("menu.closeWindow"),
+                children: [
+                  closeEntry(t("menu.closeAsk"), "ask"),
+                  closeEntry(t("menu.closeTray"), "tray"),
+                  closeEntry(t("menu.closeExit"), "exit"),
+                ],
+              },
+            ]
+          : []),
         "separator",
         {
           label: t("menu.clearBuffer"),

@@ -120,6 +120,8 @@ fn export_bindings() {
             commands::set_startup_theme,
             commands::show_main_window,
             commands::finish_main_window,
+            commands::hide_main_window,
+            commands::set_close_to_tray,
             commands::read_clipboard_text,
             commands::write_clipboard_text,
             commands::show_pointer,

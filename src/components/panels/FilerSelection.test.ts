@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const platform = vi.hoisted(() => ({ mac: false }));
-vi.mock("../../platform", () => ({ get IS_MAC() { return platform.mac; }, get IS_WINDOWS() { return !platform.mac; } }));
+vi.mock("../../platform", () => ({ HAS_TRAY: true, get IS_MAC() { return platform.mac; }, get IS_WINDOWS() { return !platform.mac; } }));
 vi.mock("../FileIcon", () => ({ FileIcon: () => null }));
 vi.mock("../../actions", () => ({ revealCwdInFiler: vi.fn() }));
 vi.mock("@tauri-apps/api/webview", () => ({

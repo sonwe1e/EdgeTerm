@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./platform", () => ({
+vi.mock("./platform", () => ({ HAS_TRAY: true,
   IS_MAC: true,
   IS_WINDOWS: false,
 }));

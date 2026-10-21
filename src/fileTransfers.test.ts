@@ -8,7 +8,7 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock("./api", () => api);
 vi.mock("./components/icons", () => ({ Icon: () => null }));
-vi.mock("./platform", () => ({ IS_MAC: true, IS_WINDOWS: false }));
+vi.mock("./platform", () => ({ HAS_TRAY: true, IS_MAC: true, IS_WINDOWS: false }));
 import { useStore } from "./store";
 import type { FileTransfer } from "./api";
 import { startTransferSubscription, useFileTransfers } from "./fileTransfers";

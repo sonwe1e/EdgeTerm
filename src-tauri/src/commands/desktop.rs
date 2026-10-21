@@ -40,6 +40,32 @@ pub fn show_main_window(window: tauri::WebviewWindow) -> Result<()> {
     }
 }
 
+/// Hides the main window without destroying it: the "minimize to tray" path
+/// (the close-choice dialog and the `CloseAction::Tray` setting). Sessions,
+/// transfers and the whole process keep running; the tray (see `tray.rs`)
+/// brings the window back.
+#[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
+pub fn hide_main_window(window: tauri::WebviewWindow) -> Result<()> {
+    window.hide().map_err(err)
+}
+
+/// Mirrors the front end's `closeAction` setting onto the tray's check item,
+/// so both sides show one state. The flip from the tray's own side arrives as
+/// the `app:close-to-tray-changed` event instead (see `tray.rs`).
+#[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
+pub fn set_close_to_tray(window: tauri::WebviewWindow, enabled: bool) -> Result<()> {
+    #[cfg(any(windows, target_os = "macos"))]
+    {
+        use tauri::Manager;
+        crate::tray::set_close_to_tray(window.app_handle(), enabled);
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    let _ = (window, enabled);
+    Ok(())
+}
+
 /// Windows: reveal the painted WebView2 window after two visible animation
 /// frames. The native timeout above covers a stalled compositor or JS error.
 #[tauri::command]

@@ -1,7 +1,7 @@
 import { detectLanguage, parseLanguage, setCurrentLanguage, type Language } from "./i18n";
 import { parseProgramClipboardMode, type ProgramClipboardMode } from "./osc52";
 import { defaultPanelDocks, parsePanelDocks, samePanelDocks, type PanelDocks } from "./panelDock";
-import { IS_MAC } from "./platform";
+import { HAS_TRAY, IS_MAC } from "./platform";
 import {
   DEFAULT_SHORTCUTS,
   defaultShortcuts,
@@ -10,7 +10,7 @@ import {
   shortcutOverrides,
   type ShortcutBindings,
 } from "./shortcuts";
-import { PanelName } from "./storeTypes";
+import { PanelName, type CloseAction } from "./storeTypes";
 import type { CursorStyle, GutterMode, RightClickAction } from "./terminal";
 import type { ThemeMode } from "./types";
 import { THEME_MODES } from "./types";
@@ -69,6 +69,8 @@ export const THEME_KEY = "edgeterm.theme";
 export const SUGGESTIONS_KEY = "edgeterm.suggestions";
 
 export const RIGHT_CLICK_KEY = "edgeterm.rightClick";
+
+export const CLOSE_ACTION_KEY = "edgeterm.closeAction";
 
 export const SHORTCUTS_KEY = "edgeterm.shortcuts";
 
@@ -158,6 +160,24 @@ export const parseGutterMode = (value: unknown): GutterMode | null =>
 
 export const parseRightClickAction = (value: unknown): RightClickAction | null =>
   value === "menu" || value === "copyPaste" ? value : null;
+
+export const parseCloseAction = (value: unknown): CloseAction | null =>
+  value === "ask" || value === "tray" || value === "exit" ? value : null;
+
+/**
+ * What closing the window does by default: ask every time. Hiding into the
+ * tray is a deliberate opt-in (Windows / macOS; there is no tray icon on
+ * Linux, so a stored "tray" degrades to "ask" there — see `HAS_TRAY`).
+ */
+export const loadCloseAction = (): CloseAction => {
+  if (!HAS_TRAY) return "ask";
+  try {
+    return parseCloseAction(localStorage.getItem(CLOSE_ACTION_KEY)) ?? "ask";
+  } catch {
+    // Use the default when storage is unavailable.
+    return "ask";
+  }
+};
 
 /**
  * Where a right click goes by default: the console convention on Windows and

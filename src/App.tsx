@@ -22,6 +22,7 @@ import {
 import * as api from "./api";
 import { AuthPromptDialog } from "./components/AuthPromptDialog";
 import { ClipboardWriteDialog } from "./components/ClipboardWriteDialog";
+import { CloseChoiceDialog } from "./components/CloseChoiceDialog";
 import { CloseSessionDialog } from "./components/CloseSessionDialog";
 import { QuitConfirmDialog } from "./components/QuitConfirmDialog";
 import { FontSizeDialog } from "./components/FontSizeDialog";
@@ -48,7 +49,7 @@ import { applyFonts, symbolFallbacks } from "./fonts";
 import { focusNextRegion } from "./focusRegions";
 import { commandHistory } from "./history";
 import type { PanelDock } from "./panelDock";
-import { IS_WINDOWS } from "./platform";
+import { HAS_TRAY, IS_WINDOWS } from "./platform";
 import { matchAppShortcut } from "./shortcuts";
 import { clampBottom, fitSides, loadPanelSizing, resizeSides, savePanelSizing } from "./panelSizing";
 import { type PanelName, tabTitle, useStore, type Tab } from "./store";
@@ -159,6 +160,11 @@ export default function App() {
   const [fontSettingsOpen, setFontSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [quitPromptOpen, setQuitPromptOpen] = useState(false);
+  // The close-choice dialog ("minimize to tray, or quit?"), shown while the
+  // closeAction setting is "ask".
+  const [closeChoiceOpen, setCloseChoiceOpen] = useState(false);
+  const closeAction = useStore((s) => s.closeAction);
+  const setCloseAction = useStore((s) => s.setCloseAction);
 
   // The layout the user arranged last time; reloaded when settings are
   // imported or restored (the revision bump), and saved below after a drag.
@@ -352,8 +358,25 @@ export default function App() {
   // Alt+F4) must not silently drop live connections: hold the close and
   // confirm while any tab is still connecting or connected. Without the
   // preventDefault the listener itself destroys the window.
+  //
+  // The closeAction setting routes first: "tray" hides the window with every
+  // session running, "ask" opens the choice dialog, and "exit" skips the
+  // choice (but never the live-session confirm — one gesture still cannot
+  // drop every connection). Reading the setting through getState keeps the
+  // listener from re-arming on every preference change.
   useEffect(() => {
     const unlisten = getCurrentWindow().onCloseRequested((event) => {
+      const action = HAS_TRAY ? useStore.getState().closeAction : "exit";
+      if (action === "tray") {
+        event.preventDefault();
+        void api.hideMainWindow();
+        return;
+      }
+      if (action === "ask") {
+        event.preventDefault();
+        setCloseChoiceOpen(true);
+        return;
+      }
       if (!hasLiveSessions()) return;
       event.preventDefault();
       openQuitPrompt();
@@ -362,6 +385,24 @@ export default function App() {
       void unlisten.then((off) => off());
     };
   }, [openQuitPrompt]);
+
+  // The tray's check item mirrors the setting; the flip from the tray's own
+  // side arrives below and lands in the same setter, whose write back is
+  // idempotent, so the two cannot chase each other.
+  useEffect(() => {
+    api.setCloseToTray(closeAction === "tray").catch(() => {
+      // No tray (Linux) or a headless test: the setting still holds locally.
+    });
+  }, [closeAction]);
+
+  useEffect(() => {
+    const unlisten = api.onCloseToTrayChanged((enabled) => {
+      useStore.getState().setCloseAction(enabled ? "tray" : "ask");
+    });
+    return () => {
+      void unlisten.then((off) => off());
+    };
+  }, []);
 
   // ⌘Q on macOS bypasses the window close path, so the Rust menu handler
   // forwards it here; with no live sessions just exit.
@@ -713,6 +754,26 @@ export default function App() {
             void exit(0);
           }}
           onCancel={() => setQuitPromptOpen(false)}
+        />
+      )}
+
+      {closeChoiceOpen && (
+        <CloseChoiceDialog
+          onChoice={(choice, remember) => {
+            setCloseChoiceOpen(false);
+            // "Remember" promotes the picked action to the setting, so the
+            // dialog stops appearing; the settings menu can put it back on
+            // "ask". Hiding needs no confirm (sessions keep running), while
+            // "Exit" walks the same guard as a plain close.
+            if (remember) setCloseAction(choice === "tray" ? "tray" : "exit");
+            if (choice === "tray") {
+              void api.hideMainWindow();
+              return;
+            }
+            if (hasLiveSessions()) openQuitPrompt();
+            else void exit(0);
+          }}
+          onCancel={() => setCloseChoiceOpen(false)}
         />
       )}
 

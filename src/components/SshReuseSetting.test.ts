@@ -1,7 +1,7 @@
 import { act, createElement as h } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
-vi.mock("../platform", () => ({ IS_MAC: false, IS_WINDOWS: true }));
+vi.mock("../platform", () => ({ HAS_TRAY: true, IS_MAC: false, IS_WINDOWS: true }));
 import { SshReuseSetting } from "./SshReuseSetting";
 import { useStore } from "../store";
 it("persists reuse and refreshes mounted settings on import and reset", async () => {
