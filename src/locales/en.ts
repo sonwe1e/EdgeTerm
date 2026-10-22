@@ -1495,4 +1495,22 @@ export const en = {
   "filer.dualPaneNotice":
     "This session uses the dual-pane file manager. Browse and transfer files in the center area.",
 
+  // --- ported from upstream v1.0.1–v1.0.4 -----------------------------------
+  "search.inSelection": "Find in Selection",
+  "search.noSelection": "No selection",
+  "search.invalidRegex": "Invalid regular expression",
+  "tab.scrollLeft": "Scroll Left",
+  "tab.scrollRight": "Scroll Right",
+  "session.baudRates": "Common baud rates",
+  "sender.color": "Color",
+  "sender.colorNone": "None",
+  "sender.colorRed": "Red",
+  "sender.colorOrange": "Orange",
+  "sender.colorYellow": "Yellow",
+  "sender.colorGreen": "Green",
+  "sender.colorTeal": "Teal",
+  "sender.colorBlue": "Blue",
+  "sender.colorPurple": "Purple",
+  "sender.colorPink": "Pink",
+
 } as const;

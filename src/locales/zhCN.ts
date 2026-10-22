@@ -1399,4 +1399,22 @@ export const zhCN: Catalog = {
   // fix: PD-01 — the Filer dock stays mounted on a file session and says why
   "filer.dualPaneNotice": "此会话使用双栏文件管理器，文件浏览与传输请在中间的终端区域进行。",
 
+  // --- ported from upstream v1.0.1–v1.0.4 -----------------------------------
+  "search.inSelection": "在选区中查找",
+  "search.noSelection": "未选择内容",
+  "search.invalidRegex": "正则表达式无效",
+  "tab.scrollLeft": "向左滚动标签",
+  "tab.scrollRight": "向右滚动标签",
+  "session.baudRates": "常用波特率",
+  "sender.color": "颜色",
+  "sender.colorNone": "无",
+  "sender.colorRed": "红色",
+  "sender.colorOrange": "橙色",
+  "sender.colorYellow": "黄色",
+  "sender.colorGreen": "绿色",
+  "sender.colorTeal": "青色",
+  "sender.colorBlue": "蓝色",
+  "sender.colorPurple": "紫色",
+  "sender.colorPink": "粉色",
+
 };
