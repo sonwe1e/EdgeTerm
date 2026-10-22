@@ -10,8 +10,10 @@
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
-  /* Keep scrollIntoView'd tabs clear of the edge fades and the sticky list button. */
-  scroll-padding: 0 44px 0 28px;
+  /* Keep scrollIntoView'd tabs clear of the edge fades and the sticky
+     actions block (three 22px buttons, two 2px gaps, 8px padding a side,
+     plus the 28px fade overhanging its left edge). */
+  scroll-padding: 0 114px 0 28px;
 }
 
 .tabstrip::-webkit-scrollbar {
@@ -66,6 +68,15 @@
 .tabstrip-actions .panel-action.is-open {
   color: var(--fg);
   background: var(--bg-hover);
+}
+
+/* A step button at its end of the strip has nowhere to scroll: it keeps its
+   place in the block but reads as unavailable. */
+.tabstrip-actions .panel-action:disabled {
+  opacity: 0.5;
+  background: none;
+  color: var(--fg-faint);
+  cursor: default;
 }
 
 /* The "all sessions" dropdown: one row per tab, scrolls once it gets tall. */
