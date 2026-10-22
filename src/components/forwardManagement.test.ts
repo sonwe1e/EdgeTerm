@@ -22,7 +22,8 @@ vi.mock("../api", async (original) => ({
 import * as api from "../api";
 import * as nativeDialog from "../nativeDialog";
 import { useStore } from "../store";
-import type { PortForwardSpec, SessionProfile } from "../types";
+import type { SessionProfile } from "../types";
+import type { PortForwardSpec } from "../api";
 import { SessionDialog } from "./SessionDialog";
 import { SshConfigImportDialog } from "./SshConfigImportDialog";
 

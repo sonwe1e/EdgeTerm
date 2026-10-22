@@ -1489,5 +1489,8 @@ export const en = {
   "session.deleteForwardTitle": "Delete Port Forward",
   "session.deleteForwardPrompt": "Delete the forward rule {route}?",
 
+  // fix: PD-01 — the Filer dock stays mounted on a file session and says why
+  "filer.dualPaneNotice":
+    "This session uses the dual-pane file manager. Browse and transfer files in the center area.",
 
 } as const;

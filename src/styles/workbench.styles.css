@@ -163,6 +163,25 @@
   display: flex;
   flex: 1;
   min-height: 0;
+  /* The query container for the three columns: their breakpoints must
+     measure the width the workbench really has — the terminal area minus
+     the docks, up to 520px narrower than the window (UI-01) — so .wb-body
+     carries the container, not the window. It is not on .wb itself: .wb
+     also holds the workbench's modal dialogs, and a container becomes the
+     containing block for fixed-position descendants, which would move
+     those dialogs off the viewport. .wb-body and .wb-console (the other
+     container below) are both full-width children of .wb, so they measure
+     the same inline size .wb would. */
+  container-type: inline-size;
+  /* One line while the three columns fit. Below 900px each column takes a
+     full line instead, which stacks them: a container cannot answer for
+     its own size, so .wb-body itself is never queried and the stack is
+     reached by wrapping rather than by restyling .wb-body. */
+  flex-wrap: wrap;
+  /* The stacked layout is taller than a short window, so the body scrolls
+     instead of pushing the console away. In the wide row the columns are
+     stretched to the body's height, so nothing overflows there. */
+  overflow-y: auto;
 }
 
 /* --- hosts ------------------------------------------------------------- */
@@ -377,8 +396,12 @@
 .wb-sidebar {
   display: flex;
   flex-direction: column;
-  width: 260px;
-  flex: none;
+  /* Flexible, not fixed: in a narrow .center the side columns compress
+     before the editor loses its floor (UI-01). The 180px floor is what
+     keeps the three-column row inside the 900px stack threshold
+     (180 + 360 + 180 + borders = 722px). */
+  flex: 0 1 260px;
+  min-width: 180px;
   min-height: 0;
   overflow-y: auto;
   border-right: 1px solid var(--border);
@@ -692,8 +715,10 @@
 .wb-explorer {
   display: flex;
   flex-direction: column;
-  width: 280px;
-  flex: none;
+  /* The sidebar's treatment: compressible to 180px so a narrow .center
+     costs the tree width, not the editor (UI-01). */
+  flex: 0 1 280px;
+  min-width: 180px;
   min-height: 0;
   border-left: 1px solid var(--border);
   background: var(--bg-panel);
@@ -937,7 +962,11 @@
   display: flex;
   flex-direction: column;
   flex: 1;
-  min-width: 0;
+  /* The editor's floor (UI-01): the side columns compress, this does not
+     go below the width a code editor stays usable at. Together with the
+     columns' 180px floors it is what the 900px stack threshold is sized
+     against: 360 + 180 + 180 + borders = 722px. */
+  min-width: 360px;
   min-height: 0;
 }
 
@@ -1237,14 +1266,27 @@
 .wb-console {
   display: flex;
   flex-direction: column;
-  height: 238px;
-  flex: none;
+  /* UI-09: the console was a fixed 238px with no floor, so a short window
+     (small viewport + expanded Sender) left the editor a sliver. It now
+     takes 30% of the workbench's height between 96 and 238px, and as the
+     only sized item beside the zero-basis .wb-body it is the one that
+     yields when space runs out — the editor keeps its room first.
+     This is also the query container for .wb-run-detail: the console
+     spans the workbench's full width, so its inline size is the real one
+     (see .wb-body for why the container is not on .wb itself). */
+  container-type: inline-size;
+  flex: 0 1 auto;
+  height: clamp(96px, 30%, 238px);
+  min-height: 96px;
   border-top: 1px solid var(--border);
   background: var(--bg-panel);
 }
 
+/* No run selected: the console is one line of text, and the 96px floor
+   above would inflate it. It has no editor content to protect. */
 .wb-console.is-empty {
   height: 74px;
+  min-height: 74px;
 }
 
 .wb-console-head {
@@ -1318,8 +1360,11 @@
 }
 
 .wb-run-detail {
-  width: 430px;
-  flex: none;
+  /* Compressible like the three columns: the console spans the workbench's
+     full width, so a narrow one costs the detail column before the log
+     (UI-01). The 240px floor matches the old narrow breakpoint. */
+  flex: 0 1 430px;
+  min-width: 240px;
   overflow: auto;
   padding: var(--sp-8) var(--sp-10);
   border-right: 1px solid var(--border);
@@ -1792,53 +1837,65 @@
   line-height: 1.4;
 }
 
-@media (max-width: 1100px) {
+/* The breakpoints measure the workbench's own width — the inline size of
+   .wb-body and .wb-console, which is what .center has left after the
+   docks — instead of the window's. Measured on the default layout
+   (harness/measure.mjs): .center is 918px at 1440x900 with the session
+   and filer docks open, and 578px at 1100x700. The old viewport
+   breakpoints never saw those widths, which is how the editor ended up a
+   sliver inside a perfectly ordinary window (UI-01).
+   The 1200px step narrows the side columns to 220px: at the common 918px
+   container the full 260+280 leaves the editor's 360px floor only 16px of
+   slack — one dock drag from overflow — while 220+220 leaves 116px. */
+@container (max-width: 1200px) {
   .wb-explorer {
-    width: 220px;
+    flex-basis: 220px;
   }
 
   .wb-sidebar {
-    width: 220px;
+    flex-basis: 220px;
   }
 
   .wb-run-detail {
-    width: 330px;
+    flex-basis: 330px;
   }
 }
 
-/* Below 900px the three fixed columns (sidebar + editor + explorer) left the
-   editor a sliver. Stack them instead of shrinking further: the project tree
-   keeps its own scroll on top, the editor keeps the available width, and the
-   explorer becomes a bounded strip underneath. */
-@media (max-width: 900px) {
-  .wb-body {
-    flex-direction: column;
-    overflow-y: auto;
-  }
-
+/* Below 900px the row cannot hold its floor (180 + 360 + 180 + borders =
+   722px), so each column takes a full line: the project tree keeps its own
+   scroll on top, the editor keeps the available width, and the explorer
+   becomes a bounded strip underneath. The stack is reached by wrapping —
+   .wb-body is itself the container and a container cannot query its own
+   size — so no rule here restyles .wb-body itself.
+   The strips take fixed heights, not max-heights: a line whose item has a
+   definite height is not auto-sized, so the align-content distribution
+   leaves every pixel of free space to the editor's line and it fills the
+   body the way the column stack used to. Content-height strips would share
+   that space and leave gaps a tall, narrow window could see. Each strip
+   scrolls inside itself (the sidebar's own overflow-y, the explorer's
+   .wb-tree / .wb-changes), so the fixed height bounds, never clips. */
+@container (max-width: 900px) {
   .wb-sidebar {
-    width: auto;
-    flex: 0 0 auto;
-    max-height: 220px;
+    flex-basis: 100%;
+    height: 220px;
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }
 
   .wb-center {
-    flex: 1 0 auto;
+    flex-basis: 100%;
     min-height: 320px;
   }
 
   .wb-explorer {
-    width: auto;
-    flex: 0 0 auto;
-    max-height: 200px;
+    flex-basis: 100%;
+    height: 200px;
     border-left: 0;
     border-top: 1px solid var(--border);
   }
 
   .wb-run-detail {
-    width: 240px;
+    flex-basis: 240px;
   }
 }
 

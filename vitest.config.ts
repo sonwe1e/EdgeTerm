@@ -30,6 +30,7 @@ const browserOptimizeDeps = [
   "react-dom/client",
   "react/jsx-dev-runtime",
   "zustand",
+  "zustand/react/shallow",
   "@xterm/xterm",
   "@xterm/addon-fit",
   "@xterm/addon-search",

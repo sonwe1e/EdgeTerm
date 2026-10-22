@@ -27,6 +27,7 @@ import { CloseSessionDialog } from "./components/CloseSessionDialog";
 import { QuitConfirmDialog } from "./components/QuitConfirmDialog";
 import { FontSizeDialog } from "./components/FontSizeDialog";
 import { HostKeyDialog } from "./components/HostKeyDialog";
+import { Icon } from "./components/icons";
 import { MenuBar } from "./components/MenuBar";
 import { DockArea, PanelDropOverlay } from "./components/PanelDocks";
 import { PasteWarningDialog } from "./components/PasteWarningDialog";
@@ -75,6 +76,39 @@ const hasLiveSessions = () =>
   useStore
     .getState()
     .tabs.some((tab) => tab.state === "connecting" || tab.state === "connected");
+
+/**
+ * PD-01: an FTP or SFTP tab carries its own dual-pane file manager in the
+ * terminal area, so the docked Filer has nothing to list for that session.
+ * The panel used to be taken out of its dock entirely, which moved the
+ * terminal area's edge by the dock's width the moment the user switched
+ * protocols and moved it back on the return. The dock now keeps its place
+ * and this notice holds the panel's, reusing the panel chrome so the
+ * surface reads as the Filer itself. The Filer is deliberately not mounted
+ * underneath: it would start browsing the local side the dual pane already
+ * shows, and a transfer started here could not be seen behind the notice.
+ */
+function FilerFileSessionNotice() {
+  const t = useT();
+  return (
+    <div className="panel filer-panel">
+      <div className="panel-header">
+        <div className="panel-title is-filer">
+          <Icon name="folder" />
+          {t("panel.filer")}
+        </div>
+      </div>
+      {/* The same body scroller the other panels use, so the notice fills
+          the panel under its header and scrolls if it cannot fit. */}
+      <div className="panel-body">
+        <div className="panel-empty" role="status">
+          <Icon name="multiple-windows" className="panel-empty-icon" />
+          <span className="panel-empty-title">{t("filer.dualPaneNotice")}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function App() {
   const updater = useUpdater();
@@ -573,13 +607,15 @@ export default function App() {
 
   // --- layout ---------------------------------------------------------------
 
-  // Each panel sits in the dock the user put it in (see panelDock.ts);
-  // FTP and SFTP tabs bring their own dual-pane file manager, so the Filer
-  // stays hidden there.
+  // Each panel sits in the dock the user put it in (see panelDock.ts).
+  // FTP and SFTP tabs bring their own dual-pane file manager in the
+  // terminal area, so the Filer shows a placeholder there instead (see
+  // FilerFileSessionNotice). Dropping it from this list used to unmount
+  // its whole dock, which widened the terminal area by the dock's width
+  // on every protocol switch and narrowed it again on the way back
+  // (PD-01).
   const shown = (dock: PanelDock) =>
-    panelDocks[dock].filter(
-      (panel) => panels[panel] && !(panel === "filer" && fileMode),
-    );
+    panelDocks[dock].filter((panel) => panels[panel]);
   const left = shown("left");
   const right = shown("right");
   const bottom = shown("bottom");
@@ -592,7 +628,11 @@ export default function App() {
         onEditProfile={(profile) => setDialog({ profile })}
       />
     ) : panel === "filer" ? (
-      <FilerPanel />
+      fileMode ? (
+        <FilerFileSessionNotice />
+      ) : (
+        <FilerPanel />
+      )
     ) : (
       <SenderPanel
         compact={senderCompact}

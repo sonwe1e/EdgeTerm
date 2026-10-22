@@ -1394,5 +1394,7 @@ export const zhCN: Catalog = {
   "session.deleteForwardTitle": "删除端口转发",
   "session.deleteForwardPrompt": "删除转发规则 {route}？",
 
+  // fix: PD-01 — the Filer dock stays mounted on a file session and says why
+  "filer.dualPaneNotice": "此会话使用双栏文件管理器，文件浏览与传输请在中间的终端区域进行。",
 
 };
