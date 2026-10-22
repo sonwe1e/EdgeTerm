@@ -187,6 +187,19 @@ pub(super) const SFTP_OPERATION_TIMEOUT: Duration = Duration::from_secs(30);
 /// the browsing deadline would leave the tree half deleted.
 pub(super) const SFTP_DELETE_TIMEOUT: Duration = Duration::from_secs(300);
 
+/// How long the whole lazy bring-up may take: the channel open, the
+/// subsystem answer, and the version exchange. It has to sit above the
+/// layers it wraps — a server without the subsystem is refused within
+/// [`SFTP_SUBSYSTEM_TIMEOUT`], and one that accepts but never speaks the
+/// version gives up on the protocol library's own 10 s request timeout —
+/// which the old 10 s cap did not: a server that simply starts its
+/// sftp-server slowly (an external subsystem is exec'd through the
+/// account's login shell, whose rc files can cost seconds on a loaded
+/// machine) had its about-to-arrive version reply cut off, so every Filer
+/// request failed as "SFTP initialization timed out". The wait runs off
+/// the session's own loop, so a slow start never freezes the terminal.
+const SFTP_INIT_TIMEOUT: Duration = Duration::from_secs(30);
+
 pub(super) async fn browse_sftp(
     transport: Arc<SharedTransport>,
     slot: Arc<tokio::sync::Mutex<Option<Arc<SftpSession>>>>,
@@ -195,7 +208,7 @@ pub(super) async fn browse_sftp(
     let session = {
         let mut cached = slot.lock().await;
         tokio::time::timeout(
-            Duration::from_secs(10),
+            SFTP_INIT_TIMEOUT,
             ensure_sftp(&transport.handle, &mut cached),
         )
         .await

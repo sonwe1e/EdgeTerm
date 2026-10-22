@@ -12,6 +12,16 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 const SCRIPT: &str = include_str!("resource_monitor.sh");
+/// How long one sample's script may run. The script's own per-tool bounds
+/// already sum past the old 5 s ceiling (nvidia-smi up to 3 s, the NPU/XPU
+/// probes 2 s plus 1 s per device), and a slow exec channel — an account
+/// whose login-shell rc costs seconds on a loaded machine — adds more, so
+/// a working but loaded host could never answer in time and every reading
+/// ended as "inspection timed out". 20 s clears the script's designed
+/// worst case with room for a slow start; the bar schedules each poll
+/// from the sample's actual duration, so a slow host simply samples
+/// slower instead of failing.
+const SAMPLE_TIMEOUT: Duration = Duration::from_secs(20);
 
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Serialize, Clone, Debug)]
@@ -179,7 +189,7 @@ impl ResourceMonitor {
             &script,
             &request.control,
             128 * 1024,
-            Duration::from_secs(5),
+            SAMPLE_TIMEOUT,
         )
         .await?;
         request.control.check().map_err(AppError::from)?;
