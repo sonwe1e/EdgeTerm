@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { errorText } from "../errorInfo";
 
 import * as api from "../api";
-import { t as translateMsg } from "../i18n";
+import { t as translateMsg, type MessageKey } from "../i18n";
 import { groupPath } from "../sessionGroups";
 import { useStore } from "../store";
 import type { SshConfigEntry, SshConfigPreview } from "../types";
@@ -31,6 +31,25 @@ function authLabel(entry: SshConfigEntry): string {
     ? translateMsg("sshImport.authAgent")
     : translateMsg("sshImport.authPassword");
 }
+
+/** The one-letter badge of a forward's direction, the way `ssh -L/-R/-D` writes it. */
+const FORWARD_LETTER: Record<api.PortForwardSpec["direction"], MessageKey> = {
+  local: "forward.letterLocal",
+  remote: "forward.letterRemote",
+  dynamic: "forward.letterDynamic",
+};
+
+/** `host:port`, bracketing an IPv6 literal; port 0 reads as "automatic". */
+const endpoint = (host: string, port: number, auto: string) =>
+  `${host.includes(":") ? `[${host}]` : host}:${port || auto}`;
+
+/** One forward as `listen → target`; a dynamic (SOCKS5) forward names no target. */
+const forwardRoute = (spec: api.PortForwardSpec, auto: string) => {
+  const listen = endpoint(spec.listenHost, spec.listenPort, auto);
+  if (spec.direction === "dynamic") return listen;
+  const host = spec.targetHost ?? "";
+  return `${listen} → ${host ? endpoint(host, spec.targetPort ?? 0, auto) : ""}`;
+};
 
 /**
  * Chooser for Session → Import OpenSSH Config…: the `Host` aliases of the
@@ -82,6 +101,13 @@ export function SshConfigImportDialog({ preview, onClose }: Props) {
         ? new Set()
         : new Set(preview.entries.map((entry) => entry.alias)),
     );
+  // How many forwards the current selection carries. The backend's summary
+  // counts sessions and jump hosts only, so the import reports this one from
+  // the selection itself; the import writes each chosen entry's forwards
+  // verbatim, so the number is what will start on the next connect.
+  const selectedForwards = preview.entries
+    .filter((entry) => selected.has(entry.alias))
+    .reduce((total, entry) => total + (entry.forwards?.length ?? 0), 0);
 
   const submit = async () => {
     if (selected.size === 0) {
@@ -120,6 +146,16 @@ export function SshConfigImportDialog({ preview, onClose }: Props) {
           summary.jumpHosts === 1
             ? t("sshImport.jumpHostsAddedOne")
             : t("sshImport.jumpHostsAddedMany", { count: summary.jumpHosts }),
+        );
+      }
+      // The backend reports sessions and jump hosts but not forwards, so the
+      // count comes from the selection itself (see selectedForwards).
+      const forwards = selectedForwards;
+      if (forwards > 0) {
+        parts.push(
+          forwards === 1
+            ? t("sshImport.forwardsImportedOne")
+            : t("sshImport.forwardsImportedMany", { count: forwards }),
         );
       }
       if (summary.jumpsIgnored > 0) {
@@ -166,7 +202,7 @@ export function SshConfigImportDialog({ preview, onClose }: Props) {
         <div className="dialog-body ssh-import-body">
           <span className="confirm-dialog-target">{preview.path}</span>
           <div className="ssh-import-list" role="group" aria-label={t("sshImport.hostsGroup")}>
-            <label className="ssh-import-row is-head">
+            <label className="ssh-import-row is-head has-forwards">
               <input
                 type="checkbox"
                 checked={allSelected}
@@ -176,11 +212,12 @@ export function SshConfigImportDialog({ preview, onClose }: Props) {
               <span className="ssh-import-alias">{t("sshImport.hostColumn")}</span>
               <span className="ssh-import-target">{t("sshImport.connectsToColumn")}</span>
               <span className="ssh-import-note">{t("sshImport.authColumn")}</span>
+              <span className="ssh-import-forwards">{t("sshImport.forwardsColumn")}</span>
             </label>
             {preview.entries.map((entry) => (
               <label
                 key={entry.alias}
-                className={`ssh-import-row${entry.existingId ? " is-existing" : ""}`}
+                className={`ssh-import-row has-forwards${entry.existingId ? " is-existing" : ""}`}
               >
                 <input
                   type="checkbox"
@@ -212,6 +249,22 @@ export function SshConfigImportDialog({ preview, onClose }: Props) {
                     </span>
                   )}
                 </span>
+                <span className="ssh-import-forwards">
+                  {(entry.forwards ?? []).length === 0 ? (
+                    <span className="ssh-import-forward">—</span>
+                  ) : (
+                    entry.forwards?.map((spec, index) => (
+                      <span
+                        key={index}
+                        className="ssh-import-forward"
+                        title={`${t(FORWARD_LETTER[spec.direction])} ${forwardRoute(spec, t("forward.autoPort"))}`}
+                      >
+                        <b>{t(FORWARD_LETTER[spec.direction])}</b>{" "}
+                        {forwardRoute(spec, t("forward.autoPort"))}
+                      </span>
+                    ))
+                  )}
+                </span>
               </label>
             ))}
           </div>
@@ -236,6 +289,11 @@ export function SshConfigImportDialog({ preview, onClose }: Props) {
           <span className="confirm-dialog-hint">
             {t("sshImport.hint")}
           </span>
+          {selectedForwards > 0 && (
+            <span className="confirm-dialog-hint">
+              {t("sshImport.forwardAutoStart")}
+            </span>
+          )}
           {error && <div className="dialog-error">{error}</div>}
         </div>
         <div className="dialog-footer confirm-dialog-footer">

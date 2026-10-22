@@ -14,8 +14,8 @@ import {
   LOCALE_SUGGESTIONS,
   TERMINAL_ENCODINGS,
 } from "../encodings";
-import type { Translate } from "../i18n";
-import { open as openDialog } from "../nativeDialog";
+import type { MessageKey, Translate } from "../i18n";
+import { ask, open as openDialog } from "../nativeDialog";
 import { IS_WINDOWS } from "../platform";
 import { validateProfile, invalidField, type InvalidSessionField } from "../sessionValidation";
 import {
@@ -135,6 +135,44 @@ const PROTOCOL_NAMES: Record<SessionKind, string> = {
   serial: "Serial",
 };
 
+/** The one-letter badge of a forward's direction, the way `ssh -L/-R/-D` writes it. */
+const FORWARD_LETTER: Record<api.PortForwardSpec["direction"], MessageKey> = {
+  local: "forward.letterLocal",
+  remote: "forward.letterRemote",
+  dynamic: "forward.letterDynamic",
+};
+
+/** The full name of a direction, for a badge's tooltip. */
+const FORWARD_DIRECTION_LABEL: Record<api.PortForwardSpec["direction"], MessageKey> = {
+  local: "forward.dirLocal",
+  remote: "forward.dirRemote",
+  dynamic: "forward.dirDynamic",
+};
+
+/** A fresh add-form row: the tunnel popover's own defaults (ForwardCenter). */
+const FORWARD_DEFAULTS: api.PortForwardSpec = {
+  direction: "local",
+  listenHost: "127.0.0.1",
+  listenPort: 0,
+  targetHost: "127.0.0.1",
+  targetPort: 8080,
+};
+
+const loopback = (host: string) =>
+  ["127.0.0.1", "::1", "localhost"].includes(host.toLowerCase());
+
+/** `host:port`, bracketing an IPv6 literal; port 0 reads as "automatic". */
+const endpoint = (host: string, port: number, auto: string) =>
+  `${host.includes(":") ? `[${host}]` : host}:${port || auto}`;
+
+/** One forward as `listen → target`; a dynamic (SOCKS5) forward names no target. */
+const forwardRoute = (spec: api.PortForwardSpec, auto: string) => {
+  const listen = endpoint(spec.listenHost, spec.listenPort, auto);
+  if (spec.direction === "dynamic") return listen;
+  const host = spec.targetHost ?? "";
+  return `${listen} → ${host ? endpoint(host, spec.targetPort ?? 0, auto) : ""}`;
+};
+
 /** Column count of `.session-color-picker`; keep in sync with styles.css. */
 const COLOR_PICKER_COLUMNS = 8;
 
@@ -244,6 +282,11 @@ export function SessionDialog({ initial, onClose }: Props) {
       : { ...BLANK, color: randomSessionColor() },
   );
   const [ports, setPorts] = useState<SerialPortDesc[]>([]);
+  // The add-form row of the port-forward section below; kept across edits so
+  // several forwards with one target can be added in a row.
+  const [forwardDraft, setForwardDraft] = useState<api.PortForwardSpec>(
+    FORWARD_DEFAULTS,
+  );
   // Where recordings go when the profile names no folder; the placeholder.
   const [defaultRecordDir, setDefaultRecordDir] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -345,6 +388,10 @@ export function SessionDialog({ initial, onClose }: Props) {
     recordDir: isFileSession(profile.kind)
       ? null
       : profile.recordDir?.trim() || null,
+    // A forward only means something on an SSH transport, which is the only
+    // place the backend starts them; drop any left over from before the
+    // protocol was switched, the way a jump host is dropped.
+    forwards: isSshTransport(profile.kind) ? (profile.forwards ?? []) : [],
   });
 
   // One line under the title saying what the form connects to as it is filled
@@ -542,6 +589,204 @@ export function SessionDialog({ initial, onClose }: Props) {
         <span>{t("session.jumpNote")}</span>
       </div>
     </>
+  );
+
+  // Port forwards saved with the profile: the backend starts them when a
+  // session opens (`commands/sessions.rs`), so they are listed, added and
+  // removed here rather than only being discovered after connecting. An SSH
+  // transport carries them; the form speaks the tunnel popover's field
+  // pattern (ForwardCenter) and its message keys.
+  const forwards = profile.forwards ?? [];
+  const forwardDynamic = forwardDraft.direction === "dynamic";
+  // The same rule the tunnel popover applies before it submits: a host to
+  // listen on, a port in range, and — unless the forward is dynamic — a
+  // target to send to. Without it an unusable rule would reach save_profile.
+  const forwardValid =
+    forwardDraft.listenHost.trim().length > 0 &&
+    Number.isInteger(forwardDraft.listenPort) &&
+    forwardDraft.listenPort >= 0 &&
+    forwardDraft.listenPort <= 65535 &&
+    (forwardDynamic ||
+      ((forwardDraft.targetHost?.trim().length ?? 0) > 0 &&
+        Number.isInteger(forwardDraft.targetPort) &&
+        (forwardDraft.targetPort ?? 0) >= 1 &&
+        (forwardDraft.targetPort ?? 0) <= 65535));
+
+  const addForward = () => {
+    if (!forwardValid) return;
+    const spec: api.PortForwardSpec = forwardDynamic
+      ? {
+          direction: "dynamic",
+          listenHost: forwardDraft.listenHost.trim(),
+          listenPort: forwardDraft.listenPort,
+        }
+      : {
+          ...forwardDraft,
+          listenHost: forwardDraft.listenHost.trim(),
+          targetHost: (forwardDraft.targetHost ?? "").trim(),
+        };
+    patch({ forwards: [...forwards, spec] });
+  };
+
+  const removeForward = async (index: number) => {
+    const spec = forwards[index];
+    const route = `${t(FORWARD_LETTER[spec.direction])} ${forwardRoute(spec, t("forward.autoPort"))}`;
+    const confirmed = await ask(t("session.deleteForwardPrompt", { route }), {
+      title: t("session.deleteForwardTitle"),
+      kind: "warning",
+      okLabel: t("common.delete"),
+      cancelLabel: t("common.cancel"),
+    });
+    if (!confirmed) return;
+    patch({ forwards: forwards.filter((_, i) => i !== index) });
+  };
+
+  const renderForwardsSection = () => (
+    <section className="session-section">
+      <div className="session-section-heading">
+        <Icon name="arrow-swap" />
+        <span>{t("session.forwards")}</span>
+        <small>{t("session.forwardsHint")}</small>
+      </div>
+      <div className="session-forwards-list">
+        {forwards.length === 0 ? (
+          <p className="session-forwards-empty">
+            {t("session.forwardsEmpty")}
+          </p>
+        ) : (
+          forwards.map((spec, index) => (
+            <div className="session-forward-row" key={index}>
+              <span
+                className="session-forward-badge"
+                title={t(FORWARD_DIRECTION_LABEL[spec.direction])}
+              >
+                {t(FORWARD_LETTER[spec.direction])}
+              </span>
+              <span
+                className="session-forward-route"
+                title={`${t(FORWARD_LETTER[spec.direction])} ${forwardRoute(spec, t("forward.autoPort"))}`}
+              >
+                {forwardRoute(spec, t("forward.autoPort"))}
+              </span>
+              <button
+                type="button"
+                className="btn session-forward-remove"
+                onClick={() => void removeForward(index)}
+                title={t("common.delete")}
+                aria-label={t("common.delete")}
+              >
+                <Icon name="trash" />
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+      <form
+        className="forward-form session-forwards-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          addForward();
+        }}
+      >
+        <fieldset className="forward-directions">
+          <legend className="sr-only">{t("forward.directionAria")}</legend>
+          {(["local", "remote", "dynamic"] as const).map((direction) => (
+            <label key={direction} className="forward-direction">
+              <input
+                type="radio"
+                name="session-forward-direction"
+                value={direction}
+                checked={forwardDraft.direction === direction}
+                onChange={() => setForwardDraft({ ...forwardDraft, direction })}
+              />
+              <span>{t(FORWARD_DIRECTION_LABEL[direction])}</span>
+            </label>
+          ))}
+        </fieldset>
+        <div className="forward-endpoints">
+          <div className="forward-endpoint" aria-hidden="true">
+            <span />
+            <span className="forward-column">{t("forward.hostColumn")}</span>
+            <span className="forward-column">{t("forward.portColumn")}</span>
+          </div>
+          <div className="forward-endpoint">
+            <span className="forward-endpoint-label">
+              {t("forward.listenRow")}
+            </span>
+            <input
+              aria-label={t("forward.listenerHostAria")}
+              value={forwardDraft.listenHost}
+              onChange={(event) =>
+                setForwardDraft({ ...forwardDraft, listenHost: event.target.value })
+              }
+            />
+            <input
+              aria-label={t("forward.listenerPortAria")}
+              type="number"
+              min={0}
+              max={65535}
+              placeholder={t("forward.autoPort")}
+              value={forwardDraft.listenPort || ""}
+              onChange={(event) =>
+                setForwardDraft({
+                  ...forwardDraft,
+                  listenPort:
+                    event.target.value === "" ? 0 : Number(event.target.value),
+                })
+              }
+            />
+          </div>
+          {!forwardDynamic && (
+            <div className="forward-endpoint">
+              <span className="forward-endpoint-label">
+                {t("forward.targetRow")}
+              </span>
+              <input
+                aria-label={t("forward.targetHostAria")}
+                value={forwardDraft.targetHost ?? ""}
+                onChange={(event) =>
+                  setForwardDraft({ ...forwardDraft, targetHost: event.target.value })
+                }
+              />
+              <input
+                aria-label={t("forward.targetPortAria")}
+                type="number"
+                min={1}
+                max={65535}
+                value={forwardDraft.targetPort || ""}
+                onChange={(event) =>
+                  setForwardDraft({
+                    ...forwardDraft,
+                    targetPort:
+                      event.target.value === "" ? 0 : Number(event.target.value),
+                  })
+                }
+              />
+            </div>
+          )}
+        </div>
+        {(!loopback(forwardDraft.listenHost) ||
+          forwardDynamic ||
+          forwardDraft.direction === "remote") && (
+          <div className="forward-notes">
+            {!loopback(forwardDraft.listenHost) && (
+              <p className="forward-note is-warning">
+                {t("forward.listenerWarning")}
+              </p>
+            )}
+            {forwardDraft.direction === "remote" && (
+              <p className="forward-note">{t("forward.gatewayNote")}</p>
+            )}
+            {forwardDynamic && (
+              <p className="forward-note">{t("forward.dynamicNote")}</p>
+            )}
+          </div>
+        )}
+        <button type="submit" className="btn is-primary" disabled={!forwardValid}>
+          {t("session.addForward")}
+        </button>
+      </form>
+    </section>
   );
 
   // One note, wherever a password or passphrase is typed, when it will not be
@@ -1149,6 +1394,8 @@ export function SessionDialog({ initial, onClose }: Props) {
               </div>
             </section>
           )}
+
+          {isSshTransport(profile.kind) && renderForwardsSection()}
 
           {profile.kind === "local" && (
             <section className="session-section">

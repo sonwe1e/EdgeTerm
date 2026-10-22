@@ -1377,5 +1377,22 @@ export const zhCN: Catalog = {
   "settings.panelDock": "{panel}停靠到",
   "settings.restoreNote": "恢复后文件面板与发送器会重新隐藏，工作台状态也会重置。",
 
+  // fix: PD-04 — port forwards become visible: the import list, the import
+  // summary and the session dialog all name them before they start
+  "forward.letterLocal": "L",
+  "forward.letterRemote": "R",
+  "forward.letterDynamic": "D",
+  "sshImport.forwardsColumn": "转发",
+  "sshImport.forwardAutoStart":
+    "所选主机带入的端口转发会在连接时自动启动；远程转发（R）会把服务器侧的端口开放出去。",
+  "sshImport.forwardsImportedOne": "1 条端口转发（连接时自动启动）",
+  "sshImport.forwardsImportedMany": "{count} 条端口转发（连接时自动启动）",
+  "session.forwards": "端口转发",
+  "session.forwardsHint": "连接此会话时自动启动；远程转发会把服务器侧的端口开放出去。",
+  "session.forwardsEmpty": "尚未添加转发规则。",
+  "session.addForward": "添加转发",
+  "session.deleteForwardTitle": "删除端口转发",
+  "session.deleteForwardPrompt": "删除转发规则 {route}？",
+
 
 };

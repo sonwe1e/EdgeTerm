@@ -1472,5 +1472,22 @@ export const en = {
   "settings.restoreNote":
     "After a restore the Filer and Sender panels are hidden again and the Workbench state is reset.",
 
+  // fix: PD-04 — port forwards become visible: the import list, the import
+  // summary and the session dialog all name them before they start
+  "forward.letterLocal": "L",
+  "forward.letterRemote": "R",
+  "forward.letterDynamic": "D",
+  "sshImport.forwardsColumn": "Forwards",
+  "sshImport.forwardAutoStart":
+    "Port forwards carried in by the selected hosts start automatically when a session connects; a remote forward (R) exposes a port on the server side.",
+  "sshImport.forwardsImportedOne": "1 port forward (starts on connect)",
+  "sshImport.forwardsImportedMany": "{count} port forwards (start on connect)",
+  "session.forwards": "Port Forwards",
+  "session.forwardsHint": "Started when this session connects; a remote forward exposes a port on the server side.",
+  "session.forwardsEmpty": "No forward rules yet.",
+  "session.addForward": "Add Forward",
+  "session.deleteForwardTitle": "Delete Port Forward",
+  "session.deleteForwardPrompt": "Delete the forward rule {route}?",
+
 
 } as const;
