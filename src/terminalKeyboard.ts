@@ -3,6 +3,7 @@ import { IS_MAC } from "./platform";
 import { matchAppShortcut } from "./shortcuts";
 import { TerminalClipboard } from "./terminalClipboard";
 import { TerminalCommands } from "./terminalCommands";
+import { closeFindBox } from "./terminalSearch";
 import { ALT_ARROW_SEQUENCES, isControlLetter } from "./terminalShared";
 
 interface Context {
@@ -88,6 +89,22 @@ export class TerminalKeyboard {
           return false;
         }
       }
+    }
+
+    // Esc closes an open find box from here too, not only from its own input
+    // (issue #95), as in VS Code's terminal. The shell does not get that
+    // Esc, or readline would read the next key as Meta+key.
+    if (
+      key === "escape" &&
+      !event.isComposing &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !event.metaKey &&
+      !event.shiftKey &&
+      closeFindBox()
+    ) {
+      event.preventDefault();
+      return false;
     }
 
     // Alt+arrow word jumps. xterm 5 rewrote Alt+←/→ into the readline

@@ -2,7 +2,8 @@ import { act, createElement as h } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./platform", () => ({ HAS_TRAY: true,
+vi.mock("./platform", () => ({
+  HAS_TRAY: true,
   IS_MAC: false,
   IS_WINDOWS: true,
 }));
@@ -13,6 +14,8 @@ import { TerminalController } from "./terminal";
 import { disposeController, setController } from "./terminalRegistry";
 
 const SESSION_ID = "search-session";
+
+const hosts: HTMLElement[] = [];
 
 function createTestTab(id = SESSION_ID): Tab {
   return {
@@ -49,6 +52,10 @@ function createTestTab(id = SESSION_ID): Tab {
   };
 }
 
+/**
+ * A controller with its xterm opened in jsdom, so the find engine gets the
+ * real selection service (the current match is the terminal selection).
+ */
 function createRegisteredController(id = SESSION_ID) {
   const controller = new TerminalController(
     id,
@@ -64,24 +71,10 @@ function createRegisteredController(id = SESSION_ID) {
     13,
     100,
   );
-  // xterm's SelectionService is only instantiated by term.open() in a real
-  // browser; stand in for the selection state so SearchAddon can select
-  // matches in jsdom while running its real SearchEngine and result tracker.
-  let selection: { col: number; row: number; length: number } | null = null;
-  vi.spyOn(controller.term, "select").mockImplementation((col, row, length) => {
-    selection = { col, row, length };
-  });
-  vi.spyOn(controller.term, "clearSelection").mockImplementation(() => {
-    selection = null;
-  });
-  vi.spyOn(controller.term, "getSelectionPosition").mockImplementation(() =>
-    selection
-      ? {
-          start: { x: selection.col, y: selection.row },
-          end: { x: selection.col + selection.length, y: selection.row },
-        }
-      : undefined,
-  );
+  const host = document.createElement("div");
+  document.body.append(host);
+  hosts.push(host);
+  controller.term.open(host);
   setController(id, controller);
   return controller;
 }
@@ -99,6 +92,15 @@ function setInputValue(input: HTMLInputElement, value: string) {
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+/** Esc pressed in the terminal goes through xterm's key filter. */
+function escapeInTerminal(controller: TerminalController): boolean {
+  return (
+    controller as unknown as {
+      keyboard: { filterKey(event: KeyboardEvent): boolean };
+    }
+  ).keyboard.filterKey(new KeyboardEvent("keydown", { key: "Escape" }));
+}
+
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
     true;
@@ -110,6 +112,8 @@ beforeEach(() => {
 
 afterEach(() => {
   disposeController(SESSION_ID);
+  for (const host of hosts.splice(0)) host.remove();
+  document.body.replaceChildren();
 });
 
 describe("terminal search options", () => {
@@ -172,15 +176,113 @@ describe("terminal search options", () => {
       await act(async () => wholeWordBtn.click());
       expect(count.textContent).toBe("1/3");
 
-      // Regex matching and safe handling of an incomplete regular expression.
+      // Regex matching and the localized status for an incomplete pattern.
       await act(async () => regexBtn.click());
       expect(regexBtn.getAttribute("aria-pressed")).toBe("true");
 
       await act(async () => setInputValue(input, "["));
-      expect(count.textContent).toBe("No results");
+      expect(count.textContent).toBe("Invalid regular expression");
 
       await act(async () => setInputValue(input, "(error|err):\\s+\\d+"));
-      expect(count.textContent).toBe("1/3");
+      // The current match (the "cat" hit) stays put, so the search resumes
+      // at the first match after it.
+      expect(count.textContent).toBe("2/3");
+    } finally {
+      act(() => root.unmount());
+      host.remove();
+    }
+  });
+
+  it("searches only the selection and explains a toggle without one", async () => {
+    const controller = createRegisteredController();
+    await write(
+      controller,
+      ["foo 0", "foo 1", "foo 2", "foo 3"].join("\r\n"),
+    );
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+
+    try {
+      await act(async () => {
+        root.render(h(SearchOverlay, { onClose() {} }));
+      });
+
+      const input = host.querySelector<HTMLInputElement>("input")!;
+      const count = host.querySelector<HTMLElement>(".search-count")!;
+      const scopeBtn = host.querySelector<HTMLButtonElement>(
+        'button[aria-label="Find in Selection"]',
+      )!;
+
+      // No selection yet: the toggle stays off and the box says why.
+      await act(async () => scopeBtn.click());
+      expect(scopeBtn.getAttribute("aria-pressed")).toBe("false");
+      expect(count.textContent).toBe("No selection");
+
+      // A user selection, then a search of all four rows. An incremental
+      // search starts from the selection, so it lands on its first match.
+      controller.term.selectLines(1, 2);
+      await act(async () => setInputValue(input, "foo"));
+      expect(count.textContent).toBe("2/4");
+
+      // Find in Selection takes the selection the search replaced.
+      await act(async () => scopeBtn.click());
+      expect(scopeBtn.getAttribute("aria-pressed")).toBe("true");
+      expect(count.textContent).toBe("1/2");
+
+      // Turning it off searches the whole buffer again.
+      await act(async () => scopeBtn.click());
+      expect(scopeBtn.getAttribute("aria-pressed")).toBe("false");
+      expect(count.textContent).toBe("2/4");
+
+      // Alt+L (⌥⌘L on macOS) toggles Find in Selection from the keyboard.
+      await act(async () => {
+        input.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "l",
+            code: "KeyL",
+            altKey: true,
+            bubbles: true,
+          }),
+        );
+      });
+      expect(scopeBtn.getAttribute("aria-pressed")).toBe("true");
+      expect(count.textContent).toBe("1/2");
+    } finally {
+      act(() => root.unmount());
+      host.remove();
+    }
+  });
+
+  it("closes on Esc from the box and from the terminal", async () => {
+    const controller = createRegisteredController();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const onClose = vi.fn();
+
+    try {
+      await act(async () => {
+        root.render(h(SearchOverlay, { onClose }));
+      });
+
+      const input = host.querySelector<HTMLInputElement>("input")!;
+      await act(async () => {
+        input.focus();
+      });
+      await act(async () => {
+        input.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+        );
+      });
+      expect(onClose).toHaveBeenCalledTimes(1);
+      // Closing from the box hands focus back to the terminal.
+      expect(document.activeElement).toBe(controller.term.textarea);
+
+      // Esc pressed in the terminal closes it too, without reaching the shell.
+      expect(escapeInTerminal(controller)).toBe(false);
+      expect(onClose).toHaveBeenCalledTimes(2);
     } finally {
       act(() => root.unmount());
       host.remove();

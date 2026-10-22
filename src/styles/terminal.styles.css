@@ -15,9 +15,63 @@
   box-shadow: var(--shadow-pop);
 }
 
-.terminal-search input {
-  width: 160px;
+/* The query and VS Code's three toggles share one field. */
+.terminal-search .search-field {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  width: 228px;
+  padding-right: 2px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
   background: var(--bg-panel-alt);
+}
+
+.terminal-search .search-field:focus-within {
+  border-color: var(--accent);
+}
+
+.terminal-search .search-field.is-invalid {
+  border-color: var(--red);
+}
+
+.terminal-search .search-field input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+}
+
+.search-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--fg-faint);
+  line-height: 1;
+}
+
+.search-toggle:hover {
+  color: var(--fg);
+  background: var(--bg-hover);
+}
+
+.search-toggle.is-on {
+  color: var(--fg);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+/* Find in Selection sits among the 22px buttons, outside the field. */
+.terminal-search > .search-toggle {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
 }
 
 .terminal-search .search-count {
@@ -32,11 +86,6 @@
 
 .terminal-search .search-count.is-empty {
   color: var(--red);
-}
-
-.terminal-search .search-option.is-active {
-  color: var(--accent-bright);
-  background: var(--accent-soft);
 }
 
 /* --- terminal ------------------------------------------------------------- */

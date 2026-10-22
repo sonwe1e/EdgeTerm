@@ -1,5 +1,4 @@
 import { FitAddon } from "@xterm/addon-fit";
-import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
@@ -32,7 +31,11 @@ import { t as translate } from "./i18n";
 import { patchImeInput } from "./imePatch";
 import { parseOsc52, type ProgramClipboardMode } from "./osc52";
 import { setSemanticColorTheme } from "./semanticColors";
-import { type SearchOptions } from "./terminalSearch";
+import {
+  DEFAULT_FIND_OPTIONS,
+  type FindOptions,
+  type SearchResults,
+} from "./terminalSearch";
 import { type TransferNoticeKind } from "./terminalTransfer";
 import type { BackspaceKey, ThemeMode } from "./types";
 import { ZmodemController } from "./zmodem";
@@ -49,18 +52,36 @@ export class TerminalController {
 
   private readonly searchController: TerminalSearchController;
 
-  get searchAddon(): SearchAddon {
-    return this.searchController.searchAddon;
+  /**
+   * Find `query` in the buffer and highlight every match. `incremental`
+   * keeps the current match selected while the query is still being typed,
+   * instead of jumping to the next one. An empty query only drops the
+   * highlights; a Find in Selection range stays.
+   */
+  search(
+    query: string,
+    forward = true,
+    incremental = false,
+    options: FindOptions = DEFAULT_FIND_OPTIONS,
+  ) {
+    return this.searchController.search(query, forward, incremental, options);
   }
 
-  get onSearchResults() {
-    return this.searchController.onSearchResults;
+  /** Fires after every search and when output has moved the matches. */
+  onSearchResults(listener: (results: SearchResults) => void) {
+    return this.searchController.onSearchResults(listener);
   }
 
-  search(query: string, forward = true, incremental = false, searchOptions: SearchOptions = {}) {
-    return this.searchController.search(query, forward, incremental, searchOptions);
+  /**
+   * Find in Selection: search only the current selection (or, when a search
+   * has since moved the selection to a match, the one the user made). False
+   * when there is no selection to search in.
+   */
+  setSearchScope(on: boolean): boolean {
+    return this.searchController.setSearchScope(on);
   }
 
+  /** Drop the match highlights and the range; also stops re-searching on every write. */
   clearSearch() {
     return this.searchController.clearSearch();
   }
@@ -265,6 +286,10 @@ export class TerminalController {
     });
 
     this.searchController = new TerminalSearchController({
+      get term() {
+        return owner.term;
+      },
+
       get themeMode() {
         return owner.themeMode;
       },
@@ -463,7 +488,6 @@ export class TerminalController {
     this.zmodem = new ZmodemController(sessionId, transferCallbacks);
 
     this.term.loadAddon(this.fitAddon);
-    this.term.loadAddon(this.searchController.searchAddon);
     this.term.loadAddon(new WebLinksAddon(openTerminalWebLink));
     const unicode = new Unicode11Addon();
     this.term.loadAddon(unicode);
@@ -904,6 +928,8 @@ export class TerminalController {
   private clearBufferAndMetadata() {
     this.commands.dropAnchor();
     this.term.clear();
+    // Not a write, so the find engine would go on reading the old lines.
+    this.searchController.bufferChanged();
     this.resetLineMetadata();
   }
 
@@ -994,6 +1020,7 @@ export class TerminalController {
     this.lineGutter.resetTrimMarker();
     this.lineGutter.trimLineMetadata();
     this.lineGutter.syncGutter();
+    this.searchController.bufferChanged();
   }
 
   scrollToLine(absoluteLine: number) {
@@ -1017,6 +1044,7 @@ export class TerminalController {
     this.hostResize = null;
     this.gpu.dispose();
     this.zmodem.dispose();
+    this.searchController.dispose();
     this.term.dispose();
     this.root = null;
     this.host = null;

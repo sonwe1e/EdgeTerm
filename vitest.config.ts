@@ -33,7 +33,6 @@ const browserOptimizeDeps = [
   "zustand/react/shallow",
   "@xterm/xterm",
   "@xterm/addon-fit",
-  "@xterm/addon-search",
   "@xterm/addon-unicode11",
   "@xterm/addon-web-links",
   "@xterm/addon-webgl",

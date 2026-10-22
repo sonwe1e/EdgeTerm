@@ -1,8 +1,8 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { type ISearchOptions } from "@xterm/addon-search";
 import { type IMarker, type ITheme } from "@xterm/xterm";
 import type { CommandSuggestion } from "./history";
 import { IS_MAC } from "./platform";
+import type { FindColors } from "./terminalFind";
 import type { ThemeMode } from "./types";
 
 export type GutterMode = "off" | "line" | "time" | "both";
@@ -283,33 +283,31 @@ export const XTERM_THEMES: Record<ThemeMode, ITheme> = {
   },
 };
 
-export type SearchDecorations = NonNullable<ISearchOptions["decorations"]>;
-
 /**
- * Find-in-buffer highlights, per theme. Enabling decorations is also what
- * makes the search addon report the match index / count.
+ * Find-in-buffer highlights, per theme. The Find in Selection range takes
+ * the shade VS Code gives it (`editor.findRangeHighlightBackground`, laid
+ * over each canvas), faint enough that the matches inside still stand out.
  */
-export const DARK_SEARCH_DECORATIONS: SearchDecorations = {
-  matchBackground: "#623315",
-  matchOverviewRuler: "#d18616",
-  activeMatchBackground: "#9e6a03",
-  activeMatchColorOverviewRuler: "#ffb700",
+const DARK_FIND_COLORS: FindColors = {
+  match: "#623315",
+  activeMatch: "#9e6a03",
+  scope: "#2b2d30",
 };
 
-export const LIGHT_SEARCH_DECORATIONS: SearchDecorations = {
-  matchBackground: "#f5d3b0",
-  matchOverviewRuler: "#d18616",
-  activeMatchBackground: "#a8ac94",
-  activeMatchColorOverviewRuler: "#ffb700",
+const LIGHT_FIND_COLORS: FindColors = {
+  match: "#f5d3b0",
+  activeMatch: "#a8ac94",
+  scope: "#e9e9e9",
 };
 
-export const SEARCH_DECORATIONS: Record<ThemeMode, SearchDecorations> = {
-  dark: DARK_SEARCH_DECORATIONS,
-  light: LIGHT_SEARCH_DECORATIONS,
-  // The amber wash reads the same on serialX's two canvases, which differ
-  // from these only in how deep the dark one is.
-  "serialx-dark": DARK_SEARCH_DECORATIONS,
-  "serialx-light": LIGHT_SEARCH_DECORATIONS,
+/** The find engine's highlight colors for the terminal's theme. */
+export const FIND_COLORS: Record<ThemeMode, FindColors> = {
+  dark: DARK_FIND_COLORS,
+  light: LIGHT_FIND_COLORS,
+  // The amber wash reads the same on serialX's two canvases; only the dark
+  // one is deep enough to need its own range shade.
+  "serialx-dark": { ...DARK_FIND_COLORS, scope: "#1b1e25" },
+  "serialx-light": LIGHT_FIND_COLORS,
 };
 
 export interface Callbacks {
