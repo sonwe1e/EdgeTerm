@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { errorText } from "../errorInfo";
 import * as api from "../api";
+import { EMPTY_SELECTION, selectedEntries, type FileSelection } from "../fileBatch";
 import type { Tab } from "../store";
 import type { FileEntry } from "../types";
 import { friendlyFtpError } from "./ftpPresentation";
@@ -15,7 +16,7 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
   const [remotePath, setRemotePath] = useState("");
   const [remoteDraft, setRemoteDraft] = useState("");
   const [remoteEntries, setRemoteEntries] = useState<FileEntry[]>([]);
-  const [remoteSelected, setRemoteSelected] = useState<string | null>(null);
+  const [remoteSelection, setRemoteSelection] = useState<FileSelection>(EMPTY_SELECTION);
   const [remoteLoading, setRemoteLoading] = useState(false);
   const [remoteError, setRemoteError] = useState<string | null>(null);
 
@@ -23,7 +24,7 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
   const [localPath, setLocalPath] = useState("");
   const [localDraft, setLocalDraft] = useState("");
   const [localEntries, setLocalEntries] = useState<FileEntry[]>([]);
-  const [localSelected, setLocalSelected] = useState<string | null>(null);
+  const [localSelection, setLocalSelection] = useState<FileSelection>(EMPTY_SELECTION);
   const [localLoading, setLocalLoading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const localRequest = useRef(0);
@@ -40,7 +41,7 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
         setRemotePath(listing.path);
         setRemoteDraft(listing.path);
         setRemoteEntries(listing.entries);
-        setRemoteSelected(null);
+        setRemoteSelection(EMPTY_SELECTION);
       } catch (error) {
         if (request !== remoteRequest.current) return;
         setRemoteError(friendlyFtpError(error));
@@ -61,7 +62,7 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
       setLocalPath(listing.path);
       setLocalDraft(listing.path);
       setLocalEntries(listing.entries);
-      setLocalSelected(null);
+      setLocalSelection(EMPTY_SELECTION);
     } catch (error) {
       if (request !== localRequest.current) return;
       setLocalError(errorText(error));
@@ -96,13 +97,15 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
     };
   }, [loadLocal, loadRemote, sessionId, tab.state]);
 
+  // The selected entries in listing order, which is the order the transfer
+  // batch runs in and the order a rename or context menu sees.
   const selectedRemote = useMemo(
-    () => remoteEntries.find((entry) => entry.path === remoteSelected),
-    [remoteEntries, remoteSelected],
+    () => selectedEntries(remoteEntries, remoteSelection),
+    [remoteEntries, remoteSelection],
   );
   const selectedLocal = useMemo(
-    () => localEntries.find((entry) => entry.path === localSelected),
-    [localEntries, localSelected],
+    () => selectedEntries(localEntries, localSelection),
+    [localEntries, localSelection],
   );
 
   return {
@@ -117,18 +120,18 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
     selectedLocal,
     selectedRemote,
     remoteDraft,
-    remoteSelected,
+    remoteSelection,
     remoteLoading,
     remoteError,
     setRemoteDraft,
     remoteHome,
-    setRemoteSelected,
+    setRemoteSelection,
     localLoading,
     localDraft,
-    localSelected,
+    localSelection,
     localError,
     setLocalDraft,
     localHome,
-    setLocalSelected,
+    setLocalSelection,
   };
 }

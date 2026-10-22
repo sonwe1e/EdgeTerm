@@ -1,4 +1,4 @@
-import { act, createElement as h } from "react";
+import { act, createElement as h, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../platform", () => ({ HAS_TRAY: true, IS_MAC: false, IS_WINDOWS: true }));
@@ -13,8 +13,10 @@ vi.mock("../api", async (original) => ({
   startFileDrag: vi.fn(), onRemoteEditState: async () => () => {},
 }));
 import * as api from "../api";
+import { EMPTY_SELECTION, type FileSelection } from "../fileBatch";
 import { FileBrowser } from "./FtpPane";
 import { FilerPanel } from "./panels/FilerPanel";
+import type { FileBrowserProps } from "./ftpPresentation";
 import { VirtualFileRows, fileRowRange } from "./VirtualFileRows";
 import type { FileEntry } from "../types";
 
@@ -69,6 +71,25 @@ function renderRows(list = entries, resetKey = "same", pitch = 29, message = fal
 const renderRowsAsync = async (
   list = entries, resetKey = "same", pitch = 29, message = false,
 ) => { await act(async () => { renderRows(list, resetKey, pitch, message); }); };
+
+/** The dual-pane browser the FTP tests drive, with the props they share. */
+const browser = (overrides: Partial<FileBrowserProps> = {}): FileBrowserProps => ({
+  title: "Remote", subtitle: "SFTP", path: "/test", draft: "/test", entries,
+  selection: EMPTY_SELECTION,
+  loading: false, error: null, side: "remote",
+  draggingPath: null, dropHover: null,
+  onItemPointerDown: vi.fn(), onItemPointerMove: vi.fn(), onItemPointerUp: vi.fn(),
+  onDragCancel: vi.fn(), onDraftChange: vi.fn(), onOpenPath: vi.fn(), onHome: vi.fn(),
+  onParent: vi.fn(), onRefresh: vi.fn(), onSelectionChange: vi.fn(),
+  onActivate: vi.fn(),
+  ...overrides,
+});
+
+/** A browser that keeps the selection it is given, the way a pane does. */
+function StatefulBrowser({ initial }: { initial: FileSelection }) {
+  const [selection, setSelection] = useState<FileSelection>(initial);
+  return h(FileBrowser, browser({ selection, onSelectionChange: setSelection }));
+}
 
 describe("virtual file rows", () => {
   it("bounds DOM at 10,000 entries, reaches the last row, and handles refresh shrink", () => {
@@ -166,14 +187,10 @@ describe("virtual file rows", () => {
 
   it("preserves real FTP selection, activation, sorting, row positions and drop metadata", () => {
     const select = vi.fn(); const activate = vi.fn(); const press = vi.fn();
-    act(() => root.render(h(FileBrowser, {
-      title: "Remote", subtitle: "SFTP", path: "/test", draft: "/test", entries,
-      selected: "/test/file0", loading: false, error: null, side: "remote",
-      draggingPath: null, dropHover: null, onItemPointerDown: press,
-      onItemPointerMove() {}, onItemPointerUp() {}, onDragCancel() {},
-      onDraftChange() {}, onOpenPath() {}, onHome() {}, onParent() {}, onRefresh() {},
-      onSelect: select, onActivate: activate,
-    })));
+    act(() => root.render(h(FileBrowser, browser({
+      selection: { paths: ["/test/file0"], anchor: "/test/file0" },
+      onItemPointerDown: press, onSelectionChange: select, onActivate: activate,
+    }))));
     const row = host.querySelector<HTMLElement>("[role=option]")!;
     expect(row.getAttribute("aria-selected")).toBe("true");
     expect(row.getAttribute("aria-setsize")).toBe("10000");
@@ -182,7 +199,7 @@ describe("virtual file rows", () => {
       row.click(); row.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
       row.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
     });
-    expect(select).toHaveBeenCalledWith("/test/file0");
+    expect(select).toHaveBeenCalledWith({ paths: ["/test/file0"], anchor: "/test/file0" });
     expect(activate).toHaveBeenCalledWith(entries[0]);
     expect(press.mock.calls[0].slice(0, 2)).toEqual(["remote", entries[0]]);
     scroll(host.querySelector<HTMLElement>(".ftp-browser-list")!, 145000);
@@ -195,6 +212,48 @@ describe("virtual file rows", () => {
     expect(host.querySelector<HTMLElement>(".ftp-browser-list")!.scrollTop).toBe(0);
     expect(host.querySelector("[role=option]")!.textContent).toContain("file9990");
     expect(host.querySelectorAll("[role=option]").length).toBeLessThanOrEqual(22);
+  });
+
+  it("toggles and span-selects the FTP list from click modifiers", () => {
+    // The previous test leaves the shared sort flipped; name the rows from
+    // where they actually are rather than assuming a direction.
+    act(() => root.render(h(FileBrowser, browser())));
+    const rowFor = (name: string) => [...host.querySelectorAll<HTMLElement>("[role=option]")]
+      .find((element) => element.querySelector(".ftp-file-name > span:last-child")?.textContent === name)!;
+    const rowName = (element: Element) =>
+      element.querySelector(".ftp-file-name > span:last-child")!.textContent!;
+    const [first, second, third] = [...host.querySelectorAll<HTMLElement>('[role="option"]')]
+      .map(rowName);
+    act(() => root.render(h(StatefulBrowser, {
+      initial: { paths: [`/test/${first}`], anchor: `/test/${first}` },
+    })));
+    const chosen = () => [...host.querySelectorAll<HTMLElement>('[role="option"][aria-selected="true"]')]
+      .map(rowName);
+    expect(chosen()).toEqual([first]);
+
+    // Ctrl adds without dropping what was picked.
+    act(() => {
+      rowFor(second).dispatchEvent(new MouseEvent("click", { bubbles: true, ctrlKey: true }));
+    });
+    expect(chosen()).toEqual([first, second]);
+    // ...and drops it again.
+    act(() => {
+      rowFor(second).dispatchEvent(new MouseEvent("click", { bubbles: true, ctrlKey: true }));
+    });
+    expect(chosen()).toEqual([first]);
+
+    // Shift spans from the anchor the last toggle left behind.
+    act(() => {
+      rowFor(second).dispatchEvent(new MouseEvent("click", { bubbles: true, ctrlKey: true }));
+    });
+    act(() => {
+      rowFor(third).dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }));
+    });
+    expect(chosen()).toEqual([second, third]);
+    // The press moved the keyboard cursor too, so the arrow keys and
+    // type-to-select carry on from the row that was clicked.
+    expect(host.querySelector('[role="listbox"]')!.getAttribute("aria-activedescendant"))
+      .toContain(encodeURIComponent(third));
   });
 
   it("preserves Filer selection, context menus, native drag and inline creation at depth", async () => {

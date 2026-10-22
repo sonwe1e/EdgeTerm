@@ -7,6 +7,7 @@ import {
 } from "react";
 
 import type { FileEntry } from "../types";
+import type { SelectMode } from "../fileBatch";
 import { typeToSelect, type TypeRun } from "../fileTypeSelect";
 import { useStableCallback } from "../useStableCallback";
 
@@ -22,8 +23,12 @@ export interface FileListKeyboardOptions {
   listRef?: RefObject<HTMLDivElement | null>;
   /** Id of a row's option element, so aria and element lookups agree. */
   optionId: (path: string) => string;
-  /** Selection follows the cursor, the way the Filer panel's arrows do. */
-  onSelect: (path: string) => void;
+  /**
+   * Selection follows the cursor, the way the Filer panel's arrows do. The
+   * mode says how: an arrow key replaces, Shift+arrow extends a range, and a
+   * row press passes the mode its modifiers mean (see `clickMode`).
+   */
+  onSelect: (path: string, mode: SelectMode) => void;
   /** The double-click path: enter a folder, or open a file. */
   onActivate: (entry: FileEntry) => void;
   /**
@@ -41,7 +46,7 @@ export interface FileListKeyboard {
   /** Key handling for the listbox container. */
   onKeyDown: (event: ReactKeyboardEvent<HTMLDivElement>) => void;
   /** A row press: marks the cursor, focuses the list, then selects. */
-  onRowSelect: (path: string) => void;
+  onRowSelect: (path: string, mode?: SelectMode) => void;
 }
 
 /**
@@ -164,13 +169,13 @@ export function useFileListKeyboard({
   };
 
   /** Moves the cursor to a row and lets the selection follow it. */
-  const moveTo = (index: number) => {
+  const moveTo = (index: number, mode: SelectMode = "replace") => {
     if (entries.length === 0) return;
     const clamped = Math.max(0, Math.min(entries.length - 1, index));
     const entry = entries[clamped];
     if (!entry) return;
     activePathRef.current = entry.path;
-    onSelect(entry.path);
+    onSelect(entry.path, mode);
     revealActiveRow(clamped, entry.path);
   };
 
@@ -228,22 +233,25 @@ export function useFileListKeyboard({
     const path = activePathRef.current;
     const active =
       path === null ? -1 : entries.findIndex((entry) => entry.path === path);
+    // Shift+arrow extends the range from the selection anchor, the way the
+    // Filer panel's keyboard does; a plain arrow replaces it.
+    const move = event.shiftKey ? "range" : "replace";
     switch (event.key) {
       case "ArrowDown":
         event.preventDefault();
-        moveTo(active < 0 ? 0 : active + 1);
+        moveTo(active < 0 ? 0 : active + 1, move);
         return;
       case "ArrowUp":
         event.preventDefault();
-        moveTo(active < 0 ? entries.length - 1 : active - 1);
+        moveTo(active < 0 ? entries.length - 1 : active - 1, move);
         return;
       case "Home":
         event.preventDefault();
-        moveTo(0);
+        moveTo(0, move);
         return;
       case "End":
         event.preventDefault();
-        moveTo(entries.length - 1);
+        moveTo(entries.length - 1, move);
         return;
       case "Enter": {
         event.preventDefault();
@@ -262,11 +270,11 @@ export function useFileListKeyboard({
    * and a row is never in the Tab order), the cursor moves to the row, and
    * the selection follows — the Filer panel's row press does the same.
    */
-  const onRowSelect = useStableCallback((path: string) => {
+  const onRowSelect = useStableCallback((path: string, mode: SelectMode = "replace") => {
     activePathRef.current = path;
     setActiveDescendant(optionId(path));
     listRef?.current?.focus({ preventScroll: true });
-    onSelect(path);
+    onSelect(path, mode);
   });
 
   return {

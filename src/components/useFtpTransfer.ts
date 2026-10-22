@@ -2,9 +2,11 @@ import type { Dispatch, SetStateAction } from "react";
 import { errorText, isCancelled } from "../errorInfo";
 import { useRef, useState } from "react";
 import * as api from "../api";
+import { batchCollisions, type BatchBlock } from "../fileBatch";
 import { t } from "../i18n";
 import { ask } from "../nativeDialog";
 import { useFileTransfers } from "../fileTransfers";
+import { IS_MAC, IS_WINDOWS } from "../platform";
 import { type PaneSide } from "../paneDrop";
 import type { FileEntry } from "../types";
 import type { TransferState } from "./ftpPresentation";
@@ -20,8 +22,9 @@ interface Options {
   setLocalError: Dispatch<SetStateAction<string | null>>;
   loadRemote: (target: string) => Promise<void>;
   loadLocal: (target: string) => Promise<void>;
-  selectedLocal: FileEntry | undefined;
-  selectedRemote: FileEntry | undefined;
+  /** The pane's selection, in listing order; any number of entries. */
+  selectedLocal: readonly FileEntry[];
+  selectedRemote: readonly FileEntry[];
 }
 
 export function useFtpTransfer({
@@ -67,87 +70,112 @@ export function useFtpTransfer({
     return (await api.localList(dir)).entries;
   };
 
+  const sideLabel = (side: PaneSide) => (side === "remote" ? t("ftp.sideRemote") : t("ftp.sideLocal"));
+
+  /** Why a batch cannot land at all, in the destination pane's wording. */
+  const blockedMessage = (side: PaneSide, block: BatchBlock): string =>
+    block.kind === "symlink"
+      ? t("ftp.refuseSymlink", { name: block.existing.name })
+      : t(block.existing.isDir ? "ftp.folderExists" : "ftp.fileExists", {
+          side: sideLabel(side),
+          name: block.existing.name,
+        });
+
   /**
-   * The gate every landing shares: same-name checks with the target pane's
-   * wording. False means stop — an error was shown or the user declined.
+   * The gate every landing shares: same-name checks against the destination
+   * pane's listing before anything is sent, then one confirmation for the
+   * whole batch. False means stop — an error was shown or the user declined.
+   * A single entry keeps the wording it has always had; several are counted.
    */
   const mayLand = async (
-    side: PaneSide,
-    incoming: FileEntry,
-    existing: FileEntry | undefined,
+    direction: "upload" | "download",
+    items: readonly FileEntry[],
   ): Promise<boolean> => {
-    const setError = side === "remote" ? setRemoteError : setLocalError;
-    if (!existing) return true;
-    const sideLabel = side === "remote" ? t("ftp.sideRemote") : t("ftp.sideLocal");
-    if (side === "local" && existing.isSymlink) {
-      setError(t("ftp.refuseSymlink", { name: incoming.name }));
+    const upload = direction === "upload";
+    const side: PaneSide = upload ? "remote" : "local";
+    const destination = upload ? remotePath : localPath;
+    const setError = upload ? setRemoteError : setLocalError;
+    let present: FileEntry[];
+    try {
+      present = await entriesAt(side, destination);
+    } catch (error) {
+      setError(upload ? friendlyFtpError(error) : errorText(error));
       return false;
     }
-    if (existing.isDir !== incoming.isDir) {
-      setError(
-        t(incoming.isDir ? "ftp.fileExists" : "ftp.folderExists", {
-          side: sideLabel,
-          name: incoming.name,
-        }),
-      );
-      return false;
-    }
-    return ask(
-      t(incoming.isDir ? "ftp.mergeFolder" : "ftp.replaceFile", {
-        side: sideLabel,
-        name: incoming.name,
-      }),
-      {
-        title: t("filer.replaceTitle"),
-        kind: "warning",
-        okLabel: t("filer.downloadReplace"),
-        cancelLabel: t("common.cancel"),
-      },
+    const collisions = batchCollisions(
+      items,
+      present,
+      side,
+      // APFS and NTFS match local names case-insensitively by default.
+      side === "local" && (IS_MAC || IS_WINDOWS),
     );
+    if (collisions.blocked) {
+      setError(blockedMessage(side, collisions.blocked));
+      return false;
+    }
+    const single = items.length === 1 ? collisions.existing[0] : undefined;
+    if (!collisions.existing.length) return true;
+    if (single) {
+      return ask(
+        t(single.isDir ? "ftp.mergeFolder" : "ftp.replaceFile", {
+          side: sideLabel(side),
+          name: single.name,
+        }),
+        {
+          title: t("filer.replaceTitle"),
+          kind: "warning",
+          okLabel: t("filer.downloadReplace"),
+          cancelLabel: t("common.cancel"),
+        },
+      );
+    }
+    return ask(t("filer.replaceConfirm", { count: collisions.existing.length }), {
+      title: t("filer.replaceTitle"),
+      kind: "warning",
+      okLabel: t("filer.replace"),
+      cancelLabel: t("common.cancel"),
+    });
   };
 
-  const runUpload = async (incoming: FileEntry, destDir: string) => {
-    if (transferring || !destDir) return;
-    let existing: FileEntry | undefined;
-    try {
-      existing = (await entriesAt("remote", destDir)).find((entry) => entry.name === incoming.name);
-    } catch (error) {
-      setRemoteError(friendlyFtpError(error));
-      return;
-    }
-    if (!(await mayLand("remote", incoming, existing))) return;
+  /**
+   * Copies `items` into `destination`, all of them in one queue job (upstream
+   * issue #101). The batch is checked against the destination's listing first:
+   * a clash with a link or with the other kind stops it before anything is
+   * sent, and names already there are confirmed once for the whole batch.
+   */
+  const runTransfer = async (
+    direction: "upload" | "download",
+    items: readonly FileEntry[],
+    destination: string,
+  ) => {
+    if (transferring || !destination || items.length === 0) return;
+    const upload = direction === "upload";
+    const setError = upload ? setRemoteError : setLocalError;
+    if (!(await mayLand(direction, items))) return;
 
-    setRemoteError(null);
+    setError(null);
     setTransferring(true);
     transferId.current = api.newTransferId();
     setTransfer({
-      direction: "upload",
-      name: incoming.name,
+      direction,
+      name:
+        items.length === 1
+          ? items[0].name
+          : t("filer.manyItems", { count: items.length }),
       transferred: 0,
-      total: incoming.isDir ? 0 : incoming.size,
+      total: items.reduce((sum, item) => sum + (item.isDir ? 0 : item.size), 0),
       status: "running",
     });
+    const transferItems: api.TransferItem[] = items.map((item) => ({
+      local: upload ? item.path : joinLocal(destination, item.name),
+      remote: upload ? joinRemote(destination, item.name) : item.path,
+      upload,
+      directory: item.isDir,
+    }));
     try {
-      const destination = joinRemote(destDir, incoming.name);
-      if (incoming.isDir) {
-        await api.sftpUploadDirectory(
-          sessionId,
-          incoming.path,
-          destination,
-          updateProgress,
-          transferId.current,
-        );
-      } else {
-        await api.sftpUpload(
-          sessionId,
-          incoming.path,
-          destination,
-          updateProgress,
-          transferId.current,
-        );
-      }
+      await api.transferFiles(sessionId, transferItems, updateProgress, transferId.current);
       setTransfer((current) => (current ? { ...current, status: "complete" } : current));
-      await loadRemote(remotePath);
+      await (upload ? loadRemote(remotePath) : loadLocal(localPath));
     } catch (error) {
       setTransfer((current) =>
         current
@@ -164,71 +192,19 @@ export function useFtpTransfer({
     }
   };
 
-  const runDownload = async (incoming: FileEntry, destDir: string) => {
-    if (transferring || !destDir) return;
-    let existing: FileEntry | undefined;
-    try {
-      existing = (await entriesAt("local", destDir)).find((entry) => entry.name === incoming.name);
-    } catch (error) {
-      setLocalError(errorText(error));
-      return;
-    }
-    if (!(await mayLand("local", incoming, existing))) return;
+  /** The drag/drop path: one entry into the folder it was dropped on. */
+  const runUpload = (incoming: FileEntry, destDir: string) =>
+    runTransfer("upload", [incoming], destDir);
+  const runDownload = (incoming: FileEntry, destDir: string) =>
+    runTransfer("download", [incoming], destDir);
 
-    setLocalError(null);
-    setTransferring(true);
-    transferId.current = api.newTransferId();
-    setTransfer({
-      direction: "download",
-      name: incoming.name,
-      transferred: 0,
-      total: incoming.isDir ? 0 : incoming.size,
-      status: "running",
-    });
-    try {
-      const destination = joinLocal(destDir, incoming.name);
-      if (incoming.isDir) {
-        await api.sftpDownloadDirectory(
-          sessionId,
-          incoming.path,
-          destination,
-          updateProgress,
-          transferId.current,
-        );
-      } else {
-        await api.sftpDownload(
-          sessionId,
-          incoming.path,
-          destination,
-          updateProgress,
-          transferId.current,
-        );
-      }
-      setTransfer((current) => (current ? { ...current, status: "complete" } : current));
-      await loadLocal(localPath);
-    } catch (error) {
-      setTransfer((current) =>
-        current
-          ? {
-              ...current,
-              status: isCancelled(error) ? "cancelled" : "error",
-              message: errorText(error),
-            }
-          : current,
-      );
-    } finally {
-      transferId.current = null;
-      setTransferring(false);
-    }
-  };
-
-  const upload = () => {
-    if (selectedLocal) void runUpload(selectedLocal, remotePath);
-  };
-
-  const download = () => {
-    if (selectedRemote) void runDownload(selectedRemote, localPath);
-  };
+  /** The toolbar, rail and context menu: whatever the pane has selected. */
+  const upload = () => void runTransfer("upload", selectedLocal, remotePath);
+  const download = () => void runTransfer("download", selectedRemote, localPath);
+  const uploadEntries = (items: readonly FileEntry[]) =>
+    void runTransfer("upload", items, remotePath);
+  const downloadEntries = (items: readonly FileEntry[]) =>
+    void runTransfer("download", items, localPath);
 
   const transferPercent = transfer
     ? transfer.status === "complete"
@@ -244,6 +220,8 @@ export function useFtpTransfer({
     runDownload,
     upload,
     download,
+    uploadEntries,
+    downloadEntries,
     transfer,
     transferPercent,
     transferId,

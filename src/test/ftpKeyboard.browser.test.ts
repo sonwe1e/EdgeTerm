@@ -8,6 +8,7 @@ import { createElement as h, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 import { browserAfterEach, mount, twoFrames } from "./browserHarness";
+import { EMPTY_SELECTION, type FileSelection } from "../fileBatch";
 import { FileBrowser } from "../components/ftpPresentation";
 import type { FileEntry } from "../types";
 
@@ -26,7 +27,7 @@ const browser = (overrides: Record<string, unknown> = {}) => ({
   path: "/remote",
   draft: "/remote",
   entries,
-  selected: null,
+  selection: EMPTY_SELECTION,
   loading: false,
   error: null,
   side: "remote" as const,
@@ -41,15 +42,15 @@ const browser = (overrides: Record<string, unknown> = {}) => ({
   onHome: vi.fn(),
   onParent: vi.fn(),
   onRefresh: vi.fn(),
-  onSelect: vi.fn(),
+  onSelectionChange: vi.fn(),
   onActivate: vi.fn(),
   ...overrides,
 });
 
-/** The pane the way FtpPane holds it: `selected` is the store's, fed back. */
+/** The pane the way FtpPane holds it: the selection is the pane's, fed back. */
 function StatefulBrowser() {
-  const [selected, setSelected] = useState<string | null>(null);
-  return h(FileBrowser, browser({ selected, onSelect: (path: string) => setSelected(path) }));
+  const [selection, setSelection] = useState<FileSelection>(EMPTY_SELECTION);
+  return h(FileBrowser, browser({ selection, onSelectionChange: setSelection }));
 }
 
 const list = () => document.querySelector<HTMLDivElement>('.ftp-browser-list[role="listbox"]')!;

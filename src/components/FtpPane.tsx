@@ -9,9 +9,12 @@ import { useFtpTransfer } from "./useFtpTransfer";
 export { FileBrowser } from "./ftpPresentation";
 
 import * as api from "../api";
+import type { MenuItem } from "./ContextMenu";
 import type { FileEntry } from "../types";
 import { useStableCallback } from "../useStableCallback";
 import { useT } from "../useT";
+import { ContextMenu } from "./ContextMenu";
+import { DeleteEntryDialog } from "./DeleteEntryDialog";
 import { FileDiffDialog } from "./FileDiffDialog";
 import { GroupNameDialog } from "./GroupNameDialog";
 import { Icon } from "./icons";
@@ -25,22 +28,37 @@ interface NamePrompt {
   submit: (name: string) => Promise<void>;
 }
 
+type Side = "remote" | "local";
+
+interface PendingDelete {
+  side: Side;
+  entries: FileEntry[];
+}
+
 export function FtpPane({ tab, active }: Props) {
   const t = useT();
   const sessionId = tab.info.id;
   const [namePrompt, setNamePrompt] = useState<NamePrompt | null>(null);
   const [comparison, setComparison] = useState<{ local: string; remote: string } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   useEffect(() => {
     if (tab.state !== "connected") {
       setComparison(null);
       setNamePrompt(null);
+      setMenu(null);
+      setPendingDelete(null);
     }
   }, [tab.state]);
 
   // A prompt belongs to the tab that raised it; switching tabs must not
   // leave a modal naming a path from the pane behind it.
   useEffect(() => {
-    if (!active) setNamePrompt(null);
+    if (!active) {
+      setNamePrompt(null);
+      setMenu(null);
+      setPendingDelete(null);
+    }
   }, [active]);
   // The pane serves both FTP and SFTP file sessions; only the labels differ.
   const protocolLabel = tab.info.kind === "sftp" ? "SFTP" : "FTP";
@@ -56,19 +74,19 @@ export function FtpPane({ tab, active }: Props) {
     selectedLocal,
     selectedRemote,
     remoteDraft,
-    remoteSelected,
+    remoteSelection,
     remoteLoading,
     remoteError,
     setRemoteDraft,
     remoteHome,
-    setRemoteSelected,
+    setRemoteSelection,
     localLoading,
     localDraft,
-    localSelected,
+    localSelection,
     localError,
     setLocalDraft,
     localHome,
-    setLocalSelected,
+    setLocalSelection,
   } = useFtpDirectory({ sessionId, tab });
   const {
     transferring,
@@ -76,6 +94,8 @@ export function FtpPane({ tab, active }: Props) {
     runDownload,
     upload,
     download,
+    uploadEntries,
+    downloadEntries,
     transfer,
     transferPercent,
     transferId,
@@ -113,10 +133,10 @@ export function FtpPane({ tab, active }: Props) {
   const {
     createRemoteFolder,
     renameRemote,
-    removeRemote,
+    removeRemoteEntries,
     createLocalFolder,
     renameLocal,
-    removeLocal,
+    removeLocalEntries,
   } = useFtpActions({
     remotePath,
     transferring,
@@ -130,29 +150,118 @@ export function FtpPane({ tab, active }: Props) {
     selectedLocal,
   });
 
-  const requestName = (side: "remote" | "local", mode: "create" | "rename") => {
+  // Rename and compare act on exactly one entry; transfers, delete and the
+  // context menu take the whole selection.
+  const soleRemote = selectedRemote.length === 1 ? selectedRemote[0] : undefined;
+  const soleLocal = selectedLocal.length === 1 ? selectedLocal[0] : undefined;
+
+  const requestName = (side: Side, mode: "create" | "rename", entry?: FileEntry) => {
     const remote = side === "remote";
     const base = remote ? remotePath : localPath;
     const selected = remote ? selectedRemote : selectedLocal;
-    if (!base || (mode === "rename" && !selected)) return;
+    // A row menu names its row; the toolbar names the one selected entry.
+    const target = entry ?? (selected.length === 1 ? selected[0] : undefined);
+    if (!base || (mode === "rename" && !target)) return;
     setNamePrompt({
       title: mode === "create" ? t("ftp.newFolderTitle") : t("ftp.renameTitle"),
       label: mode === "create" ? t("ftp.folderName") : t("ftp.itemName"),
       hint: base,
-      initialName: mode === "rename" ? selected?.name : "",
+      initialName: mode === "rename" ? target?.name : "",
       submitLabel: mode === "create" ? t("ftp.create") : t("ftp.rename"),
       submit: async (name) => {
         if (remote) {
           if (mode === "create") await createRemoteFolder(name);
-          else await renameRemote(name);
+          else await renameRemote(name, target);
         } else if (mode === "create") {
           await createLocalFolder(name);
         } else {
-          await renameLocal(name);
+          await renameLocal(name, target);
         }
         setNamePrompt(null);
       },
     });
+  };
+
+  /**
+   * Delete on the selection: a single entry keeps the confirmation it has
+   * always shown, several are confirmed once by the delete dialog, the way
+   * the Filer's batch delete is. The removal itself runs here for both.
+   */
+  const requestDelete = (side: Side, entries: readonly FileEntry[]) => {
+    if (entries.length === 0) return;
+    if (entries.length === 1) {
+      void (side === "remote" ? removeRemoteEntries(entries) : removeLocalEntries(entries));
+      return;
+    }
+    setPendingDelete({ side, entries: [...entries] });
+  };
+
+  const closeMenu = useStableCallback(() => setMenu(null));
+  const menuLabel = (label: string, count: number) => (count > 1 ? `${label} (${count})` : label);
+
+  /**
+   * What a right click on a row offers: the actions the toolbar and rail give
+   * the selection, plus Open for a folder. `targets` is the selection the
+   * right click left behind, so the menu acts on exactly the rows it shows.
+   */
+  const rowMenu = (
+    side: Side,
+    entry: FileEntry,
+    targets: readonly FileEntry[],
+    at: { x: number; y: number },
+  ) => {
+    const count = targets.length;
+    const uploadSide = side === "local";
+    // The row menu names the clicked row, so these actions cannot act on a
+    // selection that the right click has not committed yet.
+    const opposite = uploadSide ? soleRemote : soleLocal;
+    const compareReady = count === 1 && !entry.isDir && !!opposite && !opposite.isDir;
+    const items: MenuItem[] = [
+      {
+        label: menuLabel(uploadSide ? t("ftp.upload") : t("ftp.download"), count),
+        icon: uploadSide ? "cloud-upload" : "cloud-download",
+        disabled: transferring,
+        action: () =>
+          uploadSide ? uploadEntries(targets) : downloadEntries(targets),
+      },
+      ...(count === 1 && entry.isDir
+        ? [
+            {
+              label: t("filer.open"),
+              icon: "folder-opened" as const,
+              action: () => void (side === "remote" ? loadRemote(entry.path) : loadLocal(entry.path)),
+            },
+          ]
+        : []),
+      "separator" as const,
+      {
+        label: t("ftp.compare"),
+        icon: "arrow-swap" as const,
+        disabled: transferring || !compareReady,
+        action: () => {
+          if (!opposite || !compareReady) return;
+          setComparison(
+            uploadSide
+              ? { local: entry.path, remote: opposite.path }
+              : { local: opposite.path, remote: entry.path },
+          );
+        },
+      },
+      {
+        label: t("ftp.rename"),
+        icon: "edit" as const,
+        disabled: count !== 1 || transferring,
+        action: () => requestName(side, "rename", entry),
+      },
+      {
+        label: menuLabel(t("common.delete"), count),
+        icon: "trash" as const,
+        danger: true,
+        disabled: transferring,
+        action: () => requestDelete(side, targets),
+      },
+    ];
+    setMenu({ x: at.x, y: at.y, items });
   };
 
   return (
@@ -192,7 +301,7 @@ export function FtpPane({ tab, active }: Props) {
               path={remotePath}
               draft={remoteDraft}
               entries={remoteEntries}
-              selected={remoteSelected}
+              selection={remoteSelection}
               loading={remoteLoading}
               error={remoteError}
               onDraftChange={setRemoteDraft}
@@ -200,7 +309,8 @@ export function FtpPane({ tab, active }: Props) {
               onHome={() => void loadRemote(remoteHome)}
               onParent={() => void loadRemote(remoteParent(remotePath))}
               onRefresh={() => void loadRemote(remotePath || remoteHome)}
-              onSelect={setRemoteSelected}
+              onSelectionChange={setRemoteSelection}
+              onRowMenu={rowMenu}
               onActivate={activateRemote}
               actions={
                 <>
@@ -214,14 +324,14 @@ export function FtpPane({ tab, active }: Props) {
                   <ToolButton
                     label={t("ftp.renameRemote")}
                     onClick={() => requestName("remote", "rename")}
-                    disabled={!selectedRemote || remoteLoading || transferring}
+                    disabled={!soleRemote || remoteLoading || transferring}
                   >
                     <Icon name="edit" />
                   </ToolButton>
                   <ToolButton
                     label={t("ftp.deleteRemote")}
-                    onClick={() => void removeRemote()}
-                    disabled={!selectedRemote || remoteLoading || transferring}
+                    onClick={() => requestDelete("remote", selectedRemote)}
+                    disabled={selectedRemote.length === 0 || remoteLoading || transferring}
                     danger
                   >
                     <Icon name="trash" />
@@ -235,16 +345,16 @@ export function FtpPane({ tab, active }: Props) {
                 className="ftp-transfer-button"
                 type="button"
                 disabled={
-                  !selectedLocal ||
-                  selectedLocal.isDir ||
-                  !selectedRemote ||
-                  selectedRemote.isDir ||
+                  !soleLocal ||
+                  soleLocal.isDir ||
+                  !soleRemote ||
+                  soleRemote.isDir ||
                   localLoading ||
                   remoteLoading
                 }
                 onClick={() => {
-                  if (selectedLocal && selectedRemote)
-                    setComparison({ local: selectedLocal.path, remote: selectedRemote.path });
+                  if (soleLocal && soleRemote)
+                    setComparison({ local: soleLocal.path, remote: soleRemote.path });
                 }}
                 title={t("ftp.compareTitle")}
               >
@@ -252,8 +362,8 @@ export function FtpPane({ tab, active }: Props) {
               </button>
               <button
                 className="ftp-transfer-button"
-                onClick={() => void upload()}
-                disabled={!selectedLocal || transferring}
+                onClick={() => upload()}
+                disabled={selectedLocal.length === 0 || transferring}
                 title={t("ftp.uploadTitle")}
               >
                 <span>←</span>
@@ -261,8 +371,8 @@ export function FtpPane({ tab, active }: Props) {
               </button>
               <button
                 className="ftp-transfer-button"
-                onClick={() => void download()}
-                disabled={!selectedRemote || transferring}
+                onClick={() => download()}
+                disabled={selectedRemote.length === 0 || transferring}
                 title={t("ftp.downloadTitle", { protocol: protocolLabel })}
               >
                 {t("ftp.download")}
@@ -284,7 +394,7 @@ export function FtpPane({ tab, active }: Props) {
               path={localPath}
               draft={localDraft}
               entries={localEntries}
-              selected={localSelected}
+              selection={localSelection}
               loading={localLoading}
               error={localError}
               onDraftChange={setLocalDraft}
@@ -294,7 +404,8 @@ export function FtpPane({ tab, active }: Props) {
                 void api.localParent(localPath).then(loadLocal);
               }}
               onRefresh={() => void loadLocal(localPath || localHome)}
-              onSelect={setLocalSelected}
+              onSelectionChange={setLocalSelection}
+              onRowMenu={rowMenu}
               onActivate={activateLocal}
               actions={
                 <>
@@ -308,14 +419,14 @@ export function FtpPane({ tab, active }: Props) {
                   <ToolButton
                     label={t("ftp.renameLocal")}
                     onClick={() => requestName("local", "rename")}
-                    disabled={!selectedLocal || localLoading || transferring}
+                    disabled={!soleLocal || localLoading || transferring}
                   >
                     <Icon name="edit" />
                   </ToolButton>
                   <ToolButton
                     label={t("ftp.deleteLocal")}
-                    onClick={() => void removeLocal()}
-                    disabled={!selectedLocal || localLoading || transferring}
+                    onClick={() => requestDelete("local", selectedLocal)}
+                    disabled={selectedLocal.length === 0 || localLoading || transferring}
                     danger
                   >
                     <Icon name="trash" />
@@ -409,6 +520,24 @@ export function FtpPane({ tab, active }: Props) {
             )}
           </div>
         </>
+      )}
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={closeMenu} />}
+      {pendingDelete && tab.state === "connected" && (
+        <DeleteEntryDialog
+          entry={pendingDelete.entries[0]}
+          entries={pendingDelete.entries}
+          location={
+            pendingDelete.side === "remote" ? tab.info.address : t("ftp.localComputer")
+          }
+          onConfirm={() => {
+            const { side, entries } = pendingDelete;
+            setPendingDelete(null);
+            void (side === "remote"
+              ? removeRemoteEntries(entries)
+              : removeLocalEntries(entries));
+          }}
+          onCancel={() => setPendingDelete(null)}
+        />
       )}
       {namePrompt && (
         <GroupNameDialog

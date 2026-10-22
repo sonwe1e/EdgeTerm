@@ -10,10 +10,8 @@ vi.mock("./api", async (original) => ({
   sftpList: vi.fn(),
   localHome: vi.fn(),
   localList: vi.fn(),
-  sftpUpload: vi.fn(),
-  sftpUploadDirectory: vi.fn(),
-  sftpDownload: vi.fn(),
-  sftpDownloadDirectory: vi.fn(),
+  transferFiles: vi.fn(),
+  newTransferId: vi.fn(() => "queue-1"),
   compareFiles: vi.fn(),
   cancelFileDiff: vi.fn(),
 }));
@@ -75,10 +73,8 @@ beforeEach(async () => {
   vi.mocked(api.localHome).mockResolvedValue("/local");
   vi.mocked(api.sftpList).mockImplementation(async (_id, path) => ({ path, entries: remoteEntries }));
   vi.mocked(api.localList).mockImplementation(async (path) => ({ path, entries: localEntries }));
-  vi.mocked(api.sftpUpload).mockResolvedValue(undefined);
-  vi.mocked(api.sftpUploadDirectory).mockResolvedValue(undefined);
-  vi.mocked(api.sftpDownload).mockResolvedValue(undefined);
-  vi.mocked(api.sftpDownloadDirectory).mockResolvedValue(undefined);
+  vi.mocked(api.transferFiles).mockResolvedValue(undefined);
+  vi.mocked(api.newTransferId).mockReturnValue("queue-1");
   host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
@@ -108,9 +104,19 @@ async function drag(from: HTMLElement, to: Element) {
   });
 }
 
-const transfers = () => [
-  api.sftpUpload, api.sftpUploadDirectory, api.sftpDownload, api.sftpDownloadDirectory,
-].flatMap((fn) => vi.mocked(fn).mock.calls);
+/** Every transfer the pane started, whichever side it went to. */
+const transfers = () => vi.mocked(api.transferFiles).mock.calls;
+
+/**
+ * The one TransferItem a drag gesture sends: a single entry per gesture,
+ * under the one queue id the transfer center follows.
+ */
+const onlyTransfer = () => {
+  expect(api.transferFiles).toHaveBeenCalledTimes(1);
+  const [session, items, , queue] = vi.mocked(api.transferFiles).mock.calls[0];
+  expect(api.newTransferId).toHaveBeenCalledTimes(1);
+  return { session, items, queue };
+};
 
 describe("dragging between and within the dual panes, through FtpPane", () => {
   it("compares only a selected file on each side through the dialog IPC", async () => {
@@ -132,18 +138,27 @@ describe("dragging between and within the dual panes, through FtpPane", () => {
   it("uploads a local file dropped on the remote list (the harness works)", async () => {
     expect(row("/local/up.txt")).not.toBeNull();
     await drag(row("/local/up.txt"), list("SFTP Server file list"));
-    expect(api.sftpUpload).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(api.sftpUpload).mock.calls[0].slice(0, 3)).toEqual([
-      "sftp1", "/local/up.txt", "/remote/up.txt",
-    ]);
+    expect(onlyTransfer()).toEqual({
+      session: "sftp1",
+      items: [{ local: "/local/up.txt", remote: "/remote/up.txt", upload: true, directory: false }],
+      queue: "queue-1",
+    });
+    // The destination pane is reloaded once the queued transfer settles.
+    expect(
+      vi.mocked(api.sftpList).mock.calls.filter(([, path]) => path === "/remote").length,
+    ).toBe(2);
   });
 
   it("downloads a remote file dropped on the local list", async () => {
     await drag(row("/remote/a.txt"), list("Local Computer file list"));
-    expect(api.sftpDownload).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(api.sftpDownload).mock.calls[0].slice(0, 3)).toEqual([
-      "sftp1", "/remote/a.txt", "/local/a.txt",
-    ]);
+    expect(onlyTransfer()).toEqual({
+      session: "sftp1",
+      items: [{ local: "/local/a.txt", remote: "/remote/a.txt", upload: false, directory: false }],
+      queue: "queue-1",
+    });
+    expect(
+      vi.mocked(api.localList).mock.calls.filter(([path]) => path === "/local").length,
+    ).toBe(2);
   });
 
   it("does nothing for a remote file dropped on a remote folder or its own list", async () => {

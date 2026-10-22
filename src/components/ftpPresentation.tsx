@@ -5,14 +5,25 @@ import {
   useMemo,
   useRef,
   type ReactNode,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from "react";
 import { errorText } from "../errorInfo";
+import {
+  clickMode,
+  selectEntry,
+  selectForMenu,
+  selectedEntries,
+  type FileSelection,
+  type SelectMode,
+} from "../fileBatch";
 import { sortFileEntries, toggleFileSort, type SortKey } from "../fileSort";
 import { type PaneSide } from "../paneDrop";
+import { IS_MAC } from "../platform";
 import { useStore, type Tab } from "../store";
 import { t as translateMsg } from "../i18n";
+import { useStableCallback } from "../useStableCallback";
 import { useT } from "../useT";
 import type { FileEntry, ThemeMode } from "../types";
 import { FileIcon } from "./FileIcon";
@@ -53,7 +64,8 @@ export interface FileBrowserProps {
   path: string;
   draft: string;
   entries: FileEntry[];
-  selected: string | null;
+  /** The pane's whole selection, not just the row the cursor is on. */
+  selection: FileSelection;
   loading: boolean;
   error: string | null;
   actions?: ReactNode;
@@ -74,7 +86,17 @@ export interface FileBrowserProps {
   onHome: () => void;
   onParent: () => void;
   onRefresh: () => void;
-  onSelect: (path: string) => void;
+  onSelectionChange: (selection: FileSelection) => void;
+  /**
+   * A right click on a row, after the selection the menu acts on has been
+   * applied; `targets` is that selection in listing order.
+   */
+  onRowMenu?: (
+    side: PaneSide,
+    entry: FileEntry,
+    targets: readonly FileEntry[],
+    at: { x: number; y: number },
+  ) => void;
   onActivate: (entry: FileEntry) => void;
 }
 
@@ -84,7 +106,7 @@ export function FileBrowser({
   path,
   draft,
   entries,
-  selected,
+  selection,
   loading,
   error,
   actions,
@@ -101,7 +123,8 @@ export function FileBrowser({
   onHome,
   onParent,
   onRefresh,
-  onSelect,
+  onSelectionChange,
+  onRowMenu,
   onActivate,
 }: FileBrowserProps) {
   const t = useT();
@@ -112,6 +135,8 @@ export function FileBrowser({
   const sort = useStore((s) => s.filerSort);
   const setFilerSort = useStore((s) => s.setFilerSort);
   const sortedEntries = useMemo(() => sortFileEntries(entries, sort), [entries, sort]);
+  // The listing as shown, which is what a Shift-click range spans.
+  const order = useMemo(() => sortedEntries.map((entry) => entry.path), [sortedEntries]);
 
   // The keyboard model of the list: one Tab stop on the listbox, a cursor
   // announced through aria-activedescendant, selection following the
@@ -125,12 +150,32 @@ export function FileBrowser({
     rowHeight: 29,
     listRef,
     optionId,
-    onSelect,
+    // The cursor and a pointer press both change the pane's selection; the
+    // modifier state arrives as a mode, so Ctrl toggles and Shift extends.
+    onSelect: (path, mode: SelectMode) =>
+      onSelectionChange(selectEntry(selection, order, path, mode)),
     onActivate,
     // Typing a name jumps to it (upstream issue #108). An error replaces the
     // rows but keeps the listing they came from, so there is nothing on
     // screen for a typed name to land on.
     typeSelect: !error,
+  });
+
+  /**
+   * A right click acts on the whole selection it lands in: a row that is
+   * already selected keeps the selection, anything else becomes a selection
+   * of its own. The menu receives the entries it will act on, so it never
+   * reads a selection that has not landed yet.
+   */
+  const rowMenu = useStableCallback((entry: FileEntry, event: ReactMouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const next = selectForMenu(selection, entry.path);
+    if (next !== selection) onSelectionChange(next);
+    onRowMenu?.(side, entry, selectedEntries(sortedEntries, next), {
+      x: event.clientX,
+      y: event.clientY,
+    });
   });
 
   const columnsRef = useRef<HTMLDivElement>(null);
@@ -283,13 +328,14 @@ export function FileBrowser({
                 position={index + 1}
                 total={sortedEntries.length}
                 side={side}
-                selected={selected === entry.path}
+                selected={selection.paths.includes(entry.path)}
                 dragSource={draggingPath === entry.path}
                 dropTarget={
                   dropHover != null && dropHover.side === side && dropHover.dir === entry.path
                 }
                 theme={theme}
                 onSelect={onRowSelect}
+                onContextMenu={rowMenu}
                 onActivate={onActivate}
                 onPointerDown={onItemPointerDown}
                 onPointerMove={onItemPointerMove}
@@ -301,7 +347,11 @@ export function FileBrowser({
         )}
       </div>
       <div className="ftp-browser-footer">
-        <span>{t("ftp.items", { count: entries.length })}</span>
+        <span>
+          {t("ftp.items", { count: entries.length })}
+          {selection.paths.length > 1 &&
+            ` · ${t("filer.selectedCount", { count: selection.paths.length })}`}
+        </span>
         <span>{loading ? t("ftp.loading") : path}</span>
       </div>
     </section>
@@ -326,6 +376,7 @@ export const FtpFileRow = memo(function FtpFileRow({
   dropTarget,
   theme,
   onSelect,
+  onContextMenu,
   onActivate,
   onPointerDown,
   onPointerMove,
@@ -340,7 +391,9 @@ export const FtpFileRow = memo(function FtpFileRow({
   dragSource: boolean;
   dropTarget: boolean;
   theme: ThemeMode;
-  onSelect: (path: string) => void;
+  /** A primary press: `mode` is what its modifiers mean (see `clickMode`). */
+  onSelect: (path: string, mode?: SelectMode) => void;
+  onContextMenu: (entry: FileEntry, event: ReactMouseEvent) => void;
   onActivate: (entry: FileEntry) => void;
   onPointerDown: (side: PaneSide, entry: FileEntry, event: ReactPointerEvent) => void;
   onPointerMove: (event: ReactPointerEvent) => void;
@@ -361,8 +414,14 @@ export const FtpFileRow = memo(function FtpFileRow({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onDragCancel}
-      onClick={() => onSelect(entry.path)}
+      onClick={(event) => {
+        // The context menu's own press must not collapse the selection it is
+        // about to act on; clickMode answers null for it (and for right clicks).
+        const mode = clickMode(event, IS_MAC);
+        if (mode) onSelect(entry.path, mode);
+      }}
       onDoubleClick={() => onActivate(entry)}
+      onContextMenu={(event) => onContextMenu(entry, event)}
       title={entry.path}
     >
       <span className="ftp-file-name">
