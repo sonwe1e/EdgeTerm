@@ -922,6 +922,8 @@ export const zhCN: Catalog = {
   "transfer.clearFailedQuestion": "清除失败记录？",
   "transfer.clearFailedBulk": "清除 {count} 项失败记录？",
   "transfer.clearFailedHint": "服务器上的未完成文件会保留。",
+  "transfer.clearInterrupted": "清除未完成",
+  "transfer.clearInterruptedBulk": "清除 {count} 项未完成记录？",
   "transfer.failedFilesSection": "失败文件",
   "transfer.failedFilesCount": "{count} 个失败文件",
   "transfer.closeFailedFiles": "关闭失败文件",

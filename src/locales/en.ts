@@ -1008,6 +1008,8 @@ export const en = {
   "transfer.clearFailedQuestion": "Clear failed transfer?",
   "transfer.clearFailedBulk": "Clear {count} failed transfers?",
   "transfer.clearFailedHint": "Partial files stay on the server.",
+  "transfer.clearInterrupted": "Clear interrupted",
+  "transfer.clearInterruptedBulk": "Clear {count} interrupted transfers?",
   "transfer.failedFilesSection": "Failed files",
   "transfer.failedFilesCount": "{count} failed files",
   "transfer.closeFailedFiles": "Close failed files",

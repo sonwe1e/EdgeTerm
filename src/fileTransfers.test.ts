@@ -155,6 +155,38 @@ describe("background transfer state", () => {
       expect(host.textContent).not.toContain("Unrecognized journal");
     } finally { act(() => root.unmount()); host.remove(); }
   });
+  it("clears every interrupted record from the recovery header after one confirmation", async () => {
+    api.listRecoverableTransfers.mockResolvedValue([
+      { id: "journal-1", name: "backup.tar", kind: "sftp", endpoint: "sftp://u@host:22", host: "host", port: 22, username: "u", items: 3, checkpoints: 2, unrecognized: false },
+      { id: "journal-2", name: "Unrecognized journal", kind: null, endpoint: null, host: null, port: null, username: null, items: 0, checkpoints: 0, unrecognized: true },
+    ]);
+    const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+    const headerButton = () => [...host.querySelectorAll<HTMLButtonElement>(".transfer-section-head button")]
+      .find((b) => b.textContent === "Clear interrupted");
+    try {
+      await act(async () => root.render(h(TransferCenter)));
+      await act(async () => host.querySelector("button")!.click());
+      await act(async () => {});
+      await act(async () => headerButton()!.click());
+      const band = host.querySelector<HTMLElement>(".transfer-clear-band")!;
+      expect(band.textContent).toContain("Clear 2 interrupted transfers?");
+      expect(band.textContent).toContain("Partial files stay on the server.");
+      expect(api.discardRecoverableTransfer).not.toHaveBeenCalled();
+      // Cancelling keeps every entry.
+      await act(async () => [...band.querySelectorAll("button")].find((b) => b.textContent === "Cancel")!.click());
+      expect(api.discardRecoverableTransfer).not.toHaveBeenCalled();
+      expect(host.textContent).toContain("backup.tar");
+      // Confirming discards each journal — the unrecognized one too — and
+      // empties the section without another discovery round trip.
+      await act(async () => headerButton()!.click());
+      const confirmBand = host.querySelector<HTMLElement>(".transfer-clear-band")!;
+      await act(async () => [...confirmBand.querySelectorAll("button")].find((b) => b.textContent === "Clear")!.click());
+      expect(api.discardRecoverableTransfer.mock.calls.map(([id]) => id).sort()).toEqual(["journal-1", "journal-2"]);
+      expect(host.textContent).not.toContain("backup.tar");
+      expect(host.textContent).not.toContain("Unrecognized journal");
+      expect(host.querySelector(".transfer-recovery")).toBeNull();
+    } finally { act(() => root.unmount()); host.remove(); }
+  });
   it("keeps a forgotten journal removed when older discovery resolves", async () => {
     const entry = { id: "forget-race", name: "forgotten tree", kind: "sftp", endpoint: "fixture", host: "host", port: 22, username: "u", items: 1, checkpoints: 1, unrecognized: false };
     let resolveOld!: (found: typeof entry[]) => void;

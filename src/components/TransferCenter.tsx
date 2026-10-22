@@ -113,6 +113,8 @@ export function TransferCenter() {
   const [confirming, setConfirming] = useState<string | null>(null);
   /** The bulk "clear failed" awaiting confirmation. */
   const [bulkClear, setBulkClear] = useState(false);
+  /** The bulk "clear interrupted" awaiting confirmation. */
+  const [bulkForget, setBulkForget] = useState(false);
   const recoveryRows = useMemo(() => recoverable.map((entry) => ({ ...entry, path: entry.id })), [recoverable]);
   const failures = failureJob ? records[failureJob]?.failedFiles : undefined;
   const failureRows = useMemo(() => (failures ?? []).map((message, index) => ({ path: String(index), message })), [failures]);
@@ -170,6 +172,30 @@ export function TransferCenter() {
       ++recoveryRequest.current;
       setRecoverable((found) => found.filter((entry) => entry.id !== id));
     } catch (e) { if (alive.current) setRecoveryError(errorText(e)); }
+  };
+  /**
+   * Bulk forget over the interrupted journals. Each discard is local
+   * bookkeeping exactly like the single forget, so the results are
+   * independent: one refusal keeps the others going, every failure is
+   * reported, and each success drops out of the list locally so a late
+   * discovery response cannot resurrect it.
+   */
+  const forgetAll = async () => {
+    setBulkForget(false);
+    setRecoveryError(null);
+    const removed = new Set<string>();
+    const problems: string[] = [];
+    for (const entry of recoverable) {
+      try {
+        await api.discardRecoverableTransfer(entry.id);
+        removed.add(entry.id);
+      } catch (e) { problems.push(errorText(e)); }
+    }
+    if (problems.length > 0 && alive.current) setRecoveryError(problems.join(" · "));
+    if (!alive.current) return;
+    ++recoveryRequest.current;
+    setRecoverable((found) => found.filter((entry) => !removed.has(entry.id)));
+    focusAfterClear();
   };
   const jobs = useMemo(() => Object.values(records).sort((a, b) => b.id.localeCompare(a.id)), [records]);
   const jobRows = useMemo(() => jobs.map((job) => ({ ...job, path: job.id })), [jobs]);
@@ -299,7 +325,7 @@ export function TransferCenter() {
     {failedJobs.length > 0 && <button
       type="button"
       className="transfer-head-action"
-      onClick={() => { setBulkClear(true); setConfirming(null); }}
+      onClick={() => { setBulkClear(true); setConfirming(null); setBulkForget(false); }}
     >{t("transfer.clearFailed")}</button>}
     {finishedJobs.length > 0 && <button
       type="button"
@@ -412,7 +438,20 @@ export function TransferCenter() {
       {(recoverable.length > 0 || recoveryError) && <section className="transfer-recovery">
         <div className="transfer-section-head">
           <strong>{t("transfer.interrupted")}{recoverable.length > 0 ? ` (${recoverable.length})` : ""}</strong>
+          {recoverable.length > 0 && <button
+            type="button"
+            className="transfer-head-action"
+            onClick={() => { setBulkForget(true); setBulkClear(false); setConfirming(null); }}
+          >{t("transfer.clearInterrupted")}</button>}
         </div>
+        {bulkForget && recoverable.length > 0 && <div className="transfer-clear-band" role="group" aria-label={t("transfer.clearInterrupted")}>
+          <span className="transfer-clear-question">{t("transfer.clearInterruptedBulk", { count: recoverable.length })}</span>
+          <div className="transfer-job-actions">
+            <button type="button" onClick={() => void forgetAll()}>{t("transfer.dismiss")}</button>
+            <button type="button" onClick={() => setBulkForget(false)}>{t("common.cancel")}</button>
+          </div>
+          <span className="transfer-clear-hint">{t("transfer.clearFailedHint")}</span>
+        </div>}
         <p className="status-popover-note transfer-recovery-note">{t("transfer.recoveryNote")}</p>
         {recoveryError && <div role="alert" className="status-popover-error">{recoveryError}</div>}
         <div className="transfer-recovery-rows"><VirtualFileRows entries={recoveryRows} rowHeight={RECOVERY_ROW_HEIGHT} resetKey="recovery">{(entry) => {
