@@ -3,8 +3,9 @@ import { Terminal, type IBufferLine, type IMarker } from "@xterm/xterm";
 import { isAiSessionCommand } from "./aiTools";
 import type { CommandSuggestion } from "./history";
 import { IS_MAC } from "./platform";
-import { isShellPrompt, shellPromptEnd } from "./semanticColors";
+import { shellPromptEnd } from "./semanticColors";
 import { TerminalLineGutter } from "./terminalLineGutter";
+import { isInputPrompt } from "./terminalPrompt";
 import { AI_QUIET_MS, Callbacks, InputAnchor, TERMINAL_REPORT } from "./terminalShared";
 
 interface Context {
@@ -146,9 +147,7 @@ export class TerminalCommands {
     this.commandMarker?.dispose();
     this.commandMarker = this.context.term.registerMarker(0);
     this.commandPrompt = prompt;
-    // Appending a space lets a compact bare prompt such as `$` satisfy the
-    // same look-ahead rule as `$ command` in semantic coloring.
-    this.commandPromptRecognized = isShellPrompt(`${prompt} `);
+    this.commandPromptRecognized = isInputPrompt(prompt);
     this.commandOutputAdvanced = false;
     this.commandRunning = true;
     this.aiSession = isAiSessionCommand(sent ?? this.submittedCommand(prompt));
@@ -222,7 +221,11 @@ export class TerminalCommands {
 
     const samePrompt =
       this.commandPrompt.trim().length > 0 && current.text.startsWith(this.commandPrompt);
-    const knownPrompt = this.commandPromptRecognized && isShellPrompt(`${current.text} `);
+    // A recognized prompt of another shape counts too: a REPL's continuation
+    // prompt, a device prompt naming the view just entered, or the prompt
+    // back after the statement (see `terminalPrompt.ts`).
+    const knownPrompt =
+      this.commandPromptRecognized && isInputPrompt(current.text);
     if (samePrompt || knownPrompt) this.finishCommand();
   }
 
