@@ -1436,4 +1436,15 @@ export const en = {
   "keySetup.generating": "Generating…",
   "keySetup.generateHint":
     "The new key is written to the path above; an existing file is never overwritten. A passphrase above, if any, encrypts it.",
+
+  // fix: PD-05 — the first-run empty state names the file panel, Sender and workbench
+  "empty.openFiler": "Open File Panel",
+  "empty.hideFiler": "Hide File Panel",
+  "empty.openFilerHint": "Browse local and remote files; drag to transfer.",
+  "empty.openSender": "Open Sender",
+  "empty.hideSender": "Hide Sender",
+  "empty.openSenderHint": "Keep frequent commands at hand and send them to the active session.",
+  "empty.openWorkbench": "Open Workbench",
+  "empty.openWorkbenchHint": "Manage projects, experiments and runs; edit code and review diffs.",
+
 } as const;

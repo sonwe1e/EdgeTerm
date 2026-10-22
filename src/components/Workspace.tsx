@@ -5,6 +5,7 @@ import { layoutRects, type Rect, type SplitterRect } from "../layout";
 import { chordLabel } from "../shortcuts";
 import { useStore } from "../store";
 import { useT } from "../useT";
+import { useWorkbench } from "../workbench/store";
 import { Splitter } from "./Splitter";
 import { TabStrip } from "./TabStrip";
 import { SessionPane } from "./TerminalPane";
@@ -81,6 +82,14 @@ export function Workspace({ onNewSession }: Props) {
   const dropTarget = useStore((s) => s.dropTarget);
   const resizeLayout = useStore((s) => s.resizeLayout);
   const newSessionKey = useStore((s) => chordLabel(s.shortcuts.newSession));
+  // The three capabilities the hero empty state used to leave to the View menu
+  // (PD-05). Each panel entry reads its real binding, and the workbench has no
+  // bound command, so its entry shows no chord rather than an invented one.
+  const panels = useStore((s) => s.panels);
+  const togglePanel = useStore((s) => s.togglePanel);
+  const setWorkbenchView = useWorkbench((s) => s.setView);
+  const filerKey = useStore((s) => chordLabel(s.shortcuts.panelFiler));
+  const senderKey = useStore((s) => chordLabel(s.shortcuts.panelSender));
   // The hint wraps the chord in a <kbd>; the catalogs put {key} where it goes.
   // The built-in local shell is named from the same catalog entry as the row,
   // so the hint and the thing it points at cannot disagree.
@@ -89,6 +98,35 @@ export function Workspace({ onNewSession }: Props) {
   const [hintBeforeKey, hintAfterKey = ""] = hint.split("{key}");
   const ref = useRef<HTMLDivElement>(null);
   const rects = useMemo(() => layoutRects(layout), [layout]);
+
+  // One line per capability, under the hero button. The panel entries name the
+  // action in force (open / hide) so the label stays true after a toggle, the
+  // way the View menu's own checkboxes do. Each entry carries a stable id:
+  // keying the rows on the label would remount a button the moment its label
+  // flips, dropping the keyboard focus that just activated it.
+  const capabilityEntries = [
+    {
+      id: "filer",
+      label: panels.filer ? t("empty.hideFiler") : t("empty.openFiler"),
+      hint: t("empty.openFilerHint"),
+      chord: filerKey,
+      action: () => togglePanel("filer"),
+    },
+    {
+      id: "sender",
+      label: panels.sender ? t("empty.hideSender") : t("empty.openSender"),
+      hint: t("empty.openSenderHint"),
+      chord: senderKey,
+      action: () => togglePanel("sender"),
+    },
+    {
+      id: "workbench",
+      label: t("empty.openWorkbench"),
+      hint: t("empty.openWorkbenchHint"),
+      chord: "",
+      action: () => setWorkbenchView("workbench"),
+    },
+  ];
 
   // A splitter drag arrives in pixels; the tree takes fractions of the split
   // the splitter belongs to.
@@ -146,6 +184,30 @@ export function Workspace({ onNewSession }: Props) {
                   <button className="btn is-primary" onClick={onNewSession}>
                     {t("empty.newSession")}
                   </button>
+                  <div className="term-empty-entries">
+                    {capabilityEntries.map((entry) => (
+                      <button
+                        key={entry.id}
+                        type="button"
+                        className="term-empty-entry"
+                        // The visible text is label + chord + hint; the
+                        // accessible name keeps the label and its chord, the
+                        // way the bar's own buttons name themselves.
+                        aria-label={
+                          entry.chord ? `${entry.label} (${entry.chord})` : entry.label
+                        }
+                        onClick={entry.action}
+                      >
+                        <span className="term-empty-entry-label">
+                          {entry.label}
+                          {entry.chord && <kbd>{entry.chord}</kbd>}
+                        </span>
+                        <span className="term-empty-entry-hint">
+                          {entry.hint}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
               {zone && (

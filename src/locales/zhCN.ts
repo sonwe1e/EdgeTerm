@@ -1343,4 +1343,15 @@ export const zhCN: Catalog = {
   "keySetup.generating": "正在生成…",
   "keySetup.generateHint":
     "新密钥将写入上方路径，已存在的文件不会被覆盖；如填写了口令，新密钥将用它加密。",
+
+  // fix: PD-05 — the first-run empty state names the file panel, Sender and workbench
+  "empty.openFiler": "打开文件面板",
+  "empty.hideFiler": "隐藏文件面板",
+  "empty.openFilerHint": "浏览本地与远程文件，拖拽即可传输。",
+  "empty.openSender": "打开发送器",
+  "empty.hideSender": "隐藏发送器",
+  "empty.openSenderHint": "保存常用命令，一键发送到当前会话。",
+  "empty.openWorkbench": "打开工作台",
+  "empty.openWorkbenchHint": "管理项目、实验与运行，编辑代码并查看差异。",
+
 };
