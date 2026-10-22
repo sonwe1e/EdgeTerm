@@ -41,11 +41,7 @@ import {
 import { HAS_TRAY, IS_MAC } from "../platform";
 import { chordLabel, type ShortcutCommand } from "../shortcuts";
 import { tabTitle, useActiveTab, useStore } from "../store";
-import type {
-  GutterMode,
-  RightClickAction,
-  TerminalController,
-} from "../terminal";
+import type { GutterMode, RightClickAction } from "../terminal";
 import { getController } from "../terminalRegistry";
 import type { CloseAction } from "../storeTypes";
 import { THEME_MODES, themeLabels, type ThemeMode } from "../types";
@@ -364,14 +360,6 @@ export function MenuBar(props: Props) {
   const docks = dockLabels(t);
   const clipboards = programClipboardLabels(t);
 
-  // File transfers run over a terminal's byte stream; (S)FTP tabs have none.
-  const withTerminal = (fn: (terminal: TerminalController) => void) =>
-    withActive((id) => {
-      const terminal = getController(id);
-      if (terminal) fn(terminal);
-      else setStatus(t("status.fileTransferNeedsTerminal"));
-    });
-
   // One gutter mode and one theme are in force at a time: radios, not boxes.
   const gutterEntry = (label: string, mode: GutterMode): Entry => ({
     label,
@@ -500,38 +488,6 @@ export function MenuBar(props: Props) {
           icon: "close",
           shortcut: accel("closeSession"),
           action: withActive(requestCloseTab),
-        },
-        {
-          // ZMODEM starts itself when `rz` / `sz` runs in the terminal;
-          // XMODEM has no such handshake and is started from here.
-          label: t("menu.fileTransfer"),
-          icon: "arrow-swap",
-          children: [
-            {
-              label: t("menu.sendXmodem"),
-              icon: "arrow-up",
-              action: withTerminal((terminal) => terminal.sendXmodem(128)),
-            },
-            {
-              label: t("menu.sendXmodem1k"),
-              icon: "arrow-up",
-              action: withTerminal((terminal) => terminal.sendXmodem(1024)),
-            },
-            {
-              label: t("menu.receiveXmodem"),
-              icon: "arrow-down",
-              action: withTerminal((terminal) => terminal.receiveXmodem()),
-            },
-            {
-              label: t("menu.cancelTransfer"),
-              icon: "close",
-              action: withTerminal((terminal) => {
-                if (!terminal.cancelTransfer()) {
-                  setStatus(t("status.noTransferRunning"));
-                }
-              }),
-            },
-          ],
         },
         "separator",
         {

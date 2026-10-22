@@ -102,7 +102,6 @@ function StatusBarBase({ showResources = true }: { showResources?: boolean }) {
           </button>
         )}
       </span>
-      <div className="status-spacer" />
       {showResources && <ResourceMonitorBar tab={tab} />}
       <ForwardCenter />
       <TransferCenter />
@@ -129,18 +128,16 @@ function StatusBarBase({ showResources = true }: { showResources?: boolean }) {
               {t("status.recording")}
             </button>
           )}
-          {isFileSession(tab.info.kind) ? (
-            <span className="status-item">{t("status.dualPane")}</span>
-          ) : (
+          {!isFileSession(tab.info.kind) && (
             <span className="status-item">
               {t("status.window", { cols: tab.cols, rows: tab.rows })}
             </span>
           )}
           <span
             className="status-item status-protocol"
-            title={tab.info.protocol.toUpperCase()}
+            title={`${t("status.protocol")}: ${tab.info.protocol.toUpperCase()}`}
           >
-            {t("status.protocol")}: {tab.info.protocol.toUpperCase()}
+            {tab.info.protocol.toUpperCase()}
           </span>
         </div>
       )}

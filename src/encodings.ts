@@ -3,7 +3,7 @@
  *
  * xterm.js reads UTF-8 only. A session in another encoding has its output
  * decoded here before it is written (`TerminalController.feed`, after the
- * ZMODEM / XMODEM sentries have seen the raw bytes) and its keyboard input
+ * ZMODEM sentry has seen the raw bytes) and its keyboard input
  * encoded by the backend (`write_session`; see `session/encoding.rs`). The
  * labels are WHATWG encoding labels, which `TextDecoder` and the backend's
  * encoding_rs both resolve, so the two directions always agree.

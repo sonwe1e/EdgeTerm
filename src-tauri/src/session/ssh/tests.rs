@@ -1644,6 +1644,9 @@ struct SftpHomeServer {
     posix_rename: bool,
     deny_posix_rename: bool,
     packet_len: Option<u64>,
+    /// A virtual path whose RMD the server refuses, to stage a permission
+    /// failure in the middle of a recursive delete.
+    deny_rmdir: Option<String>,
     channels:
         Arc<tokio::sync::Mutex<HashMap<russh::ChannelId, russh::Channel<russh::server::Msg>>>>,
     /// Applied when the next file write reaches the subsystem: how a test
@@ -1659,6 +1662,7 @@ impl SftpHomeServer {
             posix_rename: true,
             deny_posix_rename: false,
             packet_len: None,
+            deny_rmdir: None,
             channels: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             concurrent_edit: Arc::new(Mutex::new(None)),
         }
@@ -1704,6 +1708,7 @@ impl russh::server::Handler for SftpHomeServer {
                     posix_rename: self.posix_rename,
                     deny_posix_rename: self.deny_posix_rename,
                     packet_len: self.packet_len,
+                    deny_rmdir: self.deny_rmdir.clone(),
                     concurrent_edit: self.concurrent_edit.clone(),
                     ..Default::default()
                 };
@@ -1725,9 +1730,14 @@ struct SftpFiles {
     posix_rename: bool,
     deny_posix_rename: bool,
     packet_len: Option<u64>,
+    /// A virtual path whose RMD is refused like a permissions failure.
+    deny_rmdir: Option<String>,
     concurrent_edit: Arc<Mutex<Option<(String, Vec<u8>)>>>,
     /// The open files, keyed by the handle string the client keeps.
     open: HashMap<String, std::fs::File>,
+    /// The open directories, keyed the same way; each readdir drains the list,
+    /// so the next call answers EOF like a real server does.
+    dirs: HashMap<String, Vec<SftpFile>>,
     serial: u64,
 }
 
@@ -1882,6 +1892,47 @@ impl russh_sftp::server::Handler for SftpFiles {
 
     async fn close(&mut self, id: u32, handle: String) -> Result<Status, Self::Error> {
         self.open.remove(&handle);
+        self.dirs.remove(&handle);
+        Ok(ok(id))
+    }
+
+    async fn opendir(&mut self, id: u32, path: String) -> Result<SftpHandle, Self::Error> {
+        let local = self.local(&path);
+        let mut files = Vec::new();
+        for entry in std::fs::read_dir(&local).map_err(|error| io_status(&error))? {
+            let entry = entry.map_err(|error| io_status(&error))?;
+            // symlink_metadata keeps a link an entry of its own, which is what
+            // the recursive delete must see.
+            let meta =
+                std::fs::symlink_metadata(entry.path()).map_err(|error| io_status(&error))?;
+            files.push(SftpFile::new(
+                entry.file_name().to_string_lossy().into_owned(),
+                attrs_of(&meta),
+            ));
+        }
+        let handle = format!("dh-{}", self.serial);
+        self.serial += 1;
+        self.dirs.insert(handle.clone(), files);
+        Ok(SftpHandle { id, handle })
+    }
+
+    async fn readdir(&mut self, id: u32, handle: String) -> Result<Name, Self::Error> {
+        match self.dirs.get_mut(&handle) {
+            Some(files) if !files.is_empty() => Ok(Name {
+                id,
+                files: std::mem::take(files),
+            }),
+            _ => Err(StatusCode::Eof),
+        }
+    }
+
+    async fn rmdir(&mut self, id: u32, path: String) -> Result<Status, Self::Error> {
+        if self.deny_rmdir.as_deref() == Some(path.as_str()) {
+            return Err(StatusCode::PermissionDenied);
+        }
+        // The local filesystem is the authority: removing a folder that still
+        // has children fails, exactly as a server would refuse it.
+        std::fs::remove_dir(self.local(&path)).map_err(|error| io_status(&error))?;
         Ok(ok(id))
     }
 
@@ -2195,6 +2246,161 @@ async fn installing_a_key_creates_the_ssh_directory_and_the_file() {
             "the installed file must be owner-only"
         );
     }
+}
+
+#[tokio::test]
+async fn a_non_empty_folder_is_only_removed_by_an_explicit_recursive_delete() {
+    let file = KnownHosts::new();
+    let home = file.path().parent().expect("scratch").join("home");
+    std::fs::create_dir_all(home.join("tree/deep")).expect("tree");
+    std::fs::write(home.join("tree/top.txt"), b"top").expect("top");
+    std::fs::write(home.join("tree/deep/leaf.txt"), b"leaf").expect("leaf");
+    std::fs::write(home.join("keep.txt"), b"keep").expect("keep");
+    let address = serve_once(SftpHomeServer::new(&home), Preferred::default()).await;
+    let transport = transport_to(address, file.path()).await;
+    let mut slot = None;
+    let session = ensure_sftp(&transport.handle, &mut slot)
+        .await
+        .expect("sftp subsystem");
+
+    // Without the flag a folder still has to be empty, as it always did.
+    run_sftp(
+        session.clone(),
+        SftpRequest::Remove {
+            path: "/tree".into(),
+            is_dir: true,
+            recursive: false,
+        },
+    )
+    .await
+    .expect_err("a non-empty folder is refused without the flag");
+    assert!(
+        home.join("tree/top.txt").exists(),
+        "the refused folder stays"
+    );
+
+    let response = run_sftp(
+        session,
+        SftpRequest::Remove {
+            path: "/tree".into(),
+            is_dir: true,
+            recursive: true,
+        },
+    )
+    .await
+    .expect("recursive delete");
+    assert!(matches!(response, SftpResponse::Done));
+    assert!(!home.join("tree").exists(), "the whole tree is gone");
+    assert_eq!(std::fs::read(home.join("keep.txt")).unwrap(), b"keep");
+}
+
+#[tokio::test]
+async fn a_recursive_sftp_delete_refuses_the_server_root() {
+    let file = KnownHosts::new();
+    let home = file.path().parent().expect("scratch").join("home");
+    std::fs::create_dir_all(&home).expect("home");
+    std::fs::write(home.join("keep.txt"), b"keep").expect("keep");
+    let address = serve_once(SftpHomeServer::new(&home), Preferred::default()).await;
+    let transport = transport_to(address, file.path()).await;
+    let mut slot = None;
+    let session = ensure_sftp(&transport.handle, &mut slot)
+        .await
+        .expect("sftp subsystem");
+
+    let error = run_sftp(
+        session,
+        SftpRequest::Remove {
+            path: "/".into(),
+            is_dir: true,
+            recursive: true,
+        },
+    )
+    .await
+    .expect_err("the root is never deleted recursively");
+
+    assert!(error.to_string().contains("server root"), "{error}");
+    assert_eq!(std::fs::read(home.join("keep.txt")).unwrap(), b"keep");
+}
+
+#[tokio::test]
+async fn a_refused_sftp_folder_removal_is_reported_instead_of_claimed_done() {
+    let file = KnownHosts::new();
+    let home = file.path().parent().expect("scratch").join("home");
+    std::fs::create_dir_all(home.join("tree/deep")).expect("tree");
+    std::fs::write(home.join("tree/deep/leaf.txt"), b"leaf").expect("leaf");
+    let mut server = SftpHomeServer::new(&home);
+    server.deny_rmdir = Some("/tree/deep".into());
+    let address = serve_once(server, Preferred::default()).await;
+    let transport = transport_to(address, file.path()).await;
+    let mut slot = None;
+    let session = ensure_sftp(&transport.handle, &mut slot)
+        .await
+        .expect("sftp subsystem");
+
+    let error = run_sftp(
+        session,
+        SftpRequest::Remove {
+            path: "/tree".into(),
+            is_dir: true,
+            recursive: true,
+        },
+    )
+    .await
+    .expect_err("a refused folder is a failure, not a finished delete");
+
+    assert!(
+        error.to_string().contains("cannot delete /tree/deep"),
+        "the refused folder is named: {error}"
+    );
+    assert!(
+        home.join("tree/deep").exists(),
+        "the refused folder is still there"
+    );
+    assert!(
+        !home.join("tree/deep/leaf.txt").exists(),
+        "the walk had already removed the children, which is why the failure must be reported"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_recursive_sftp_delete_unlinks_links_without_following_them() {
+    let file = KnownHosts::new();
+    let home = file.path().parent().expect("scratch").join("home");
+    std::fs::create_dir_all(home.join("tree")).expect("tree");
+    std::fs::create_dir_all(home.join("outside")).expect("outside");
+    std::fs::write(home.join("outside/precious.txt"), b"precious").expect("precious");
+    std::fs::write(home.join("tree/file.txt"), b"file").expect("file");
+    std::os::unix::fs::symlink(home.join("outside"), home.join("tree/dir-link")).expect("dir link");
+    std::os::unix::fs::symlink(
+        home.join("outside/precious.txt"),
+        home.join("tree/file-link"),
+    )
+    .expect("file link");
+    let address = serve_once(SftpHomeServer::new(&home), Preferred::default()).await;
+    let transport = transport_to(address, file.path()).await;
+    let mut slot = None;
+    let session = ensure_sftp(&transport.handle, &mut slot)
+        .await
+        .expect("sftp subsystem");
+
+    run_sftp(
+        session,
+        SftpRequest::Remove {
+            path: "/tree".into(),
+            is_dir: true,
+            recursive: true,
+        },
+    )
+    .await
+    .expect("recursive delete through links");
+
+    assert!(!home.join("tree").exists());
+    assert_eq!(
+        std::fs::read(home.join("outside/precious.txt")).unwrap(),
+        b"precious",
+        "a link is removed itself; what it points at stays"
+    );
 }
 
 #[tokio::test]

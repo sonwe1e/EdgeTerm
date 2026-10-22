@@ -1,29 +1,38 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { errorText } from "../errorInfo";
 import * as api from "../api";
 import { transferBytes } from "../fileTransfers";
-import { useActiveTab } from "../store";
+import { useActiveTab, useStore } from "../store";
 import { VirtualFileRows } from "./VirtualFileRows";
+import { StatusPopover } from "./StatusPopover";
 import { usePopoverDismiss } from "./usePopoverDismiss";
 import { useT } from "../useT";
 import type { MessageKey } from "../i18n";
 
 const defaults: api.PortForwardSpec = { direction: "local", listenHost: "127.0.0.1", listenPort: 0, targetHost: "127.0.0.1", targetPort: 8080 };
-const endpoint = (host: string, port: number) => `${host.includes(":") ? `[${host}]` : host}:${port || "auto"}`;
+const DIRECTIONS: readonly api.PortForwardSpec["direction"][] = ["local", "remote", "dynamic"];
+const DIRECTION_LABEL: Record<api.PortForwardSpec["direction"], MessageKey> = {
+  local: "forward.dirLocal",
+  remote: "forward.dirRemote",
+  dynamic: "forward.dirDynamic",
+};
+const DIRECTION_BADGE: Record<api.PortForwardSpec["direction"], MessageKey> = {
+  local: "forward.badgeLocal",
+  remote: "forward.badgeRemote",
+  dynamic: "forward.badgeDynamic",
+};
 const STATUS_LABEL: Record<string, MessageKey> = {
   starting: "forward.statusStarting",
   listening: "forward.statusListening",
   stopping: "forward.statusStopping",
+  stopped: "forward.statusStopped",
   error: "forward.statusError",
 };
-const DIRECTION_LABEL: Record<api.PortForwardSpec["direction"], MessageKey> = {
-  local: "forward.jobLocal",
-  remote: "forward.jobRemote",
-  dynamic: "forward.jobDynamic",
-};
+const DISCOVERY_ID = "forward-discovery";
 
 const active = (row: api.PortForward) => ["starting", "listening", "stopping"].includes(row.status);
 const loopback = (host: string) => ["127.0.0.1", "::1", "localhost"].includes(host.toLowerCase());
+const endpoint = (host: string, port: number, auto: string) => `${host.includes(":") ? `[${host}]` : host}:${port || auto}`;
 
 export const ForwardCenter = memo(function ForwardCenter() {
   const t = useT();
@@ -41,6 +50,7 @@ export const ForwardCenter = memo(function ForwardCenter() {
   const [rows, setRows] = useState<api.PortForward[]>([]);
   const [spec, setSpec] = useState(defaults);
   const [discovery, setDiscovery] = useState<api.PortDiscovery | null>(null);
+  const [discoveryOpen, setDiscoveryOpen] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
@@ -64,7 +74,9 @@ export const ForwardCenter = memo(function ForwardCenter() {
   }, [open, visible, refresh]);
   useEffect(() => {
     setDiscovery(null); setScanError(null); setScanning(false);
-    if (!open || !visible || !eligible || !owner) return;
+    // Scanning only runs while the picker is expanded: a collapsed section
+    // must not keep asking the server for listeners.
+    if (!open || !discoveryOpen || !visible || !eligible || !owner) return;
     let disposed = false; let timer: ReturnType<typeof setTimeout> | undefined;
     const poll = async () => {
       const requestId = crypto.randomUUID(); scan.current = requestId; setScanning(true); let unsupported = false;
@@ -79,7 +91,7 @@ export const ForwardCenter = memo(function ForwardCenter() {
     };
     void poll();
     return () => { disposed = true; clearTimeout(timer); const requestId = scan.current; scan.current = null; if (requestId) void api.cancelPortDiscovery(requestId).catch(() => {}); };
-  }, [open, visible, eligible, owner, refresh]);
+  }, [open, discoveryOpen, visible, eligible, owner, refresh]);
   const perform = async (operation: () => Promise<unknown>) => {
     const version = ++mutation.current; setBusy(true); setError(null);
     try { await operation(); if (mounted.current && mutation.current === version) setRefresh((value) => value + 1); }
@@ -89,40 +101,104 @@ export const ForwardCenter = memo(function ForwardCenter() {
   const count = rows.filter(active).length;
   const dynamic = spec.direction === "dynamic";
   const valid = spec.listenHost.trim().length > 0 && Number.isInteger(spec.listenPort) && spec.listenPort >= 0 && spec.listenPort <= 65535 && (dynamic || ((spec.targetHost?.trim().length ?? 0) > 0 && Number.isInteger(spec.targetPort) && (spec.targetPort ?? 0) >= 1 && (spec.targetPort ?? 0) <= 65535));
+  const auto = t("forward.autoPort");
+  // The card is three short lines, so its height follows the panel font the
+  // same way the Filer's rows do; the virtual row pitch has to match the box.
+  const panelFontSize = useStore((state) => state.panelFontSize);
+  const jobRowHeight = Math.max(78, Math.round((panelFontSize - 1) * 3.6) + 36);
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!owner || !valid || busy) return;
+    void perform(() => api.startPortForward(owner, dynamic
+      ? { direction: "dynamic", listenHost: spec.listenHost.trim(), listenPort: spec.listenPort }
+      : { ...spec, listenHost: spec.listenHost.trim(), targetHost: (spec.targetHost ?? "").trim() }));
+  };
   return <div className="forward-center" ref={container}>
     <button type="button" className="status-item" aria-expanded={open} onClick={() => setOpen(!open)}>{t("forward.tunnels")}{count ? ` (${count})` : ""}</button>
-    {open && <section className="forward-popover" aria-label={t("forward.sshPortForwarding")}>
-      <div className="resource-heading"><strong>{t("forward.sshPortForwarding")}</strong><button type="button" aria-label={t("forward.closeTunnels")} onClick={() => setOpen(false)}>×</button></div>
+    {open && <StatusPopover
+      className="forward-popover"
+      label={t("forward.sshPortForwarding")}
+      title={t("forward.sshPortForwarding")}
+      closeLabel={t("forward.closeTunnels")}
+      onClose={() => setOpen(false)}
+    >
       {error && <div role="alert" className="status-popover-error">{error}</div>}
-      {eligible && owner ? <form onSubmit={(event) => { event.preventDefault(); if (valid && !busy) void perform(() => api.startPortForward(owner, dynamic ? { direction: "dynamic", listenHost: spec.listenHost.trim(), listenPort: spec.listenPort } : { ...spec, listenHost: spec.listenHost.trim(), targetHost: (spec.targetHost ?? "").trim() })); }}>
-        <p>{t("forward.newTunnelOwner", { address: tab.info.address })}</p>
-        <label>{t("forward.directionLabel")} <select aria-label={t("forward.directionAria")} value={spec.direction} onChange={(event) => setSpec({ ...spec, direction: event.target.value as api.PortForwardSpec["direction"] })}><option value="local">{t("forward.dirLocal")}</option><option value="remote">{t("forward.dirRemote")}</option><option value="dynamic">{t("forward.dirDynamic")}</option></select></label>
-        <div className="forward-fields"><label>{t("forward.listenOnLabel")} {spec.direction === "remote" ? t("forward.sshHost") : t("forward.thisComputer")}<input aria-label={t("forward.listenerHostAria")} value={spec.listenHost} onChange={(event) => setSpec({ ...spec, listenHost: event.target.value })} /></label><label>{t("forward.portAutoLabel")}<input aria-label={t("forward.listenerPortAria")} type="number" min={0} max={65535} value={spec.listenPort} onChange={(event) => setSpec({ ...spec, listenPort: Number(event.target.value) })} /></label></div>
-        {!dynamic && <div className="forward-fields"><label>{t("forward.targetOnLabel")} {spec.direction === "local" ? t("forward.sshHost") : t("forward.thisComputer")}<input aria-label={t("forward.targetHostAria")} value={spec.targetHost ?? ""} onChange={(event) => setSpec({ ...spec, targetHost: event.target.value })} /></label><label>{t("forward.portLabel")}<input aria-label={t("forward.targetPortAria")} type="number" min={1} max={65535} value={spec.targetPort ?? 0} onChange={(event) => setSpec({ ...spec, targetPort: Number(event.target.value) })} /></label></div>}
-        {!loopback(spec.listenHost) && <p className="is-warning">{t("forward.listenerWarning")}</p>}
-        {spec.direction === "remote" && loopback(spec.listenHost) && <p>{t("forward.gatewayNote")}</p>}
-        {dynamic && <p>{t("forward.dynamicNote")}</p>}
-        <button type="submit" disabled={!valid || busy}>{t("forward.createTunnel")}</button>
-      </form> : <p>{t("forward.connectHint")}</p>}
-      <h4>{t("forward.remotePorts")}</h4><button type="button" disabled={!eligible || scanning} onClick={() => setRefresh((value) => value + 1)}>{t("forward.refreshPorts")}</button>
-      {scanning && <p>{t("forward.readingListeners")}</p>}{scanError && <div role="alert" className="status-popover-error">{scanError}</div>}
-      {discovery?.status === "unsupported" && <p>{t("forward.discoveryUnsupported")}</p>}
-      {discovery?.status === "ok" && <><p>{t("forward.listenersCount", { count: discovery.ports.length })}{discovery.truncated ? t("forward.resultLimitReached") : ""}{t("forward.listenersHint")}</p><div className="forward-list forward-discovery">
-        <VirtualFileRows entries={discovery.ports.map((port) => ({ ...port, path: `${port.host}:${port.port}` }))} rowHeight={38} resetKey={owner ?? ""}>{(port) => <div className="forward-listener" key={port.path}><span title={port.process ?? t("forward.processUnavailable")}>{endpoint(port.host, port.port)}{port.process && <small>{port.process}</small>}</span><button type="button" onClick={() => setSpec({ ...defaults, targetHost: port.host === "::" ? "::1" : ["*", "0.0.0.0"].includes(port.host) ? "127.0.0.1" : port.host, targetPort: port.port })}>{t("forward.usePort", { port: port.port })}</button></div>}</VirtualFileRows>
-      </div></>}
-      <h4>{t("forward.tunnels")} · {rows.length}</h4>
-      {rows.length === 0 && <p>{t("forward.noTunnels")}</p>}<div className="forward-list forward-jobs">
-        <VirtualFileRows entries={rows.map((row) => ({ ...row, path: row.id }))} rowHeight={136} resetKey="tunnels">{(row) => <article className="forward-job" key={row.id}>
-          <strong>{DIRECTION_LABEL[row.spec.direction]} · {statusLabel(row.status)}</strong>
-          <div className="forward-route"><span>{endpoint(row.spec.listenHost, row.spec.listenPort)}</span><span aria-hidden="true">→</span><span>{row.spec.direction === "dynamic" ? t("forward.socksProxy") : endpoint(row.spec.targetHost ?? "", row.spec.targetPort ?? 0)}</span></div>
-          <small title={row.owner}>{row.address} · {t("forward.tabWord")} {row.owner.slice(0, 8)} · {t("forward.connectionsCount", { count: row.connections })}</small>
-          <small>{t("forward.localToRemote")} {transferBytes(row.sentBytes)} · {t("forward.remoteToLocal")} {transferBytes(row.receivedBytes)}</small>
-          {row.error && <div className="forward-error" title={row.error}>{row.error}</div>}
-          <button type="button" disabled={busy || row.status === "stopping"} onClick={() => void perform(() => active(row) ? api.stopPortForward(row.id) : api.removePortForward(row.id))}>{active(row) ? t("forward.stopTunnel") : t("forward.removeTunnel")}</button>
+      {eligible && owner ? <form className="forward-form" onSubmit={submit}>
+        <fieldset className="forward-directions">
+          <legend className="sr-only">{t("forward.directionAria")}</legend>
+          {DIRECTIONS.map((direction) => <label key={direction} className="forward-direction">
+            <input type="radio" name="forward-direction" value={direction} checked={spec.direction === direction} onChange={() => setSpec({ ...spec, direction })} />
+            <span>{t(DIRECTION_LABEL[direction])}</span>
+          </label>)}
+        </fieldset>
+        <div className="forward-endpoints">
+          <div className="forward-endpoint" aria-hidden="true">
+            <span />
+            <span className="forward-column">{t("forward.hostColumn")}</span>
+            <span className="forward-column">{t("forward.portColumn")}</span>
+          </div>
+          <div className="forward-endpoint">
+            <span className="forward-endpoint-label">{t("forward.listenRow")}</span>
+            <input aria-label={t("forward.listenerHostAria")} value={spec.listenHost} onChange={(event) => setSpec({ ...spec, listenHost: event.target.value })} />
+            <input aria-label={t("forward.listenerPortAria")} type="number" min={0} max={65535} placeholder={auto} value={spec.listenPort || ""} onChange={(event) => setSpec({ ...spec, listenPort: event.target.value === "" ? 0 : Number(event.target.value) })} />
+          </div>
+          {!dynamic && <div className="forward-endpoint">
+            <span className="forward-endpoint-label">{t("forward.targetRow")}</span>
+            <input aria-label={t("forward.targetHostAria")} value={spec.targetHost ?? ""} onChange={(event) => setSpec({ ...spec, targetHost: event.target.value })} />
+            <input aria-label={t("forward.targetPortAria")} type="number" min={1} max={65535} value={spec.targetPort || ""} onChange={(event) => setSpec({ ...spec, targetPort: event.target.value === "" ? 0 : Number(event.target.value) })} />
+          </div>}
+        </div>
+        {(!loopback(spec.listenHost) || dynamic || spec.direction === "remote") && <div className="forward-notes">
+          {!loopback(spec.listenHost) && <p className="forward-note is-warning">{t("forward.listenerWarning")}</p>}
+          {spec.direction === "remote" && <p className="forward-note">{t("forward.gatewayNote")}</p>}
+          {dynamic && <p className="forward-note">{t("forward.dynamicNote")}</p>}
+        </div>}
+        <button type="submit" className="forward-submit" disabled={!valid || busy}>{t("forward.createTunnel")}</button>
+      </form> : <p className="status-popover-note">{t("forward.connectHint")}</p>}
+      {eligible && owner && <div className="forward-discovery-section" id={DISCOVERY_ID}>
+        <button type="button" className="forward-discovery-toggle" aria-expanded={discoveryOpen} aria-controls={DISCOVERY_ID} onClick={() => setDiscoveryOpen(!discoveryOpen)}>{t("forward.remotePortsToggle")}</button>
+        {discoveryOpen && <div className="forward-discovery">
+          <div className="forward-discovery-tools">
+            {scanning && <span className="forward-discovery-state">{t("forward.readingListeners")}</span>}
+            {!scanning && discovery?.status === "ok" && discovery.truncated && <span className="forward-discovery-state">{t("forward.truncated")}</span>}
+            <button type="button" disabled={scanning} onClick={() => setRefresh((value) => value + 1)}>{t("forward.refreshPorts")}</button>
+          </div>
+          {scanError && <div role="alert" className="status-popover-error">{scanError}</div>}
+          {discovery?.status === "unsupported" && <p className="status-popover-note">{t("forward.discoveryUnsupported")}</p>}
+          {discovery?.status === "ok" && (discovery.ports.length === 0
+            ? <p className="status-popover-note">{t("forward.noListeners")}</p>
+            : <div className="forward-list forward-listeners">
+              <VirtualFileRows entries={discovery.ports.map((port) => ({ ...port, path: `${port.host}:${port.port}` }))} rowHeight={34} resetKey={owner ?? ""}>{(port) => <div className="forward-listener" key={port.path}>
+                <span className="forward-listener-address" title={port.process ?? t("forward.processUnavailable")}>
+                  <span>{endpoint(port.host, port.port, auto)}</span>
+                  {port.process && <span className="forward-listener-process">{port.process}</span>}
+                </span>
+                <button type="button" title={t("forward.usePortTitle", { port: port.port })} aria-label={t("forward.usePortTitle", { port: port.port })} onClick={() => setSpec({ ...defaults, targetHost: port.host === "::" ? "::1" : ["*", "0.0.0.0"].includes(port.host) ? "127.0.0.1" : port.host, targetPort: port.port })}>{t("forward.use")}</button>
+              </div>}</VirtualFileRows>
+            </div>)}
+        </div>}
+      </div>}
+      {rows.length > 0 && <div className="forward-list forward-jobs" style={{ "--forward-job-h": `${jobRowHeight}px` } as CSSProperties}>
+        <VirtualFileRows entries={rows.map((row) => ({ ...row, path: row.id }))} rowHeight={jobRowHeight} resetKey="tunnels">{(row) => <article className="forward-job" key={row.id}>
+          <div className="forward-job-head">
+            <span className="forward-job-badge">{t(DIRECTION_BADGE[row.spec.direction])}</span>
+            <span className={`forward-job-status is-${row.status}`}><span className="forward-job-dot" aria-hidden="true" />{statusLabel(row.status)}</span>
+            <button type="button" className="forward-job-action" disabled={busy || row.status === "stopping"} onClick={() => void perform(() => active(row) ? api.stopPortForward(row.id) : api.removePortForward(row.id))}>{active(row) ? t("forward.stopTunnel") : t("forward.removeTunnel")}</button>
+          </div>
+          <div className="forward-route">
+            <span>{endpoint(row.spec.listenHost, row.spec.listenPort, auto)}</span>
+            <span aria-hidden="true">→</span>
+            <span>{row.spec.direction === "dynamic" ? t("forward.socksProxy") : endpoint(row.spec.targetHost ?? "", row.spec.targetPort ?? 0, auto)}</span>
+          </div>
+          <div className="forward-job-footer">
+            <span className="forward-job-address" title={row.owner}>{row.address}</span>
+            {row.error ? <span className="forward-error" title={row.error}>{row.error}</span> : <span className="forward-job-stats">
+              {row.connections > 0 && <span>{row.connections === 1 ? t("forward.connectionOne") : t("forward.connections", { count: row.connections })}</span>}
+              {(row.sentBytes > 0 || row.receivedBytes > 0) && <span title={t("forward.trafficTitle")}>↑ {transferBytes(row.sentBytes)} ↓ {transferBytes(row.receivedBytes)}</span>}
+            </span>}
+          </div>
         </article>}</VirtualFileRows>
-      </div>
-      <p>{t("forward.loopbackNote")}</p>
-      <p>{t("forward.trafficNote")}</p>
-    </section>}
+      </div>}
+    </StatusPopover>}
   </div>;
 });

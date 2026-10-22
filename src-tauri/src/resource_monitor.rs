@@ -1,5 +1,6 @@
 //! Linux host metrics. Cumulative counters follow kernel proc/stat and block/stat;
-//! NVIDIA fields use the read-only nvidia-smi CSV query.
+//! NVIDIA fields use the read-only nvidia-smi CSV query, and accelerator fields
+//! come from the vendor tools (npu-smi, xpu-smi) or the Rockchip/accel sysfs nodes.
 use crate::{
     error::{AppError, Result},
     file_transfer::Control,
@@ -38,6 +39,21 @@ pub struct Gpu {
     pub total_bytes: Option<u64>,
     pub temperature: Option<f64>,
 }
+/// One accelerator. The optional fields are independently absent: a vendor
+/// table can report a temperature without a utilization, and a generic accel
+/// device exposes an identity but no counters at all. `None` never turns into a
+/// reading of zero.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Npu {
+    pub index: u32,
+    pub name: String,
+    pub utilization: Option<f64>,
+    pub used_bytes: Option<u64>,
+    pub total_bytes: Option<u64>,
+    pub temperature: Option<f64>,
+}
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -57,6 +73,8 @@ pub struct Metrics {
     pub network_status: &'static str,
     pub gpus: Vec<Gpu>,
     pub gpu_status: &'static str,
+    pub npus: Vec<Npu>,
+    pub npu_status: &'static str,
 }
 #[derive(Clone, Default)]
 struct Raw {
@@ -249,6 +267,8 @@ fn parse(output: &str) -> Result<(Metrics, Raw)> {
         network_status: status,
         gpus: vec![],
         gpu_status: status,
+        npus: vec![],
+        npu_status: status,
     };
     if !supported {
         return Ok((metrics, raw));
@@ -411,6 +431,23 @@ fn parse(output: &str) -> Result<(Metrics, Raw)> {
             metrics.gpu_status = "unsupported";
         }
     }
+    // An absent npu block (the probe never ran it) is "no accelerator", not a
+    // failed reading: the script always emits a marker on a host it probed.
+    metrics.npu_status = if block("npu").is_empty() {
+        "unsupported"
+    } else {
+        availability(block("npu"))
+    };
+    if metrics.npu_status == "ok" {
+        let (npus, override_status) = parse_npus(block("npu"));
+        metrics.npus = npus;
+        if let Some(status) = override_status {
+            metrics.npu_status = status;
+        }
+        if metrics.npus.is_empty() && metrics.npu_status == "ok" {
+            metrics.npu_status = "unsupported";
+        }
+    }
     Ok((metrics, raw))
 }
 fn csv(line: &str) -> Vec<String> {
@@ -436,6 +473,359 @@ fn csv(line: &str) -> Vec<String> {
     values.push(current.trim().to_owned());
     values
 }
+
+/// One row of an `npu-smi`/`xpu-smi` ASCII table, split into its cells. Every
+/// vendor table is drawn with the same `| a | b | c |` shape, so the row reads
+/// the same whichever tool produced it.
+fn table_cells(line: &str) -> Option<Vec<&str>> {
+    let rest = line.strip_prefix('|')?;
+    let mut cells: Vec<&str> = rest.split('|').map(str::trim).collect();
+    if cells.last() == Some(&"") {
+        cells.pop();
+    }
+    Some(cells)
+}
+
+/// The numeric columns of one table cell. A value the tool prints as unknown
+/// keeps its slot, so a missing power reading cannot shift the temperature into
+/// its place; `/` separators and unit words carry no value and are skipped.
+fn cell_values(cell: &str) -> Vec<Option<f64>> {
+    // `Not Supported` is the tools' two-word spelling of an absent value; fold
+    // it into one token before splitting so it keeps a single slot.
+    let normalized = cell
+        .replace("[Not Supported]", "N/A")
+        .replace("Not Supported", "N/A");
+    let mut values = Vec::new();
+    for token in normalized.split_whitespace() {
+        if token == "/" {
+            continue;
+        }
+        if matches!(token, "N/A" | "[N/A]" | "NA" | "-") {
+            values.push(None);
+        } else if let Some(value) = finite(token.trim_end_matches('%')) {
+            values.push(Some(value));
+        }
+    }
+    values
+}
+
+/// The leading number of a tool value (`26`, `26 %`, `41 C`); a word such as
+/// `N/A` stays unknown.
+fn leading_finite(value: &str) -> Option<f64> {
+    finite(value.split_whitespace().next()?.trim_end_matches('%'))
+}
+
+fn mib_bytes(value: Option<f64>) -> Option<u64> {
+    value
+        .filter(|n| *n >= 0. && n.is_finite())
+        .map(|n| (n * 1024. * 1024.).round() as u64)
+}
+
+/// A used/total pair is only reported when the total is a real capacity: a
+/// zero total carries none, and a used value above its total is a misparse
+/// rather than a reading. Either side may still be unknown on its own.
+fn memory_pair(used: Option<f64>, total: Option<f64>) -> (Option<u64>, Option<u64>) {
+    let Some(total_bytes) = mib_bytes(total).filter(|n| *n > 0) else {
+        return (None, None);
+    };
+    let used_bytes = mib_bytes(used).filter(|used| *used <= total_bytes);
+    (used_bytes, Some(total_bytes))
+}
+
+/// Health words `npu-smi` prints in the second column of a card's first row.
+const HEALTH: [&str; 6] = ["ok", "warning", "critical", "alarm", "unknown", "healthy"];
+
+/// Reads the `npu` section. The probe emits one source marker followed by that
+/// source's own output: vendor tools print their human tables, sysfs sources
+/// print the raw file, and the generic fallback prints one device per line.
+fn parse_npus(lines: &[&str]) -> (Vec<Npu>, Option<&'static str>) {
+    let marker = |name: &str| lines.iter().any(|line| line.starts_with(name));
+    if marker("#ascend") {
+        parse_ascend_npus(lines)
+    } else if marker("#intel") {
+        parse_intel_npus(lines)
+    } else if marker("#rockchip") {
+        parse_rockchip_npus(lines)
+    } else if marker("#accel") {
+        parse_accel_npus(lines)
+    } else {
+        (Vec::new(), Some("error"))
+    }
+}
+
+/// Huawei Ascend: `npu-smi info` draws one card per pair of table rows. The
+/// first row carries the card index, name, health, power and temperature; the
+/// second carries the chip, PCIe bus, AICore utilization and the memory/HBM
+/// pairs. Values are MiB, as the column headers state.
+fn parse_ascend_npus(lines: &[&str]) -> (Vec<Npu>, Option<&'static str>) {
+    let rows: Vec<Vec<&str>> = lines
+        .iter()
+        .filter_map(|line| table_cells(line))
+        .filter(|cells| cells.len() >= 3)
+        .collect();
+    let mut npus = Vec::new();
+    let mut row = 0;
+    while row < rows.len() {
+        let head = &rows[row];
+        if !HEALTH.contains(&head[1].to_ascii_lowercase().as_str()) {
+            row += 1;
+            continue;
+        }
+        let chip = rows.get(row + 1).map(Vec::as_slice);
+        match ascend_npu(head, chip) {
+            Some(npu) => {
+                npus.push(npu);
+                row += 2;
+            }
+            None => row += 1,
+        }
+    }
+    if npus.is_empty() {
+        let text = lines.join(" ").to_ascii_lowercase();
+        let absent = text.trim().is_empty()
+            || text.contains("no npu")
+            || text.contains("no device")
+            || text.contains("not found");
+        return (npus, Some(if absent { "unsupported" } else { "error" }));
+    }
+    (npus, None)
+}
+
+fn ascend_npu(head: &[&str], chip: Option<&[&str]>) -> Option<Npu> {
+    let mut label = head[0].split_whitespace();
+    let index = number(label.next()?).and_then(|n| u32::try_from(n).ok())?;
+    let version = label.collect::<Vec<_>>().join(" ");
+    let name = if version.is_empty() {
+        "Ascend NPU".to_owned()
+    } else {
+        version.chars().take(128).collect()
+    };
+    // Power and temperature share the last cell of the card row.
+    let temperature = cell_values(head[2]).get(1).copied().flatten();
+    let chip_values = chip.map(|cells| cell_values(cells[2])).unwrap_or_default();
+    let utilization = chip_values
+        .first()
+        .copied()
+        .flatten()
+        .filter(|n| *n <= 100.);
+    // The chip row lists `Memory-Usage(MB)` and `HBM-Usage(MB)` as `used /
+    // total` pairs. Prefer the HBM pair when the card reports one, because that
+    // is the pool an Ascend NPU allocates from; otherwise take the first pair.
+    let rest: Vec<Option<f64>> = chip_values.into_iter().skip(1).collect();
+    let pairs: Vec<(Option<f64>, Option<f64>)> = rest
+        .chunks(2)
+        .filter(|pair| pair.len() == 2)
+        .map(|pair| (pair[0], pair[1]))
+        .collect();
+    let (used_mib, total_mib) = pairs
+        .iter()
+        .rev()
+        .find(|(_, total)| total.is_some_and(|n| n > 0.))
+        .or_else(|| pairs.first())
+        .map(|(used, total)| (*used, *total))
+        .unwrap_or((None, None));
+    let (used_bytes, total_bytes) = memory_pair(used_mib, total_mib);
+    Some(Npu {
+        index,
+        name,
+        utilization,
+        used_bytes,
+        total_bytes,
+        temperature,
+    })
+}
+
+/// Intel: `xpu-smi discovery` names each device and `xpu-smi stats -d <id>`
+/// prints its counters as a two-column table. The two outputs are joined on the
+/// device id the probe put in each marker line.
+fn parse_intel_npus(lines: &[&str]) -> (Vec<Npu>, Option<&'static str>) {
+    #[derive(Clone, Default)]
+    struct Reading {
+        utilization: Option<f64>,
+        used_mib: Option<f64>,
+        total_mib: Option<f64>,
+        temperature: Option<f64>,
+    }
+    #[derive(Clone, Copy, PartialEq)]
+    enum Section {
+        Other,
+        Discovery,
+        Stats(u32),
+    }
+    let mut names: HashMap<u32, String> = HashMap::new();
+    let mut readings: HashMap<u32, Reading> = HashMap::new();
+    let mut ids: Vec<u32> = Vec::new();
+    let mut discovery_id: Option<u32> = None;
+    let mut section = Section::Other;
+    for line in lines {
+        if let Some(marker) = line.strip_prefix('#') {
+            section = if marker.trim() == "intel-discovery" {
+                Section::Discovery
+            } else if let Some(rest) = marker.strip_prefix("intel-stats ") {
+                number(rest.trim())
+                    .and_then(|n| u32::try_from(n).ok())
+                    .map(Section::Stats)
+                    .unwrap_or(Section::Other)
+            } else {
+                Section::Other
+            };
+            continue;
+        }
+        let Some(cells) = table_cells(line) else {
+            continue;
+        };
+        let Some(first) = cells.first().copied() else {
+            continue;
+        };
+        match section {
+            Section::Discovery => {
+                if let Some(id) = number(first)
+                    .and_then(|n| u32::try_from(n).ok())
+                    .filter(|n| !ids.contains(n))
+                {
+                    ids.push(id);
+                    discovery_id = Some(id);
+                }
+                let named = cells
+                    .iter()
+                    .find(|cell| cell.to_ascii_lowercase().contains("device name"));
+                if let (Some(id), Some(cell)) = (discovery_id, named) {
+                    if let Some((_, name)) = cell.split_once(':') {
+                        let name = name.trim();
+                        if !name.is_empty() {
+                            names.insert(id, name.chars().take(128).collect());
+                        }
+                    }
+                }
+            }
+            Section::Stats(id) => {
+                if !ids.contains(&id) {
+                    ids.push(id);
+                }
+                let label = first.to_ascii_lowercase();
+                let value = cells.get(1).copied().unwrap_or("");
+                let reading = readings.entry(id).or_default();
+                if label.contains("utilization") {
+                    if !label.contains("memory") {
+                        reading.utilization = leading_finite(value).filter(|n| *n <= 100.);
+                    }
+                } else if label.contains("memory used") {
+                    reading.used_mib = leading_finite(value);
+                } else if label.contains("memory") && label.contains("physical size") {
+                    reading.total_mib = leading_finite(value);
+                } else if label.contains("temperature") {
+                    reading.temperature = leading_finite(value);
+                }
+            }
+            Section::Other => {}
+        }
+    }
+    if ids.is_empty() {
+        let text = lines.join(" ").to_ascii_lowercase();
+        let absent =
+            text.trim().is_empty() || text.contains("no device") || text.contains("not found");
+        return (
+            Vec::new(),
+            Some(if absent { "unsupported" } else { "error" }),
+        );
+    }
+    ids.sort_unstable();
+    let npus = ids
+        .into_iter()
+        .map(|id| {
+            let reading = readings.get(&id).cloned().unwrap_or_default();
+            let (used_bytes, total_bytes) = memory_pair(reading.used_mib, reading.total_mib);
+            Npu {
+                index: id,
+                name: names
+                    .get(&id)
+                    .cloned()
+                    .unwrap_or_else(|| format!("XPU {id}")),
+                utilization: reading.utilization,
+                used_bytes,
+                total_bytes,
+                temperature: reading.temperature,
+            }
+        })
+        .collect();
+    (npus, None)
+}
+
+/// Rockchip: `/sys/kernel/debug/rknpu/load` prints `load: 12% 11% 10%`, one
+/// percentage per NPU core. Each core stays its own row so a busy core is not
+/// averaged away by two idle ones.
+fn parse_rockchip_npus(lines: &[&str]) -> (Vec<Npu>, Option<&'static str>) {
+    let mut npus = Vec::new();
+    for line in lines {
+        if line.starts_with('#') {
+            continue;
+        }
+        let Some((label, values)) = line.split_once(':') else {
+            continue;
+        };
+        if !label.trim().eq_ignore_ascii_case("load") {
+            continue;
+        }
+        for token in values.split_whitespace() {
+            let Some(value) = finite(token.trim_end_matches('%')).filter(|n| *n <= 100.) else {
+                continue;
+            };
+            let index = npus.len() as u32;
+            npus.push(Npu {
+                index,
+                name: "Rockchip NPU".to_owned(),
+                utilization: Some(value),
+                used_bytes: None,
+                total_bytes: None,
+                temperature: None,
+            });
+        }
+    }
+    if npus.is_empty() {
+        return (npus, Some("error"));
+    }
+    (npus, None)
+}
+
+/// Generic fallback: `/sys/class/accel/*` names a device and its driver but
+/// exposes no counters. The row still says a device is present, and every
+/// reading stays unknown instead of being invented.
+fn parse_accel_npus(lines: &[&str]) -> (Vec<Npu>, Option<&'static str>) {
+    let mut npus = Vec::new();
+    for line in lines {
+        if line.starts_with('#') {
+            continue;
+        }
+        let mut tokens = line.split_whitespace();
+        let Some(device) = tokens.next() else {
+            continue;
+        };
+        let name = tokens.next().unwrap_or(device);
+        let index = device
+            .chars()
+            .rev()
+            .take_while(char::is_ascii_digit)
+            .collect::<String>()
+            .chars()
+            .rev()
+            .collect::<String>()
+            .parse::<u32>()
+            .unwrap_or(npus.len() as u32);
+        npus.push(Npu {
+            index,
+            name: name.chars().take(128).collect(),
+            utilization: None,
+            used_bytes: None,
+            total_bytes: None,
+            temperature: None,
+        });
+    }
+    if npus.is_empty() {
+        return (npus, Some("unsupported"));
+    }
+    (npus, None)
+}
+
 fn rates(
     current: &HashMap<String, (u64, u64)>,
     previous: &HashMap<String, (u64, u64)>,
@@ -546,6 +936,162 @@ mod tests {
         assert_eq!(broken.cpu_status, "error");
         broken.cpu_percent = None;
     }
+    fn npu_fixture(section: &str) -> String {
+        format!("__EDGETERM__:platform\nLinux\n__EDGETERM__:npu\n{section}\n")
+    }
+    fn npu(output: &str) -> (Metrics, Vec<Npu>) {
+        let (metrics, _) = parse(output).unwrap();
+        let npus = metrics.npus.clone();
+        (metrics, npus)
+    }
+    #[test]
+    fn ascend_npu_smi_pairs_card_rows_and_prefers_hbm_capacity() {
+        let (metrics, npus) = npu(&npu_fixture(
+            "#ascend
++--------------------------------------------------------------------------------------------+
+| npu-smi 23.0.rc3.3                Version: 23.0.rc3.3                                     |
++---------------------------+---------------+------------------------------------------------+
+| NPU     Name              | Health        | Power(W)    Temp(C)           Hugepages-Usage(page) |
+| Chip                      | Bus-Id        | AICore(%)   Memory-Usage(MB)  HBM-Usage(MB)   |
++===========================+===============+================================================+
+| 0       910B3             | OK            | 95.4        32                0    / 0       |
+| 0                         | 0000:81:00.0  | 12          0    / 0          3059 / 65536   |
++---------------------------+---------------+------------------------------------------------+
+| 1       910B3             | Warning       | 88.0        45                0    / 0       |
+| 1                         | 0000:82:00.0  | 0           0    / 0          1024 / 65536   |
++---------------------------+---------------+------------------------------------------------+",
+        ));
+        assert_eq!(metrics.npu_status, "ok");
+        assert_eq!(npus.len(), 2);
+        assert_eq!(npus[0].index, 0);
+        assert_eq!(npus[0].name, "910B3");
+        assert_eq!(npus[0].utilization, Some(12.));
+        assert_eq!(npus[0].temperature, Some(32.));
+        assert_eq!(npus[0].used_bytes, Some(3059 * 1024 * 1024));
+        assert_eq!(npus[0].total_bytes, Some(65536 * 1024 * 1024));
+        assert_eq!(npus[1].index, 1);
+        assert_eq!(npus[1].utilization, Some(0.));
+        assert_eq!(npus[1].used_bytes, Some(1024 * 1024 * 1024));
+    }
+    #[test]
+    fn ascend_keeps_unknown_columns_in_place_instead_of_shifting_them() {
+        let (metrics, npus) = npu(&npu_fixture(
+            "#ascend
+| NPU     Name              | Health        | Power(W)    Temp(C)           Hugepages-Usage(page) |
+| Chip                      | Bus-Id        | AICore(%)   Memory-Usage(MB)  HBM-Usage(MB)   |
+| 0       310P3             | OK            | N/A         33                0    / 0       |
+| 0                         | 0000:82:00.0  | N/A         N/A              N/A          |",
+        ));
+        assert_eq!(metrics.npu_status, "ok");
+        assert_eq!(npus.len(), 1);
+        assert_eq!(npus[0].name, "310P3");
+        assert_eq!(npus[0].temperature, Some(33.));
+        assert_eq!(npus[0].utilization, None);
+        assert_eq!(npus[0].used_bytes, None);
+        assert_eq!(npus[0].total_bytes, None);
+    }
+    #[test]
+    fn ascend_distinguishes_no_devices_from_an_unreadable_table() {
+        let (absent, npus) = npu(&npu_fixture("#ascend\nnpu-smi: No NPU devices found."));
+        assert_eq!(absent.npu_status, "unsupported");
+        assert!(npus.is_empty());
+        let (malformed, npus) = npu(&npu_fixture("#ascend\nnpu-smi: command line error: -x"));
+        assert_eq!(malformed.npu_status, "error");
+        assert!(npus.is_empty());
+    }
+    #[test]
+    fn intel_xpu_smi_joins_discovery_names_with_stats() {
+        let (metrics, npus) = npu(&npu_fixture(
+            "#intel-discovery
++-----------+--------------------------------------------------------------------------------------+
+| Device ID | Device Information                                                                   |
++-----------+--------------------------------------------------------------------------------------+
+| 0         | Device Name: Intel(R) Data Center GPU Max 1550                                      |
+|           | Device Type: GPU                                                                     |
++-----------+--------------------------------------------------------------------------------------+
+#intel-stats 0
++----------------------------------+----------------------------------+
+| Device ID                        | 0                                |
+| GPU Utilization (%)              | 26                               |
+| GPU Memory Used (MiB)            | 420                              |
+| GPU Memory Physical Size (MiB)   | 32768                            |
+| GPU Temperature (C)              | 41                               |
++----------------------------------+----------------------------------+",
+        ));
+        assert_eq!(metrics.npu_status, "ok");
+        assert_eq!(npus.len(), 1);
+        assert_eq!(npus[0].index, 0);
+        assert_eq!(npus[0].name, "Intel(R) Data Center GPU Max 1550");
+        assert_eq!(npus[0].utilization, Some(26.));
+        assert_eq!(npus[0].used_bytes, Some(420 * 1024 * 1024));
+        assert_eq!(npus[0].total_bytes, Some(32768 * 1024 * 1024));
+        assert_eq!(npus[0].temperature, Some(41.));
+    }
+    #[test]
+    fn intel_device_without_stats_stays_detected_with_unknown_readings() {
+        let (metrics, npus) = npu(&npu_fixture(
+            "#intel-discovery
+| 0         | Device Name: Intel(R) Arc(TM) A770 Graphics                                          |
+#intel-stats 0
+xpu-smi: stats are not available on this device",
+        ));
+        assert_eq!(metrics.npu_status, "ok");
+        assert_eq!(npus.len(), 1);
+        assert_eq!(npus[0].name, "Intel(R) Arc(TM) A770 Graphics");
+        assert_eq!(npus[0].utilization, None);
+        assert_eq!(npus[0].used_bytes, None);
+        assert_eq!(npus[0].temperature, None);
+    }
+    #[test]
+    fn rockchip_rknpu_load_reports_one_row_per_core() {
+        let (metrics, npus) = npu(&npu_fixture("#rockchip\nload: 12% 11% 0%"));
+        assert_eq!(metrics.npu_status, "ok");
+        assert_eq!(npus.len(), 3);
+        assert_eq!(npus[0].index, 0);
+        assert_eq!(npus[0].name, "Rockchip NPU");
+        assert_eq!(npus[0].utilization, Some(12.));
+        assert_eq!(npus[2].utilization, Some(0.));
+        assert_eq!(npus[0].used_bytes, None);
+        let (broken, npus) = npu(&npu_fixture("#rockchip\nnot a load line"));
+        assert_eq!(broken.npu_status, "error");
+        assert!(npus.is_empty());
+    }
+    #[test]
+    fn generic_accel_devices_are_listed_without_invented_readings() {
+        let (metrics, npus) = npu(&npu_fixture("#accel\naccel0 hisi_hdc\naccel1 rknpu"));
+        assert_eq!(metrics.npu_status, "ok");
+        assert_eq!(npus.len(), 2);
+        assert_eq!(npus[0].index, 0);
+        assert_eq!(npus[0].name, "hisi_hdc");
+        assert_eq!(npus[1].index, 1);
+        assert_eq!(npus[1].name, "rknpu");
+        for device in npus {
+            assert_eq!(device.utilization, None);
+            assert_eq!(device.used_bytes, None);
+            assert_eq!(device.total_bytes, None);
+            assert_eq!(device.temperature, None);
+        }
+        let (absent, _) = npu(&npu_fixture("!unsupported"));
+        assert_eq!(absent.npu_status, "unsupported");
+    }
+    #[test]
+    fn npu_permission_denial_and_absent_probe_stay_distinct() {
+        let (denied, npus) = npu(&npu_fixture("!denied"));
+        assert_eq!(denied.npu_status, "denied");
+        assert!(npus.is_empty());
+        let (broken, npus) = npu(&npu_fixture("!error"));
+        assert_eq!(broken.npu_status, "error");
+        assert!(npus.is_empty());
+        // A probe that never emitted the section is "no accelerator", not a
+        // failed reading.
+        let (unsupported, _) = parse(&fixture(10, 100, 20, 100)).unwrap();
+        assert_eq!(unsupported.npu_status, "unsupported");
+        assert!(unsupported.npus.is_empty());
+        // The GPU path is untouched by the accelerator section.
+        assert_eq!(unsupported.gpu_status, "ok");
+        assert_eq!(unsupported.gpus.len(), 2);
+    }
+
     #[test]
     fn manager_limits_inflight_and_respects_early_cancel_and_owner_close() {
         let manager = ResourceMonitor::default();

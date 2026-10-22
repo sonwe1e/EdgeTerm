@@ -34,10 +34,6 @@
 
 /* The bar never grows to fit its contents: the message absorbs the free
    space and ellipsises, while every fixed item keeps its width. */
-.status-spacer {
-  flex: 0 0 0;
-}
-
 .status-item {
   flex: none;
   font-variant-numeric: tabular-nums;
@@ -46,6 +42,12 @@
 
 .status-item.is-error {
   color: var(--red);
+}
+
+/* The protocol reads as one identity token: the field's name lives in its
+   tooltip, not in a second label on the bar. */
+.status-protocol {
+  letter-spacing: 0.06em;
 }
 
 /* The message may carry a dismiss control; the text, not the row, ellipsises.
@@ -100,8 +102,15 @@
 
 /* Transfers, tunnels and the resource summary are buttons, so they get the
    same hover/open affordance as every other clickable item in the chrome.
-   The negative margin keeps the bar's rhythm while the tint grows outward. */
+   The 20px height fills the 24px strip with a 2px breathing edge; without it
+   the tint hugged the 15px text line and read as a floating fragment. The
+   negative margin keeps the bar's rhythm while the tint grows outward. */
 button.status-item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-4);
+  height: var(--h-control-xs);
   margin: 0 -4px;
   padding: 0 var(--sp-4);
   border-radius: var(--radius-sm);
@@ -115,9 +124,11 @@ button.status-item[aria-expanded="true"] {
      the hover state to read as "pointed at" rather than "open". */
   box-shadow: inset 0 0 0 1px var(--accent);
 }
+/* A 2px ring at offset 1 would spill past the 24px strip; at offset 0 it
+   lands exactly on the bar's own edges. */
 button.status-item:focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline-offset: 0;
 }
 /* The message slot is the shrinkable one; the ellipsis lives on its text so
    the dismiss button keeps its full hit area. */
@@ -125,13 +136,9 @@ button.status-item:focus-visible {
 .statusbar .resource-monitor, .statusbar .forward-center, .statusbar .transfer-center { flex-shrink: 0; }
 
 /* The active session is being recorded to a file; the button opens the
-   folder. The dot is the Codicon, tinted the recording red. */
+   folder. The dot is the Codicon, tinted the recording red. The button's
+   box (height, gap, tint) comes from the shared status-item rule above. */
 .status-recording {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-3);
-  padding: 0 var(--sp-4);
-  border-radius: var(--radius-sm);
   color: var(--fg);
   font-weight: 600;
   letter-spacing: 0.02em;

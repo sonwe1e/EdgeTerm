@@ -205,12 +205,49 @@ describe("Filer multiple selection at the real panel entry", () => {
     await act(async () => dialog.querySelector<HTMLButtonElement>(".is-danger")!.click());
     if (remote) {
       expect(vi.mocked(api.sftpRemove).mock.calls).toEqual([
-        ["selection-ssh", "/selection/folder", true], ["selection-ssh", "/selection/file10.txt", false],
+        ["selection-ssh", "/selection/folder", true, true],
+        ["selection-ssh", "/selection/file10.txt", false, false],
       ]);
     } else {
-      expect(vi.mocked(api.localRemove).mock.calls).toEqual([["/selection/folder", true], ["/selection/file10.txt", false]]);
+      expect(vi.mocked(api.localRemove).mock.calls).toEqual([
+        ["/selection/folder", true, true],
+        ["/selection/file10.txt", false, false],
+      ]);
     }
     expect(chosen()).toEqual([]);
+  });
+
+  it("says a folder goes with its contents and asks the backend to delete recursively", async () => {
+    await mount();
+    press("folder");
+    act(() => toolbar("Delete").click());
+    const dialog = host.querySelector<HTMLElement>('[role="alertdialog"]')!;
+    expect(dialog.textContent).toContain("Delete Folder");
+    expect(dialog.textContent).toContain("everything inside it");
+    const danger = dialog.querySelector<HTMLButtonElement>(".is-danger")!;
+    expect(danger.textContent).toBe("Delete Folder and Contents");
+    // Enter on an untouched dialog must still cancel, not delete.
+    const cancel = [...dialog.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent === "Cancel")!;
+    expect(document.activeElement).toBe(cancel);
+    await act(async () => danger.click());
+    expect(vi.mocked(api.localRemove).mock.calls).toEqual([
+      ["/selection/folder", true, true],
+    ]);
+  });
+
+  it("deletes a single file without the recursive flag", async () => {
+    await mount();
+    press("file2.txt");
+    act(() => toolbar("Delete").click());
+    const dialog = host.querySelector<HTMLElement>('[role="alertdialog"]')!;
+    expect(dialog.textContent).not.toContain("everything inside it");
+    const danger = dialog.querySelector<HTMLButtonElement>(".is-danger")!;
+    expect(danger.textContent).toBe("Delete");
+    await act(async () => danger.click());
+    expect(vi.mocked(api.localRemove).mock.calls).toEqual([
+      ["/selection/file2.txt", false, false],
+    ]);
   });
 
   it("keeps failed deletions selected, reports errors, and continues the other selected items", async () => {

@@ -39,10 +39,18 @@ pub async fn sftp_remove(
     id: String,
     path: String,
     is_dir: bool,
+    recursive: bool,
 ) -> Result<()> {
     state
         .sessions
-        .sftp(&id, SftpRequest::Remove { path, is_dir })
+        .sftp(
+            &id,
+            SftpRequest::Remove {
+                path,
+                is_dir,
+                recursive,
+            },
+        )
         .await?;
     Ok(())
 }

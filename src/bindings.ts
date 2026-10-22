@@ -144,7 +144,7 @@ export const commands = {
 	sftpList: (id: string, path: string) => __TAURI_INVOKE<DirListing>("sftp_list", { id, path }),
 	sftpMkdir: (id: string, path: string) => __TAURI_INVOKE<null>("sftp_mkdir", { id, path }),
 	sftpCreateFile: (id: string, path: string) => __TAURI_INVOKE<null>("sftp_create_file", { id, path }),
-	sftpRemove: (id: string, path: string, isDir: boolean) => __TAURI_INVOKE<null>("sftp_remove", { id, path, isDir }),
+	sftpRemove: (id: string, path: string, isDir: boolean, recursive: boolean) => __TAURI_INVOKE<null>("sftp_remove", { id, path, isDir, recursive }),
 	sftpRename: (id: string, from: string, to: string) => __TAURI_INVOKE<null>("sftp_rename", { id, from, to }),
 	/**
 	 *  Interrupts pending I/O and asks the background worker to remove its owned
@@ -444,7 +444,12 @@ export const commands = {
 	 */
 	localCopyInto: (source: string, destination: string, onProgress: Channel<TransferProgress>) => __TAURI_INVOKE<LocalCopySummary>("local_copy_into", { source, destination, onProgress }),
 	localRename: (from: string, to: string) => __TAURI_INVOKE<null>("local_rename", { from, to }),
-	localRemove: (path: string, isDir: boolean) => __TAURI_INVOKE<null>("local_remove", { path, isDir }),
+	/**
+	 *  Deletes one local entry. `recursive` is set only after the user confirmed
+	 *  that a folder's contents go with it; moving the walk off the async runtime
+	 *  keeps a large tree from stalling the interface.
+	 */
+	localRemove: (path: string, isDir: boolean, recursive: boolean) => __TAURI_INVOKE<null>("local_remove", { path, isDir, recursive }),
 	listSerialPorts: () => __TAURI_INVOKE<SerialPortDesc[]>("list_serial_ports"),
 	/**
 	 *  Minimize / maximize / restore the main window.
@@ -1212,6 +1217,23 @@ export type Metrics = {
 	networkStatus: string,
 	gpus: Gpu[],
 	gpuStatus: string,
+	npus: Npu[],
+	npuStatus: string,
+};
+
+/**
+ *  One accelerator. The optional fields are independently absent: a vendor
+ *  table can report a temperature without a utilization, and a generic accel
+ *  device exposes an identity but no counters at all. `None` never turns into a
+ *  reading of zero.
+ */
+export type Npu = {
+	index: number,
+	name: string,
+	utilization: number | null,
+	usedBytes: number | null,
+	totalBytes: number | null,
+	temperature: number | null,
 };
 
 /**

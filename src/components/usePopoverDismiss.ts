@@ -7,7 +7,25 @@ export function usePopoverDismiss(open: boolean, close: () => void, root: RefObj
   useEffect(() => {
     if (!open) return;
     const outside = (event: Event) => {
-      if (event.target instanceof Node && !root.current?.contains(event.target)) dismiss.current();
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (root.current?.contains(target)) return;
+      // A pointerdown on non-interactive content inside the popover (a
+      // label's span, a caption, a job name) makes the browser focus the
+      // nearest focusable ancestor — the status bar, which is tabIndex=-1 and
+      // contains this popover. That focus move is a side effect of a click
+      // that was already inside, not the user leaving: treating it as
+      // "outside" closed the panel on every such click. A real outside
+      // pointerdown is rejected above this exception, so only focusin gets it.
+      if (
+        event.type === "focusin" &&
+        target !== document.body &&
+        target !== document.documentElement &&
+        target.contains(root.current)
+      ) {
+        return;
+      }
+      dismiss.current();
     };
     const escape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;

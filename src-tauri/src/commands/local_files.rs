@@ -78,8 +78,13 @@ pub fn local_rename(from: String, to: String) -> Result<()> {
     fs_local::rename(&from, &to)
 }
 
+/// Deletes one local entry. `recursive` is set only after the user confirmed
+/// that a folder's contents go with it; moving the walk off the async runtime
+/// keeps a large tree from stalling the interface.
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
-pub fn local_remove(path: String, is_dir: bool) -> Result<()> {
-    fs_local::remove(&path, is_dir)
+pub async fn local_remove(path: String, is_dir: bool, recursive: bool) -> Result<()> {
+    tokio::task::spawn_blocking(move || fs_local::remove(&path, is_dir, recursive))
+        .await
+        .map_err(|error| AppError::new(format!("local delete task failed: {error}")))?
 }

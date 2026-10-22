@@ -1,0 +1,329 @@
+/* Host resource monitor: the status-bar vitals cluster and the body of its
+   popover. The popover frame itself is the shared StatusPopover shell (see
+   popover.styles.css); this sheet only owns the monitor's own rows and the
+   cluster that sits in the 24px status bar. Every colour comes from a semantic
+   token, so all four themes hold without a hex value here. */
+
+.resource-monitor {
+  position: relative;
+  min-width: 0;
+}
+
+/* The summary is one line by construction: the shared status-item rule supplies
+   the box, the hover/open tint and `nowrap`, so this only clips a cluster that
+   outgrows the bar. */
+.resource-summary {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.resource-summary.is-stale {
+  opacity: 0.65;
+}
+
+/* The button is a flex container (see the shared status-item rule), so the
+   wide/compact pair lives in this one block child: a flex item would blockify
+   both spans and the display-based breakpoint could not switch them. */
+.resource-summary-line {
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Label, mini trend and reading per gauge. Hairline separators rather than
+   dots, so the row reads as an instrument strip, not as a sentence. */
+.resource-vitals {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-8);
+  vertical-align: middle;
+}
+
+.vital {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.vital + .vital::before {
+  content: "";
+  width: 1px;
+  height: 10px;
+  margin-right: var(--sp-4);
+  background: var(--border-strong);
+}
+
+.vital-label {
+  color: var(--fg-faint);
+  font-size: var(--fs-xs);
+}
+
+.vital-value {
+  color: var(--fg);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A 12px trend: enough to show a direction, thin enough to leave the reading
+   the loudest thing in the cluster. */
+.spark-mini {
+  margin-left: 0;
+  width: 30px;
+  height: 12px;
+}
+
+.spark-mini .spark-line {
+  stroke-width: 1.25;
+}
+
+/* The two forms share one slot: the full cluster above 1100px, two gauges of
+   text below it. The plain state (off, unsupported, unreadable) is text in the
+   bar's own colour and needs no rule. */
+.resource-wide {
+  display: inline;
+}
+
+.resource-compact {
+  display: none;
+}
+
+@media (max-width: 1100px) {
+  .resource-wide {
+    display: none;
+  }
+
+  .resource-compact {
+    display: inline;
+  }
+}
+
+/* --- popover body --------------------------------------------------------- */
+
+/* A note or an error is body copy, not a paragraph: no default margins, and
+   the shared shell's gap already spaces it. */
+.monitor-popover p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Refresh lives in the header's actions slot as an icon button, like the close
+   control beside it. The shell's button rule pads and outlines every button in
+   a popover, so this one resets those to a square hit area. */
+.status-popover .monitor-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--h-control-sm);
+  height: var(--h-control-sm);
+  padding: 0;
+  color: var(--fg-dim);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.status-popover .monitor-refresh:hover:not(:disabled) {
+  color: var(--fg);
+  background: var(--bg-hover);
+}
+
+.status-popover .monitor-refresh:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Four gauges in a calm 2×2: each tile holds its name, the big reading, the
+   trend and one quiet line of context. */
+.monitor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-8);
+}
+
+.monitor-tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-width: 0;
+  padding: var(--sp-8) var(--sp-10) var(--sp-6);
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.monitor-tile-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-8);
+}
+
+.monitor-tile-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-dim);
+  font-size: var(--fs-sm);
+}
+
+/* The reading is the loudest element of the panel: a display size that still
+   follows the panel font setting. */
+.monitor-tile-value {
+  flex: none;
+  color: var(--fg);
+  font-size: calc(var(--panel-font-size) + 9px);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+/* The trend box is stretched by CSS; the path is drawn in its own 140×32
+   coordinate space, so the stroke stays even (non-scaling-stroke). */
+.monitor-spark {
+  width: 100%;
+  height: 32px;
+  margin-left: 0;
+}
+
+.monitor-tile-detail {
+  min-height: 1.1em;
+  overflow: hidden;
+  color: var(--fg-faint);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Disk throughput keeps its own quiet line: it is a rate, not a fullness, and
+   does not belong inside the capacity tile. */
+.monitor-io {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-8);
+  color: var(--fg-faint);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.monitor-io-label {
+  flex: none;
+  color: var(--fg-dim);
+}
+
+/* Accelerators appear only when one was detected. A hairline separates them
+   from the host gauges, which are always there. */
+.monitor-devices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  padding-top: var(--sp-10);
+  border-top: 1px solid var(--border);
+}
+
+.monitor-device {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 64px auto auto;
+  align-items: center;
+  gap: var(--sp-8);
+  min-width: 0;
+}
+
+.monitor-device-kind {
+  padding: 0 var(--sp-4);
+  color: var(--fg-dim);
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  line-height: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+}
+
+.monitor-device-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg);
+  font-size: var(--fs-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.monitor-device-track {
+  position: relative;
+  height: 4px;
+  overflow: hidden;
+  background: var(--bg-track);
+  border-radius: var(--radius-pill);
+}
+
+.monitor-device-fill {
+  display: block;
+  height: 100%;
+  background: var(--green);
+  border-radius: inherit;
+  transition: width 160ms ease;
+}
+
+.monitor-device-track.is-warn .monitor-device-fill {
+  background: var(--yellow);
+}
+
+.monitor-device-track.is-crit .monitor-device-fill {
+  background: var(--red);
+}
+
+.monitor-device-value {
+  min-width: 44px;
+  color: var(--fg);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.monitor-device-meta {
+  color: var(--fg-faint);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The two settings stay one quiet row under the readings; they are controls,
+   not part of the instrument. */
+.monitor-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-8);
+  padding-top: var(--sp-10);
+  border-top: 1px solid var(--border);
+}
+
+.monitor-toggle,
+.monitor-interval {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-6);
+  color: var(--fg-dim);
+  font-size: var(--fs-sm);
+}
+
+.status-popover .monitor-toggle input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+.status-popover .monitor-interval input[type="number"] {
+  width: 48px;
+  text-align: right;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .monitor-device-fill {
+    transition: none;
+  }
+}

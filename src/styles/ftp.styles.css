@@ -777,6 +777,9 @@
   right: 12px;
   z-index: 8;
   max-width: min(520px, calc(100% - 32px));
+  display: flex;
+  align-items: center;
+  gap: var(--sp-8);
   overflow: hidden;
   padding: var(--sp-6) var(--sp-12);
   border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
@@ -788,8 +791,38 @@
   font-size: var(--fs-sm);
   line-height: 1.4;
   pointer-events: none;
-  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.transfer-notice-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The notice never blocks the terminal underneath, so its one control has to
+   opt back into pointer events; it keeps the notice's own ink rather than a
+   button fill, which would shout over a progress line. */
+.transfer-notice-cancel {
+  flex: none;
+  padding: 0 var(--sp-6);
+  border: 1px solid color-mix(in srgb, currentColor 45%, transparent);
+  border-radius: var(--radius-xs);
+  color: inherit;
+  background: none;
+  font: inherit;
+  line-height: 1.5;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.transfer-notice-cancel:hover {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.transfer-notice-cancel:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .transfer-notice.is-hidden {

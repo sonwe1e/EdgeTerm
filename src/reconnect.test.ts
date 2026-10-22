@@ -65,8 +65,8 @@ describe("Enter reconnects a dead session", () => {
     const onReconnect = vi.fn();
     const c = createController({ onReconnect });
     c.setLocked(true);
-    const internals = c as unknown as { xmodem: { isActive(): boolean } };
-    vi.spyOn(internals.xmodem, "isActive").mockReturnValue(true);
+    const internals = c as unknown as { zmodem: { isActive(): boolean } };
+    vi.spyOn(internals.zmodem, "isActive").mockReturnValue(true);
     keypress(c, "\r");
     expect(onReconnect).not.toHaveBeenCalled();
   });

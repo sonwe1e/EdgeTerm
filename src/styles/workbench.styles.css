@@ -321,6 +321,9 @@
   margin-left: var(--sp-6);
   vertical-align: middle;
   overflow: visible;
+  /* One tone colour feeds both the line and the fill, so the two can never
+     drift apart and a caller restyles the pair by setting `color`. */
+  color: var(--green);
 }
 
 /* Not enough samples yet (the first delta reading): a faint baseline reads as
@@ -331,7 +334,7 @@
 
 .spark-line {
   fill: none;
-  stroke: var(--green);
+  stroke: currentColor;
   stroke-width: 1.5;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -339,24 +342,23 @@
 
 .spark-area {
   stroke: none;
-  fill: var(--green);
-  opacity: 0.14;
+  fill: currentColor;
+  opacity: 0.15;
 }
 
-.spark.tone-warn .spark-line {
-  stroke: var(--yellow);
+/* The hairline the area closes to: quieter than a border, so it reads as an
+   axis rather than the edge of a box. */
+.spark-base {
+  stroke: color-mix(in srgb, var(--fg-faint) 30%, transparent);
+  stroke-width: 1;
 }
 
-.spark.tone-warn .spark-area {
-  fill: var(--yellow);
+.spark.tone-warn {
+  color: var(--yellow);
 }
 
-.spark.tone-crit .spark-line {
-  stroke: var(--red);
-}
-
-.spark.tone-crit .spark-area {
-  fill: var(--red);
+.spark.tone-crit {
+  color: var(--red);
 }
 
 /* Threshold colouring for the numeric value itself. An "ok" tier keeps the

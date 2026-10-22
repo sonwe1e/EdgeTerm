@@ -111,6 +111,6 @@ it("preserves a group during native drag and confirms every selected deletion", 
   expect(dialog.element().textContent).toContain("2 selected items");
   await userEvent.click(dialog.getByRole("button", { name: "Delete", exact: true }));
   expect(vi.mocked(api.localRemove).mock.calls).toEqual([
-    ["/selection-browser/file0.txt", false], ["/selection-browser/file2.txt", false],
+    ["/selection-browser/file0.txt", false, false], ["/selection-browser/file2.txt", false, false],
   ]);
 });

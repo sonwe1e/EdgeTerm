@@ -56,9 +56,9 @@ function mountFiler(width: number, virtual: boolean) {
     : "";
   app.innerHTML = `<div class="panel filer-panel">
       <div class="filer-columns">
-        <button type="button" class="filer-col-name">Name</button>
-        <button type="button" class="filer-col-size">Size <span class="icon"></span></button>
-        <button type="button" class="filer-col-date">Modified <span class="icon"></span></button>
+        <div class="filer-col-cell is-name"><button type="button" class="filer-col-name">Name</button></div>
+        <div class="filer-col-cell is-size"><button type="button" class="filer-col-size">Size <span class="icon"></span></button></div>
+        <div class="filer-col-cell is-date"><button type="button" class="filer-col-date">Modified <span class="icon"></span></button></div>
       </div>
       <div class="panel-body filer-list" role="listbox">
         <div class="virtual-file-rows"${container}>${rowsMarkup(virtual)}</div>

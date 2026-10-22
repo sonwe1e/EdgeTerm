@@ -2,10 +2,10 @@ import * as api from "./api";
 import { errorText } from "./errorInfo";
 
 /**
- * Pieces shared by the terminal file-transfer protocols (ZMODEM in
- * zmodem.ts, XMODEM in xmodem.ts): local file I/O through the bounded IPC
- * chunks, progress formatting, and the notice / status reporting contract
- * with the TerminalController.
+ * Pieces shared by the terminal's automatic file transfer (ZMODEM in
+ * zmodem.ts): local file I/O through the bounded IPC chunks, progress
+ * formatting, and the notice / status reporting contract with the
+ * TerminalController.
  */
 
 /** Application-level chunk for local file I/O across IPC; see commands.rs. */
@@ -94,8 +94,8 @@ export class BufferedFileWriter {
 
 /**
  * Reads a local file through the chunked IPC, keeping the current chunk so a
- * protocol that consumes the file in small blocks (XMODEM's 128 / 1024
- * bytes) costs one round trip per FILE_CHUNK_SIZE rather than one per block.
+ * protocol that consumes the file in small blocks (ZMODEM's subpackets) costs
+ * one round trip per FILE_CHUNK_SIZE rather than one per block.
  */
 export class ChunkedFileReader {
   private chunkOffset = 0;

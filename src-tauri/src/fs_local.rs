@@ -210,6 +210,12 @@ fn is_drive_root(path: &str) -> bool {
     }
 }
 
+/// A path that names a whole volume or filesystem root: `/`, `C:\`, or a UNC
+/// share. Recursive deletion never accepts one, however the Filer got there.
+fn is_filesystem_root(path: &Path) -> bool {
+    path.parent().is_none()
+}
+
 /// `canonicalize` on Windows returns extended-length paths (`\\?\C:\Users`,
 /// `\\?\UNC\server\share`). Turn them back into the plain form so the path
 /// bar shows what the user expects and the parent walk works on drive roots.
@@ -340,13 +346,34 @@ pub fn rename(from: &str, to: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn remove(path: &str, is_dir: bool) -> Result<()> {
-    if is_dir {
-        // Deliberately non-recursive: a mistaken click must never erase a
-        // directory tree from the local machine.
-        std::fs::remove_dir(path)?;
+/// Deletes one entry the user selected in the Filer.
+///
+/// `recursive` is only honoured for a folder, and the caller sets it only after
+/// the confirmation said the folder's contents go too. Links are removed
+/// themselves and never followed: the link check comes first, so a link to a
+/// folder can never turn a delete into one of the tree it points at. A
+/// filesystem root is never deleted recursively — no Filer selection means
+/// "erase this volume", and the confirmation only covers what was selected.
+pub fn remove(path: &str, is_dir: bool, recursive: bool) -> Result<()> {
+    let target = Path::new(path);
+    if is_dir && recursive {
+        if is_filesystem_root(target) {
+            return Err(AppError::new(format!(
+                "refusing to delete {path}: it is a filesystem root"
+            )));
+        }
+        // `remove_dir_all` does not follow links itself; checking the entry the
+        // user selected keeps the rule explicit for the root of the delete.
+        if std::fs::symlink_metadata(target)?.file_type().is_symlink() {
+            std::fs::remove_file(target)?;
+        } else {
+            std::fs::remove_dir_all(target)
+                .map_err(|error| AppError::from_io(format!("cannot delete {path}"), &error))?;
+        }
+    } else if is_dir {
+        std::fs::remove_dir(target)?;
     } else {
-        std::fs::remove_file(path)?;
+        std::fs::remove_file(target)?;
     }
     Ok(())
 }
@@ -572,8 +599,18 @@ fn expand_tilde(path: &str) -> String {
 
 #[cfg(test)]
 mod local_tests {
-    use super::{file_entry_from_parts, is_drive_root, strip_verbatim_prefix};
-    use std::path::PathBuf;
+    use super::{
+        file_entry_from_parts, is_drive_root, is_filesystem_root, remove, strip_verbatim_prefix,
+    };
+    use std::path::{Path, PathBuf};
+
+    /// A private scratch folder under the temp directory the test removes.
+    fn scratch(name: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("edgeterm-remove-{name}-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("scratch dir");
+        dir
+    }
 
     #[test]
     fn recognises_drive_roots_in_every_spelling() {
@@ -620,5 +657,119 @@ mod local_tests {
         assert_eq!(entry.size, 0);
         assert!(entry.modified.is_none());
         assert!(entry.permissions.is_none());
+    }
+
+    #[test]
+    fn recursive_remove_deletes_a_nested_tree_and_leaves_neighbours_alone() {
+        let dir = scratch("tree");
+        let tree = dir.join("tree");
+        std::fs::create_dir_all(tree.join("deep/deeper")).unwrap();
+        std::fs::write(tree.join("top.txt"), b"top").unwrap();
+        std::fs::write(tree.join("deep/leaf.txt"), b"leaf").unwrap();
+        std::fs::write(tree.join("deep/deeper/leaf.txt"), b"leaf").unwrap();
+        let neighbour = dir.join("keep.txt");
+        std::fs::write(&neighbour, b"keep").unwrap();
+
+        remove(tree.to_str().unwrap(), true, true).expect("recursive delete");
+
+        assert!(!tree.exists(), "the whole tree is gone");
+        assert_eq!(
+            std::fs::read(&neighbour).unwrap(),
+            b"keep",
+            "nothing next to the selected folder is touched"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_non_recursive_remove_still_refuses_a_non_empty_folder() {
+        let dir = scratch("refused");
+        let tree = dir.join("tree");
+        std::fs::create_dir_all(&tree).unwrap();
+        std::fs::write(tree.join("file.txt"), b"x").unwrap();
+
+        assert!(remove(tree.to_str().unwrap(), true, false).is_err());
+        assert!(
+            tree.join("file.txt").exists(),
+            "a refused delete removes nothing"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_root_shaped_path_is_never_deleted_recursively() {
+        // `Path::new("")` has no parent, like `/` and `C:\`, so the guard is
+        // exercised without naming a real volume.
+        let error = remove("", true, true).expect_err("a root is never deleted");
+        assert!(error.to_string().contains("filesystem root"), "{error}");
+    }
+
+    #[test]
+    fn recognises_filesystem_roots() {
+        assert!(is_filesystem_root(Path::new("/")));
+        assert!(!is_filesystem_root(Path::new("/home")));
+        assert!(!is_filesystem_root(Path::new("folder")));
+        assert!(!is_filesystem_root(Path::new("C:\\Users")));
+        #[cfg(windows)]
+        {
+            assert!(is_filesystem_root(Path::new("C:\\")));
+            assert!(is_filesystem_root(Path::new("c:/")));
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn recursive_remove_unlinks_links_instead_of_following_them() {
+        use std::os::unix::fs::symlink;
+
+        let dir = scratch("links");
+        let outside = dir.join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("precious.txt"), b"precious").unwrap();
+        let tree = dir.join("tree");
+        std::fs::create_dir_all(&tree).unwrap();
+        std::fs::write(tree.join("file.txt"), b"file").unwrap();
+        symlink(&outside, tree.join("dir-link")).unwrap();
+        symlink(outside.join("precious.txt"), tree.join("file-link")).unwrap();
+
+        remove(tree.to_str().unwrap(), true, true).expect("recursive delete through links");
+
+        assert!(!tree.exists());
+        assert_eq!(
+            std::fs::read(outside.join("precious.txt")).unwrap(),
+            b"precious",
+            "a link is removed itself; what it points at stays"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn recursive_remove_unlinks_a_windows_directory_link_instead_of_following_it() {
+        let dir = scratch("links");
+        let outside = dir.join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("precious.txt"), b"precious").unwrap();
+        let tree = dir.join("tree");
+        std::fs::create_dir_all(&tree).unwrap();
+        // Creating a directory link needs SeCreateSymbolicLinkPrivilege
+        // (Developer Mode or an elevated runner). Where the account has none,
+        // the platform behaviour cannot be observed here; the test says so
+        // instead of failing on the environment.
+        if let Err(error) = std::os::windows::fs::symlink_dir(&outside, tree.join("dir-link")) {
+            eprintln!("skipping the Windows link case: {error}");
+            std::fs::remove_dir_all(&dir).ok();
+            return;
+        }
+
+        remove(tree.to_str().unwrap(), true, true).expect("recursive delete through a link");
+
+        assert!(!tree.exists());
+        assert_eq!(
+            std::fs::read(outside.join("precious.txt")).unwrap(),
+            b"precious",
+            "a link is removed itself; what it points at stays"
+        );
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

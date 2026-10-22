@@ -65,6 +65,11 @@ export interface ResourceMetrics {
   networkReceiveBps:number | null; networkSendBps:number | null; networkStatus:string;
   gpus: {index:number;name:string;utilization:number | null;usedBytes:number | null;totalBytes:number | null;temperature:number | null}[];
   gpuStatus: string;
+  /** Accelerators (Ascend, Intel XPU, Rockchip NPU, or a generic /sys/class/accel
+   *  device). A field is null when its source did not report it — never a
+   *  fabricated zero — and npuStatus stays distinct from gpuStatus. */
+  npus: {index:number;name:string;utilization:number | null;usedBytes:number | null;totalBytes:number | null;temperature:number | null}[];
+  npuStatus: string;
 }
 export const sampleResources = (id:string,requestId:string) => invoke<ResourceMetrics>("sample_resources",{id,requestId});
 export const cancelResourceSample = (requestId:string) => invoke<void>("cancel_resource_sample",{requestId});
@@ -365,9 +370,9 @@ export const writeSessionBytes = (id: string, bytes: Uint8Array) =>
 export const resizeSession = (id: string, cols: number, rows: number) =>
   invoke<void>("resize_session", { id, cols, rows });
 
-// --- local file streaming for ZMODEM / XMODEM -------------------------------
+// --- local file streaming for ZMODEM -----------------------------------------
 // Bounded chunks so a transfer never holds a whole file in the WebView; used
-// through terminalTransfer.ts by both protocols.
+// through terminalTransfer.ts by the automatic transfer.
 
 export const zmodemFileInfo = (path: string) =>
   invoke<ZmodemFileInfo>("zmodem_file_info", { path });
@@ -401,8 +406,17 @@ export const sftpMkdir = (id: string, path: string) =>
 export const sftpCreateFile = (id: string, path: string) =>
   invoke<void>("sftp_create_file", { id, path });
 
-export const sftpRemove = (id: string, path: string, isDir: boolean) =>
-  invoke<void>("sftp_remove", { id, path, isDir });
+/**
+ * Deletes one remote entry. `recursive` must only be set after the user
+ * confirmed that a folder's contents go with it; without it the server still
+ * refuses a folder that is not empty.
+ */
+export const sftpRemove = (
+  id: string,
+  path: string,
+  isDir: boolean,
+  recursive: boolean,
+) => invoke<void>("sftp_remove", { id, path, isDir, recursive });
 
 export const sftpRename = (id: string, from: string, to: string) =>
   invoke<void>("sftp_rename", { id, from, to });
@@ -494,8 +508,9 @@ export const localCreateFile = (path: string) =>
 export const localRename = (from: string, to: string) =>
   invoke<void>("local_rename", { from, to });
 
-export const localRemove = (path: string, isDir: boolean) =>
-  invoke<void>("local_remove", { path, isDir });
+/** Deletes one local entry; `recursive` has the same contract as `sftpRemove`. */
+export const localRemove = (path: string, isDir: boolean, recursive: boolean) =>
+  invoke<void>("local_remove", { path, isDir, recursive });
 
 /** What a copy into the Filer's local folder did; see `localCopyInto`. */
 export type LocalCopySummary = Wire.LocalCopySummary;

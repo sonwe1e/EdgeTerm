@@ -924,3 +924,116 @@ fn discover_skips_jobs_live_in_this_run() {
     assert!(manager.discard_persisted("live-job").is_err());
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// A job inserted straight into the manager (no worker launched), beside the
+/// journal a real run would leave: identity, frozen plan and one checkpoint
+/// file. `rebuild` is the production constructor, so the job owns exactly
+/// the directory `dismiss` is expected to remove.
+fn stopped_job(manager: &Transfers, root: &Path, id: &str) -> Arc<Job> {
+    let items = vec![Item {
+        local: "/src/a".into(),
+        remote: "/dst/a".into(),
+        upload: true,
+        directory: false,
+    }];
+    write_journal(root, id, &items, 0);
+    let key = checkpoint_key(id, &items[0]);
+    std::fs::write(root.join(id).join(format!("{key}.json")), b"{}").unwrap();
+    local::save_json(
+        &root.join(id).join("plan.json"),
+        &serde_json::json!({ "items": items }),
+    )
+    .unwrap();
+    let job = manager
+        .rebuild(
+            id.into(),
+            "s".into(),
+            items,
+            None,
+            Options::default(),
+            sftp_profile(),
+            Vec::new(),
+            None,
+            root.join(id),
+            "a".into(),
+            HashMap::new(),
+            sink(),
+            None,
+        )
+        .unwrap();
+    manager.jobs.lock().insert(id.into(), job.clone());
+    job
+}
+
+#[test]
+fn dismiss_clears_a_failed_job_and_its_local_journal() {
+    let root = scratch();
+    let manager = Transfers::with_root(root.clone());
+    let job = stopped_job(&manager, &root, "failed-job");
+    job.status("error", Some(Failure::network("connection reset")));
+    assert!(root.join("failed-job").join("job.json").exists());
+    assert!(root.join("failed-job").join("plan.json").exists());
+
+    manager.control("failed-job", "dismiss").unwrap();
+    assert!(!manager.jobs.lock().contains_key("failed-job"));
+    // The whole journal goes: identity, plan and checkpoints. A leftover
+    // directory would surface later as an unrecognized recovery entry.
+    assert!(
+        !root.join("failed-job").exists(),
+        "the journal directory is removed whole"
+    );
+    assert!(
+        manager.discover().is_empty(),
+        "no ghost recovery entry survives"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn dismiss_refuses_a_job_that_is_still_running() {
+    let root = scratch();
+    let manager = Transfers::with_root(root.clone());
+    let job = stopped_job(&manager, &root, "running-job");
+    // A running job that reports a failure keeps its worker; clearing it must
+    // not race that worker or orphan partial files it may still be writing.
+    job.status("error", Some(Failure::network("connection reset")));
+    job.active.store(true, std::sync::atomic::Ordering::SeqCst);
+    assert!(manager.control("running-job", "dismiss").is_err());
+    assert!(manager.jobs.lock().contains_key("running-job"));
+    assert!(root.join("running-job").exists());
+
+    // Once the job has stopped, the same record clears.
+    job.active.store(false, std::sync::atomic::Ordering::SeqCst);
+    manager.control("running-job", "dismiss").unwrap();
+    assert!(!manager.jobs.lock().contains_key("running-job"));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn dismiss_keeps_a_cancelled_cleanup_retry_and_still_clears_finished_jobs() {
+    let root = scratch();
+    let manager = Transfers::with_root(root.clone());
+
+    // Cancelling cleans remote partials; when that cleanup itself failed the
+    // job still owns them, so its record stays until cleanup is retried.
+    let cleanup_failed = stopped_job(&manager, &root, "cleanup-failed");
+    cleanup_failed.status(
+        "cancelled",
+        Some(Failure::network("cannot remove the partial")),
+    );
+    assert!(manager.control("cleanup-failed", "dismiss").is_err());
+    assert!(manager.jobs.lock().contains_key("cleanup-failed"));
+
+    // A completed job and a cancelled job whose cleanup succeeded clear
+    // exactly as before.
+    let done = stopped_job(&manager, &root, "done-job");
+    done.status("complete", None);
+    manager.control("done-job", "dismiss").unwrap();
+    assert!(!manager.jobs.lock().contains_key("done-job"));
+
+    let cancelled = stopped_job(&manager, &root, "cancelled-job");
+    cancelled.status("cancelled", None);
+    manager.control("cancelled-job", "dismiss").unwrap();
+    assert!(!manager.jobs.lock().contains_key("cancelled-job"));
+    let _ = std::fs::remove_dir_all(&root);
+}

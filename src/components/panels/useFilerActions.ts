@@ -97,8 +97,11 @@ export function useFilerActions({
     try {
       for (const entry of chosen) {
         try {
-          if (sessionId) await api.sftpRemove(sessionId, entry.path, entry.isDir);
-          else await api.localRemove(entry.path, entry.isDir);
+          // The confirmation ahead of this call says a folder goes with its
+          // contents; a link is still only the link, so it is never walked.
+          const recursive = entry.isDir && !entry.isSymlink;
+          if (sessionId) await api.sftpRemove(sessionId, entry.path, entry.isDir, recursive);
+          else await api.localRemove(entry.path, entry.isDir, recursive);
         } catch (error) {
           failed.push({ entry, error });
         }

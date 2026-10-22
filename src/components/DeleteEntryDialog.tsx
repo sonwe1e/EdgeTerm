@@ -36,14 +36,19 @@ export function DeleteEntryDialog({
       : kind === "link"
         ? t("deleteEntry.titleLink")
         : t("deleteEntry.titleFile");
-  // Both the local and the SFTP backend refuse to remove a folder with
-  // anything in it, so say so rather than let the error explain afterwards.
+  // A folder is deleted with everything inside it once this is confirmed, so
+  // the dialog says that and the danger button names it. A link is only ever
+  // the link itself, and a file is a file.
   const hint =
     kind === "folder"
       ? t("deleteEntry.hintFolder")
       : kind === "link"
         ? t("deleteEntry.hintLink")
         : t("deleteEntry.hintFile");
+  const dangerLabel =
+    !multiple && kind === "folder"
+      ? t("deleteEntry.deleteFolder")
+      : t("common.delete");
   const kindWord =
     kind === "folder"
       ? t("deleteEntry.kindFolder")
@@ -91,7 +96,7 @@ export function DeleteEntryDialog({
           className="btn is-danger"
           onClick={onConfirm}
         >
-          {t("common.delete")}
+          {dangerLabel}
         </button>
       </div>
     </ModalDialog>

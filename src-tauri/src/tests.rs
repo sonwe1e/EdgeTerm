@@ -1401,11 +1401,11 @@ fn local_file_operations_are_non_recursive() {
     fs_local::rename(original.to_str().unwrap(), renamed.to_str().unwrap()).expect("rename file");
 
     assert!(
-        fs_local::remove(folder.to_str().unwrap(), true).is_err(),
-        "non-empty directories must never be removed recursively"
+        fs_local::remove(folder.to_str().unwrap(), true, false).is_err(),
+        "a plain folder removal must never remove a non-empty directory"
     );
-    fs_local::remove(renamed.to_str().unwrap(), false).expect("remove file");
-    fs_local::remove(folder.to_str().unwrap(), true).expect("remove empty folder");
+    fs_local::remove(renamed.to_str().unwrap(), false, false).expect("remove file");
+    fs_local::remove(folder.to_str().unwrap(), true, false).expect("remove empty folder");
 
     std::fs::remove_dir_all(&dir).ok();
 }

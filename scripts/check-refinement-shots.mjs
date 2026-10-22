@@ -5,11 +5,12 @@
 // more commands than a whitelist would name and a throw would abort the shot
 // halfway through.
 //
-// Unlike check-app-font-chain.mjs this is NOT an oracle: it has no
-// expectations to fail. It exists to produce screenshots a human can review,
-// plus a manifest of what was actually on screen when each was taken. A
-// missing selector is recorded as a warning, not a failure, so one absent
-// surface does not cost the others.
+// Pictures for a human, numbers for the machine. Each popover scene also runs
+// the reusable audit in layout-audit.mjs, and its measured geometry, row
+// rhythm, status-bar trigger metrics and text contrast land in the manifest
+// under `layout`. A missing selector stays a warning, so one absent surface
+// does not cost the others; a failed layout assertion is objective evidence of
+// a regression and turns the run red.
 //
 // Boundaries: the stubbed IPC proves nothing about WebView2, GPU renderers,
 // real servers or other platforms' engines. It proves what the front end
@@ -20,6 +21,8 @@ import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { auditLayout } from "./layout-audit.mjs";
 
 const require = createRequire(import.meta.url);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -41,9 +44,86 @@ import { flushSync } from 'react-dom';
 import App from ${JSON.stringify(path.join(repoRoot, "src/App.tsx"))};
 import { useStore } from ${JSON.stringify(path.join(repoRoot, "src/store.ts"))};
 import { useWorkbench } from ${JSON.stringify(path.join(repoRoot, "src/workbench/store.ts"))};
+import { useFileTransfers } from ${JSON.stringify(path.join(repoRoot, "src/fileTransfers.ts"))};
 import ${JSON.stringify(path.join(repoRoot, "src/styles.css"))};
 
 const calls = [], unknown = [];
+
+// Synthetic host vitals: each sample moves a little, so the resource
+// popover's sparklines have a trend to draw instead of a flat line. The
+// field names follow ResourceMetrics (GPU and NPU both present).
+let sampleTick = 0;
+const resourceSample = () => {
+  const phase = [
+    { cpu: 18.2, memory: 0.41, down: 812000, up: 96000, gpu: 31 },
+    { cpu: 22.9, memory: 0.43, down: 1940000, up: 143000, gpu: 44 },
+    { cpu: 15.6, memory: 0.42, down: 642000, up: 51000, gpu: 27 },
+    { cpu: 27.4, memory: 0.46, down: 2680000, up: 388000, gpu: 63 },
+    { cpu: 20.1, memory: 0.44, down: 1210000, up: 205000, gpu: 38 },
+  ][sampleTick++ % 5];
+  const totalMemory = 33554432000;
+  return {
+    status: "ok",
+    cpuPercent: phase.cpu, cpuStatus: "ok",
+    memory: { usedBytes: totalMemory * phase.memory, totalBytes: totalMemory }, memoryStatus: "ok",
+    capacity: { usedBytes: 348966912000, totalBytes: 512110190592, mount: "/" }, capacityStatus: "ok",
+    diskReadBps: 1887436, diskWriteBps: 524288, diskStatus: "ok",
+    networkReceiveBps: phase.down, networkSendBps: phase.up, networkStatus: "ok",
+    gpus: [{ index: 0, name: "NVIDIA GeForce RTX 4090", utilization: phase.gpu,
+      usedBytes: 5368709120, totalBytes: 25769803776, temperature: 64 }],
+    gpuStatus: "ok",
+    npus: [{ index: 0, name: "Ascend 910B", utilization: phase.cpu + 12,
+      usedBytes: 9663676416, totalBytes: 67108864000, temperature: 58 }],
+    npuStatus: "ok",
+  };
+};
+
+// One queue covering the states the transfer popover lays out: a running
+// upload under a rate limit, a failed upload with per-file reasons, and a
+// completed download.
+const transferOptions = { requests: 4, chunkKib: 256, files: 2, durable: false, tar: false, rateLimitBps: 0 };
+const transferJobs = [
+  { revision: 7, id: "shot-transfer-running", sessionId: "shot-ssh",
+    name: "artifacts/edge-1.2.6-x64.tar.zst", status: "running", phase: "upload",
+    transferred: 26214400, total: 58720256, completedFiles: 4, totalFiles: 9,
+    failedFiles: [], error: null, attempt: 1,
+    options: Object.assign({}, transferOptions, { rateLimitBps: 8388608 }) },
+  { revision: 2, id: "shot-transfer-queued", sessionId: "shot-ssh",
+    name: "docs/site-2026-11.zip", status: "queued", phase: "upload",
+    transferred: 0, total: 73400320, completedFiles: 0, totalFiles: 3,
+    failedFiles: [], error: null, attempt: 0,
+    options: Object.assign({}, transferOptions, { files: 3 }) },
+  { revision: 4, id: "shot-transfer-failed", sessionId: "shot-ssh",
+    name: "models/vfi-weights.bin", status: "error", phase: "upload",
+    transferred: 1073741824, total: 4294967296, completedFiles: 0, totalFiles: 1,
+    failedFiles: ["models/vfi-weights.bin: permission denied (os error 13)",
+      "models/vfi-weights.bin.part: no space left on device"],
+    error: { code: "sftp", message: "Permission denied", retryable: true }, attempt: 3,
+    options: Object.assign({}, transferOptions, { files: 1 }) },
+  { revision: 12, id: "shot-transfer-complete", sessionId: "shot-ssh",
+    name: "logs/2026-10-15.tar.gz", status: "complete", phase: "download",
+    transferred: 187695104, total: 187695104, completedFiles: 1, totalFiles: 1,
+    failedFiles: [], error: null, attempt: 1,
+    options: Object.assign({}, transferOptions, { files: 1 }) },
+];
+
+// A local forward and a dynamic (SOCKS5) one: the two shapes the tunnel
+// cards render differently.
+const tunnelRows = [
+  { id: "shot-tunnel-local", owner: "shot-ssh", address: "10.0.0.5:22",
+    spec: { direction: "local", listenHost: "127.0.0.1", listenPort: 5432,
+      targetHost: "10.0.0.9", targetPort: 5432 },
+    status: "listening", error: null, connections: 3, sentBytes: 1867000, receivedBytes: 24118000 },
+  { id: "shot-tunnel-dynamic", owner: "shot-ssh", address: "10.0.0.5:22",
+    spec: { direction: "dynamic", listenHost: "127.0.0.1", listenPort: 1080,
+      targetHost: null, targetPort: null },
+    status: "listening", error: null, connections: 7, sentBytes: 941000, receivedBytes: 6204000 },
+];
+const discoveredPorts = { status: "ok", truncated: false, ports: [
+  { host: "0.0.0.0", port: 8000, process: "python3" },
+  { host: "127.0.0.1", port: 5432, process: "postgres" },
+  { host: "::", port: 6379, process: "redis-server" },
+] };
 let serial = 0;
 window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
 window.__TAURI_INTERNALS__ = {
@@ -62,6 +142,15 @@ window.__TAURI_INTERNALS__ = {
     if (command === "system_monospace_family") return null;
     if (command === "portable_mode") return false;
     if (command === "local_hostname") return "synthetic-host";
+    // The three status popovers' own sources: host vitals, the transfer
+    // queue, the tunnel list, and the port discovery the tunnel form starts
+    // when it opens.
+    if (command === "sample_resources") return resourceSample();
+    if (command === "cancel_resource_sample") return;
+    if (command === "list_file_transfers") return transferJobs;
+    if (command === "list_port_forwards") return tunnelRows;
+    if (command === "discover_listening_ports") return discoveredPorts;
+    if (command === "cancel_port_discovery") return;
     if (command === "plugin:app|version") return "1.0.0";
     if (command === "plugin:window|is_maximized" || command === "plugin:window|is_fullscreen") return false;
     if (command === "plugin:updater|check") return null;
@@ -140,6 +229,33 @@ window.__refinement = {
   async workbench(patch) { flushSync(() => useWorkbench.setState(patch)); await frames(); },
   async tabs(list) { flushSync(() => useStore.setState({ tabs: list })); await frames(); },
   async frames() { await frames(); },
+  /** Activates the connected SSH tab: the session all three status popovers
+      describe (host vitals, transfers, tunnels). */
+  async ssh() {
+    flushSync(() => useStore.setState({ tabs: [localTab, sshTab], activeId: sshTab.info.id }));
+    await frames();
+  },
+  /** The theme is store state; App publishes it as data-theme on <html>. */
+  async theme(mode) {
+    flushSync(() => useStore.setState({ theme: mode }));
+    await frames();
+  },
+  /** Two growing snapshots of the running upload: one snapshot alone leaves
+      its bytes-per-second at 0, which is not what a live queue shows. */
+  async transferPulse() {
+    const current = useFileTransfers.getState().jobs["shot-transfer-running"];
+    if (!current) return;
+    const move = (transferred, revision) => {
+      const next = Object.assign({}, current, { transferred, revision });
+      delete next.bytesPerSecond;
+      delete next.sampledAt;
+      flushSync(() => useFileTransfers.getState().update(next));
+    };
+    move(current.transferred + 4194304, current.revision + 1);
+    await new Promise((resolve) => setTimeout(resolve, 260));
+    move(current.transferred + 8388608, current.revision + 2);
+    await frames();
+  },
   /** Puts the workbench into a connected project with a file tree on screen. */
   async workbenchTree() {
     flushSync(() => useStore.setState({ tabs: [localTab, sshTab], activeId: sshTab.info.id }));
@@ -184,6 +300,11 @@ const warnings = [];
 const errors = [];
 const consoleErrors = [];
 const badResources = [];
+// Geometry, rhythm and contrast numbers per popover scene, plus the assertions
+// they broke. A broken assertion here is a real regression, so it turns the
+// run red; a surface that is simply absent is the shot's own warning.
+const layout = {};
+const layoutFailures = [];
 let browser;
 let server;
 let browserVersion = "";
@@ -268,6 +389,44 @@ try {
   const count = (selector) => call("count", selector);
   const wait = (ms) => page.waitForTimeout(ms);
 
+  /**
+   * Clicks the first of several candidate triggers that is on screen. The
+   * feature engineers own their status-bar buttons, so a scene names the
+   * wrapper class the shell already styles and the expanded-state attribute
+   * the shell promises, and falls back to any button in that wrapper.
+   */
+  const clickFirst = async (selectors, timeout = 5000) => {
+    for (const selector of selectors) {
+      const target = page.locator(selector).first();
+      if ((await target.count()) > 0) {
+        await target.click({ timeout });
+        return selector;
+      }
+    }
+    throw new Error(`none of ${selectors.join(", ")} is on screen`);
+  };
+
+  /**
+   * Closes the shared popover through its own control and waits for the
+   * detach: a pointer-outside click only proves the dismiss hook, while the
+   * frame's close button is the control the three surfaces promise. A
+   * surface that has not migrated to the shared frame yet answers Escape,
+   * so the next scene never inherits a panel covering it.
+   */
+  const closePopover = async () => {
+    if ((await page.locator(".status-popover").count()) > 0) {
+      try {
+        await page.locator(".status-popover-close").first().click({ timeout: 3000 });
+        await page.waitForSelector(".status-popover", { state: "detached", timeout: 3000 });
+        return;
+      } catch (error) {
+        warnings.push({ shot: lastPhase, missing: `popover did not close: ${error.message}` });
+      }
+    }
+    await page.keyboard.press("Escape");
+    await wait(150);
+  };
+
   // The fixture's module scope runs before React mounts, so "ready" only means
   // the entry evaluated — not that the tree survived it. A render crash leaves
   // every later shot black, which is far cheaper to catch here than to infer
@@ -312,6 +471,35 @@ try {
     await fs.mkdir(outDir, { recursive: true });
     await page.screenshot({ path: file });
     shots.push({ name, file: path.relative(repoRoot, file), found });
+  };
+
+  /**
+   * Measures the still-open popover and the status bar for the manifest. The
+   * numbers are the objective half of the screenshot review: viewport
+   * margins, body overflow, row fit and pitch, trigger geometry and text
+   * contrast. A failed assertion is recorded under `layout` and fails the run;
+   * a missing frame only records why it could not be measured, because the
+   * shot's own selector warnings already name that surface.
+   */
+  const auditScene = async (name, options) => {
+    try {
+      const record = await auditLayout(page, { scene: name, ...options });
+      layout[name] = record;
+      for (const failure of record.failures) {
+        warnings.push({ shot: name, missing: `layout: ${failure}` });
+      }
+      if (record.failures.length > 0) {
+        layoutFailures.push({ scene: name, failures: record.failures });
+      }
+      for (const item of record.contrast) {
+        if (item.present && item.measured === false) {
+          warnings.push({ shot: name, missing: `layout: colour could not be parsed for ${item.selector}` });
+        }
+      }
+      if (record.note) warnings.push({ shot: name, missing: `layout: ${record.note}` });
+    } catch (error) {
+      warnings.push({ shot: name, missing: `layout audit failed: ${error.message}` });
+    }
   };
 
   // 1. The app shell: session tree, Filer, Sender quickbar and the status bar
@@ -446,14 +634,239 @@ try {
     saveButton: ".sender-save-btn",
   });
 
+  // 7. Host resources on the connected SSH session. The vitals cluster polls
+  //    the sampling stub, so a few samples land before the popover opens and
+  //    its sparklines have a trend rather than one point. The Sender expansion
+  //    from the previous scene is dropped first: these shots review the
+  //    popover against the shell's normal proportions, not an expanded panel.
+  await shoot("monitor", async () => {
+    try {
+      await page.evaluate(() => localStorage.removeItem("edgeterm.panelSizing"));
+      await page.reload();
+      await page.waitForFunction(() => window.__refinementReady === true, undefined, { timeout: 30000 });
+      await call("ssh");
+      await wait(4600);
+      await clickFirst([
+        ".resource-monitor button[aria-expanded]",
+        ".resource-monitor button",
+        ".resource-summary",
+      ]);
+      await page.waitForSelector(".status-popover", { timeout: 8000 });
+    } catch (error) {
+      warnings.push({ shot: "monitor", missing: `resource popover did not open: ${error.message}` });
+    }
+  }, {
+    statusPopover: ".status-popover.monitor-popover",
+    head: ".status-popover-head",
+    body: ".status-popover-body",
+    tiles: ".monitor-grid .monitor-tile",
+    sparkline: ".monitor-grid .monitor-spark",
+    devices: ".monitor-devices",
+  });
+  await auditScene("monitor", {
+    rowGroups: [
+      { selector: ".monitor-tile", fit: true },
+      { selector: ".monitor-device", fit: true },
+      { selector: ".monitor-controls", fit: true },
+    ],
+    containers: [".status-popover-body", ".monitor-grid", ".monitor-devices"],
+    contrast: [
+      ".monitor-tile-label", ".monitor-tile-value", ".monitor-tile-detail",
+      ".monitor-device-kind", ".monitor-device-name", ".monitor-device-value",
+      ".monitor-device-meta",
+    ],
+  });
+  await closePopover();
+
+  // 7b. The same monitor surface at 1440x900, above the 1100px breakpoint:
+  //     the compact fallback must be gone and the vitals cluster must be what
+  //     the bar shows, with every vital inside the 24px strip and the four
+  //     gauges keeping their row pitch. The 1100x720 scene above stays as the
+  //     compact-breakpoint evidence.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await shoot("monitor-wide", async () => {
+    try {
+      await call("ssh");
+      await wait(600);
+      await clickFirst([
+        ".resource-monitor button[aria-expanded]",
+        ".resource-monitor button",
+        ".resource-summary",
+      ]);
+      await page.waitForSelector(".status-popover", { timeout: 8000 });
+    } catch (error) {
+      warnings.push({ shot: "monitor-wide", missing: `resource popover did not open: ${error.message}` });
+    }
+  }, {
+    statusPopover: ".status-popover.monitor-popover",
+    vitals: ".resource-vitals",
+    wide: ".resource-wide",
+  });
+  await auditScene("monitor-wide", {
+    rowGroups: [
+      { selector: ".monitor-tile", fit: true, count: 4, rowPitch: true, pitch: 100.1 },
+      { selector: ".monitor-device", fit: true },
+      { selector: ".monitor-controls", fit: true },
+    ],
+    containers: [".status-popover-body", ".monitor-grid", ".monitor-devices"],
+    elements: {
+      visible: [".resource-wide"],
+      hidden: [".resource-compact"],
+      fitWithin: [
+        { selector: ".resource-vitals", within: ".statusbar" },
+        { selector: ".vital", within: ".statusbar", maxHeight: 24 },
+      ],
+    },
+    contrast: [
+      ".monitor-tile-label", ".monitor-tile-value", ".monitor-tile-detail",
+      ".monitor-device-kind", ".monitor-device-name", ".monitor-device-value",
+      ".monitor-device-meta",
+    ],
+  });
+  await closePopover();
+  await page.setViewportSize({ width: 1100, height: 720 });
+
+  // 8. The transfer queue: a running upload, a failed upload with failed
+  //    files, and a completed download, all seeded through list_file_transfers.
+  await shoot("transfers", async () => {
+    try {
+      await call("ssh");
+      await call("transferPulse");
+      await clickFirst([".transfer-center button[aria-expanded]", ".transfer-center button"]);
+      await page.waitForSelector(".status-popover", { timeout: 8000 });
+    } catch (error) {
+      warnings.push({ shot: "transfers", missing: `transfer popover did not open: ${error.message}` });
+    }
+  }, {
+    statusPopover: ".status-popover.transfer-center-popover",
+    head: ".status-popover-head",
+    body: ".status-popover-body",
+    jobRows: ".status-popover .transfer-job",
+    statusPill: ".status-popover .transfer-status",
+    progress: ".status-popover .transfer-job-track",
+    failedFilesToggle: ".status-popover .transfer-job-failures",
+  });
+  await auditScene("transfers", {
+    rowGroups: [{ selector: ".transfer-job", fit: true, pitch: 76 }],
+    containers: [".status-popover-body", ".transfer-center-jobs"],
+    contrast: [".transfer-status", ".transfer-job-name", ".transfer-job-meta-text"],
+  });
+  await closePopover();
+
+  // 8b. The failed files behind the queue's failed row: the toggle opens the
+  //     per-file reasons, which is the evidence the row alone cannot carry.
+  await shoot("transfers-failed", async () => {
+    try {
+      await call("ssh");
+      await clickFirst([".transfer-center button[aria-expanded]", ".transfer-center button"]);
+      await page.waitForSelector(".status-popover", { timeout: 8000 });
+      await page.locator(".status-popover .transfer-job-failures").first().click({ timeout: 4000 });
+      await page.locator(".status-popover .transfer-failures").scrollIntoViewIfNeeded({ timeout: 4000 });
+    } catch (error) {
+      warnings.push({ shot: "transfers-failed", missing: `failed-file list did not open: ${error.message}` });
+    }
+  }, {
+    statusPopover: ".status-popover.transfer-center-popover",
+    failures: ".status-popover .transfer-failures",
+    failureRows: ".status-popover .transfer-failure-row",
+  });
+  await auditScene("transfers-failed", {
+    rowGroups: [
+      { selector: ".transfer-job", fit: true, pitch: 76 },
+      { selector: ".transfer-failure-row", fit: true, pitch: 24 },
+    ],
+    containers: [".status-popover-body", ".transfer-center-jobs", ".transfer-failure-rows"],
+    contrast: [".transfer-status", ".transfer-job-name", ".transfer-job-meta-text"],
+  });
+  await closePopover();
+
+  // The tunnel surface is measured three times (dark/light, narrow/wide), so
+  // its row and contrast expectations live in one object.
+  const tunnelAudit = {
+    rowGroups: [{ selector: ".forward-job", fit: true, pitchVar: "--forward-job-h" }],
+    containers: [".status-popover-body", ".forward-jobs"],
+    contrast: [
+      ".forward-endpoint-label", ".forward-column", ".forward-job-status",
+      ".forward-job-address",
+    ],
+  };
+
+  // 9. The tunnel centre: one local forward and one dynamic (SOCKS5) forward,
+  //    plus the remote-listener discovery the create form starts on open.
+  await shoot("tunnels", async () => {
+    try {
+      await call("ssh");
+      await clickFirst([".forward-center button[aria-expanded]", ".forward-center button"]);
+      await page.waitForSelector(".status-popover", { timeout: 8000 });
+    } catch (error) {
+      warnings.push({ shot: "tunnels", missing: `tunnel popover did not open: ${error.message}` });
+    }
+  }, {
+    statusPopover: ".status-popover.forward-popover",
+    head: ".status-popover-head",
+    body: ".status-popover-body",
+    createForm: ".status-popover .forward-form",
+    tunnelRows: ".status-popover .forward-job",
+    route: ".status-popover .forward-route",
+    badge: ".status-popover .forward-job-badge",
+  });
+  await auditScene("tunnels", tunnelAudit);
+  await closePopover();
+
+  // 10. The same tunnel surface at 1440x900 in the light theme: the shared
+  //     frame has to hold a wide viewport and the second palette, not only
+  //     the 1100x720 dark default.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await call("theme", "light");
+  await shoot("tunnels-wide", async () => {
+    try {
+      await call("ssh");
+      await clickFirst([".forward-center button[aria-expanded]", ".forward-center button"]);
+      await page.waitForSelector(".status-popover", { timeout: 8000 });
+    } catch (error) {
+      warnings.push({ shot: "tunnels-wide", missing: `tunnel popover did not open: ${error.message}` });
+    }
+  }, {
+    statusPopover: ".status-popover.forward-popover",
+    head: ".status-popover-head",
+    body: ".status-popover-body",
+    tunnelRows: ".status-popover .forward-job",
+    route: ".status-popover .forward-route",
+  });
+  await auditScene("tunnels-wide", tunnelAudit);
+  await closePopover();
+
+  // 11. The same surface at the shell's smallest supported size (900x560),
+  //     back in the dark theme: the frame has to stay inside the viewport and
+  //     the status bar has to keep its triggers on screen.
+  await page.setViewportSize({ width: 900, height: 560 });
+  await call("theme", "dark");
+  await shoot("tunnels-narrow", async () => {
+    try {
+      await call("ssh");
+      await clickFirst([".forward-center button[aria-expanded]", ".forward-center button"]);
+      await page.waitForSelector(".status-popover", { timeout: 8000 });
+    } catch (error) {
+      warnings.push({ shot: "tunnels-narrow", missing: `tunnel popover did not open: ${error.message}` });
+    }
+  }, {
+    statusbar: ".statusbar",
+    statusPopover: ".status-popover.forward-popover",
+    tunnelRows: ".status-popover .forward-job",
+  });
+  await auditScene("tunnels-narrow", tunnelAudit);
+  await closePopover();
+
   const unknownIpc = await page.evaluate(() => window.__refinement.unknown);
   const manifest = {
     at: new Date().toISOString(),
     browser: browserVersion,
     channel,
-    scope: "Production build (real vite.config). Real App, real stores, real CSS; permissive IPC stub that answers unknown commands with a safe empty value and records them. Screenshots at 1100x720 for visual review of the surfaces check-app-font-chain.mjs does not reach: dialogs and the workbench view.",
+    scope: "Production build (real vite.config). Real App, real stores, real CSS; permissive IPC stub that answers unknown commands with a safe empty value and records them, plus synthetic samples for sample_resources, list_file_transfers and list_port_forwards. Screenshots at 1100x720 (dark) for the surfaces check-app-font-chain.mjs does not reach: dialogs, the workbench view and the three status-bar popovers (host resources, transfers, tunnels). The monitor-wide scene repeats the host-resources popover at 1440x900 so the vitals cluster itself (not only the compact fallback) is measured; tunnels-wide repeats the tunnel popover at 1440x900 in the light theme; tunnels-narrow does it at 900x560 in the dark theme. The `layout` key carries the measured geometry, row rhythm, status-bar trigger metrics, element-cluster visibility/fit and text-contrast ratios behind those screenshots; a failed layout assertion turns the run red.",
     shots,
     warnings,
+    layout,
+    layoutFailures,
     unknownIpc,
     errors,
     consoleErrors,
@@ -464,15 +877,16 @@ try {
   console.log(JSON.stringify({
     shots: shots.map(({ name, file }) => ({ name, file })),
     warnings: warnings.length,
+    layoutFailures: layoutFailures.length,
     unknownIpc: unknownIpc.length,
     errors: errors.length,
     consoleErrors: consoleErrors.length,
     badResources: badResources.length,
     outDir: path.relative(repoRoot, outDir),
   }, null, 2));
-  // Not an oracle: nothing here fails the run. Page errors and missing
-  // surfaces are reported so a human decides what they mean.
-  if (errors.length > 0 || badResources.length > 0) process.exitCode = 1;
+  // Missing surfaces and page errors are reported so a human decides; a failed
+  // layout assertion is an objective regression, so it turns the run red.
+  if (errors.length > 0 || badResources.length > 0 || layoutFailures.length > 0) process.exitCode = 1;
 } catch (error) {
   let unknownIpcLate = null;
   try {
@@ -485,6 +899,8 @@ try {
     error: String(error),
     shots,
     warnings,
+    layout,
+    layoutFailures,
     unknownIpc: unknownIpcLate,
     errors,
     consoleErrors,

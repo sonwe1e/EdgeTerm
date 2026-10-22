@@ -63,21 +63,33 @@ export function useFtpActions({
     }
   };
 
+  /**
+   * The deletion a pane entry needs: a folder goes with its contents (and the
+   * dialog says so), a link only ever removes itself, so it is not walked.
+   */
+  const deleteMode = (entry: FileEntry) => {
+    const folder = entry.isDir && !entry.isSymlink;
+    return { folder, recursive: folder };
+  };
+
   const removeRemote = async () => {
     if (!selectedRemote || transferring) return;
+    const { folder, recursive } = deleteMode(selectedRemote);
     const confirmed = await ask(
-      t("ftp.deleteRemoteConfirm", { name: selectedRemote.name }),
+      folder
+        ? t("ftp.deleteRemoteFolderConfirm", { name: selectedRemote.name })
+        : t("ftp.deleteRemoteConfirm", { name: selectedRemote.name }),
       {
         title: t("ftp.deleteTitle"),
         kind: "warning",
-        okLabel: t("common.delete"),
+        okLabel: folder ? t("ftp.deleteFolderAction") : t("common.delete"),
         cancelLabel: t("common.cancel"),
       },
     );
     if (!confirmed) return;
     setRemoteError(null);
     try {
-      await api.sftpRemove(sessionId, selectedRemote.path, selectedRemote.isDir);
+      await api.sftpRemove(sessionId, selectedRemote.path, selectedRemote.isDir, recursive);
       await loadRemote(remotePath);
     } catch (error) {
       setRemoteError(friendlyFtpError(error));
@@ -108,19 +120,22 @@ export function useFtpActions({
 
   const removeLocal = async () => {
     if (!selectedLocal || transferring) return;
+    const { folder, recursive } = deleteMode(selectedLocal);
     const confirmed = await ask(
-      t("ftp.deleteLocalConfirm", { name: selectedLocal.name }),
+      folder
+        ? t("ftp.deleteLocalFolderConfirm", { name: selectedLocal.name })
+        : t("ftp.deleteLocalConfirm", { name: selectedLocal.name }),
       {
         title: t("ftp.deleteTitle"),
         kind: "warning",
-        okLabel: t("common.delete"),
+        okLabel: folder ? t("ftp.deleteFolderAction") : t("common.delete"),
         cancelLabel: t("common.cancel"),
       },
     );
     if (!confirmed) return;
     setLocalError(null);
     try {
-      await api.localRemove(selectedLocal.path, selectedLocal.isDir);
+      await api.localRemove(selectedLocal.path, selectedLocal.isDir, recursive);
       await loadLocal(localPath);
     } catch (error) {
       setLocalError(errorText(error));

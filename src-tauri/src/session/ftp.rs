@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::convert::TryFrom;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
@@ -389,8 +390,14 @@ fn run_ftp(connection: &mut FtpConnection, request: SftpRequest) -> Result<SftpR
             connection.stream.put_file(&path, &mut std::io::empty())?;
             Ok(SftpResponse::Done)
         }
-        SftpRequest::Remove { path, is_dir } => {
-            if is_dir {
+        SftpRequest::Remove {
+            path,
+            is_dir,
+            recursive,
+        } => {
+            if is_dir && recursive {
+                remove_tree(connection, &path)?;
+            } else if is_dir {
                 connection.stream.rmdir(path)?;
             } else {
                 connection.stream.rm(path)?;
@@ -405,6 +412,17 @@ fn run_ftp(connection: &mut FtpConnection, request: SftpRequest) -> Result<SftpR
 }
 
 pub(crate) fn list_directory(connection: &mut FtpConnection, path: &str) -> Result<DirListing> {
+    Ok(list_directory_with_types(connection, path)?.0)
+}
+
+/// [`list_directory`], plus whether the listing reported each entry's type.
+/// MLSD and a parsed LIST do; the NLST fallback knows names alone, which a
+/// recursive delete refuses because a folder and a folder link are
+/// indistinguishable there.
+fn list_directory_with_types(
+    connection: &mut FtpConnection,
+    path: &str,
+) -> Result<(DirListing, bool)> {
     connection
         .stream
         .cwd(if path.is_empty() { "." } else { path })?;
@@ -431,17 +449,174 @@ pub(crate) fn list_directory(connection: &mut FtpConnection, path: &str) -> Resu
     } else {
         None
     };
-    let entries = match mlsd_entries.or(list_entries) {
-        Some(entries) => entries,
-        None => list_names(connection, &base)?,
+    let (entries, types_known) = match mlsd_entries.or(list_entries) {
+        Some(entries) => (entries, true),
+        None => (list_names(connection, &base)?, false),
     };
 
     let mut entries = entries;
     sort_entries(&mut entries);
-    Ok(DirListing {
-        path: base,
-        entries,
-    })
+    Ok((
+        DirListing {
+            path: base,
+            entries,
+        },
+        types_known,
+    ))
+}
+
+/// One entry of a folder being deleted: enough to decide between removing the
+/// entry itself and descending into it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TreeEntry {
+    path: String,
+    is_dir: bool,
+    is_symlink: bool,
+}
+
+/// The FTP operations one recursive delete needs. It is a boundary so the
+/// walk's order and its refusal to follow links can be tested against an
+/// in-memory tree, without an FTP server to talk to.
+trait DeleteIo {
+    /// The entries directly inside `folder`.
+    fn list(&mut self, folder: &str) -> Result<Vec<TreeEntry>>;
+    /// Removes one file or link.
+    fn remove_file(&mut self, path: &str) -> Result<()>;
+    /// Removes one folder, which is empty by the time the walk asks.
+    fn remove_dir(&mut self, folder: &str) -> Result<()>;
+}
+
+impl DeleteIo for FtpConnection {
+    fn list(&mut self, folder: &str) -> Result<Vec<TreeEntry>> {
+        let (listing, types_known) = list_directory_with_types(self, folder)?;
+        if !types_known {
+            // Without entry types a folder link looks exactly like a folder, and
+            // the walk would descend through the link. Refuse instead of
+            // risking the deletion of whatever it points at.
+            return Err(AppError::new(format!(
+                "cannot delete {folder} recursively: this FTP server's listing does not say which entries are folders"
+            )));
+        }
+        listing
+            .entries
+            .into_iter()
+            .map(|entry| {
+                if !crate::session::is_plain_name(&entry.name) {
+                    return Err(AppError::new(format!(
+                        "cannot delete {folder} recursively: the server listed an unusable name ({})",
+                        entry.name
+                    )));
+                }
+                Ok(TreeEntry {
+                    path: entry.path,
+                    is_dir: entry.is_dir,
+                    is_symlink: entry.is_symlink,
+                })
+            })
+            .collect::<Result<Vec<_>>>()
+    }
+
+    fn remove_file(&mut self, path: &str) -> Result<()> {
+        self.stream.rm(path)?;
+        Ok(())
+    }
+
+    fn remove_dir(&mut self, folder: &str) -> Result<()> {
+        // Listing a folder leaves the working directory inside it, and a server
+        // commonly refuses RMD of its own working directory.
+        self.stream.cwd(parent_remote(folder))?;
+        self.stream.rmdir(folder)?;
+        Ok(())
+    }
+}
+
+/// Removes `root` and everything below it through the connection's own
+/// primitives; see [`remove_bottom_up`] for the order.
+fn remove_tree(connection: &mut FtpConnection, root: &str) -> Result<()> {
+    if is_remote_root(root) {
+        return Err(AppError::new(format!(
+            "refusing to delete {root}: it is the server root"
+        )));
+    }
+    remove_bottom_up(connection, root)
+}
+
+/// Deletes a whole tree, children before their folder.
+///
+/// FTP has no recursive delete, and both listing and RMD are relative to the
+/// control channel's working directory, which a listing changes — hence the
+/// two phases: every folder is listed first (nothing else the walk does touches
+/// the server), then files and links are removed, then the folders from the
+/// deepest one up. Links are never listed through: they are removed as files.
+///
+/// The entry and depth bounds (`MAX_RECURSIVE_DELETE_*`) turn a server whose
+/// listing repeats a folder into a clear error instead of a walk that never
+/// ends. The first failure aborts and names the entry it happened on: a
+/// half-deleted tree is reported as a failure, never as a finished delete.
+fn remove_bottom_up(io: &mut impl DeleteIo, root: &str) -> Result<()> {
+    let max_entries = crate::session::MAX_RECURSIVE_DELETE_ENTRIES;
+    let max_depth = crate::session::MAX_RECURSIVE_DELETE_DEPTH;
+    let mut folders: Vec<(String, usize)> = vec![(root.to_string(), 0)];
+    let mut files: Vec<String> = Vec::new();
+    let mut visited = HashSet::new();
+    let mut index = 0;
+    while index < folders.len() {
+        let (folder, depth) = folders[index].clone();
+        index += 1;
+        if !visited.insert(folder.clone()) {
+            return Err(AppError::new(format!(
+                "cannot delete {root}: the server listed {folder} twice, which looks like a link cycle"
+            )));
+        }
+        if depth > max_depth {
+            return Err(AppError::new(format!(
+                "cannot delete {root}: it is nested more than {max_depth} folders deep"
+            )));
+        }
+        for entry in io.list(&folder)? {
+            if entry.is_dir && !entry.is_symlink {
+                folders.push((entry.path, depth + 1));
+            } else {
+                files.push(entry.path);
+            }
+            if files.len() + folders.len() > max_entries {
+                return Err(AppError::new(format!(
+                    "cannot delete {root}: it holds more than {max_entries} entries"
+                )));
+            }
+        }
+    }
+
+    for file in &files {
+        io.remove_file(file)
+            .map_err(|error| crate::session::delete_failed(error, file))?;
+    }
+    for (folder, _) in folders.iter().rev() {
+        io.remove_dir(folder)
+            .map_err(|error| crate::session::delete_failed(error, folder))?;
+    }
+    Ok(())
+}
+
+/// A path naming the server's root, or the current directory itself. The Filer
+/// offers none of these for deletion, but a recursive delete refuses them
+/// however it is called.
+fn is_remote_root(path: &str) -> bool {
+    let trimmed = path.trim_end_matches('/');
+    trimmed.is_empty() || matches!(trimmed, "." | "..")
+}
+
+/// The folder holding `path`, used to move the working directory out of a
+/// folder before removing it. `/` is its own parent; a bare name's parent is
+/// the working directory.
+fn parent_remote(path: &str) -> &str {
+    let trimmed = path.trim_end_matches('/');
+    match trimmed.rfind('/') {
+        Some(0) => "/",
+        Some(index) => &trimmed[..index],
+        None if trimmed.is_empty() => "/",
+        None => ".",
+    }
 }
 
 /// A 500 / 502 reply means the server does not implement MLSD at all (vsftpd,
@@ -584,14 +759,208 @@ pub(crate) fn ensure_remote_directory(ftp: &mut FtpStream, path: &str) -> Result
 mod tests {
     use super::{
         control_encoding_proxy, decode_protocol_bytes, encode_control_bytes, entry_from_file,
-        mlsd_unsupported, parse_listing, passive_data_address, ENCODING_GBK, ENCODING_UNKNOWN,
+        is_remote_root, mlsd_unsupported, parent_remote, parse_listing, passive_data_address,
+        remove_bottom_up, DeleteIo, TreeEntry, ENCODING_GBK, ENCODING_UNKNOWN,
     };
+    use crate::error::{AppError, Result};
     use std::sync::atomic::{AtomicU8, Ordering};
     use std::sync::Arc;
     use std::{io::BufRead, io::BufReader, io::Write, net::TcpListener, net::TcpStream};
     use suppaftp::list::File as FtpFile;
     use suppaftp::types::Response;
     use suppaftp::{FtpError, Status};
+
+    /// An in-memory tree standing in for an FTP server. The walk is tested
+    /// through the same `DeleteIo` boundary a live connection implements, so
+    /// what is proved here is the order and the link rule, not the wire
+    /// protocol.
+    #[derive(Default)]
+    struct FakeTree {
+        entries: Vec<TreeEntry>,
+        /// Answer every listing with the folder itself, the way a server that
+        /// reports a link as its own target would.
+        cycle: bool,
+        files_removed: Vec<String>,
+        dirs_removed: Vec<String>,
+        listings: Vec<String>,
+        fail_remove: Option<String>,
+    }
+
+    impl FakeTree {
+        fn new(entries: Vec<TreeEntry>) -> Self {
+            Self {
+                entries,
+                ..Self::default()
+            }
+        }
+
+        fn entry(path: &str, is_dir: bool, is_symlink: bool) -> TreeEntry {
+            TreeEntry {
+                path: path.to_string(),
+                is_dir,
+                is_symlink,
+            }
+        }
+    }
+
+    impl DeleteIo for FakeTree {
+        fn list(&mut self, folder: &str) -> Result<Vec<TreeEntry>> {
+            self.listings.push(folder.to_string());
+            if self.cycle {
+                return Ok(vec![Self::entry(folder, true, false)]);
+            }
+            let prefix = format!("{}/", folder.trim_end_matches('/'));
+            Ok(self
+                .entries
+                .iter()
+                .filter(|entry| entry.path.starts_with(&prefix))
+                .filter(|entry| !entry.path[prefix.len()..].contains('/'))
+                .cloned()
+                .collect())
+        }
+
+        fn remove_file(&mut self, path: &str) -> Result<()> {
+            if self.fail_remove.as_deref() == Some(path) {
+                return Err(AppError::new("permission denied"));
+            }
+            let entry = self
+                .entries
+                .iter()
+                .find(|entry| entry.path == path)
+                .expect("the walk only removes entries a listing reported");
+            assert!(
+                !entry.is_dir || entry.is_symlink,
+                "{path} is a folder and must be removed with RMD, not unlinked"
+            );
+            self.files_removed.push(path.to_string());
+            Ok(())
+        }
+
+        fn remove_dir(&mut self, folder: &str) -> Result<()> {
+            if self.fail_remove.as_deref() == Some(folder) {
+                return Err(AppError::new("permission denied"));
+            }
+            // A real server refuses a non-empty folder. Checking it here is
+            // what makes the children-first rule observable.
+            let prefix = format!("{}/", folder.trim_end_matches('/'));
+            let remains = self
+                .entries
+                .iter()
+                .filter(|entry| entry.path.starts_with(&prefix))
+                .any(|entry| {
+                    !self.files_removed.iter().any(|file| file == &entry.path)
+                        && !self.dirs_removed.iter().any(|dir| dir == &entry.path)
+                });
+            assert!(!remains, "{folder} was removed while it still had children");
+            self.dirs_removed.push(folder.to_string());
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_recursive_delete_removes_files_and_links_before_their_folders() {
+        let mut tree = FakeTree::new(vec![
+            FakeTree::entry("/root/top.txt", false, false),
+            FakeTree::entry("/root/folder", true, false),
+            FakeTree::entry("/root/folder/leaf.txt", false, false),
+            FakeTree::entry("/root/folder/deep", true, false),
+            FakeTree::entry("/root/folder/deep/notes.txt", false, false),
+            // A link that points at a folder: removed as a file, never listed
+            // through.
+            FakeTree::entry("/root/link", true, true),
+            FakeTree::entry("/outside/precious.txt", false, false),
+        ]);
+
+        remove_bottom_up(&mut tree, "/root").expect("recursive delete");
+
+        assert_eq!(
+            tree.dirs_removed,
+            ["/root/folder/deep", "/root/folder", "/root"],
+            "folders go children first"
+        );
+        tree.files_removed.sort();
+        assert_eq!(
+            tree.files_removed,
+            [
+                "/root/folder/deep/notes.txt",
+                "/root/folder/leaf.txt",
+                "/root/link",
+                "/root/top.txt",
+            ]
+        );
+        assert!(
+            !tree.listings.iter().any(|folder| folder == "/root/link"),
+            "a link is never listed through"
+        );
+        assert!(
+            !tree
+                .files_removed
+                .iter()
+                .any(|path| path.starts_with("/outside")),
+            "nothing outside the selected folder is touched"
+        );
+    }
+
+    #[test]
+    fn a_failed_entry_names_its_path_and_stops_the_walk() {
+        let mut tree = FakeTree::new(vec![
+            FakeTree::entry("/root/a.txt", false, false),
+            FakeTree::entry("/root/b.txt", false, false),
+        ]);
+        tree.fail_remove = Some("/root/b.txt".into());
+
+        let error = remove_bottom_up(&mut tree, "/root").expect_err("the delete must fail");
+
+        assert!(
+            error.to_string().contains("cannot delete /root/b.txt"),
+            "the failing entry is named: {error}"
+        );
+        assert!(error.to_string().contains("permission denied"), "{error}");
+        assert!(
+            tree.dirs_removed.is_empty(),
+            "no folder is removed after a file failed"
+        );
+    }
+
+    #[test]
+    fn a_listing_that_repeats_a_folder_is_refused_as_a_cycle() {
+        let mut tree = FakeTree {
+            cycle: true,
+            ..FakeTree::default()
+        };
+
+        let error = remove_bottom_up(&mut tree, "/root").expect_err("a cycle is refused");
+
+        assert!(error.to_string().contains("link cycle"), "{error}");
+        assert!(tree.files_removed.is_empty());
+        assert!(tree.dirs_removed.is_empty());
+    }
+
+    #[test]
+    fn only_plain_listing_names_can_extend_a_tree_path() {
+        for name in ["notes.txt", "资料", "a b"] {
+            assert!(crate::session::is_plain_name(name), "{name:?} is a name");
+        }
+        for name in ["", ".", "..", "../escape", "a/b", "/etc/passwd"] {
+            assert!(!crate::session::is_plain_name(name), "{name:?} is not");
+        }
+    }
+
+    #[test]
+    fn the_server_root_is_never_deleted_recursively() {
+        for root in ["/", "", ".", "..", "///"] {
+            assert!(is_remote_root(root), "{root:?} names a root");
+        }
+        assert!(!is_remote_root("/home/me"));
+    }
+
+    #[test]
+    fn a_folder_is_removed_from_its_parent_not_from_inside_itself() {
+        assert_eq!(parent_remote("/home/me/folder"), "/home/me");
+        assert_eq!(parent_remote("/folder/"), "/");
+        assert_eq!(parent_remote("/"), "/");
+        assert_eq!(parent_remote("folder"), ".");
+    }
 
     #[test]
     fn parses_mlsd_entries_into_remote_listing() {

@@ -296,24 +296,39 @@ impl Transfers {
                 job.control.set(0);
                 self.launch(job.clone());
             }
-            "dismiss" if !job.active.load(Ordering::SeqCst) => {
+            "dismiss" => {
+                // A live job still owns partial files its worker may be
+                // writing: removing the record now would race that worker and
+                // orphan its journal. Only a stopped job can be cleared.
+                if job.active.load(Ordering::SeqCst) {
+                    return Err(AppError::new(
+                        "this transfer is still running; wait for it to stop before removing it",
+                    ));
+                }
                 let status = job.snapshot.lock().status.clone();
-                if !matches!(status.as_str(), "complete" | "cancelled") {
+                if !matches!(status.as_str(), "complete" | "cancelled" | "error") {
                     return Err(AppError::new(
                         "cancel or finish the transfer before removing it",
                     ));
                 }
-                if job.snapshot.lock().error.is_some() {
+                // A cancelled job that failed during cleanup still owns remote
+                // partials the user has to retry; only a transfer that failed
+                // in flight may be cleared straight away. That clear is local
+                // bookkeeping: remote partial files are deliberately not
+                // removed, so it never pretends the server was cleaned up.
+                if status != "error" && job.snapshot.lock().error.is_some() {
                     return Err(AppError::new(
                         "clean up the partial files before removing this transfer",
                     ));
                 }
-                for key in job.checkpoints.lock().keys() {
-                    let _ = std::fs::remove_file(job.directory.join(format!("{key}.json")));
-                    let _ = std::fs::remove_file(job.directory.join(format!("{key}.json.new")));
+                // The journal directory holds the job identity, the frozen
+                // plan and every checkpoint. Removing it whole keeps
+                // `discover` from listing a ghost entry beside the queue; the
+                // same directory checks as `discard_persisted` make sure the
+                // delete can never follow a link out of the journal root.
+                if require_journal_directory(&job.directory).is_ok() {
+                    let _ = std::fs::remove_dir_all(&job.directory);
                 }
-                let _ = std::fs::remove_file(job.directory.join("job.json"));
-                let _ = std::fs::remove_dir(&job.directory);
                 self.jobs.lock().remove(id);
                 self.targets
                     .lock()
@@ -595,8 +610,9 @@ impl Transfers {
         Ok(job)
     }
 
-    /// Deletes an interrupted job's journal directory. Live jobs must go
-    /// through `control`'s dismiss, which cleans up owned partials first.
+    /// Deletes an interrupted job's journal directory. Jobs live in this run
+    /// must go through `control`'s dismiss, which removes the same local
+    /// record (never remote partial files, which only a cancel cleans up).
     ///
     /// The id is validated here, not in the UI: an empty id names the root
     /// itself and `..`/absolute paths escape it, so anything but the

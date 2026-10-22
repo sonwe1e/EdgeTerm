@@ -10,6 +10,7 @@ import type { PortDiscovery, PortForward } from "../api";
 const tab = (id: string, kind = "ssh"): Tab => ({ info: { id, address: id, kind }, state: "connected" } as Tab);
 const ports: PortDiscovery = { status: "ok", ports: [{ host: "::", port: 8080, process: null }], truncated: false };
 const row: PortForward = { id: "job", owner: "ssh", address: "fixture", spec: { direction: "local", listenHost: "127.0.0.1", listenPort: 1234, targetHost: "127.0.0.1", targetPort: 8080 }, status: "listening", error: null, connections: 1, sentBytes: 100, receivedBytes: 200 };
+const choosePort = async (host: HTMLElement) => act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Choose a remote port")!.click());
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.clearAllMocks(); api.listPortForwards.mockResolvedValue([]); api.discoverListeningPorts.mockResolvedValue(ports); api.cancelPortDiscovery.mockResolvedValue(undefined); api.startPortForward.mockResolvedValue(row); api.stopPortForward.mockResolvedValue(undefined); api.removePortForward.mockResolvedValue(undefined);
@@ -17,14 +18,30 @@ beforeEach(() => {
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
 });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
-it("auto-discovers listeners and only creates a tab-owned tunnel after explicit submit", async () => {
+it("opens with a scannable form and a collapsed remote-port picker", async () => {
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  try {
+    await act(async () => root.render(h(ForwardCenter)));
+    await act(async () => host.querySelector("button")!.click());
+    expect(host.querySelector(".status-popover .status-popover-head")).not.toBeNull();
+    const form = host.querySelector("form")!;
+    expect(form.textContent).toContain("Host"); expect(form.textContent).toContain("Port");
+    expect(form.textContent).toContain("Listen"); expect(form.textContent).toContain("Target");
+    expect(form.querySelectorAll("p")).toHaveLength(0);
+    expect(host.querySelector<HTMLButtonElement>(".forward-discovery-toggle")!.getAttribute("aria-expanded")).toBe("false");
+    expect(api.discoverListeningPorts).not.toHaveBeenCalled();
+  } finally { act(() => root.unmount()); host.remove(); }
+});
+it("discovers listeners on demand and only creates a tab-owned tunnel after explicit submit", async () => {
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   try {
     await act(async () => root.render(h(ForwardCenter)));
     expect(api.discoverListeningPorts).not.toHaveBeenCalled();
     await act(async () => host.querySelector("button")!.click());
+    expect(api.discoverListeningPorts).not.toHaveBeenCalled();
+    await choosePort(host);
     expect(api.discoverListeningPorts).toHaveBeenCalledWith("ssh", expect.any(String)); expect(api.startPortForward).not.toHaveBeenCalled();
-    await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Use port 8080")!.click());
+    await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Use port 8080"]')!.click());
     expect(host.querySelector<HTMLInputElement>('[aria-label="Tunnel target host"]')!.value).toBe("::1");
     await act(async () => host.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
     expect(api.startPortForward).toHaveBeenCalledWith("ssh", { direction: "local", listenHost: "127.0.0.1", listenPort: 0, targetHost: "::1", targetPort: 8080 });
@@ -35,9 +52,11 @@ it("creates a dynamic SOCKS5 tunnel without naming a target", async () => {
   try {
     await act(async () => root.render(h(ForwardCenter)));
     await act(async () => host.querySelector("button")!.click());
-    await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Use port 8080")!.click());
-    await act(async () => { const select = host.querySelector<HTMLSelectElement>('[aria-label="Tunnel direction"]')!; select.value = "dynamic"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    await choosePort(host);
+    await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Use port 8080"]')!.click());
+    await act(async () => [...host.querySelectorAll<HTMLInputElement>('input[name="forward-direction"]')].find((input) => input.value === "dynamic")!.click());
     expect(host.querySelector('[aria-label="Tunnel target host"]')).toBeNull();
+    expect(host.querySelector(".forward-note")).not.toBeNull();
     await act(async () => host.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
     expect(api.startPortForward).toHaveBeenCalledWith("ssh", { direction: "dynamic", listenHost: "127.0.0.1", listenPort: 0 });
   } finally { act(() => root.unmount()); host.remove(); }
@@ -47,6 +66,7 @@ it("scans periodically with one in-flight request, cancels owner switches and hi
   const host = document.createElement("div"); const root = createRoot(host);
   try {
     await act(async () => root.render(h(ForwardCenter))); await act(async () => host.querySelector("button")!.click());
+    await choosePort(host);
     const requestId = api.discoverListeningPorts.mock.calls[0][1];
     await act(async () => vi.advanceTimersByTimeAsync(15000)); expect(api.discoverListeningPorts).toHaveBeenCalledTimes(1);
     await act(async () => useStore.setState({ tabs: [tab("new")], activeId: "new" })); expect(api.cancelPortDiscovery).toHaveBeenCalledWith(requestId);
@@ -60,7 +80,7 @@ it("controls existing tunnels even on local tabs and removes only finished recor
   api.listPortForwards.mockResolvedValue([row]); useStore.setState({ tabs: [tab("local", "local")], activeId: "local" });
   const host = document.createElement("div"); const root = createRoot(host);
   try {
-    await act(async () => root.render(h(ForwardCenter))); await act(async () => host.querySelector("button")!.click()); expect(api.discoverListeningPorts).not.toHaveBeenCalled(); expect(host.querySelector("form")).toBeNull();
+    await act(async () => root.render(h(ForwardCenter))); await act(async () => host.querySelector("button")!.click()); expect(api.discoverListeningPorts).not.toHaveBeenCalled(); expect(host.querySelector("form")).toBeNull(); expect(host.querySelector(".forward-discovery-toggle")).toBeNull();
     await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Stop tunnel")!.click()); expect(api.stopPortForward).toHaveBeenCalledWith("job");
     api.listPortForwards.mockResolvedValue([{ ...row, status: "stopped" }]); await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Close tunnels"]')!.click()); await act(async () => host.querySelector("button")!.click());
     await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Remove tunnel")!.click()); expect(api.removePortForward).toHaveBeenCalledWith("job");

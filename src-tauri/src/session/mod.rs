@@ -45,6 +45,9 @@ pub enum SftpRequest {
     Remove {
         path: String,
         is_dir: bool,
+        /// Set only after the user confirmed that a folder's contents go with
+        /// it. Without it a folder must be empty, exactly as before.
+        recursive: bool,
     },
     Rename {
         from: String,
@@ -366,6 +369,29 @@ pub fn join_remote(base: &str, name: &str) -> String {
     } else {
         format!("{base}/{name}")
     }
+}
+
+/// How many entries one recursive delete may touch, and how deep it may
+/// descend. Both are guards against a server whose listing invents entries
+/// endlessly — a child that is its own parent, a link reported as its target —
+/// so such a session fails with a clear error instead of walking until the
+/// operation deadline. Real folder trees stay far below both.
+pub(crate) const MAX_RECURSIVE_DELETE_ENTRIES: usize = 250_000;
+pub(crate) const MAX_RECURSIVE_DELETE_DEPTH: usize = 128;
+
+/// Adds the entry a recursive delete failed on to the error's message, keeping
+/// the code so the front end can still tell a permission refusal from a
+/// timeout.
+pub(crate) fn delete_failed(mut error: AppError, path: &str) -> AppError {
+    error.message = format!("cannot delete {path}: {}", error.message);
+    error
+}
+
+/// Whether a listing entry's name can be used to build a path below the folder
+/// being deleted. A server that answers with `..` or `a/b` must not be able to
+/// steer a recursive delete outside the tree the user selected.
+pub(crate) fn is_plain_name(name: &str) -> bool {
+    !name.is_empty() && name != "." && name != ".." && !name.contains('/')
 }
 
 /// Sorts a listing the way the panels show it by default: folders first,

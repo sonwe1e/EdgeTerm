@@ -122,8 +122,8 @@ describe("background transfer state", () => {
     try {
       await act(async () => root.render(h(TransferCenter)));
       act(() => host.querySelector("button")!.click());
-      const line = [...host.querySelectorAll(".transfer-job-details")].map((n) => n.textContent).join("\n");
-      expect(line).toContain("256.0 KiB/s limit");
+      const line = [...host.querySelectorAll(".transfer-job-meta-text")].map((n) => n.textContent).join("\n");
+      expect(line).toContain("limit 256.0 KiB/s");
     } finally { act(() => root.unmount()); host.remove(); }
   });
   it("lists interrupted transfers, resumes on a matching session and forgets", async () => {
@@ -138,18 +138,18 @@ describe("background transfer state", () => {
       act(() => host.querySelector("button")!.click());
       await act(async () => {});
       expect(api.listRecoverableTransfers).toHaveBeenCalled();
-      expect(host.textContent).toContain("Interrupted transfers (2)");
+      expect(host.textContent).toContain("Interrupted (2)");
       expect(host.textContent).toContain("u@host:22");
-      expect(host.textContent).toContain("3 item(s) · 2 checkpoint(s)");
-      // Unrecognized journals offer Forget only.
+      expect(host.textContent).toContain("3 items");
+      // Unrecognized journals offer Clear only.
       const resumeButtons = [...host.querySelectorAll("button")].filter((b) => b.textContent === "Resume");
       expect(resumeButtons).toHaveLength(1);
       // A failed resume surfaces the backend's instruction, keeping the entry.
       await act(async () => resumeButtons[0].click());
       expect(api.recoverTransfer).toHaveBeenCalledWith("journal-1", expect.any(Function));
-      expect(host.querySelector(".transfer-job-error")!.textContent).toContain("open a session");
-      // Forgetting removes the entry and never touches the backend's jobs.
-      const forgets = [...host.querySelectorAll("button")].filter((b) => b.textContent === "Forget");
+      expect(host.querySelector('[role="alert"]')!.textContent).toContain("open a session");
+      // Clearing removes the entry and never touches the backend's jobs.
+      const forgets = [...host.querySelectorAll("button")].filter((b) => b.textContent === "Clear");
       await act(async () => forgets[forgets.length - 1].click());
       expect(api.discardRecoverableTransfer).toHaveBeenCalledWith("journal-2");
       expect(host.textContent).not.toContain("Unrecognized journal");
@@ -168,7 +168,7 @@ describe("background transfer state", () => {
       await act(async () => host.querySelector("button")!.click());
       await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Close transfers"]')!.click());
       await act(async () => host.querySelector("button")!.click());
-      await act(async () => button("Forget").click());
+      await act(async () => button("Clear").click());
       expect(host.textContent).not.toContain("forgotten tree");
       await act(async () => resolveOld([entry]));
       expect(host.textContent).not.toContain("forgotten tree");
@@ -217,14 +217,14 @@ describe("background transfer state", () => {
       await act(async () => button("Resume").click());
       expect(api.controlFileTransfer).toHaveBeenLastCalledWith("controls", "resume");
       act(() => changed(job("controls", { revision: 3, status: "error", failedFiles: ["failed.bin: denied"] })));
-      await act(async () => button("Retry unfinished files").click());
+      await act(async () => button("Retry").click());
       expect(api.controlFileTransfer).toHaveBeenLastCalledWith("controls", "retry");
       await act(async () => button("Cancel").click());
       expect(api.controlFileTransfer).toHaveBeenLastCalledWith("controls", "cancel");
       act(() => changed(job("controls", { revision: 4, status: "cancelled", error: { code: "network", message: "partial retained", retryable: true } })));
-      expect(button("Dismiss")).toBeUndefined(); expect(button("Retry cleanup")).toBeDefined();
+      expect(button("Clear")).toBeUndefined(); expect(button("Retry cleanup")).toBeDefined();
       act(() => changed(job("controls", { revision: 5, status: "cancelled" })));
-      await act(async () => button("Dismiss").click());
+      await act(async () => button("Clear").click());
       expect(useFileTransfers.getState().jobs.controls).toBeUndefined();
     } finally { act(() => root.unmount()); host.remove(); }
     expect(unlisten).toHaveBeenCalledOnce();
@@ -267,8 +267,124 @@ describe("background transfer state", () => {
       await act(async () => root.render(h(TransferCenter)));
       await act(async () => {});
       const item = host.querySelector<HTMLButtonElement>("button.status-item")!;
-      expect(item.textContent).toContain("Interrupted transfers (1)");
-      expect(item.getAttribute("title")).toContain("Interrupted transfers (1)");
+      expect(item.textContent).toContain("Interrupted (1)");
+      expect(item.getAttribute("title")).toContain("Interrupted (1)");
+    } finally { act(() => root.unmount()); host.remove(); }
+  });
+  it("opens as a queue: shared frame, one totals line, settings collapsed", async () => {
+    api.listFileTransfers.mockResolvedValue([job("queue-row", { status: "running" })]);
+    const host = document.createElement("div"); const root = createRoot(host);
+    try {
+      await act(async () => root.render(h(TransferCenter)));
+      await act(async () => host.querySelector("button")!.click());
+      const popover = host.querySelector(".transfer-center-popover")!;
+      // The shared frame owns the title and the close control.
+      expect(popover.classList.contains("status-popover")).toBe(true);
+      expect(popover.querySelector(".status-popover-title")!.textContent).toBe("Transfers");
+      expect(popover.querySelector(".status-popover-close")).not.toBeNull();
+      // No intro copy and no explanatory notes: the queue explains itself.
+      expect(popover.querySelector("details.transfer-settings")!.hasAttribute("open")).toBe(false);
+      expect(popover.querySelectorAll(".transfer-center-total")).toHaveLength(1);
+      expect(popover.textContent).not.toContain("Transfers continue while this app is open");
+      expect(popover.textContent).not.toContain("not the number of parallel tasks");
+    } finally { act(() => root.unmount()); host.remove(); }
+  });
+  it("asks before clearing a failed record and sends nothing until confirmed", async () => {
+    api.listFileTransfers.mockResolvedValue([job("clear-me", {
+      name: "broken.bin", status: "error",
+      error: { code: "network", message: "connection reset", retryable: true },
+    })]);
+    const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+    const row = () => host.querySelector<HTMLElement>(".transfer-job")!;
+    const rowButton = (label: string) => [...row().querySelectorAll("button")].find((b) => b.textContent === label);
+    const confirmBand = () => host.querySelector<HTMLElement>(".transfer-job.is-confirming");
+    try {
+      await act(async () => root.render(h(TransferCenter)));
+      await act(async () => host.querySelector("button")!.click());
+      await act(async () => rowButton("Clear")!.click());
+      // The row asks first; the backend is never told to dismiss on the click.
+      expect(api.controlFileTransfer).not.toHaveBeenCalled();
+      expect(confirmBand()!.textContent).toContain("Clear failed transfer?");
+      expect(confirmBand()!.textContent).toContain("Partial files stay on the server.");
+      // Cancelling restores the row and still sends nothing.
+      await act(async () => [...confirmBand()!.querySelectorAll("button")].find((b) => b.textContent === "Cancel")!.click());
+      expect(confirmBand()).toBeNull();
+      expect(api.controlFileTransfer).not.toHaveBeenCalled();
+      expect(useFileTransfers.getState().jobs["clear-me"]).toBeDefined();
+      // Confirming dismisses the record.
+      await act(async () => rowButton("Clear")!.click());
+      await act(async () => [...confirmBand()!.querySelectorAll("button")].find((b) => b.textContent === "Clear")!.click());
+      expect(api.controlFileTransfer).toHaveBeenCalledTimes(1);
+      expect(api.controlFileTransfer).toHaveBeenCalledWith("clear-me", "dismiss");
+      expect(useFileTransfers.getState().jobs["clear-me"]).toBeUndefined();
+    } finally { act(() => root.unmount()); host.remove(); }
+  });
+  it("clears every failed record from the header after one confirmation", async () => {
+    const failure = { code: "network", message: "connection reset", retryable: true };
+    api.listFileTransfers.mockResolvedValue([
+      job("bulk-fail-a", { name: "a.bin", status: "error", error: failure }),
+      job("bulk-fail-b", { name: "b.bin", status: "error", error: failure }),
+      job("bulk-done", { name: "c.bin", status: "complete" }),
+    ]);
+    const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+    const headerButton = (label: string) => [...host.querySelectorAll<HTMLButtonElement>(".status-popover-head button")].find((b) => b.textContent === label);
+    try {
+      await act(async () => root.render(h(TransferCenter)));
+      await act(async () => host.querySelector("button")!.click());
+      await act(async () => headerButton("Clear failed")!.click());
+      const band = host.querySelector<HTMLElement>(".transfer-clear-band")!;
+      expect(band.textContent).toContain("Clear 2 failed transfers?");
+      expect(band.textContent).toContain("Partial files stay on the server.");
+      expect(api.controlFileTransfer).not.toHaveBeenCalled();
+      await act(async () => [...band.querySelectorAll("button")].find((b) => b.textContent === "Clear")!.click());
+      expect(api.controlFileTransfer.mock.calls.map(([id]) => id).sort()).toEqual(["bulk-fail-a", "bulk-fail-b"]);
+      // The completed record was not part of "failed".
+      expect(Object.keys(useFileTransfers.getState().jobs)).toEqual(["bulk-done"]);
+    } finally { act(() => root.unmount()); host.remove(); }
+  });
+  it("clears finished records at once but never a failure or an active job", async () => {
+    const failure = { code: "network", message: "connection reset", retryable: true };
+    api.listFileTransfers.mockResolvedValue([
+      job("fin-done", { name: "done.bin", status: "complete" }),
+      job("fin-stopped", { name: "stopped.bin", status: "cancelled" }),
+      job("fin-failed", { name: "failed.bin", status: "error", error: failure }),
+      job("fin-busy", { name: "busy.bin", status: "running" }),
+    ]);
+    const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+    const labels = (name: string) => {
+      const row = [...host.querySelectorAll<HTMLElement>(".transfer-job")].find((n) => n.textContent!.includes(name))!;
+      return [...row.querySelectorAll("button")].map((b) => b.textContent);
+    };
+    try {
+      await act(async () => root.render(h(TransferCenter)));
+      await act(async () => host.querySelector("button")!.click());
+      // An active transfer never offers the plain clear action.
+      expect(labels("busy.bin")).not.toContain("Clear");
+      expect(labels("done.bin")).toContain("Clear");
+      await act(async () => [...host.querySelectorAll<HTMLButtonElement>(".status-popover-head button")].find((b) => b.textContent === "Clear finished")!.click());
+      expect(api.controlFileTransfer.mock.calls.map(([id]) => id).sort()).toEqual(["fin-done", "fin-stopped"]);
+      expect(Object.keys(useFileTransfers.getState().jobs).sort()).toEqual(["fin-busy", "fin-failed"]);
+    } finally { act(() => root.unmount()); host.remove(); }
+  });
+  it("lists failed files under the queue and closes the list", async () => {
+    api.listFileTransfers.mockResolvedValue([job("fail-list", {
+      name: "tree.bin", status: "error",
+      error: { code: "network", message: "connection reset", retryable: true },
+      failedFiles: ["a.bin: denied", "b.bin: timeout"],
+    })]);
+    const host = document.createElement("div"); const root = createRoot(host);
+    try {
+      await act(async () => root.render(h(TransferCenter)));
+      await act(async () => host.querySelector("button")!.click());
+      const link = [...host.querySelectorAll("button")].find((b) => b.textContent === "2 failed files")!;
+      expect(link.getAttribute("aria-expanded")).toBe("false");
+      await act(async () => link.click());
+      const section = host.querySelector('[aria-label="Failed files"]')!;
+      expect(section.textContent).toContain("tree.bin · 2 failed files");
+      expect(section.textContent).toContain("a.bin: denied");
+      expect(section.textContent).toContain("b.bin: timeout");
+      await act(async () => section.querySelector<HTMLButtonElement>('[aria-label="Close failed files"]')!.click());
+      expect(host.querySelector('[aria-label="Failed files"]')).toBeNull();
     } finally { act(() => root.unmount()); host.remove(); }
   });
 });

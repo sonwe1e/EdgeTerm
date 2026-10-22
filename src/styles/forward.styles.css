@@ -1,0 +1,252 @@
+/* SSH tunnel centre: status-bar affordance, create form, remote-port picker
+   and tunnel cards. The panel shell (width, header, gutter, scroll body) comes
+   from the shared .status-popover frame; this file only adds the tunnel rows. */
+
+.forward-center { position: relative; }
+
+/* --- create form --------------------------------------------------------- */
+
+.forward-form { display: flex; flex-direction: column; gap: var(--sp-10); min-width: 0; }
+
+/* The three ssh forward modes, as one segmented control. Native radios keep
+   arrow-key switching and give the group a name; the label draws the segment. */
+.forward-directions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-width: 0;
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.forward-direction { position: relative; display: block; min-width: 0; cursor: pointer; }
+
+.forward-direction + .forward-direction { border-left: 1px solid var(--border); }
+
+.forward-direction input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+}
+
+.forward-direction span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--h-control-lg);
+  padding: 0 var(--sp-6);
+  overflow: hidden;
+  color: var(--fg-dim);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.forward-direction:hover span { color: var(--fg); background: var(--bg-hover); }
+
+.forward-direction input:checked + span { color: var(--fg); background: var(--bg-active); }
+
+.forward-direction input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* Listen and target read as two rows of one table: the column names appear
+   once on top, the row names sit in the gutter, the port is a fixed track. */
+.forward-endpoints {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) 86px;
+  gap: var(--sp-6) var(--sp-8);
+  align-items: center;
+  min-width: 0;
+}
+
+.forward-endpoint { display: contents; }
+
+.forward-endpoint-label { color: var(--fg-dim); white-space: nowrap; }
+
+.forward-column {
+  padding: 0 calc(var(--sp-6) + 1px);
+  color: var(--fg-faint);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.forward-endpoints input { width: 100%; box-sizing: border-box; }
+
+.forward-endpoints input::placeholder { color: var(--fg-faint); opacity: 1; }
+
+.forward-notes { display: flex; flex-direction: column; gap: var(--sp-4); }
+
+.forward-note { margin: 0; color: var(--fg-dim); line-height: 1.4; }
+
+.forward-note.is-warning { color: var(--yellow); }
+
+/* The form's only filled control: same tokens as a dialog's primary button,
+   so the action is unambiguous at 520px. */
+.forward-popover .forward-submit {
+  align-self: flex-end;
+  padding: var(--sp-4) var(--sp-12);
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.forward-popover .forward-submit:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
+
+/* --- remote port picker -------------------------------------------------- */
+
+.forward-discovery-section { display: flex; flex-direction: column; gap: var(--sp-8); min-width: 0; }
+
+/* A quiet disclosure: no fill, no border, and the chevron the SSH reuse
+   disclosure uses. The higher specificity keeps the shared popover button
+   chrome off it. */
+.forward-popover .forward-discovery-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  color: var(--fg-dim);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.forward-popover .forward-discovery-toggle:hover:not(:disabled) { color: var(--fg); background: none; }
+
+.forward-discovery-toggle::before {
+  content: "";
+  flex: none;
+  width: 0;
+  height: 0;
+  border-top: 3px solid transparent;
+  border-bottom: 3px solid transparent;
+  border-left: 4px solid currentColor;
+  transition: transform 120ms ease;
+}
+
+.forward-discovery-toggle[aria-expanded="true"]::before { transform: rotate(90deg); }
+
+@media (prefers-reduced-motion: reduce) {
+  .forward-discovery-toggle::before { transition: none; }
+}
+
+.forward-discovery { display: flex; flex-direction: column; gap: var(--sp-8); min-width: 0; }
+
+.forward-discovery-tools { display: flex; align-items: center; gap: var(--sp-8); min-width: 0; }
+
+.forward-discovery-state { flex: 1; min-width: 0; color: var(--fg-dim); }
+
+.forward-list { position: relative; overflow: auto; }
+
+.forward-listeners { max-height: calc(34px * 5); }
+
+.forward-listener {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-8);
+  height: 34px;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--border);
+}
+
+.forward-listener-address { display: flex; flex: 1; align-items: baseline; gap: var(--sp-8); min-width: 0; }
+
+.forward-listener-address > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.forward-listener-process { color: var(--fg-faint); }
+
+/* --- tunnel cards -------------------------------------------------------- */
+
+.forward-jobs { max-height: calc(var(--forward-job-h, 78px) * 3); }
+
+.forward-job {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  height: var(--forward-job-h, 78px);
+  box-sizing: border-box;
+  padding: var(--sp-6) 0;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border);
+}
+
+.forward-job-head { display: flex; align-items: center; gap: var(--sp-8); min-width: 0; }
+
+.forward-job-badge {
+  flex: none;
+  padding: var(--sp-2) var(--sp-6);
+  color: var(--fg-dim);
+  font-size: var(--fs-xs);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+}
+
+.forward-job-status {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--sp-6);
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+
+.forward-job-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--fg-faint); }
+
+.forward-job-status.is-listening .forward-job-dot { background: var(--green); }
+
+.forward-job-status.is-starting .forward-job-dot,
+.forward-job-status.is-stopping .forward-job-dot { background: var(--yellow); }
+
+.forward-job-status.is-error .forward-job-dot { background: var(--red); }
+
+.forward-job-action { flex: none; }
+
+.forward-route {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-6);
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.forward-route span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.forward-route span:nth-child(2) { flex: none; color: var(--fg-faint); }
+
+.forward-route span:last-child { flex: 1; }
+
+.forward-job-footer { display: flex; align-items: baseline; gap: var(--sp-8); min-width: 0; color: var(--fg-dim); }
+
+.forward-job-address { flex: 0 1 auto; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.forward-job-stats {
+  display: flex;
+  flex: 1;
+  justify-content: flex-end;
+  gap: var(--sp-8);
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.forward-error {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--red);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -28,13 +28,13 @@ export type { CursorStyle, GutterMode, ReportedCwd, RightClickAction } from "./t
 
 import { createOutputDecoder } from "./encodings";
 import { MONO_FONT_FAMILY } from "./fonts";
+import { t as translate } from "./i18n";
 import { patchImeInput } from "./imePatch";
 import { parseOsc52, type ProgramClipboardMode } from "./osc52";
 import { setSemanticColorTheme } from "./semanticColors";
 import { type SearchOptions } from "./terminalSearch";
 import { type TransferNoticeKind } from "./terminalTransfer";
 import type { BackspaceKey, ThemeMode } from "./types";
-import { XmodemController, type XmodemBlockSize } from "./xmodem";
 import { ZmodemController } from "./zmodem";
 
 /**
@@ -164,7 +164,6 @@ export class TerminalController {
   readonly term: Terminal;
   readonly fitAddon = new FitAddon();
   private readonly zmodem: ZmodemController;
-  private readonly xmodem: XmodemController;
   /**
    * Decodes session output when the session is not in UTF-8, the only
    * encoding xterm reads itself; null feeds xterm the bytes as they are.
@@ -173,6 +172,8 @@ export class TerminalController {
   /** The erase character Backspace sends; see `setBackspace`. */
   private erase = "\x7f";
   private readonly transferNotice: HTMLElement;
+  private readonly transferNoticeText: HTMLElement;
+  private readonly transferCancel: HTMLButtonElement;
   private transferNoticeTimer: number | null = null;
   /**
    * A font change made while the pane was display:none, landed at the show
@@ -439,6 +440,19 @@ export class TerminalController {
     this.transferNotice.className = "transfer-notice is-hidden";
     this.transferNotice.setAttribute("role", "status");
     this.transferNotice.setAttribute("aria-live", "polite");
+    // An automatic ZMODEM transfer is started by the remote (sz/rz), so the
+    // notice is the only surface it owns. It carries the cancel control: a
+    // peer that never finishes would otherwise hold the byte stream until
+    // the session ends.
+    this.transferNoticeText = document.createElement("span");
+    this.transferNoticeText.className = "transfer-notice-text";
+    this.transferCancel = document.createElement("button");
+    this.transferCancel.type = "button";
+    this.transferCancel.className = "transfer-notice-cancel";
+    this.transferCancel.textContent = translate("common.cancel");
+    this.transferCancel.hidden = true;
+    this.transferCancel.addEventListener("click", () => this.cancelTransfer());
+    this.transferNotice.append(this.transferNoticeText, this.transferCancel);
 
     const transferCallbacks = {
       toTerminal: (bytes: Uint8Array) => this.feed(bytes),
@@ -447,7 +461,6 @@ export class TerminalController {
         this.showTransferNotice(message, kind),
     };
     this.zmodem = new ZmodemController(sessionId, transferCallbacks);
-    this.xmodem = new XmodemController(sessionId, transferCallbacks);
 
     this.term.loadAddon(this.fitAddon);
     this.term.loadAddon(this.searchController.searchAddon);
@@ -711,11 +724,9 @@ export class TerminalController {
     // Cheap enough for the byte path: one timestamp, only while a turn is
     // open, and the quiet timer reads it instead of being re-armed here.
     if (this.commands.aiTurn) this.commands.aiOutputAt = Date.now();
-    // XMODEM is started by the user and takes the whole stream while it
-    // runs; otherwise the ZMODEM sentry watches for its handshake and
-    // passes ordinary output through to xterm.
-    if (this.xmodem.isActive()) this.xmodem.consume(data);
-    else this.zmodem.consume(data);
+    // The ZMODEM sentry watches for its handshake and passes ordinary output
+    // through to xterm; while an automatic transfer runs it owns the stream.
+    this.zmodem.consume(data);
     // The protocol sentries may emit several decoded writes, or consume the
     // whole chunk themselves. A barrier accounts for the ORIGINAL byte count
     // only after all synchronous terminal output from this chunk is parsed.
@@ -777,9 +788,6 @@ export class TerminalController {
       // A reconnected shell starts over in its home directory; the old
       // report must not outlive the session it described.
       this.reported = null;
-      // A transfer cannot outlive its session either, and its peer is out
-      // of reach: fail it now rather than after its own timeouts.
-      this.xmodem.sessionEnded();
     }
   }
 
@@ -807,37 +815,18 @@ export class TerminalController {
     return this.reported;
   }
 
-  /** True while ZMODEM or XMODEM owns the byte stream. */
+  /** True while the ZMODEM sentry owns the byte stream. */
   isTransferActive(): boolean {
-    return this.zmodem.isActive() || this.xmodem.isActive();
+    return this.zmodem.isActive();
   }
 
-  /** Cancels the running transfer, whichever protocol; false when none. */
+  /**
+   * Cancels the automatic ZMODEM transfer; false when none is running. The
+   * transfer notice shows this as its Cancel control, the one gesture the
+   * automatic handshake has.
+   */
   cancelTransfer(): boolean {
-    return this.xmodem.cancel() || this.zmodem.cancel();
-  }
-
-  /** Sends a local file (chosen in a dialog) with XMODEM; see xmodem.ts. */
-  sendXmodem(blockSize: XmodemBlockSize) {
-    if (this.canStartTransfer("XMODEM")) void this.xmodem.send(blockSize);
-  }
-
-  /** Receives a file (saved where a dialog says) with XMODEM. */
-  receiveXmodem() {
-    if (this.canStartTransfer("XMODEM")) void this.xmodem.receive();
-  }
-
-  private canStartTransfer(label: string): boolean {
-    if (this.disposed) return false;
-    if (this.locked) {
-      this.callbacks.onStatus(`${label}: the session is not connected`, true);
-      return false;
-    }
-    if (this.isTransferActive()) {
-      this.callbacks.onStatus(`${label}: a transfer is already running`, true);
-      return false;
-    }
-    return true;
+    return this.zmodem.cancel();
   }
 
   focus() {
@@ -1028,7 +1017,6 @@ export class TerminalController {
     this.hostResize = null;
     this.gpu.dispose();
     this.zmodem.dispose();
-    this.xmodem.dispose();
     this.term.dispose();
     this.root = null;
     this.host = null;
@@ -1046,8 +1034,11 @@ export class TerminalController {
       this.transferNoticeTimer = null;
     }
 
-    this.transferNotice.textContent = message;
+    this.transferNoticeText.textContent = message;
     this.transferNotice.className = `transfer-notice is-${kind}`;
+    // Only a transfer that is still running can be cancelled; a result line
+    // never offers the control.
+    this.transferCancel.hidden = kind !== "active";
     if (kind !== "active") {
       this.transferNoticeTimer = window.setTimeout(
         () => {

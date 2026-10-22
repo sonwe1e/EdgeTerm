@@ -52,13 +52,34 @@ describe("terminal output and resize scheduling", () => {
 
   it("does not wait for terminal data when a transfer owns the stream", async () => {
     const c = createController();
-    const internals = c as unknown as { xmodem: { isActive(): boolean; consume(bytes: Uint8Array): void } };
-    vi.spyOn(internals.xmodem, "isActive").mockReturnValue(true);
-    const consume = vi.spyOn(internals.xmodem, "consume").mockImplementation(() => {});
+    const internals = c as unknown as { zmodem: { isActive(): boolean; consume(bytes: Uint8Array): void } };
+    vi.spyOn(internals.zmodem, "isActive").mockReturnValue(true);
+    const consume = vi.spyOn(internals.zmodem, "consume").mockImplementation(() => {});
     const raw = Uint8Array.of(1, 2, 3);
     await new Promise<void>((resolve) => c.write(raw, resolve));
     expect(consume).toHaveBeenCalledWith(raw);
     expect(c.term.buffer.active.getLine(0)?.translateToString(true)).toBe("");
+  });
+
+  it("offers a cancel control on the notice while an automatic transfer runs", () => {
+    const c = createController();
+    const internals = c as unknown as {
+      zmodem: { cancel(): boolean };
+      transferNotice: HTMLElement;
+      showTransferNotice(message: string, kind: "active" | "success" | "error"): void;
+    };
+    const cancel = vi.spyOn(internals.zmodem, "cancel").mockReturnValue(true);
+    internals.showTransferNotice("ZMODEM: waiting for a file offer…", "active");
+    const button = internals.transferNotice.querySelector<HTMLButtonElement>(
+      ".transfer-notice-cancel",
+    );
+    expect(button).not.toBeNull();
+    expect(button?.hidden).toBe(false);
+    button?.click();
+    expect(cancel).toHaveBeenCalledTimes(1);
+    // A result line is not a transfer: the control goes away with it.
+    internals.showTransferNotice("ZMODEM: transfer canceled", "success");
+    expect(button?.hidden).toBe(true);
   });
 
 });

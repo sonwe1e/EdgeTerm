@@ -178,6 +178,15 @@ pub(super) async fn remote_cwd(handle: Arc<Handle<Client>>) -> Result<String> {
     )
 }
 
+/// How long one SFTP request may take. Browsing and single-entry operations
+/// answer in milliseconds; the deadline only bounds a stuck server.
+pub(super) const SFTP_OPERATION_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// A recursive delete is one request that legitimately walks a whole tree, one
+/// round trip per entry, so it gets its own, longer deadline. Aborting it at
+/// the browsing deadline would leave the tree half deleted.
+pub(super) const SFTP_DELETE_TIMEOUT: Duration = Duration::from_secs(300);
+
 pub(super) async fn browse_sftp(
     transport: Arc<SharedTransport>,
     slot: Arc<tokio::sync::Mutex<Option<Arc<SftpSession>>>>,
@@ -192,9 +201,17 @@ pub(super) async fn browse_sftp(
         .await
         .map_err(|_| AppError::new("SFTP initialization timed out"))??
     };
-    let result = tokio::time::timeout(Duration::from_secs(30), run_sftp(session.clone(), request))
+    let deadline = match &request {
+        SftpRequest::Remove {
+            is_dir: true,
+            recursive: true,
+            ..
+        } => SFTP_DELETE_TIMEOUT,
+        _ => SFTP_OPERATION_TIMEOUT,
+    };
+    let result = tokio::time::timeout(deadline, run_sftp(session.clone(), request))
         .await
-        .unwrap_or_else(|_| Err(AppError::new("SFTP operation timed out")));
+        .unwrap_or_else(|_| Err(AppError::timeout("SFTP operation timed out")));
     if result.is_err() {
         let mut cached = slot.lock().await;
         if cached
@@ -303,11 +320,17 @@ pub(super) async fn run_sftp(sftp: Arc<SftpSession>, request: SftpRequest) -> Re
             file.shutdown().await?;
             Ok(SftpResponse::Done)
         }
-        SftpRequest::Remove { path, is_dir } => {
-            if is_dir {
-                sftp.remove_dir(path).await?;
-            } else {
+        SftpRequest::Remove {
+            path,
+            is_dir,
+            recursive,
+        } => {
+            if !is_dir {
                 sftp.remove_file(path).await?;
+            } else if recursive {
+                remove_tree(&sftp, &path).await?;
+            } else {
+                sftp.remove_dir(path).await?;
             }
             Ok(SftpResponse::Done)
         }
@@ -316,6 +339,113 @@ pub(super) async fn run_sftp(sftp: Arc<SftpSession>, request: SftpRequest) -> Re
             Ok(SftpResponse::Done)
         }
     }
+}
+
+/// Removes `root` and everything below it, children first.
+///
+/// SFTP has no recursive delete, so the walk does it: every folder is listed,
+/// files and links are removed with SSH_FXP_REMOVE, and each folder is removed
+/// after its children, deepest first. Every folder is LSTAT-ed before it is
+/// listed through, and everything the server reports as a link — or as
+/// anything but a folder — is removed itself, so a link is never followed into
+/// what it points at. LSTAT also covers a server whose READDIR names carry no
+/// file type.
+///
+/// The entry and depth bounds (`MAX_RECURSIVE_DELETE_*`) turn a server whose
+/// listing repeats a folder into a clear error instead of a walk that never
+/// ends. The first failure aborts and names the entry it happened on: a
+/// half-deleted tree is reported as a failure, never as a finished delete.
+async fn remove_tree(sftp: &SftpSession, root: &str) -> Result<()> {
+    if is_remote_root(root) {
+        return Err(AppError::new(format!(
+            "refusing to delete {root}: it is the server root"
+        )));
+    }
+    let mut folders: Vec<(String, usize)> = vec![(root.to_string(), 0)];
+    let mut files: Vec<String> = Vec::new();
+    // Folders that turned out to be links when inspected: they are unlinked
+    // with the files and skipped by the folder pass below.
+    let mut links: HashSet<String> = HashSet::new();
+    let mut visited = HashSet::new();
+    let mut index = 0;
+    while index < folders.len() {
+        let (folder, depth) = folders[index].clone();
+        index += 1;
+        if !visited.insert(folder.clone()) {
+            return Err(AppError::new(format!(
+                "cannot delete {root}: the server listed {folder} twice, which looks like a link cycle"
+            )));
+        }
+        if depth > crate::session::MAX_RECURSIVE_DELETE_DEPTH {
+            return Err(AppError::new(format!(
+                "cannot delete {root}: it is nested more than {} folders deep",
+                crate::session::MAX_RECURSIVE_DELETE_DEPTH
+            )));
+        }
+        // The entry's own attributes are checked before anything below it is
+        // read: `is_dir` came from a listing that may be stale or that carried
+        // no type at all, and a link must never be walked through.
+        let metadata = sftp
+            .symlink_metadata(folder.clone())
+            .await
+            .map_err(|error| AppError::new(format!("cannot read {folder}: {error}")))?;
+        if !metadata.is_dir() || metadata.is_symlink() {
+            files.push(folder.clone());
+            links.insert(folder);
+            continue;
+        }
+        let entries = sftp
+            .read_dir(folder.clone())
+            .await
+            .map_err(|error| AppError::new(format!("cannot list {folder}: {error}")))?;
+        for entry in entries {
+            // A name is what the path below is built from, so one that could
+            // step out of the tree (`..`, `a/b`) is refused: the delete only
+            // ever covers what the user selected.
+            let name = entry.file_name();
+            if !crate::session::is_plain_name(&name) {
+                return Err(AppError::new(format!(
+                    "cannot delete {root}: the server listed an unusable name ({name})"
+                )));
+            }
+            let path = entry.path();
+            let metadata = entry.metadata();
+            if metadata.is_dir() && !metadata.is_symlink() {
+                folders.push((path, depth + 1));
+            } else {
+                files.push(path);
+            }
+            if files.len() + folders.len() > crate::session::MAX_RECURSIVE_DELETE_ENTRIES {
+                return Err(AppError::new(format!(
+                    "cannot delete {root}: it holds more than {} entries",
+                    crate::session::MAX_RECURSIVE_DELETE_ENTRIES
+                )));
+            }
+        }
+    }
+
+    for file in files {
+        sftp.remove_file(file.clone())
+            .await
+            .map_err(|error| crate::session::delete_failed(error.into(), &file))?;
+    }
+    for (folder, _) in folders.iter().rev() {
+        if links.contains(folder) {
+            continue;
+        }
+        sftp.remove_dir(folder.clone())
+            .await
+            .map_err(|error| crate::session::delete_failed(error.into(), folder))?;
+    }
+    Ok(())
+}
+
+/// A path naming the server's root, or the current directory itself. The Filer
+/// offers none of these for deletion, but a recursive delete refuses them
+/// however it is called.
+fn is_remote_root(path: &str) -> bool {
+    let trimmed = path.trim_end_matches('/');
+    trimmed.is_empty() || matches!(trimmed, "." | "..")
 }
 
 pub(super) fn expand_tilde(path: &str) -> String {

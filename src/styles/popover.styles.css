@@ -1,0 +1,181 @@
+/* The shell every status-bar popover shares: host resources, transfers and
+   SSH tunnels. One width, one header, one gutter and one scroll body, so the
+   three surfaces read as the same instrument rather than three ad-hoc panels.
+   Feature files add their own rows; they do not restyle this frame. */
+
+.status-popover {
+  position: fixed;
+  z-index: 1000;
+  right: var(--sp-12);
+  bottom: calc(var(--h-control) + var(--sp-8));
+  display: flex;
+  flex-direction: column;
+  width: min(520px, calc(100vw - 24px));
+  max-height: min(72vh, 640px);
+  overflow: hidden;
+  color: var(--fg);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-pop);
+  font-size: var(--fs-sm);
+}
+
+.status-popover-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-8);
+  /* 36px is the shell's panel-header height: the floating surface inherits
+     the app's own title-bar rhythm instead of inventing a third one. */
+  min-height: 36px;
+  padding: 0 var(--sp-8) 0 var(--sp-12);
+  background: var(--bg-panel-alt);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Sentence case, not the caps of a docked panel: the popover is a floating
+   surface like a dialog, and the dialog headers name themselves at --fs-md. */
+.status-popover-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.status-popover-actions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+/* The close control is an icon button, not a form field: two classes keep it
+   ahead of the shared field rules below, whatever their order. */
+.status-popover .status-popover-close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--h-control-sm);
+  height: var(--h-control-sm);
+  padding: 0;
+  color: var(--fg-dim);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.status-popover .status-popover-close:hover {
+  color: var(--fg);
+  background: var(--bg-hover);
+}
+
+.status-popover .status-popover-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.status-popover-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-12);
+  /* The body is the popover's only scroller; a wheel that reaches its end
+     must not chain on to the terminal behind it. */
+  overscroll-behavior: contain;
+  overflow: auto;
+  padding: var(--sp-12);
+}
+
+/* The body owns the rhythm; a first/last child never adds to the frame's
+   own padding. */
+.status-popover-body > :first-child {
+  margin-top: 0;
+}
+
+.status-popover-body > :last-child {
+  margin-bottom: 0;
+}
+
+/* A short line that reports state (loading, empty, unavailable) instead of
+   carrying a description. */
+.status-popover-note {
+  color: var(--fg-dim);
+  line-height: 1.5;
+}
+
+.status-popover-error {
+  color: var(--red);
+  overflow-wrap: anywhere;
+}
+
+/* A section is a labelled group of controls or rows; the label is optional —
+   omit it when the content explains itself. */
+.status-popover-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+  min-width: 0;
+}
+
+.status-popover-section + .status-popover-section {
+  padding-top: var(--sp-12);
+  border-top: 1px solid var(--border);
+}
+
+.status-popover-section-title {
+  margin: 0;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+/* Form controls inside a popover use the same field language as dialogs.
+   The element part sits in :where(), so the rule carries one class of weight:
+   a feature sheet (loaded after this one) restyles its own controls with a
+   single class without having to out-specify the shell. */
+.status-popover :where(button, input, select) {
+  font: inherit;
+  color: inherit;
+}
+
+.status-popover :where(input, select) {
+  min-width: 0;
+  padding: var(--sp-4) var(--sp-6);
+  color: var(--fg);
+  background: var(--bg-field);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+}
+
+.status-popover :where(input, select, button):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.status-popover :where(button) {
+  padding: var(--sp-4) var(--sp-8);
+  color: var(--fg);
+  background: var(--bg-field);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+
+.status-popover :where(button):hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.status-popover :where(button):disabled {
+  opacity: 0.4;
+  cursor: default;
+}
