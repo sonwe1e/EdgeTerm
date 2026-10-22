@@ -548,6 +548,91 @@ dialog.dialog-backdrop.is-fallback[open] {
   font-size: var(--fs-sm);
 }
 
+/* --- combo box (ComboBox.tsx, the serial form's baud rate) ---------------- */
+
+/* The caret at the end of the field that lists every suggestion. */
+.combo-toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  padding: 0;
+  color: var(--fg-dim);
+  transition:
+    background-color 80ms ease,
+    color 80ms ease;
+}
+
+.combo-toggle:hover,
+.combo-toggle.is-open {
+  color: var(--fg);
+  background: var(--bg-hover);
+}
+
+.combo-toggle .icon {
+  transition: transform 120ms ease;
+}
+
+.combo-toggle.is-open .icon {
+  transform: rotate(180deg);
+}
+
+/* The suggestions wear the menus' panel (.menu-dropdown), as wide as their
+   field (placed inline). Inside the dialog primitive they hang in its top
+   layer; elsewhere they are portalled to <body>, which the z-index keeps
+   above the app chrome. */
+.combo-list {
+  position: fixed;
+  z-index: 210;
+  min-width: 0;
+  overflow-y: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.combo-list.is-above {
+  transform-origin: bottom left;
+}
+
+/* One highlight, moved by the pointer and the arrow keys alike, so the rows
+   carry no :hover of their own. 26px keeps the list denser than a menu row,
+   which the field above it already sizes. */
+.combo-option {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-10);
+  height: 26px;
+  padding: 0 var(--sp-10) 0 var(--sp-8);
+  border-radius: var(--radius-md);
+  color: var(--fg);
+  white-space: nowrap;
+  cursor: default;
+}
+
+.combo-option.is-active {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.combo-option.is-active .menu-check {
+  color: inherit;
+}
+
+.combo-option-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* What the typed text matched, the way VS Code marks a suggestion. */
+.combo-match {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.combo-option.is-active .combo-match {
+  color: inherit;
+}
+
 .dialog-footer {
   display: flex;
   flex: 0 0 auto;

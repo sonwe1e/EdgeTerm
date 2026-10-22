@@ -26,6 +26,7 @@ import {
 } from "../sessionGroups";
 import { useStore } from "../store";
 import { useT } from "../useT";
+import { ComboBox } from "./ComboBox";
 import { ModalDialog } from "./ModalDialog";
 
 /** The pinned validation message, referenced by the offending field. */
@@ -181,6 +182,7 @@ const COMMON_BAUD_RATES = [
   460800, 500000, 576000, 921600, 1000000, 1500000, 2000000, 3000000,
   4000000,
 ];
+const BAUD_RATE_OPTIONS = COMMON_BAUD_RATES.map(String);
 
 /**
  * Saved SSH transports `profile` may be tunnelled through: every SSH / SFTP
@@ -1499,35 +1501,25 @@ export function SessionDialog({ initial, onClose }: Props) {
                   >
                     {t("session.baudRate")}
                   </label>
-                  <div className="input-with-suffix">
-                    <input
-                      id="serial-baud-rate"
-                      type="number"
-                      inputMode="numeric"
-                      min={1}
-                      max={0xffffffff}
-                      step={1}
-                      list="serial-baud-rates"
-                      data-field="baudRate"
-                      ref={(element) => { fieldRefs.current.baudRate = element; }}
-                      value={profile.baudRate ?? ""}
-                      placeholder="115200"
-                      onChange={(event) =>
-                        patch({
-                          baudRate:
-                            event.target.value === ""
-                              ? null
-                              : Number(event.target.value),
-                        })
-                      }
-                    />
-                    <span>{t("session.baudUnit")}</span>
-                  </div>
-                  <datalist id="serial-baud-rates">
-                    {COMMON_BAUD_RATES.map((rate) => (
-                      <option key={rate} value={rate} />
-                    ))}
-                  </datalist>
+                  {/* Text rather than a number input: no spinner, and
+                      nothing but digits gets in. */}
+                  <ComboBox
+                    id="serial-baud-rate"
+                    inputMode="numeric"
+                    maxLength={10}
+                    value={profile.baudRate?.toString() ?? ""}
+                    placeholder="115200"
+                    options={BAUD_RATE_OPTIONS}
+                    suffix={t("session.baudUnit")}
+                    listLabel={t("session.baudRates")}
+                    inputRef={(element) => {
+                      fieldRefs.current.baudRate = element;
+                    }}
+                    onChange={(text) => {
+                      const digits = text.replace(/\D/g, "");
+                      patch({ baudRate: digits ? Number(digits) : null });
+                    }}
+                  />
                   <small className="session-field-hint">
                     {t("session.baudHint")}
                   </small>
