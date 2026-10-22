@@ -31,12 +31,12 @@ A small, fast terminal, SSH, Telnet, SFTP, FTP and serial client built with **Ru
 - **SSH**: password, public key, ssh-agent and keyboard-interactive (MFA / one-time codes), jump hosts, and older network gear that only speaks legacy algorithms.
 - **Readable output**: a timestamp and line-number gutter, and semantic coloring of IPs, URLs, log levels, HTTP methods, paths, sizes and more.
 - **Split panes and tabs**: split right or down, drag tabs between panes, and see at a glance which background tab is busy or done.
-- **Filer**: browse over SFTP, FTP or the local disk, with drag and drop to and from your desktop.
+- **Filer**: browse over SFTP, FTP or the local disk, with drag and drop to and from your desktop, type a name to jump to it, and select several entries to transfer them in one go.
 - **Experiment workbench**: servers, project directories, experiment variants and individual runs are recorded separately; edit Python and config, review Git changes, launch training, read logs and compare host resources in one window. Projects never depend on terminal-tab ids.
 - **Background transfers**: Filer and the dual-pane browser share **Transfers** in the status bar, with bounded file concurrency, pause/resume, cancellation, failed-file retries and automatic reconnect attempts. Files are staged beside their destination and replaced only after completion.
-- **Sender**: saved commands and multi-line scripts, sent to one session or all of them, optionally on a timer.
+- **Sender**: saved commands and multi-line scripts, sent to one session or all of them, optionally on a timer; a script's next line follows REPL continuation prompts and network-device prompts, and each saved tag can take one of eight colors.
 - **File transfer in the terminal**: ZMODEM (`rz` / `sz`) and XMODEM.
-- **Everyday details**: themes, fonts and cursor style, custom encodings and locale, session recording, Copy on Select, a warning before multi-line pastes, rebindable shortcuts, and export / import of all settings.
+- **Everyday details**: themes, fonts and cursor style, custom encodings and locale, session recording, Copy on Select, a warning before multi-line pastes, find with match case / whole word / regular expression / find in selection, rebindable shortcuts, and export / import of all settings.
 
 ## Install
 
@@ -97,6 +97,7 @@ Terminal output retains the existing 8 ms / 64 KiB batching and xterm frame sche
 | `⌘N` | `Alt+N` | New session |
 | `⌘W` | `Ctrl+Shift+W` | Close session |
 | `⌘F` / `⌘G` | `Ctrl+Shift+F` / `Ctrl+Shift+G` | Find / find next |
+| `⌥⌘C` / `W` / `R` / `L` | `Alt+C` / `W` / `R` / `L` | In the find box: match case / whole word / regular expression / find in selection |
 | `⌘K` | `Alt+K` | Clear screen |
 | `⌘J` | `Ctrl+Shift+J` | Show the working directory in the Filer |
 | `⌘[` / `⌘]` | `Alt+[` / `Alt+]` | Previous / next tab |
@@ -105,8 +106,9 @@ Terminal output retains the existing 8 ms / 64 KiB batching and xterm frame sche
 | `⌘⌥[` / `⌘⌥]` | `Ctrl+Alt+[` / `Ctrl+Alt+]` | Previous / next pane |
 | `⌘⌥←` / `⌘⌥→` / `⌘⌥↓` | `Ctrl+Alt+←` / `→` / `↓` | Toggle Session / Filer / Sender |
 | `⌘C` / `⌘V` / `⌘A` | `Ctrl+Shift+C` / `V` / `A` | Copy / paste / select all |
+| `↩` | `Enter` | In a disconnected session: reconnect |
 
-All except the tab numbers can be changed in **View → Keyboard Shortcuts…**.
+All except the tab numbers, the find box's own keys and Enter can be changed in **View → Keyboard Shortcuts…**.
 
 ## Development and review
 
