@@ -460,6 +460,13 @@
   align-items: center;
   justify-content: center;
   flex: 0 0 22px;
+  /* Pinned to the tab's right edge. Items pack from the left, and a tab
+     with a short title sits at its min-width floor with free space left
+     over — without this the × trailed the title and floated mid-tab, so
+     a click aimed at the tab's right edge landed in the empty strip
+     beside it. The workspace chip stays with the title; the gap opens
+     between them and the ×. */
+  margin-left: auto;
   width: 22px;
   height: var(--h-control-sm);
   padding: 0;
