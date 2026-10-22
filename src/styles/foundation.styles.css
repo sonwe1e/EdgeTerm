@@ -34,6 +34,16 @@
   --green: #89d185;
   --yellow: #cca700;
   --red: #f85149;
+  /* Sender tag tints (senderColors.ts), at the strength that reads as an
+     icon and a border on this theme's panels. */
+  --tag-red: #f14c4c;
+  --tag-orange: #f0883e;
+  --tag-yellow: #e3b341;
+  --tag-green: #3fb950;
+  --tag-teal: #39c5cf;
+  --tag-blue: #4ea1f3;
+  --tag-purple: #bc8cff;
+  --tag-pink: #db61a2;
   /* Text drawn on --red. White is only 3.35:1 on this red; a near-black ink
      reads at 5.2:1 and keeps the button legible. */
   --danger-contrast: #1a1a1a;
@@ -182,6 +192,14 @@
      as decoration; this clears 5:1 without turning the hue into brown. */
   --yellow: #8a6500;
   --red: #cd3131;
+  --tag-red: #cd3131;
+  --tag-orange: #c2410c;
+  --tag-yellow: #a16207;
+  --tag-green: #15803d;
+  --tag-teal: #0e7490;
+  --tag-blue: #005fb8;
+  --tag-purple: #7c3aed;
+  --tag-pink: #be185d;
   --danger-contrast: #ffffff;
   /* White on this deep yellow clears 5.3:1; the dark ink the dark themes use
      would sit at about 3.1:1 and read as a watermark. */
@@ -275,6 +293,14 @@
   --green: #4fc38a;
   --yellow: #e0b070;
   --red: #ef8a83;
+  --tag-red: #ef8a83;
+  --tag-orange: #f29a5c;
+  --tag-yellow: #e3c26b;
+  --tag-green: #4fc38a;
+  --tag-teal: #4fc9dc;
+  --tag-blue: #62b0f5;
+  --tag-purple: #b98af5;
+  --tag-pink: #ec8fc6;
   /* White on this soft red was 2.43:1 — the worst pair in the audit. */
   --danger-contrast: #241416;
   /* This yellow is the lightest of the four, so it takes the darkest ink
@@ -361,6 +387,14 @@
   --green: #247a4c;
   --yellow: #8a6500;
   --red: #b8403a;
+  --tag-red: #cb4b40;
+  --tag-orange: #c25e12;
+  --tag-yellow: #9a7b0a;
+  --tag-green: #2f8a5b;
+  --tag-teal: #0f8593;
+  --tag-blue: #2f7fd4;
+  --tag-purple: #8a3ee0;
+  --tag-pink: #c2408c;
   --danger-contrast: #ffffff;
   /* The same deep yellow as the VS Code light half, so the same white ink. */
   --warn-contrast: #ffffff;

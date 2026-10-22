@@ -1,5 +1,6 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import type { Translate } from "../../i18n";
+import { senderColor, senderColorStyle } from "../../senderColors";
 import type { ScheduleState } from "../../senderSchedule";
 import { stopSchedule } from "../../senderSchedule";
 import { firstLine } from "../../senderUnits";
@@ -11,7 +12,7 @@ import { Target } from "./senderShared";
 
 interface Props {
   t: Translate;
-  visibleCommands: Required<SavedCommand>[];
+  visibleCommands: SavedCommand[];
   emptyMessage: string;
   running: boolean;
   /** The saved command currently being sent, so its tag can be marked. */
@@ -83,45 +84,43 @@ export function SenderQuickbar({
         ) : (
           visibleCommands.map((command) => (
             <div
-              className={`sender-command-tag sender-quick-tag${
-                sendingId === command.id ? " is-sending" : ""
-              }`}
+              className={[
+                "sender-command-tag",
+                "sender-quick-tag",
+                sendingId === command.id ? "is-sending" : "",
+                senderColor(command.color) ? "has-color" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              style={senderColorStyle(command.color)}
               key={command.id}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                // The header under the tags has its own dock menu.
+                event.stopPropagation();
+                hideCommandTooltip();
+                setContextMenu({ commandId: command.id, x: event.clientX, y: event.clientY });
+              }}
             >
               <button
                 type="button"
                 className="sender-command-load"
                 data-own-tooltip
                 aria-label={t("sender.sendAria", { name: command.name, text: command.text })}
-                disabled={running}
+                // Not `disabled`: a disabled button swallows the right click,
+                // and the menu is the tag's only way to its options.
+                aria-disabled={running}
                 onMouseEnter={(event) => showCommandTooltip(command, event.currentTarget)}
                 onMouseLeave={hideCommandTooltip}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => {
+                  if (running) return;
                   setSelectedCommandId(command.id);
                   void sendCommand(command.text, command.ending, command.id);
-                }}
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  hideCommandTooltip();
-                  setContextMenu({ commandId: command.id, x: event.clientX, y: event.clientY });
                 }}
               >
                 <Icon name="run-compact" />
                 <span>{command.name}</span>
-              </button>
-              <button
-                type="button"
-                className="sender-quick-options"
-                aria-label={t("sender.optionsFor", { name: command.name })}
-                title={t("sender.optionsFor", { name: command.name })}
-                onClick={(event) => {
-                  hideCommandTooltip();
-                  const rect = event.currentTarget.getBoundingClientRect();
-                  setContextMenu({ commandId: command.id, x: rect.right, y: rect.top });
-                }}
-              >
-                <Icon name="ellipsis" />
               </button>
             </div>
           ))

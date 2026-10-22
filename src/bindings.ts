@@ -27,8 +27,8 @@ export const commands = {
 	 *  (credentials included) and the Sender commands scoped to any of them.
 	 */
 	deleteSessionGroup: (id: string) => __TAURI_INVOKE<null>("delete_session_group", { id }),
-	listSenderCommands: () => __TAURI_INVOKE<SavedCommand[]>("list_sender_commands"),
-	saveSenderCommand: (command: SavedCommand) => __TAURI_INVOKE<SavedCommand>("save_sender_command", { command }),
+	listSenderCommands: () => __TAURI_INVOKE<SavedCommand_Serialize[]>("list_sender_commands"),
+	saveSenderCommand: (command: SavedCommand_Deserialize) => __TAURI_INVOKE<SavedCommand_Serialize>("save_sender_command", { command }),
 	deleteSenderCommand: (id: string) => __TAURI_INVOKE<null>("delete_sender_command", { id }),
 	listCommandHistory: () => __TAURI_INVOKE<CommandHistoryEntry[]>("list_command_history"),
 	recordCommand: (command: string, host: string) => __TAURI_INVOKE<null>("record_command", { command, host }),
@@ -500,7 +500,7 @@ export type AppData_Deserialize = {
 	settings?: unknown | null,
 	profiles?: SessionProfile_Deserialize[],
 	groups?: SessionGroup[],
-	senderCommands?: SavedCommand[],
+	senderCommands?: SavedCommand_Deserialize[],
 };
 
 /**
@@ -516,7 +516,7 @@ export type AppData_Serialize = {
 	settings?: unknown | null,
 	profiles: SessionProfile_Serialize[],
 	groups: SessionGroup[],
-	senderCommands: SavedCommand[],
+	senderCommands: SavedCommand_Serialize[],
 };
 
 /**
@@ -1529,13 +1529,38 @@ export type RunUpdate = {
 };
 
 /**  A reusable command shown as a tag in the Sender pane. */
-export type SavedCommand = {
+export type SavedCommand = SavedCommand_Serialize | SavedCommand_Deserialize;
+
+/**  A reusable command shown as a tag in the Sender pane. */
+export type SavedCommand_Deserialize = {
 	id?: string,
 	name: string,
 	text: string,
 	ending: LineEnding,
 	/**  Missing in files written before scopes existed: those tags are global. */
 	scope?: CommandScope,
+	/**
+	 *  The tag's tint, a palette name the frontend owns (`senderColors.ts`);
+	 *  absent for the default look. Kept as a string so a name this build
+	 *  does not know loads as an untinted tag instead of failing the file.
+	 */
+	color?: string | null,
+};
+
+/**  A reusable command shown as a tag in the Sender pane. */
+export type SavedCommand_Serialize = {
+	id: string,
+	name: string,
+	text: string,
+	ending: LineEnding,
+	/**  Missing in files written before scopes existed: those tags are global. */
+	scope: CommandScope,
+	/**
+	 *  The tag's tint, a palette name the frontend owns (`senderColors.ts`);
+	 *  absent for the default look. Kept as a string so a name this build
+	 *  does not know loads as an untinted tag instead of failing the file.
+	 */
+	color?: string | null,
 };
 
 export type SearchMatch = {

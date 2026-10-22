@@ -13,6 +13,13 @@ import { useSenderLibrary } from "./useSenderLibrary";
 import { useSenderSend } from "./useSenderSend";
 
 import { ask } from "../../nativeDialog";
+import {
+  SENDER_COLORS,
+  senderColor,
+  senderColorLabelKey,
+  senderColorStyle,
+  senderColorValue,
+} from "../../senderColors";
 import { describeScope, sameScope, scopeForLevel } from "../../senderScope";
 import { endingLabel } from "../../senderUnits";
 import { useStore } from "../../store";
@@ -499,6 +506,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
                 type="button"
                 key={command.id}
                 className="sender-more-item"
+                style={senderColorStyle(command.color)}
                 disabled={running}
                 onClick={() => {
                   closeMore();
@@ -539,6 +547,28 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
               label: t("sender.sendRepeatedly"),
               icon: "watch",
               action: () => beginRepeat(command.text, command.ending),
+            },
+            {
+              label: t("sender.color"),
+              icon: "symbol-color",
+              children: [
+                {
+                  label: t("sender.colorNone"),
+                  checked: senderColor(command.color) === null,
+                  mark: "radio" as const,
+                  swatch: null,
+                  disabled: libraryBusy,
+                  action: () => void updateSaved(command, { color: null }),
+                },
+                ...SENDER_COLORS.map((value) => ({
+                  label: t(senderColorLabelKey(value)),
+                  checked: command.color === value,
+                  mark: "radio" as const,
+                  swatch: senderColorValue(value),
+                  disabled: libraryBusy,
+                  action: () => void updateSaved(command, { color: value }),
+                })),
+              ],
             },
             {
               label: t("sender.lineEnding"),

@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { Translate } from "../../i18n";
+import { senderColor, senderColorStyle } from "../../senderColors";
 import { type LineEnding, type SavedCommand } from "../../types";
 import { Icon } from "../icons";
 import type { CommandContextMenu, Editing } from "./senderShared";
@@ -7,10 +8,10 @@ import type { CommandContextMenu, Editing } from "./senderShared";
 interface Props {
   pageCount: number;
   t: Translate;
-  visibleCommands: Required<SavedCommand>[];
+  visibleCommands: SavedCommand[];
   currentPage: number;
   setPage: Dispatch<SetStateAction<number>>;
-  pageCommands: Required<SavedCommand>[];
+  pageCommands: SavedCommand[];
   emptyMessage: string;
   /** Opens the composer, for the empty state's call to action. */
   openComposer: () => void;
@@ -98,11 +99,13 @@ export function SenderLibrary({
             <div
               className={[
                 "sender-command-tag",
+                senderColor(command.color) ? "has-color" : "",
                 selectedCommandId === command.id ? "is-selected" : "",
                 editing?.command.id === command.id ? "is-editing" : "",
               ]
                 .filter(Boolean)
                 .join(" ")}
+              style={senderColorStyle(command.color)}
               key={command.id}
               onContextMenu={(event) => {
                 event.preventDefault();
@@ -121,7 +124,8 @@ export function SenderLibrary({
                 type="button"
                 data-own-tooltip
                 aria-label={`Send ${command.name}: ${command.text}`}
-                disabled={running}
+                // Not `disabled`, which would swallow the right click.
+                aria-disabled={running}
                 onMouseEnter={(event) => showCommandTooltip(command, event.currentTarget)}
                 onMouseLeave={hideCommandTooltip}
                 // A press here must not move the focus: the point of a
@@ -132,6 +136,7 @@ export function SenderLibrary({
                 // clicked again. Keyboard activation still focuses it.
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => {
+                  if (running) return;
                   setSelectedCommandId(command.id);
                   void sendCommand(command.text, command.ending);
                 }}

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import INDEX from "../index.html?raw";
 import { SEMANTIC_BANDS, SEMANTIC_PALETTES } from "./semanticColors";
+import { SENDER_COLORS } from "./senderColors";
 import STYLES from "./styles/foundation.styles.css?raw";
 import { isLightTheme, THEME_MODES, type ThemeMode } from "./types";
 
@@ -70,6 +71,17 @@ describe("every theme", () => {
       expect(block.slice(0, block.indexOf("}")), mode).toContain(
         `color-scheme: ${scheme};`,
       );
+    }
+  });
+
+  it("tints every Sender tag color", () => {
+    // A token missing from a theme block falls back to the dark :root shade.
+    for (const mode of MODES) {
+      for (const color of SENDER_COLORS) {
+        expect(token(mode, `--tag-${color}`), `${mode} ${color}`).toMatch(
+          /^#[0-9a-f]{6}$/,
+        );
+      }
     }
   });
 

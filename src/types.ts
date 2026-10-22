@@ -103,7 +103,15 @@ export type LineEnding = "none" | "lf" | "crlf";
  */
 export type CommandScope = Wire.CommandScope;
 
-export type SavedCommand = Required<Wire.SavedCommand>;
+/**
+ * A reusable Sender command. The wire type splits in two because an untinted
+ * tag omits `color` on the way out; the UI works with the deserialize half,
+ * whose `id` and `scope` the backend always returns. `color` is a
+ * `SENDER_COLORS` name, absent for the default look.
+ */
+export type SavedCommand = Omit<Required<Wire.SavedCommand_Deserialize>, "color"> & {
+  color?: string | null;
+};
 
 /**
  * One export / import file (Session → Export / Import Data…). `settings` is

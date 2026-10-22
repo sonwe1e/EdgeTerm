@@ -191,7 +191,7 @@ export function useSenderLibrary({
   /** Saves `command` with `patch` applied, keeping an open edit in step. */
   const updateSaved = async (
     command: SavedCommand,
-    patch: Partial<Pick<SavedCommand, "ending" | "scope">>,
+    patch: Partial<Pick<SavedCommand, "ending" | "scope" | "color">>,
   ) => {
     if (libraryBusy) return;
     setLibraryBusy(true);
