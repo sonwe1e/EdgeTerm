@@ -267,6 +267,20 @@
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
+/* Which of the two lists takes typed keys (upstream issue #108): the focused
+   list draws a thin accent ring on its selection instead of an outline around
+   the whole list, so the ring also says which pane the keyboard is in. The
+   rail is the selection's own accent; the ring is the focus. */
+.ftp-browser-list:focus {
+  outline: none;
+}
+
+.ftp-browser-list:focus .ftp-file-row.is-selected {
+  box-shadow:
+    inset 2px 0 0 var(--accent),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
 /* Drag-and-drop in the dual-pane browser. An icon must not start its own
    native image drag under a row's pointer drag, and the pointer travel
    before a drag starts must not begin a text selection. */

@@ -39,6 +39,7 @@ import {
   type FilerColumns,
 } from "../../filerColumns";
 import { sortFileEntries, toggleFileSort, type SortKey } from "../../fileSort";
+import { typeToSelect, type TypeRun } from "../../fileTypeSelect";
 import { IS_MAC } from "../../platform";
 import { chordLabel } from "../../shortcuts";
 import { tabTitle, useActiveTab, useStore } from "../../store";
@@ -228,6 +229,8 @@ function FilerPanelBase() {
    * replacing it, so Ctrl/Cmd+Arrow can move without changing the choice.
    */
   const activePathRef = useRef<string | null>(null);
+  /** Letters typed into the list since the last pause; see `typeToSelect`. */
+  const typeRun = useRef<TypeRun | null>(null);
   /** Id of the active row, but only while that row is actually mounted. */
   const [activeDescendant, setActiveDescendant] = useState<string | null>(null);
 
@@ -409,8 +412,11 @@ function FilerPanelBase() {
     }
   });
 
-  // A new listing drops the active row together with the old rows.
+  // A new listing drops the active row together with the old rows, and the
+  // type-to-select run with it: letters typed into one folder must not extend
+  // into names they never matched.
   useEffect(() => {
+    typeRun.current = null;
     const path = activePathRef.current;
     if (path !== null && !sortedEntries.some((entry) => entry.path === path)) {
       activePathRef.current = null;
@@ -562,6 +568,32 @@ function FilerPanelBase() {
       return;
     }
     if (sortedEntries.length === 0) return;
+    // Typing the start of a name jumps to it (upstream issue #108); see
+    // `typeToSelect`. The run lives in a ref so a second letter a moment later
+    // extends the first ("do" goes past Desktop to docs). Keys with a shortcut
+    // modifier, named keys and IME composition answer null and fall through to
+    // the handling below, so every existing shortcut keeps working.
+    const typed = typeToSelect(
+      sortedEntries,
+      activePathRef.current,
+      typeRun.current,
+      event.nativeEvent,
+      performance.now(),
+    );
+    if (typed) {
+      // Consumed even when nothing matched: the key was typing, and it must
+      // not also trigger the platform's own find-as-you-type.
+      event.preventDefault();
+      typeRun.current = typed.run;
+      const entry = sortedEntries[typed.index];
+      // No match leaves the selection on the row it was on.
+      if (!entry) return;
+      collapseSelection.current = null;
+      selectEntry(entry.path);
+      activePathRef.current = entry.path;
+      revealActiveRow(typed.index, entry.path);
+      return;
+    }
     const active =
       activePathRef.current === null
         ? -1

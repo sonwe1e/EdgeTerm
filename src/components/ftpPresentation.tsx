@@ -127,6 +127,10 @@ export function FileBrowser({
     optionId,
     onSelect,
     onActivate,
+    // Typing a name jumps to it (upstream issue #108). An error replaces the
+    // rows but keeps the listing they came from, so there is nothing on
+    // screen for a typed name to land on.
+    typeSelect: !error,
   });
 
   const columnsRef = useRef<HTMLDivElement>(null);

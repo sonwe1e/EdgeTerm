@@ -7,6 +7,7 @@ import {
 } from "react";
 
 import type { FileEntry } from "../types";
+import { typeToSelect, type TypeRun } from "../fileTypeSelect";
 import { useStableCallback } from "../useStableCallback";
 
 export interface FileListKeyboardOptions {
@@ -25,6 +26,13 @@ export interface FileListKeyboardOptions {
   onSelect: (path: string) => void;
   /** The double-click path: enter a folder, or open a file. */
   onActivate: (entry: FileEntry) => void;
+  /**
+   * Opt-in type-to-select (upstream issue #108): when true, typing the start
+   * of a name moves the cursor and the selection to the entry whose name
+   * starts with it. Off by default, so a list that does not want it keeps
+   * exactly the named keys this hook has always handled.
+   */
+  typeSelect?: boolean;
 }
 
 export interface FileListKeyboard {
@@ -68,12 +76,18 @@ export function useFileListKeyboard({
   optionId,
   onSelect,
   onActivate,
+  typeSelect = false,
 }: FileListKeyboardOptions): FileListKeyboard {
   const activePathRef = useRef<string | null>(null);
   const [activeDescendant, setActiveDescendant] = useState<string | null>(null);
+  /** Letters typed into the list since the last pause; see `typeToSelect`. */
+  const typeRun = useRef<TypeRun | null>(null);
 
-  // A new listing drops the cursor together with the old rows.
+  // A new listing drops the cursor together with the old rows, and the
+  // type-to-select run with it: letters typed into one directory must not
+  // extend into names they never matched.
   useEffect(() => {
+    typeRun.current = null;
     const path = activePathRef.current;
     if (path !== null && !entries.some((entry) => entry.path === path)) {
       activePathRef.current = null;
@@ -188,6 +202,29 @@ export function useFileListKeyboard({
       return;
     }
     if (entries.length === 0) return;
+    // Type-to-select (upstream issue #108), when the list opted in: a
+    // printable key moves the cursor to the matching entry, and a key within
+    // a second extends the run. Only the listbox itself takes these keys — one
+    // that bubbled from an inline editor is that field's text — and modified
+    // keys, named keys and IME composition fall through to the handling below.
+    if (typeSelect && event.target === event.currentTarget) {
+      const typed = typeToSelect(
+        entries,
+        activePathRef.current,
+        typeRun.current,
+        event.nativeEvent,
+        performance.now(),
+      );
+      if (typed) {
+        // Consumed even when nothing matched: the key was typing, and it must
+        // not also trigger the platform's own find-as-you-type.
+        event.preventDefault();
+        typeRun.current = typed.run;
+        // No match leaves the cursor and the selection where they were.
+        if (entries[typed.index]) moveTo(typed.index);
+        return;
+      }
+    }
     const path = activePathRef.current;
     const active =
       path === null ? -1 : entries.findIndex((entry) => entry.path === path);
