@@ -1335,4 +1335,12 @@ export const zhCN: Catalog = {
   "wb.unsynced": "启动时未同步",
   "wb.isolatedNeedsSnapshot": "隔离执行需要代码快照。",
   "wb.runUnsyncedBlocked": "{count} 个文件仍有未保存修改。请先保存，或确认使用服务器版本。",
+
+  // fix: PD-02 — the public-key setup dialog can generate a new key
+  "keySetup.generate": "生成新密钥…",
+  "keySetup.generatePathAria": "新私钥的保存路径",
+  "keySetup.generateRun": "生成",
+  "keySetup.generating": "正在生成…",
+  "keySetup.generateHint":
+    "新密钥将写入上方路径，已存在的文件不会被覆盖；如填写了口令，新密钥将用它加密。",
 };

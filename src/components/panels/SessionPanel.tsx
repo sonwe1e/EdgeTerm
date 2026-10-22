@@ -355,6 +355,31 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
       const target = treeItems[next];
       if (target) setActive(target.id);
     };
+    // The menu key — and Shift+F10, which every platform reports as F10 with
+    // Shift held — opens what a right-click would, so a keyboard user reaches
+    // the same row entries (edit, duplicate, move, delete). The rows answer a
+    // real contextmenu event through their own handler, so one is dispatched
+    // on the active row, anchored at its centre; the same approach as the
+    // Filer panel's list. With the tree non-empty the active row always
+    // exists (see `currentIndex`), so the anchor is always a row.
+    if (
+      event.key === "ContextMenu" ||
+      (event.shiftKey && event.key === "F10")
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      const target = document.getElementById(currentId ?? "");
+      const rect = target?.getBoundingClientRect();
+      target?.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          clientX: rect ? rect.left + rect.width / 2 : 0,
+          clientY: rect ? rect.top + rect.height / 2 : 0,
+        }),
+      );
+      return;
+    }
     switch (event.key) {
       case "ArrowDown":
         event.preventDefault();
@@ -666,9 +691,17 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
         {profile.kind === "telnet" && <span className="row-meta">telnet</span>}
         {profile.id && (
           <>
+            {/* Mouse affordances beside a keyboard-driven tree: the press
+                must not pull focus off the list, the way the Sender's send
+                button keeps it (a keyboard activation still focuses the
+                button), and the buttons stay out of the Tab order — the
+                tree is the single stop, and ContextMenu / Shift+F10 reach
+                these actions through the row menu. */}
             <button
               className="panel-action"
-              onMouseDown={(event) => {
+              tabIndex={-1}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={(event) => {
                 event.stopPropagation();
                 onEditProfile(profile);
               }}
@@ -679,7 +712,9 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
             </button>
             <button
               className="panel-action"
-              onMouseDown={(event) => {
+              tabIndex={-1}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={(event) => {
                 event.stopPropagation();
                 void askDeleteProfile(profile);
               }}
@@ -743,7 +778,12 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
           className={`panel-action panel-power${
             activeTab?.state === "connected" ? " is-connected" : ""
           }${activeTab?.state === "connecting" ? " is-connecting" : ""}`}
-          disabled={!activeTab || activeTab.state === "connecting"}
+          // A connect in flight is cancellable (see `disconnectSession`), so
+          // the most visible switch stays live: only a missing active tab
+          // leaves nothing to act on. The connecting state is told apart by
+          // the pulsing `is-connecting` style and the "cancel connection"
+          // title, not by a dead button.
+          disabled={!activeTab}
           onClick={() => {
             if (activeTab) toggleSessionConnection(activeTab.info.id);
           }}

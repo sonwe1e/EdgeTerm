@@ -200,6 +200,15 @@ export type KeySetup = Wire.KeySetup;
 export const inspectPrivateKey = (path: string, passphrase?: string) =>
   commands.inspectPrivateKey(path, passphrase || null);
 
+/**
+ * Creates a new Ed25519 key at `path`, with owner-only permissions and an
+ * optional passphrase. The file must not exist yet — an existing one is
+ * never overwritten — and the returned summary is what the dialog shows as
+ * the fingerprint preview of the key it just wrote.
+ */
+export const generatePrivateKey = (path: string, passphrase?: string) =>
+  commands.generatePrivateKey(path, passphrase || null);
+
 let keyCheckSerial = 0;
 
 /** A fresh id for a cancellable public-key check; see `cancelKeyCheck`. */

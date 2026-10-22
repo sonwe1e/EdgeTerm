@@ -75,6 +75,9 @@ export function PublicKeyLoginDialog({
   const requestId = useRef<string | null>(null);
   /** Only the newest inspection may write; an earlier one can land later. */
   const previewSerial = useRef(0);
+  /** The generate-a-key row, once the user opened it: the path to write. */
+  const [generating, setGenerating] = useState<{ path: string } | null>(null);
+  const [generateBusy, setGenerateBusy] = useState(false);
 
   const target = `${profile.username ?? ""}@${profile.host ?? ""}:${profile.port ?? 22}`;
 
@@ -107,6 +110,46 @@ export function PublicKeyLoginDialog({
       await inspect(picked, passphrase);
     } catch (error) {
       setPreview({ kind: "error", message: errorText(error) });
+    }
+  };
+
+  /**
+   * Opens the generate row at the conventional default path. The home
+   * directory is read only once the user asks for a new key, so opening the
+   * dialog itself stays free of IPC.
+   */
+  const startGenerate = async () => {
+    try {
+      const home = await api.localHome();
+      setGenerating({ path: `${home}/.ssh/id_ed25519` });
+      setPreview(null);
+      setOutcome(null);
+    } catch (error) {
+      setPreview({ kind: "error", message: errorText(error) });
+    }
+  };
+
+  /**
+   * Writes a brand-new key at the chosen path, encrypted with the dialog's
+   * passphrase when one is set. The backend refuses to overwrite an existing
+   * file; that refusal is reported like any other preview error and the row
+   * stays open, so another path can be tried. On success the path lands in
+   * the form and the new key's fingerprint becomes the preview.
+   */
+  const generate = async () => {
+    const path = generating?.path.trim();
+    if (!path || generateBusy) return;
+    setGenerateBusy(true);
+    try {
+      const summary = await api.generatePrivateKey(path, passphrase);
+      setKeyPath(path);
+      setPreview({ kind: "ok", summary });
+      setOutcome(null);
+      setGenerating(null);
+    } catch (error) {
+      setPreview({ kind: "error", message: errorText(error) });
+    } finally {
+      setGenerateBusy(false);
     }
   };
 
@@ -143,10 +186,12 @@ export function PublicKeyLoginDialog({
   /**
    * A press while the setup runs asks the backend to stop the check — the
    * key may already be installed by then, so the dialog stays up to report
-   * it. Any other time the press closes.
+   * it. A key generation in flight closes nothing either: its result (the
+   * path and the fingerprint) would be lost. Any other time the press
+   * closes.
    */
   const cancel = () => {
-    if (!busy) {
+    if (!busy && !generateBusy) {
       onClose();
       return;
     }
@@ -178,7 +223,7 @@ export function PublicKeyLoginDialog({
               spellCheck={false}
               autoCapitalize="none"
               autoCorrect="off"
-              disabled={busy}
+              disabled={busy || generateBusy}
               onChange={(event) => {
                 setKeyPath(event.target.value);
                 setPreview(null);
@@ -190,12 +235,65 @@ export function PublicKeyLoginDialog({
               type="button"
               className="btn"
               onClick={() => void browse()}
-              disabled={busy}
+              disabled={busy || generateBusy}
             >
               {t("keySetup.browse")}
             </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => void startGenerate()}
+              disabled={busy || generating !== null}
+            >
+              {t("keySetup.generate")}
+            </button>
           </div>
         </label>
+
+        {/* Where a brand-new key is written: the path defaults to the
+            conventional one, an existing file is never overwritten, and the
+            passphrase above (when set) encrypts the new key. */}
+        {generating && (
+          <div className="session-field is-wide">
+            <div className="key-setup-path">
+              <input
+                autoFocus
+                value={generating.path}
+                placeholder={t("keySetup.pathPlaceholder")}
+                spellCheck={false}
+                autoCapitalize="none"
+                autoCorrect="off"
+                disabled={generateBusy}
+                aria-label={t("keySetup.generatePathAria")}
+                onChange={(event) => {
+                  setGenerating({ path: event.target.value });
+                  setPreview(null);
+                }}
+              />
+              <button
+                type="button"
+                className="btn is-primary"
+                onClick={() => void generate()}
+                disabled={generateBusy || !generating.path.trim()}
+              >
+                {generateBusy
+                  ? t("keySetup.generating")
+                  : t("keySetup.generateRun")}
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setGenerating(null)}
+                disabled={generateBusy}
+              >
+                {t("keySetup.cancel")}
+              </button>
+            </div>
+            <span className="confirm-dialog-hint">
+              {t("keySetup.generateHint")}
+            </span>
+          </div>
+        )}
 
         <label className="session-field is-wide">
           <span className="session-field-label">{t("keySetup.passphrase")}</span>
@@ -204,7 +302,7 @@ export function PublicKeyLoginDialog({
               type="password"
               value={passphrase}
               autoComplete="off"
-              disabled={busy}
+              disabled={busy || generateBusy}
               onChange={(event) => {
                 setPassphrase(event.target.value);
                 setPreview(null);
@@ -263,7 +361,12 @@ export function PublicKeyLoginDialog({
       </div>
 
       <div className="dialog-footer">
-        <button type="button" className="btn" onClick={cancel}>
+        <button
+          type="button"
+          className="btn"
+          onClick={cancel}
+          disabled={generateBusy}
+        >
           {busy
             ? stopping
               ? t("keySetup.stopping")
@@ -274,7 +377,7 @@ export function PublicKeyLoginDialog({
           type="button"
           className="btn is-primary"
           onClick={() => void run()}
-          disabled={busy || !keyPath.trim()}
+          disabled={busy || generateBusy || !keyPath.trim()}
         >
           <Icon name="key" />
           {busy ? t("keySetup.running") : t("keySetup.run")}

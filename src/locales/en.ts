@@ -1428,4 +1428,12 @@ export const en = {
   "wb.unsynced": "Unsynced at launch",
   "wb.isolatedNeedsSnapshot": "An isolated run needs a code snapshot.",
   "wb.runUnsyncedBlocked": "{count} file(s) still have unsaved edits. Save them, or confirm using the server copies.",
+
+  // fix: PD-02 — the public-key setup dialog can generate a new key
+  "keySetup.generate": "Generate New Key…",
+  "keySetup.generatePathAria": "Path for the new private key",
+  "keySetup.generateRun": "Generate",
+  "keySetup.generating": "Generating…",
+  "keySetup.generateHint":
+    "The new key is written to the path above; an existing file is never overwritten. A passphrase above, if any, encrypts it.",
 } as const;

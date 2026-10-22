@@ -162,11 +162,6 @@
   animation: wb-pulse 1.4s ease-in-out infinite;
 }
 
-.panel-power.is-connecting:disabled {
-  opacity: 1;
-  cursor: default;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .panel-power.is-connecting {
     animation: none;
