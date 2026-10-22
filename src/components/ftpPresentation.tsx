@@ -1,5 +1,6 @@
 import {
   memo,
+  useCallback,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -17,10 +18,20 @@ import type { FileEntry, ThemeMode } from "../types";
 import { FileIcon } from "./FileIcon";
 import { Icon } from "./icons";
 import { SortIndicator } from "./SortIndicator";
+import { useFileListKeyboard } from "./useFileListKeyboard";
 import { VirtualFileRows } from "./VirtualFileRows";
 
 /** Pointer travel before a press on a row turns into a drag. */
 export const DRAG_THRESHOLD = 5;
+
+/**
+ * Stable id of a rendered option, so the listbox can point
+ * `aria-activedescendant` at it. A path may hold spaces or slashes, which
+ * are not allowed in an id, so it is percent-encoded; the side keeps the
+ * two panes' ids apart inside one document.
+ */
+const ftpOptionId = (side: PaneSide, path: string): string =>
+  `ftp-option-${side}-${encodeURIComponent(path)}`;
 
 export interface Props {
   tab: Tab;
@@ -101,6 +112,22 @@ export function FileBrowser({
   const sort = useStore((s) => s.filerSort);
   const setFilerSort = useStore((s) => s.setFilerSort);
   const sortedEntries = useMemo(() => sortFileEntries(entries, sort), [entries, sort]);
+
+  // The keyboard model of the list: one Tab stop on the listbox, a cursor
+  // announced through aria-activedescendant, selection following the
+  // cursor. Mirrors the Filer panel's list (see useFileListKeyboard).
+  const optionId = useCallback(
+    (path: string) => ftpOptionId(side, path),
+    [side],
+  );
+  const { activeDescendant, onKeyDown, onRowSelect } = useFileListKeyboard({
+    entries: sortedEntries,
+    rowHeight: 29,
+    listRef,
+    optionId,
+    onSelect,
+    onActivate,
+  });
 
   const columnsRef = useRef<HTMLDivElement>(null);
   // The caption row is a sibling of the scroll container, not a child of it,
@@ -230,6 +257,9 @@ export function FileBrowser({
         data-drop-dir={path}
         role="listbox"
         aria-label={t("ftp.filesAria", { title })}
+        tabIndex={0}
+        aria-activedescendant={activeDescendant ?? undefined}
+        onKeyDown={onKeyDown}
       >
         {error && <div className="ftp-browser-message is-error">{error}</div>}
         {!error && loading && <div className="ftp-browser-message">{t("ftp.loading")}</div>}
@@ -255,7 +285,7 @@ export function FileBrowser({
                   dropHover != null && dropHover.side === side && dropHover.dir === entry.path
                 }
                 theme={theme}
-                onSelect={onSelect}
+                onSelect={onRowSelect}
                 onActivate={onActivate}
                 onPointerDown={onItemPointerDown}
                 onPointerMove={onItemPointerMove}
@@ -315,6 +345,7 @@ export const FtpFileRow = memo(function FtpFileRow({
 }) {
   return (
     <div
+      id={ftpOptionId(side, entry.path)}
       className={`ftp-file-row${selected ? " is-selected" : ""}${entry.isDir ? " is-directory" : ""}${dragSource ? " is-drag-source" : ""}${dropTarget ? " is-drop-target" : ""}`}
       role="option"
       aria-posinset={position}
