@@ -508,14 +508,15 @@
 
 
 /* The workbench project a session was opened for; the tab title alone says
-   only the server. */
+   only the server. The tint drops to 12% and the word takes the accent ink:
+   on the 20% tint the light canvases' accent only reached 3.8-4.4:1. */
 .tab-workspace {
   max-width: 84px;
   margin-left: 2px;
   padding: 0 var(--sp-4);
   border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--accent) 20%, transparent);
-  color: var(--accent-bright);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent-ink);
   font-size: var(--fs-2xs);
   line-height: 15px;
   white-space: nowrap;

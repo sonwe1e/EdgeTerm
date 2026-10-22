@@ -39,9 +39,10 @@
 
 .filer-action:active:not(:disabled),
 .filer-action.is-open {
-  /* --accent only clears 3.9:1 on the dark tint; the lifted twin is the
-     readable one for a glyph that has to be identified. */
-  color: var(--accent-bright);
+  /* A glyph that has to be identified, on a solid accent tint. The lifted twin
+     only reached 3.25:1 on serialx-light's tint; the accent ink clears 4.8:1
+     in every palette. */
+  color: var(--accent-ink);
   background: var(--accent-soft);
 }
 
@@ -68,8 +69,11 @@
   background: color-mix(in srgb, var(--yellow) 12%, transparent);
 }
 
+/* The destructive hover is the same pill shape as .filer-action.is-open above,
+   so it takes the same ink: --red on its own 12% tint measured 4.06:1 in light
+   and 3.75:1 in serialx-light, where the ink clears both. */
 .filer-action-danger:hover:not(:disabled) {
-  color: var(--red);
+  color: var(--red-ink);
   background: color-mix(in srgb, var(--red) 12%, transparent);
 }
 

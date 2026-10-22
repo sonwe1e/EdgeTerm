@@ -89,24 +89,28 @@
   background: var(--bg-hover);
 }
 
+/* A status word is body text, so each pill writes the ink of its own hue on a
+   tint held at 10%: the tint lifts the light canvases toward the middle of the
+   ramp, where the colour itself only reached 3.5-4.2:1. The ink clears 4.5:1
+   in all four palettes (see the --*-ink tokens in foundation.styles.css). */
 .transfer-status.is-active {
-  color: var(--accent-bright);
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent-ink);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .transfer-status.is-done {
-  color: var(--green);
-  background: color-mix(in srgb, var(--green) 14%, transparent);
+  color: var(--green-ink);
+  background: color-mix(in srgb, var(--green) 10%, transparent);
 }
 
 .transfer-status.is-paused {
-  color: var(--yellow);
-  background: color-mix(in srgb, var(--yellow) 16%, transparent);
+  color: var(--yellow-ink);
+  background: color-mix(in srgb, var(--yellow) 10%, transparent);
 }
 
 .transfer-status.is-failed {
-  color: var(--red);
-  background: color-mix(in srgb, var(--red) 14%, transparent);
+  color: var(--red-ink);
+  background: color-mix(in srgb, var(--red) 10%, transparent);
 }
 
 .transfer-job-name {

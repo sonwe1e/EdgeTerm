@@ -43,6 +43,21 @@
      --accent-contrast above. */
   --warn-contrast: #1f1f1f;
 
+  /* Text drawn on a tint of its own colour. A pill lifts the canvas toward
+     the middle of the ramp and then writes the colour itself on top; the two
+     dark palettes survive that, but on the two light ones the mid-tone greens,
+     blues and teals land at 3.3-4.4:1. So every pill writes an ink: the colour
+     carried a rung or two deeper in the same hue. The dark palettes already
+     clear 4.5:1 on their own tints, so their ink is the colour itself — the
+     same shape --warn-contrast takes above. */
+  --green-ink: var(--green);
+  --yellow-ink: var(--yellow);
+  --red-ink: var(--red);
+  --accent-ink: var(--accent-bright);
+  --panel-session-ink: var(--panel-session);
+  --panel-sender-ink: var(--panel-sender);
+  --panel-filer-ink: var(--panel-filer);
+
   /* Scrollbars are controls: the thumb has to clear 3:1 against the panel
      it sits on, or it is not findable without hunting for it. */
   --scrollbar-thumb: #6a6a6a;
@@ -172,6 +187,19 @@
      would sit at about 3.1:1 and read as a watermark. */
   --warn-contrast: #ffffff;
 
+  /* The pill inks for this canvas. Each is the colour above taken deeper in
+     the same hue, so the status word stays inside its own family while the
+     tint lifts the paper: measured on the 10-12% tints the rules below use,
+     they clear 4.5:1 (5.5-6.4:1) where the colours themselves reached only
+     3.9-4.4:1. */
+  --green-ink: #0d670d;
+  --yellow-ink: #725400;
+  --red-ink: #a62828;
+  --accent-ink: #004f98;
+  --panel-session-ink: #134dcb;
+  --panel-sender-ink: #9e350a;
+  --panel-filer-ink: #066454;
+
   --scrollbar-thumb: #8f8f8f;
   --scrollbar-thumb-hover: #7d7d7d;
   --term-scrollbar-thumb-hover: #6f6f6f;
@@ -235,7 +263,12 @@
   --accent: #8b87ff;
   --accent-bright: #a3a0ff;
   --accent-soft: #34365e;
-  --accent-contrast: #ffffff;
+  /* This lavender is the lightest accent of the four palettes, so white on it
+     measured 3.00:1 — the worst text pair in the audit, and it sat on every
+     primary button and every menu hover row. The ink flips with the palette,
+     exactly as --danger-contrast and --warn-contrast above already do:
+     near-black reads 5.50:1 here. */
+  --accent-contrast: #1f1f1f;
   --panel-session: #62b0f5;
   --panel-sender: #f2b45c;
   --panel-filer: #4fc9dc;
@@ -247,6 +280,18 @@
   /* This yellow is the lightest of the four, so it takes the darkest ink
      (about 8:1). */
   --warn-contrast: #1f1f1f;
+
+  /* The pill inks. This palette's own tints are already dark enough that the
+     colour itself clears 4.5:1 on them, so the ink is the colour — see the
+     :root block for what an ink is and why the light palettes need deeper
+     ones. */
+  --green-ink: var(--green);
+  --yellow-ink: var(--yellow);
+  --red-ink: var(--red);
+  --accent-ink: var(--accent-bright);
+  --panel-session-ink: var(--panel-session);
+  --panel-sender-ink: var(--panel-sender);
+  --panel-filer-ink: var(--panel-filer);
 
   --scrollbar-thumb: #5a6270;
   --scrollbar-thumb-hover: #6a7383;
@@ -307,12 +352,31 @@
   --panel-session: #2a6fbc;
   --panel-sender: #8f5c00;
   --panel-filer: #0d7581;
-  --green: #2f8a5b;
+  /* These three carry text rather than decoration: the power button's
+     "connected", every success state, the error ink and the file lists'
+     directory names. As mid-tones on the warm paper they measured 4.11-4.39:1
+     — and the directory names are 11-12px at weight 600, which earns no large
+     text exemption. One rung deeper in the same hue clears 4.5:1 on every
+     surface (green 4.81-5.30, red 4.98-5.48, dir-label 4.90-5.39). */
+  --green: #247a4c;
   --yellow: #8a6500;
-  --red: #cb4b40;
+  --red: #b8403a;
   --danger-contrast: #ffffff;
   /* The same deep yellow as the VS Code light half, so the same white ink. */
   --warn-contrast: #ffffff;
+
+  /* The pill inks for this canvas: the colours above taken deeper in the same
+     hue, so the status word stays inside its own family while the tint lifts
+     the paper. On the 10-12% tints the pill rules use they measure 5.5-6.3:1,
+     against 3.5-4.4:1 for the colours themselves. The accent ink is the
+     deepest of the set because it is also drawn on the solid --accent-soft. */
+  --green-ink: #1e643f;
+  --yellow-ink: #725400;
+  --red-ink: #9a3631;
+  --accent-ink: #3834d0;
+  --panel-session-ink: #225998;
+  --panel-sender-ink: #7b4f00;
+  --panel-filer-ink: #0b626c;
 
   --scrollbar-thumb: #8e8e96;
   --scrollbar-thumb-hover: #7a7a84;
@@ -328,7 +392,10 @@
   --menu-mark: rgba(0, 0, 0, 0.32);
   --bg-track: #eeeeea;
 
-  --dir-label: #2f7fd4;
+  /* The file lists' directory names, at 11-12px weight 600: 4.11:1 on the
+     white terminal read weaker than the black file name beside it. One rung
+     deeper reaches 5.39:1 there and 5.20:1 on the panel. */
+  --dir-label: #1f6cb8;
   --symlink-label: #8a3ee0;
 
   --gutter-border: #e4e4e0;

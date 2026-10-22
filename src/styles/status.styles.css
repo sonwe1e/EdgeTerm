@@ -123,6 +123,11 @@ button.status-item[aria-expanded="true"] {
   /* An accent hairline inside the tint: the fill alone was close enough to
      the hover state to read as "pointed at" rather than "open". */
   box-shadow: inset 0 0 0 1px var(--accent);
+  /* The bar's ink (see .statusbar above) was tuned for --bg-app; on the
+     selection it falls to 2.8-4.4:1, and the summary is the whole point of
+     opening the popover. Filer lifts its cells the same way
+     (filer.styles.css). */
+  color: color-mix(in srgb, var(--fg) 85%, var(--bg-active));
 }
 /* A 2px ring at offset 1 would spill past the 24px strip; at offset 0 it
    lands exactly on the bar's own edges. */

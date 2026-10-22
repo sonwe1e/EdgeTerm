@@ -440,6 +440,15 @@
   color: var(--fg-faint);
 }
 
+/* The selection lifts the project's own metadata with it: --fg-dim and
+   --fg-faint were tuned for the panel and fall to 2.8-4.4:1 on the saturated
+   --bg-active. Same lift Filer already applies to its cells
+   (filer.styles.css). */
+.wb-project.is-active .wb-project-meta,
+.wb-project.is-active .wb-project-root {
+  color: color-mix(in srgb, var(--fg) 85%, var(--bg-active));
+}
+
 .wb-sidebar-section {
   display: flex;
   flex-direction: column;
@@ -568,14 +577,17 @@
   letter-spacing: 0.04em;
 }
 
+/* Both badges write the ink of their own hue on a 12% tint: the tint lifts the
+   light canvases toward the middle of the ramp, where the colour itself only
+   reached 3.7-4.0:1. See the --*-ink tokens in foundation.styles.css. */
 .wb-badge.is-baseline {
-  background: color-mix(in srgb, var(--accent) 26%, transparent);
-  color: var(--accent-bright);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent-ink);
 }
 
 .wb-badge.is-variant {
-  background: color-mix(in srgb, var(--yellow) 20%, transparent);
-  color: var(--yellow);
+  background: color-mix(in srgb, var(--yellow) 12%, transparent);
+  color: var(--yellow-ink);
 }
 
 .wb-runs-section {
@@ -619,6 +631,13 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* The chosen run's timestamp and detail lift with the selection: --fg-faint on
+   the saturated --bg-active measured 3.0-3.8:1. Same lift Filer already
+   applies to its cells (filer.styles.css). */
+.wb-run-row.is-active .wb-run-main small {
+  color: color-mix(in srgb, var(--fg) 85%, var(--bg-active));
 }
 
 .wb-run-dot {
@@ -1462,6 +1481,14 @@
 .wb-search-path small {
   color: var(--fg-faint);
   font-size: var(--fs-xs);
+}
+
+/* Both overlay lists select with the same saturated fill, so both lift the
+   path under the chosen row the way Filer lifts its cells (filer.styles.css):
+   --fg-faint measured 3.0-3.8:1 on --bg-active. */
+.wb-quickopen-row.is-active small,
+.wb-search-row:hover small {
+  color: color-mix(in srgb, var(--fg) 85%, var(--bg-active));
 }
 
 .wb-quickopen-empty {

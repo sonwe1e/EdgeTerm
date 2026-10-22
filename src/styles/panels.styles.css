@@ -58,7 +58,10 @@
 }
 
 /* Collect UI's compact navigation pills translate well to a terminal's
-   dense chrome: colour identifies the workspace without tinting its data. */
+   dense chrome: colour identifies the workspace without tinting its data.
+   The 12% tint stays; the text takes the ink of the same hue, because the
+   light canvases' own mid-tones only reach 4.0-4.4:1 on it (5.4-5.7:1 with
+   the ink). See the --panel-*-ink tokens in foundation.styles.css. */
 .panel-title:is(.is-session, .is-sender, .is-filer) {
   flex: 0 1 auto;
   height: var(--h-control);
@@ -69,17 +72,17 @@
 }
 
 .panel-title.is-session {
-  color: var(--panel-session);
+  color: var(--panel-session-ink);
   background: color-mix(in srgb, var(--panel-session) 12%, transparent);
 }
 
 .panel-title.is-sender {
-  color: var(--panel-sender);
+  color: var(--panel-sender-ink);
   background: color-mix(in srgb, var(--panel-sender) 12%, transparent);
 }
 
 .panel-title.is-filer {
-  color: var(--panel-filer);
+  color: var(--panel-filer-ink);
   background: color-mix(in srgb, var(--panel-filer) 12%, transparent);
 }
 
@@ -87,11 +90,15 @@
   color: currentColor;
 }
 
-/* Secondary word beside a title ("local", "ssh"): a lowercase pill. */
+/* Secondary word beside a title ("local", "ssh"): a lowercase pill. It sits on
+   the raised surface rather than a tint of --fg: a tint strong enough to read
+   as a chip pushed --fg-faint under 4.5:1 on the light canvases, and one weak
+   enough to pass there was invisible on the dark ones. The raised surface
+   passes in all four (4.6-5.2:1). */
 .panel-badge {
   padding: 1px var(--sp-6);
   border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--fg) 9%, transparent);
+  background: var(--bg-panel-alt);
   color: var(--fg-faint);
   font-size: var(--fs-xs);
   font-weight: 500;
@@ -100,10 +107,12 @@
 }
 
 /* A transfer in progress, named in the panel's own title bar: the accent tint
-   separates "something is moving" from the protocol badge beside it. */
+   separates "something is moving" from the protocol badge beside it. The tint
+   drops to 12% and the word takes the accent ink, the same pair the workbench
+   badges and the tab workspace pill use. */
 .panel-badge.is-transfer {
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
-  color: var(--accent-bright);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent-ink);
   font-variant-numeric: tabular-nums;
 }
 
@@ -342,6 +351,15 @@
 .row-meta {
   color: var(--fg-faint);
   font-size: var(--fs-sm);
+}
+
+/* The selection carries its own metadata with it. --fg-faint was tuned for the
+   panel, and on the saturated --bg-active it falls to 3.0-3.8:1 — the row's
+   port, path and timestamp are exactly what a selected session is read for.
+   Filer already lifts its cells this way (see filer.styles.css); this is the
+   same rule for the session tree and the sender list. */
+.row.is-active .row-meta {
+  color: color-mix(in srgb, var(--fg) 85%, var(--bg-active));
 }
 
 .row-caret {
