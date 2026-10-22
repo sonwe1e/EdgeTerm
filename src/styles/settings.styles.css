@@ -1,0 +1,161 @@
+/* Settings dialog (PD-06): the preferences the review found scattered over
+   seven places, gathered into groups. The dialog shell — header, body,
+   footer, .btn — comes from dialogs.styles.css; this file only adds the
+   groups, rows and choice segments. */
+
+.settings-dialog {
+  width: min(660px, calc(100vw - 32px));
+}
+
+.settings-body {
+  gap: var(--sp-12);
+}
+
+.settings-intro {
+  margin: 0;
+  color: var(--fg-faint);
+  line-height: 1.6;
+}
+
+/* Each group is a card on the dialog surface, the way the session form's
+   sections read. */
+.settings-group {
+  padding: var(--sp-12);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--bg-panel-alt);
+}
+
+.settings-group-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-8);
+  margin-bottom: var(--sp-10);
+  color: var(--fg);
+  font-size: var(--fs);
+  font-weight: 600;
+}
+
+.settings-group-heading .icon {
+  color: var(--fg-dim);
+}
+
+.settings-group-heading small {
+  overflow: hidden;
+  margin-left: auto;
+  color: var(--fg-faint);
+  font-size: var(--fs-sm);
+  font-weight: 400;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4) var(--sp-12);
+  padding: var(--sp-6) 0;
+}
+
+.settings-row + .settings-row {
+  border-top: 1px solid var(--border);
+}
+
+.settings-row-main {
+  display: flex;
+  flex: 1 1 200px;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.settings-row-label {
+  color: var(--fg);
+}
+
+.settings-row-hint {
+  color: var(--fg-faint);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+/* A switch row: the native box leads, the text follows it. */
+.settings-check-row {
+  cursor: pointer;
+}
+
+.settings-check-row input[type="checkbox"] {
+  flex: none;
+  margin: 0;
+}
+
+/* Choices as a row of quiet segments: native radios inside, the label draws
+   the segment — the tunnel form's direction control in a dialog row. */
+.settings-choices {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: var(--sp-6);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.settings-choice {
+  position: relative;
+  display: block;
+  cursor: pointer;
+}
+
+.settings-choice input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+}
+
+.settings-choice span {
+  display: flex;
+  align-items: center;
+  min-height: var(--h-control-lg);
+  padding: 0 var(--sp-10);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+
+.settings-choice:hover span {
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.settings-choice input:checked + span {
+  border-color: var(--accent);
+  background: var(--bg-active);
+  color: var(--fg);
+}
+
+.settings-choice input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* The panel visibility switches wear the same segment shape, so an "on"
+   panel reads the way a chosen option does. */
+.settings-checks {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: var(--sp-6);
+}
+
+.settings-go {
+  flex: none;
+}

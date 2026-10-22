@@ -48,6 +48,7 @@ import { THEME_MODES, themeLabels, type ThemeMode } from "../types";
 import { useT } from "../useT";
 import { hasLeading, MenuLeading, menuRole, type MenuMark } from "./ContextMenu";
 import { Icon, type IconName } from "./icons";
+import { SettingsDialog } from "./SettingsDialog";
 import { submenuKey, useSubmenuHover } from "./submenuHover";
 
 const TUTORIAL_URL = "https://miskin-lee.github.io/EdgeTerm/tutorial.html";
@@ -274,6 +275,10 @@ interface Props {
 
 export function MenuBar(props: Props) {
   const [open, setOpen] = useState<string | null>(null);
+  // The settings dialog, opened from the View menu and from Help's index
+  // entry (PD-06). It lives here rather than in App because every surface it
+  // reaches is already reachable from this component's props and stores.
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
   // Stops the pending drag-threshold watch of the last drag-region press.
   const dragWatch = useRef<(() => void) | null>(null);
@@ -326,7 +331,6 @@ export function MenuBar(props: Props) {
   const setCopyOnSelect = useStore((s) => s.setCopyOnSelect);
   const programClipboard = useStore((s) => s.programClipboard);
   const setProgramClipboard = useStore((s) => s.setProgramClipboard);
-  const resetSettings = useStore((s) => s.resetSettings);
   // The accelerators as the user has bound them (see shortcuts.ts); only
   // the tab-number keys are fixed.
   const shortcuts = useStore((s) => s.shortcuts);
@@ -731,6 +735,13 @@ export function MenuBar(props: Props) {
           icon: "keyboard",
           action: props.onKeyboardShortcuts,
         },
+        {
+          // The index the review asked for (PD-06): the preferences that
+          // used to be scattered, gathered in one dialog.
+          label: t("menu.settings"),
+          icon: "settings-gear",
+          action: () => setSettingsOpen(true),
+        },
       ],
     },
     {
@@ -762,21 +773,12 @@ export function MenuBar(props: Props) {
         },
         "separator",
         {
-          label: t("menu.restoreDefaultSettings"),
-          icon: "discard",
-          action: () => {
-            void (async () => {
-              const confirmed = await ask(t("confirm.restoreDefaults"), {
-                title: t("confirm.restoreDefaultsTitle"),
-                kind: "warning",
-                okLabel: t("confirm.restore"),
-                cancelLabel: t("common.cancel"),
-              });
-              if (!confirmed) return;
-              resetSettings();
-              setStatus(t("status.defaultSettingsRestored"));
-            })();
-          },
+          // Restoring defaults moved into the settings dialog (PD-06), where
+          // the confirmation can name what it clears; Help keeps one index
+          // entry that opens it.
+          label: t("menu.allSettings"),
+          icon: "settings-gear",
+          action: () => setSettingsOpen(true),
         },
         {
           label: t("menu.language"),
@@ -1154,6 +1156,12 @@ export function MenuBar(props: Props) {
         </div>
         {!IS_MAC && <WindowControls maximized={maximized} />}
       </div>
+      {settingsOpen && (
+        <SettingsDialog
+          onClose={() => setSettingsOpen(false)}
+          onDisplaySettings={props.onFontSettings}
+        />
+      )}
     </div>
   );
 }

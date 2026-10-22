@@ -1353,5 +1353,29 @@ export const zhCN: Catalog = {
   "empty.openSenderHint": "保存常用命令，一键发送到当前会话。",
   "empty.openWorkbench": "打开工作台",
   "empty.openWorkbenchHint": "管理项目、实验与运行，编辑代码并查看差异。",
+  // fix: PD-06 — one settings dialog gathers the scattered preferences
+  "menu.settings": "设置…",
+  "menu.allSettings": "所有设置…",
+  "settings.title": "设置",
+  "settings.intro":
+    "下列偏好分布在应用的各处。在这里改动的立即生效；标注「打开」的会转到它所在的界面。",
+  "settings.groupAppearance": "外观",
+  "settings.groupTerminal": "终端行为",
+  "settings.groupConnection": "连接",
+  "settings.groupTransfer": "传输",
+  "settings.groupPanels": "面板布局",
+  "settings.groupData": "数据",
+  "settings.open": "打开",
+  "settings.reset": "重置",
+  "settings.displaySettingsHint":
+    "面板与终端的字号、字体、回滚行数、光标样式与 GPU 渲染器。",
+  "settings.transferHint": "请求数、分块大小、并发文件数、限速、fsync 与 tar 打包。",
+  "settings.transferSettings": "传输设置",
+  "settings.transferLocation":
+    "这些设置位于状态栏「传输」浮层内的「设置」折叠区。",
+  "settings.panelsVisible": "面板显隐",
+  "settings.panelDock": "{panel}停靠到",
+  "settings.restoreNote": "恢复后文件面板与发送器会重新隐藏，工作台状态也会重置。",
+
 
 };

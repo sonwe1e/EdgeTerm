@@ -68,6 +68,7 @@ import search from "@vscode/codicons/src/icons/search.svg?raw";
 import send from "@vscode/codicons/src/icons/send.svg?raw";
 import server from "@vscode/codicons/src/icons/server.svg?raw";
 import serverEnvironment from "@vscode/codicons/src/icons/server-environment.svg?raw";
+import settingsGear from "@vscode/codicons/src/icons/settings-gear.svg?raw";
 import shield from "@vscode/codicons/src/icons/shield.svg?raw";
 import splitHorizontal from "@vscode/codicons/src/icons/split-horizontal.svg?raw";
 import splitVertical from "@vscode/codicons/src/icons/split-vertical.svg?raw";
@@ -146,6 +147,7 @@ const SVGS = {
   send,
   server,
   "server-environment": serverEnvironment,
+  "settings-gear": settingsGear,
   shield,
   "split-horizontal": splitHorizontal,
   "split-vertical": splitVertical,

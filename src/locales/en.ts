@@ -1446,5 +1446,31 @@ export const en = {
   "empty.openSenderHint": "Keep frequent commands at hand and send them to the active session.",
   "empty.openWorkbench": "Open Workbench",
   "empty.openWorkbenchHint": "Manage projects, experiments and runs; edit code and review diffs.",
+  // fix: PD-06 — one settings dialog gathers the scattered preferences
+  "menu.settings": "Settings…",
+  "menu.allSettings": "All Settings…",
+  "settings.title": "Settings",
+  "settings.intro":
+    "The preferences below are scattered across the app. Changes made here take effect at once; the ones marked Open lead to the surface that holds them.",
+  "settings.groupAppearance": "Appearance",
+  "settings.groupTerminal": "Terminal Behavior",
+  "settings.groupConnection": "Connection",
+  "settings.groupTransfer": "Transfer",
+  "settings.groupPanels": "Panel Layout",
+  "settings.groupData": "Data",
+  "settings.open": "Open",
+  "settings.reset": "Reset",
+  "settings.displaySettingsHint":
+    "Panel and terminal font size and family, scrollback lines, cursor style and the GPU renderer.",
+  "settings.transferHint":
+    "Request count, chunk size, concurrent files, rate limit, fsync and tar packing.",
+  "settings.transferSettings": "Transfer Settings",
+  "settings.transferLocation":
+    "These live in the Settings disclosure inside the status bar's Transfers popover.",
+  "settings.panelsVisible": "Panel visibility",
+  "settings.panelDock": "{panel} on",
+  "settings.restoreNote":
+    "After a restore the Filer and Sender panels are hidden again and the Workbench state is reset.",
+
 
 } as const;
