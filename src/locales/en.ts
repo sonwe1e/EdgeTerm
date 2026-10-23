@@ -781,8 +781,10 @@ export const en = {
   "filer.sortByName": "Sort by name",
   "filer.sortByModified": "Sort by last modified",
   "filer.sortBySize": "Sort by size",
+  "filer.resizeNameColumn": "Resize the name column",
   "filer.resizeSizeColumn": "Resize the size column",
-  "filer.resizeSizeColumnRight": "Resize the size column from the right",
+  "filer.resizeDateColumn": "Resize the modified column",
+  "filer.resetColumns": "Reset column widths",
   "filer.remoteListAria":
     "{proto} file list. Drop files or folders here to upload, or drag an entry out of the window to download it.",
   "filer.localListAria":

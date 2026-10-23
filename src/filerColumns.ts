@@ -1,47 +1,59 @@
 import { FILER_COLUMNS_KEY } from "./persistKeys";
 
 /**
- * The two Filer columns whose width the user may drag, in CSS pixels.
+ * The three Filer columns whose width the user may drag, in CSS pixels.
  *
- * The name column is deliberately absent: it is the flexible track of the
- * listing's grid (`minmax(0, 1fr)`), so it takes whatever room the size and
- * modified columns leave. Narrowing either of those widens the names, which is
- * how every file manager's name column is resized — there is no separate
- * handle for it because there is no separate width to hold.
+ * `null` means "not dragged yet": the track then follows the stylesheet's
+ * own content width, which grows with the panel font. For the size and
+ * modified columns that width is what the widest printed value needs
+ * (`1023.9 KB`, `10-20 14:32`); for the name column it is no width at all —
+ * the name track is the flexible one and takes whatever room the other two
+ * leave, which is how a listing reads before anyone has resized anything.
  *
- * A `null` width means "not dragged yet": the stylesheet then uses its own
- * `ch`-based track, which follows the panel font and the user's monospace
- * face. Once a column has been dragged its width is a pixel value, and the
- * stylesheet's `minmax()` floor still keeps the widest value from clipping.
+ * Once a column has been dragged its width is a pixel value, and the three
+ * are independent: dragging one column moves the boundary on its right and
+ * nothing else. When the three together are wider than the panel, the
+ * listing and its caption row scroll sideways together rather than giving up
+ * the widths the user set.
+ *
+ * The width a column may be dragged *under* is smaller than the content
+ * width above: a user may narrow a column past what fits — the value
+ * truncates, and the row's tooltip still carries all of it. Those hard
+ * floors live in the stylesheet (`--filer-*-min`), stated in the fonts the
+ * cells render in, so they follow the panel font the way the defaults do.
  */
 export interface FilerColumns {
+  name: number | null;
   size: number | null;
   date: number | null;
 }
 
-export const DEFAULT_FILER_COLUMNS: FilerColumns = { size: null, date: null };
+export const DEFAULT_FILER_COLUMNS: FilerColumns = { name: null, size: null, date: null };
 
 /**
- * Widest one column may be dragged. Without a ceiling a single drag could
- * take a width the panel cannot honour, and the grid would overflow the
- * sidebar instead of shrinking the names.
+ * Widest the counted columns may be dragged. Without a ceiling a single
+ * drag could take a width the panel cannot honour, and the sideways
+ * scrolling below would grow without bound.
  */
 export const COLUMN_MAX_PX = 480;
 
+/** Widest the name column may be dragged to: names are the long ones. */
+export const NAME_MAX_PX = 720;
+
 /** One dragged width, rounded and bounded; a non-finite input collapses to 0. */
-export function clampColumnWidth(width: number): number {
+export function clampColumnWidth(width: number, max = COLUMN_MAX_PX): number {
   if (!Number.isFinite(width)) return 0;
-  return Math.min(COLUMN_MAX_PX, Math.max(0, Math.round(width)));
+  return Math.min(max, Math.max(0, Math.round(width)));
 }
 
 /**
  * Measures one stylesheet length in px the way `host` would lay it out.
  *
- * The tracks' floors are stated in `ch`/em so they follow the panel fonts,
- * and a px copy in script would drift the first time a font changes — so the
- * px answers the drag trade needs are measured, not duplicated. The probe is
- * appended to `host` (inheriting its custom properties and fonts), kept out
- * of grid flow, and removed before anything can paint.
+ * The tracks' widths and floors are stated in `ch`/em so they follow the
+ * panel fonts, and a px copy in script would drift the first time a font
+ * changes — so the px answers the drag needs are measured, not duplicated.
+ * The probe is appended to `host` (inheriting its custom properties and
+ * fonts), kept out of grid flow, and removed before anything can paint.
  *
  * Returns null when nothing was laid out (jsdom, styles not loaded): callers
  * degrade to the unmeasured behaviour rather than pinning at 0.
@@ -63,48 +75,56 @@ export function measureCssLength(host: HTMLElement, value: string): number | nul
 }
 
 /**
- * One step of the drag on the boundary between the size and modified columns.
+ * The width a double-click should give one column: enough for the widest of
+ * its caption and its values, and no more. Measured with the fonts the
+ * column actually renders in, through one canvas — no rows are relaid out,
+ * so fitting stays cheap enough to run on a listing of any size.
  *
- * The boundary's contract is a strict trade between exactly those two counted
- * columns: each side pays only down to the floor its own track refuses to
- * cross, and gains only what the other side actually paid. The pair therefore
- * keeps the sum it began with wherever the drag still moves anything, and the
- * flexible name track — the boundary nobody is holding — is never squeezed by
- * this handle. Whichever column runs out first ends the trade: the dragged
- * boundary stops there, the way a window edge stops at the screen's edge.
- *
- * A floor that could not be measured never pins, degrading the pair to the
- * raw pointer trade (the grid's own `minmax()` still refuses to clip).
+ * The caption's letter-spacing is not in `measureText`, so a little slack is
+ * added for it; the answer is a convenience with a ceiling, not a ruler.
+ * Returns null where text cannot be measured (jsdom, no canvas font):
+ * callers skip the fit rather than guessing a width.
  */
-export function tradeBoundary(options: {
-  /** The size track's width when the drag began, in px as rendered. */
-  sizeStart: number;
-  /** The modified track's width when the drag began, in px as rendered. */
-  dateStart: number;
-  /** The modified width the pointer asks for: `dateStart - delta`, unclamped. */
-  dateRequested: number;
-  /** Each track's rendered floor in px, or null when it could not be measured. */
-  sizeFloor: number | null;
-  dateFloor: number | null;
-}): { size: number; date: number } {
-  const { sizeStart, dateStart, dateRequested } = options;
-  const sizeFloor = options.sizeFloor ?? Number.NEGATIVE_INFINITY;
-  const dateFloor = options.dateFloor ?? Number.NEGATIVE_INFINITY;
-  // What each side would pay if the other always accepted: the pointer's ask,
-  // refused past the payer's own floor.
-  const datePays = Math.max(dateRequested, dateFloor);
-  const sizePays = Math.max(sizeStart + (dateStart - datePays), sizeFloor);
-  // What each side actually receives: only what the other truly gave up.
-  return {
-    size: clampColumnWidth(sizePays),
-    date: clampColumnWidth(Math.min(datePays, dateStart - (sizePays - sizeStart))),
-  };
+export function suggestColumnWidth(options: {
+  /** The caption row: the fonts below were read from its live elements. */
+  host: HTMLElement;
+  /** The caption as it prints (CSS uppercases it) and its own font. */
+  caption: { text: string; font: string; arrow: number };
+  /** The values the column prints, already formatted. */
+  values: readonly string[];
+  /** The font the values render in. */
+  valueFont: string;
+  /** The smallest width the drag rules allow, or null when unmeasured. */
+  min: number | null;
+  max: number;
+}): number | null {
+  const { caption, values, valueFont, min, max } = options;
+  if (!caption.font || !valueFont) return null;
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.font = valueFont;
+  let widest = 0;
+  for (const value of values) {
+    const width = ctx.measureText(value).width;
+    if (width > widest) widest = width;
+  }
+  ctx.font = caption.font;
+  const captionWidth =
+    ctx.measureText(caption.text.toUpperCase()).width + caption.arrow + 6;
+  const fit = Math.ceil(Math.max(widest, captionWidth)) + 8;
+  if (!Number.isFinite(fit) || fit <= 0) return null;
+  return Math.round(Math.min(max, Math.max(min ?? 0, fit)));
 }
 
 /** A `FilerColumns` from an untrusted source (a settings file); null when invalid. */
 export function parseFilerColumns(value: unknown): FilerColumns | null {
   if (!value || typeof value !== "object") return null;
-  const candidate = value as { size?: unknown; date?: unknown };
+  const candidate = value as { name?: unknown; size?: unknown; date?: unknown };
+  const name =
+    typeof candidate.name === "number" && Number.isFinite(candidate.name)
+      ? clampColumnWidth(candidate.name, NAME_MAX_PX)
+      : null;
   const size =
     typeof candidate.size === "number" && Number.isFinite(candidate.size)
       ? clampColumnWidth(candidate.size)
@@ -113,8 +133,10 @@ export function parseFilerColumns(value: unknown): FilerColumns | null {
     typeof candidate.date === "number" && Number.isFinite(candidate.date)
       ? clampColumnWidth(candidate.date)
       : null;
-  if (size === null && date === null) return null;
-  return { size, date };
+  if (name === null && size === null && date === null) return null;
+  // A stored record from before the name column existed keeps its counted
+  // widths exactly: reading it never clears what the user already set.
+  return { name, size, date };
 }
 
 export function loadFilerColumns(): FilerColumns {

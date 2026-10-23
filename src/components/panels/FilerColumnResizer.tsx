@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
@@ -27,18 +28,19 @@ interface Drag {
 }
 
 /**
- * The drag handle on the left edge of one Filer column caption.
+ * The drag handle on the right edge of one Filer column caption.
  *
- * It reports the owning cell's width at the moment the adjustment began and
- * the pointer's accumulated movement, so the panel can decide what that
- * movement means: the handle on the size column's left edge trades room with
- * the names, while the one on the modified column's left edge trades room
- * with the size column. Reporting the raw pair rather than a finished width is
- * what lets one handle serve both trades.
+ * Each column owns its own handle, and the handle owns its column: dragging
+ * it reports the column's width when the adjustment began plus the pointer's
+ * accumulated movement, positive to the right, so `startWidth + widenBy` is
+ * the width the panel should show. What that movement does to the columns
+ * after it — push them, or make the listing scroll sideways — is the
+ * panel's layout, not the handle's; every column is resized the same way,
+ * from its own right edge.
  *
- * The direction follows the convention every file manager uses: dragging the
- * boundary to the right widens the column on its *left*, so the column this
- * handle owns — the one to the right of the boundary — gives up room.
+ * A double-click asks the panel to fit the column to its content
+ * (`onFit`), the way every file manager's double-click on a header divider
+ * does.
  *
  * The handle straddles the boundary between two grid tracks rather than
  * occupying a track of its own, so the caption row and the rows below it stay
@@ -53,16 +55,23 @@ export function FilerColumnResizer({
   label,
   onStart,
   onResize,
+  onFit,
 }: {
   label: string;
   /**
    * Called when an adjustment begins — once per pointer drag, and once per
-   * keypress. The panel uses it to measure the *other* column the boundary
-   * trades with, which this handle cannot see from its own cell.
+   * keypress — with the owning cell's width as rendered. The panel uses it
+   * to pin a column that was following the layout (the flexible name track)
+   * at the width the user is about to move away from.
    */
-  onStart?: () => void;
-  /** The owning cell's width when the adjustment began, and the movement since. */
-  onResize: (startWidth: number, delta: number) => void;
+  onStart?: (startWidth: number) => void;
+  /**
+   * The owning cell's width when the adjustment began, and the movement
+   * since: positive widens the column.
+   */
+  onResize: (startWidth: number, widenBy: number) => void;
+  /** A double-click: fit the column to its content. */
+  onFit?: () => void;
 }) {
   const [dragging, setDragging] = useState(false);
   const drag = useRef<Drag | null>(null);
@@ -145,11 +154,12 @@ export function FilerColumnResizer({
       const keydown = (e: KeyboardEvent) => {
         if (e.key === "Escape") cancel();
       };
+      const startWidth = cell.getBoundingClientRect().width;
       drag.current = {
         pointerId: event.pointerId,
         target,
         last: event.clientX,
-        startWidth: cell.getBoundingClientRect().width,
+        startWidth,
         total: 0,
         removeListeners: () => {
           window.removeEventListener("pointerup", endPointer, true);
@@ -165,7 +175,7 @@ export function FilerColumnResizer({
       window.addEventListener("pointercancel", endPointer, true);
       window.addEventListener("blur", cancel);
       window.addEventListener("keydown", keydown, true);
-      start.current?.();
+      start.current?.(startWidth);
       setDragging(true);
     },
     [finish],
@@ -179,6 +189,8 @@ export function FilerColumnResizer({
         finish(false);
         return;
       }
+      // The handle rides the column's right edge, so a movement to the right
+      // widens the column: the reported widening is the pointer's own delta.
       const delta = event.clientX - active.last;
       if (delta !== 0) {
         active.last = event.clientX;
@@ -196,9 +208,8 @@ export function FilerColumnResizer({
   );
 
   // Keyboard resizing reads the live width rather than a drag's start value,
-  // so repeated presses compound from wherever the column currently sits. The
-  // sign matches the pointer: ArrowRight narrows this column, because the
-  // column to its left is the one that grows.
+  // so repeated presses compound from wherever the column currently sits:
+  // ArrowRight widens the column, the same direction the pointer drags it.
   const handleKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
       if (drag.current) return;
@@ -207,15 +218,23 @@ export function FilerColumnResizer({
       const cell = event.currentTarget.parentElement;
       if (!cell) return;
       const step = event.shiftKey ? KEY_STEP_LARGE : KEY_STEP;
-      // A keypress is its own adjustment, so the panel gets the same chance to
-      // measure the trading partner that a pointer drag gives it.
-      start.current?.();
-      latest.current(
-        cell.getBoundingClientRect().width,
-        event.key === "ArrowRight" ? step : -step,
-      );
+      const width = cell.getBoundingClientRect().width;
+      // A keypress is its own adjustment, so the panel gets the same chance
+      // to pin a following column that a pointer drag gives it.
+      start.current?.(width);
+      latest.current(width, event.key === "ArrowRight" ? step : -step);
     },
     [],
+  );
+
+  const handleDoubleClick = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      // The press already stopped the sort; the click must not reach it either.
+      event.stopPropagation();
+      event.preventDefault();
+      onFit?.();
+    },
+    [onFit],
   );
 
   return (
@@ -224,8 +243,10 @@ export function FilerColumnResizer({
       role="separator"
       aria-orientation="vertical"
       aria-label={label}
+      title={onFit ? label : undefined}
       tabIndex={0}
       onKeyDown={handleKeyDown}
+      onDoubleClick={handleDoubleClick}
       onPointerDown={handleDown}
       onPointerMove={handleMove}
       onLostPointerCapture={handleLostCapture}

@@ -208,23 +208,49 @@
      arrow, which is ~7.6em — wider than 11.4ch, and it would be clipped while
      every date below sat comfortably inside the same track.
 
-     Each floor is also the minimum the column may be dragged to: the track is
-     `minmax(floor, width)`, so a drag that asks for less than the floor is
-     refused by the grid rather than clipping the value it was meant to show.
-     `--filer-*-user` is set by the panel only once a column has been dragged;
-     until then the width is the floor itself, which follows the panel font. */
+      Each floor is the width a column shows until it has been dragged, and
+      it follows the panel font; a dragged width is px and does not. What a
+      drag may not go under is the smaller `--filer-*-min` below, not this:
+      narrowing is a real choice, and the truncated value stays readable in
+      the row's tooltip. `--filer-*-user` is set by the panel only once a
+      column has been dragged; until then the width is the floor itself. */
   --filer-size-floor: 9.4ch;
   --filer-date-floor: max(11.4ch, calc(var(--filer-cell-fs) * 8.2));
+  --filer-size-min: 4.5ch;
+  --filer-date-min: 6ch;
+  /* The name column is never squeezed to nothing, whatever else is on
+      screen: its track refuses to cross this even in the flexible state. */
+  --filer-name-min: max(8ch, 64px);
+  /* The name column's track: the width the user dragged, or the flexible
+     remainder of the panel while nobody has dragged it. */
+  --filer-name-w: var(--filer-name-user, 1fr);
   --filer-size-w: var(--filer-size-user, var(--filer-size-floor));
   --filer-date-w: var(--filer-date-user, var(--filer-date-floor));
   display: grid;
   align-items: center;
+  /* Without a dragged name width the name track is the flexible one and
+     takes whatever room the counted columns leave. With one, all four tracks
+     are fixed and the grid sizes to their sum (see the max-content rule
+     below): wider than the panel means sideways scrolling, not a silent
+     squeeze of the widths the user set. */
   grid-template-columns:
     16px
-    minmax(0, 1fr)
-    minmax(var(--filer-size-floor), var(--filer-size-w))
-    minmax(var(--filer-date-floor), var(--filer-date-w));
+    minmax(var(--filer-name-min), var(--filer-name-w, 1fr))
+    minmax(var(--filer-size-min), var(--filer-size-w))
+    minmax(var(--filer-date-min), var(--filer-date-w));
   column-gap: var(--sp-6);
+}
+
+/* Once the name column holds a width of its own, the grid is a fixed-width
+   table: it sizes to its tracks (max-content), fills the panel when the
+   tracks are narrower than that (min-width), and overflows into sideways
+   scrolling when they are not. The marker attribute is on the panel root;
+   a row takes its box from the tracks, so its hover and selection cover
+   everything the row prints. */
+.filer-panel[data-name-fixed] .filer-columns,
+.filer-panel[data-name-fixed] .filer-entry {
+  width: max-content;
+  min-width: 100%;
 }
 
 /* One cell per counted track of the caption row, so a resize handle can
@@ -254,7 +280,7 @@
   min-width: 0;
 }
 
-/* The drag handle on a column's left boundary. It straddles the line between
+/* The drag handle on a column's right edge. It straddles the line between
    two tracks instead of occupying a track of its own, so the caption row and
    the rows below it stay on one grid and no width is spent on the handle.
 
@@ -267,7 +293,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  left: -3px;
+  right: -3px;
   z-index: 1;
   width: 7px;
   cursor: col-resize;
@@ -278,7 +304,7 @@
   position: absolute;
   top: 15%;
   bottom: 15%;
-  left: 2px;
+  right: 2px;
   width: 2px;
   background: var(--border-strong);
   transition: background-color 80ms ease;
@@ -311,10 +337,18 @@
    FilerPanel): the list scrolls and the captions above it do not, so without
    the correction every right-hand caption sits ~10px right of its own column
    from the moment a listing grows long enough to scroll. */
+/* The head is the full-width strip the caption row sits in. Its border (and
+   the strip's place in the panel) belong here rather than on the grid inside:
+   the grid is what the scroll sync translates when the listing is wider than
+   the panel, and a translated border would leave the panel's right edge
+   unruled. */
+.filer-head {
+  border-bottom: 1px solid var(--border);
+}
+
 .filer-columns {
   height: var(--h-control-sm);
   padding: 0 calc(var(--sp-12) + var(--filer-sb-w, 0px)) 0 var(--sp-12);
-  border-bottom: 1px solid var(--border);
   color: var(--fg-faint);
   font-size: var(--filer-cell-fs);
   font-weight: 600;

@@ -44,17 +44,22 @@ function rowsMarkup(virtual: boolean): string {
 }
 
 /** Mounts the panel's own markup at `width` and returns its live nodes. */
-function mountFiler(width: number, virtual: boolean) {
+function mountFiler(width: number, virtual: boolean, fixedName = false) {
   const app = document.createElement("div");
   app.className = "app";
   app.style.width = `${width}px`;
+  if (fixedName) {
+    // The state a dragged name column leaves behind: a width of its own, and
+    // the fixed-width-table layout that comes with it.
+    app.style.setProperty("--filer-name-user", "120px");
+  }
   // The virtualiser places its rows inside a positioned row container; that
   // container is what makes `width: 100%` on a slot mean "as wide as the
   // list", exactly as it does for a row laid out in flow.
   const container = virtual
     ? ` style="position:relative;height:${ENTRIES.length * ROW_HEIGHT}px;overflow-anchor:none"`
     : "";
-  app.innerHTML = `<div class="panel filer-panel">
+  app.innerHTML = `<div class="panel filer-panel"${fixedName ? ' data-name-fixed=""' : ""}>
       <div class="filer-columns">
         <div class="filer-col-cell is-name"><button type="button" class="filer-col-name">Name</button></div>
         <div class="filer-col-cell is-size"><button type="button" class="filer-col-size">Size <span class="icon"></span></button></div>
@@ -117,10 +122,27 @@ describe("the Filer's three columns", () => {
       const caption = (column: string) => filer.caption(column).getBoundingClientRect();
       expect(caption("filer-col-size").left - caption("filer-col-name").right).toBeGreaterThan(5);
       expect(caption("filer-col-date").left - caption("filer-col-size").right).toBeGreaterThan(5);
-      // Nothing runs past the panel: the caption and all four rows end inside.
-      const panel = filer.app.querySelector<HTMLElement>(".filer-panel")!.getBoundingClientRect();
-      for (const element of [filer.caption("filer-col-date"), ...filer.cell("filer-col-date")]) {
-        expect(element.getBoundingClientRect().right).toBeLessThanOrEqual(panel.right);
+      filer.app.remove();
+    });
+  }
+
+  // A listing wider than the panel is scrolled, not squeezed: once the name
+  // column holds a width of its own the grid becomes a fixed-width table,
+  // and the tracks no longer have to fit inside the panel. What must survive
+  // is the one grid both draw — every caption still sits over the column it
+  // names, in flow and virtualised alike. (The caption row following the
+  // scroll is the live panel's own contract, held in
+  // filerColumnResize.browser.test.ts.)
+  for (const virtual of [false, true]) {
+    it(`${virtual ? "virtualised" : "in flow"}, overflows into sideways scrolling instead of squeezing`, () => {
+      const filer = mountFiler(240, virtual, true);
+      const scroller = filer.app.querySelector<HTMLElement>(".filer-list")!;
+      expect(scroller.scrollWidth).toBeGreaterThan(scroller.clientWidth);
+      for (const column of ["filer-col-name", "filer-col-size", "filer-col-date"]) {
+        const caption = filer.caption(column).getBoundingClientRect();
+        for (const cell of filer.cell(column)) {
+          expect(cell.getBoundingClientRect().left).toBeCloseTo(caption.left, 1);
+        }
       }
       filer.app.remove();
     });

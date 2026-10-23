@@ -16,9 +16,11 @@ import {
   FilerEntryIcon,
   FilerRow,
   formatBytes,
+  formatDate,
   formatEntrySummary,
   loadOpenWithApps,
   pathSegments,
+  rowLocale,
 } from "./filerPresentation";
 import { MenuState, NewEntryDraft, type RenameDraft } from "./filerTypes";
 import { useFilerActions } from "./useFilerActions";
@@ -35,7 +37,10 @@ import {
   loadFilerColumns,
   measureCssLength,
   saveFilerColumns,
-  tradeBoundary,
+  suggestColumnWidth,
+  COLUMN_MAX_PX,
+  DEFAULT_FILER_COLUMNS,
+  NAME_MAX_PX,
   type FilerColumns,
 } from "../../filerColumns";
 import { sortFileEntries, toggleFileSort, type SortKey } from "../../fileSort";
@@ -76,6 +81,13 @@ const revealBehavior = (): ScrollBehavior =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches
     ? "auto"
     : "smooth";
+
+/**
+ * How many entries a double-click fit measures. Text measurement is cheap —
+ * one canvas, one pass, no layout — but no listing is infinite either, so a
+ * folder of tens of thousands of names still answers within a frame.
+ */
+const FIT_SAMPLE_LIMIT = 2000;
 
 function FilerPanelBase() {
   const t = useT();
@@ -187,18 +199,6 @@ function FilerPanelBase() {
   /** The listbox: the rows' scroll container and the single Tab stop. */
   const listRef = useRef<HTMLDivElement>(null);
   const columnsRef = useRef<HTMLDivElement>(null);
-  // The size caption cell. The handle on the modified column's left edge
-  // trades room with the size column, and it can only measure its own cell —
-  // so the panel measures the size cell for it, once per adjustment (see
-  // FilerColumnResizer's `onStart`).
-  const sizeCellRef = useRef<HTMLDivElement>(null);
-  const sizeStartRef = useRef<number | null>(null);
-  // Each counted track's rendered floor in px, measured when an adjustment
-  // begins. The stylesheet states the floors in ch/em so they follow the
-  // panel fonts; the trade needs them in px to know when a column stops
-  // paying (see `measureCssLength` and `tradeBoundary`).
-  const sizeFloorRef = useRef<number | null>(null);
-  const dateFloorRef = useRef<number | null>(null);
   // The caption row is a sibling of the scroll container, not a child of it,
   // so nothing tells it how wide the list's scrollbar is and its columns sat
   // a scrollbar to the right of the ones they named. Measured rather than
@@ -224,6 +224,87 @@ function FilerPanelBase() {
     measure();
     return () => resize.disconnect();
   }, [entries.length]);
+
+  // When the listing is wider than the panel — the name column holding a
+  // width of its own — the rows scroll sideways inside the list, and the
+  // caption row above the scroller has to follow: both draw one grid, and it
+  // is only honest while every track sits at the same x. A transform, not a
+  // scroll position: the caption row is not a scroller, and translating it
+  // keeps it out of the tab order and the scrollbar's accounting.
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const columns = columnsRef.current;
+    if (!list || !columns) return;
+    const sync = () => {
+      columns.style.transform =
+        list.scrollLeft > 0 ? `translateX(${-list.scrollLeft}px)` : "";
+    };
+    list.addEventListener("scroll", sync, { passive: true });
+    sync();
+    return () => {
+      list.removeEventListener("scroll", sync);
+      columns.style.transform = "";
+    };
+  }, []);
+
+  // A double-click on a column's handle fits that column to its content: the
+  // widest of its caption and its printed values, measured with the fonts the
+  // cells render in (see `suggestColumnWidth`). Only the one column is
+  // measured, and no row is relaid out to find out, so a fit stays cheap on a
+  // listing of any size; the cap keeps one long filename from taking the
+  // whole panel.
+  const fitColumn = (kind: "name" | "size" | "date") => {
+    const host = columnsRef.current;
+    const panel = panelRef.current;
+    if (!host || !panel) return;
+    const captionButton = host.querySelector<HTMLElement>(
+      `[data-sort-key="${kind === "date" ? "modified" : kind}"]`,
+    );
+    const cellFont = getComputedStyle(host).font;
+    if (!captionButton || !cellFont) return;
+    // The listing the fit answers for: the values on screen, capped so a
+    // listing of ten thousand names still measures in one pass of text, not
+    // one pass of layout.
+    const shown = sortedEntries.slice(0, FIT_SAMPLE_LIMIT);
+    const locale = rowLocale();
+    const values =
+      kind === "name"
+        ? shown.map((entry) => entry.name)
+        : kind === "size"
+          ? shown.map((entry) => (entry.isDir ? "" : formatBytes(entry.size)))
+          : shown.map((entry) => formatDate(entry.modified, locale));
+    // The name column prints in the row's own font, not the counted columns'
+    // mono face: a probe that wears the row's classes carries that font.
+    let valueFont = cellFont;
+    if (kind === "name") {
+      const probe = document.createElement("span");
+      probe.className = "row-label";
+      const row = document.createElement("div");
+      row.className = "row filer-entry";
+      row.setAttribute("aria-hidden", "true");
+      row.appendChild(probe);
+      panel.appendChild(row);
+      try {
+        valueFont = getComputedStyle(probe).font || cellFont;
+      } finally {
+        row.remove();
+      }
+    }
+    const captionText =
+      kind === "name" ? t("session.name") : kind === "size" ? t("filer.size") : t("filer.modified");
+    const fit = suggestColumnWidth({
+      host,
+      caption: { text: captionText, font: getComputedStyle(captionButton).font, arrow: 16 },
+      values,
+      valueFont,
+      min: measureCssLength(host, `var(--filer-${kind}-min)`),
+      max: kind === "name" ? NAME_MAX_PX : COLUMN_MAX_PX,
+    });
+    if (fit !== null) setColumns((current) => ({ ...current, [kind]: fit }));
+  };
+
+  /** Back to the layout nobody arranged: names flexible, counted columns at their content widths. */
+  const resetColumns = () => setColumns(DEFAULT_FILER_COLUMNS);
   /**
    * The row the keyboard acts on. It rides alongside the selection instead of
    * replacing it, so Ctrl/Cmd+Arrow can move without changing the choice.
@@ -343,6 +424,7 @@ function FilerPanelBase() {
       uploadFolder,
       creating,
       entries,
+      resetColumns,
     });
 
   const remoteTitle = (label: string) => (remote ? label : `${label}${t("filer.sshOnly")}`);
@@ -672,6 +754,10 @@ function FilerPanelBase() {
     <div
       ref={panelRef}
       className={`panel filer-panel${dragOver ? (dragOver.accept ? " is-drag-over" : dragOver.reason ? " is-drag-blocked" : "") : ""}`}
+      // Marks the grid as a fixed-width table the moment the name column
+      // holds a width of its own (see the max-content rule in
+      // filer.styles.css).
+      data-name-fixed={columns.name !== null ? "" : undefined}
       // Two values the rows need and only this component can compute: the row
       // height the stylesheet and the virtualiser both have to work from, and
       // the width the list's scrollbar steals from its rows. Both are handed
@@ -682,6 +768,7 @@ function FilerPanelBase() {
         {
           flex: 1,
           "--filer-row-h": `${rowHeight - 2}px`,
+          ...(columns.name !== null ? { "--filer-name-user": `${columns.name}px` } : {}),
           ...(columns.size !== null ? { "--filer-size-user": `${columns.size}px` } : {}),
           ...(columns.date !== null ? { "--filer-date-user": `${columns.date}px` } : {}),
         } as CSSProperties
@@ -894,20 +981,25 @@ function FilerPanelBase() {
           stable handle the row contract selects a caption by.
 
           Each caption sits in a cell of its own so a resize handle can straddle
-          the boundary to its left without leaving the grid: the cells occupy
+          the boundary to its right without leaving the grid: the cells occupy
           the same tracks the rows below use, so a dragged width moves the
           captions and the rows together.
 
-          Both handles resize the *size* column, from its two edges, because
-          that is the column a user reaches for when a value is clipped. The
-          left handle trades with the names and the right handle trades with the
-          modified column, so dragging either edge outward widens the size
-          column instead of sliding it along. The right handle's trade is
-          strict, in either direction: the moment size or modified sits on its
-          floor the drag moves nothing rather than squeeze the names — the
-          boundary nobody is holding never travels on its own. The names are
-          the flexible track and take whatever the two counted columns leave. */}
-      <div className="filer-columns" ref={columnsRef}>
+          Every column is resized from its own right edge and independently:
+          dragging the names widens the names and pushes the counted columns
+          along; dragging the size or the modified column moves only that
+          column's right boundary, and the one nobody is holding stays put.
+          Nothing needs to trade: while the name column follows the layout it
+          absorbs whatever the counted columns give up or take, and once it
+          holds a width of its own a listing wider than the panel scrolls
+          sideways instead of squeezing anyone. A double-click fits one column
+          to its content; the folder menu below resets all three. */}
+      <div className="filer-head">
+        {/* The border lives on the head, not on the grid inside it: the grid
+            is what the scroll sync below translates when the listing is
+            wider than the panel, and a translated border would leave the
+            panel's right edge unruled. */}
+        <div className="filer-columns" ref={columnsRef}>
         <div className="filer-col-cell is-name">
           <button
             type="button"
@@ -922,13 +1014,38 @@ function FilerPanelBase() {
             <SortIndicator sort={sort} column="name" />
             <span className="sr-only">{t("filer.sortByName")}</span>
           </button>
+          <FilerColumnResizer
+            label={t("filer.resizeNameColumn")}
+            onStart={(startWidth) => {
+              // The name track follows the layout until someone drags it;
+              // pin it at the width it currently renders at, so the first
+              // frame of the drag moves the boundary instead of being
+              // absorbed by the flexible track.
+              setColumns((current) =>
+                current.name === null
+                  ? { ...current, name: clampColumnWidth(startWidth, NAME_MAX_PX) }
+                  : current,
+              );
+            }}
+            onResize={(start, widenBy) =>
+              setColumns((current) => ({
+                ...current,
+                name: clampColumnWidth(start + widenBy, NAME_MAX_PX),
+              }))
+            }
+            onFit={() => fitColumn("name")}
+          />
         </div>
-        <div className="filer-col-cell is-size" ref={sizeCellRef}>
+        <div className="filer-col-cell is-size">
           <FilerColumnResizer
             label={t("filer.resizeSizeColumn")}
-            onResize={(start, delta) =>
-              setColumns((current) => ({ ...current, size: clampColumnWidth(start - delta) }))
+            onResize={(start, widenBy) =>
+              setColumns((current) => ({
+                ...current,
+                size: clampColumnWidth(start + widenBy),
+              }))
             }
+            onFit={() => fitColumn("size")}
           />
           <button
             type="button"
@@ -946,50 +1063,14 @@ function FilerPanelBase() {
         </div>
         <div className="filer-col-cell is-date">
           <FilerColumnResizer
-            label={t("filer.resizeSizeColumnRight")}
-            onStart={() => {
-              // The size column's width when this adjustment began, measured
-              // here because the handle can only see its own cell. A drag on
-              // this boundary trades room between the size and modified
-              // columns alone, resizes the column to its left rather than
-              // sliding the whole size column along, and needs both columns'
-              // floors to know where each side stops paying (see
-              // `dateFloorRef`).
-              sizeStartRef.current =
-                sizeCellRef.current?.getBoundingClientRect().width ?? null;
-              sizeFloorRef.current = columnsRef.current
-                ? measureCssLength(columnsRef.current, "var(--filer-size-floor)")
-                : null;
-              dateFloorRef.current = columnsRef.current
-                ? measureCssLength(columnsRef.current, "var(--filer-date-floor)")
-                : null;
-            }}
-            onResize={(start, delta) =>
-              setColumns((current) => {
-                const sizeStart = sizeStartRef.current;
-                if (sizeStart === null) {
-                  return { ...current, date: clampColumnWidth(start - delta) };
-                }
-                const trade = tradeBoundary({
-                  sizeStart,
-                  dateStart: start,
-                  dateRequested: start - delta,
-                  sizeFloor: sizeFloorRef.current,
-                  dateFloor: dateFloorRef.current,
-                });
-                if (
-                  Math.abs(trade.size - sizeStart) < 0.5 &&
-                  Math.abs(trade.date - start) < 0.5
-                ) {
-                  // The drag ran entirely into the floors and moved nothing:
-                  // keep the stored pair untouched, so a column never dragged
-                  // (state null, rendering its floor) stays undragged and
-                  // keeps following the panel font.
-                  return current;
-                }
-                return { ...current, ...trade };
-              })
+            label={t("filer.resizeDateColumn")}
+            onResize={(start, widenBy) =>
+              setColumns((current) => ({
+                ...current,
+                date: clampColumnWidth(start + widenBy),
+              }))
             }
+            onFit={() => fitColumn("date")}
           />
           <button
             type="button"
@@ -1008,6 +1089,7 @@ function FilerPanelBase() {
             <SortIndicator sort={sort} column="modified" />
             <span className="sr-only">{t("filer.sortByModified")}</span>
           </button>
+        </div>
         </div>
       </div>
 

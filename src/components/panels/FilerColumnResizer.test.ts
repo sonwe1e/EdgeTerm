@@ -110,4 +110,36 @@ describe("FilerColumnResizer drag lifecycle", () => {
     expect(handle.classList.contains("is-dragging")).toBe(false);
     expect(captured.size).toBe(0);
   });
+
+  it("widens on ArrowRight and reports the live width", () => {
+    // The handle rides the column's right edge, so the arrow that widens is
+    // the one pointing the way the boundary travels.
+    act(() =>
+      handle.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }),
+      ),
+    );
+    expect(start).toHaveBeenCalledWith(0);
+    expect(resize.mock.calls).toEqual([[0, 8]]);
+    act(() =>
+      handle.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowLeft", shiftKey: true, bubbles: true, cancelable: true }),
+      ),
+    );
+    expect(resize).toHaveBeenLastCalledWith(0, -32);
+  });
+
+  it("asks for a fit on a double-click", () => {
+    const fit = vi.fn();
+    act(() =>
+      root.render(
+        h("div", null, h(FilerColumnResizer, { label: "test", onResize: resize, onFit: fit })),
+      ),
+    );
+    handle = host.querySelector(".filer-col-resize") as HTMLDivElement;
+    act(() =>
+      handle.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true })),
+    );
+    expect(fit).toHaveBeenCalledTimes(1);
+  });
 });
