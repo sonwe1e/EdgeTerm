@@ -481,6 +481,7 @@ export const zhCN: Catalog = {
   "sender.sendAria": "发送 {name}：{text}",
   "sender.optionsFor": "{name} 的选项",
   "sender.more": "更多",
+  "wb.moreActions": "更多操作",
   "sender.stopAfterLine": "在当前行之后停止",
   "sender.stopSending": "停止发送",
   "sender.repeating": "正在重复 {text} · 点击停止",

@@ -545,6 +545,7 @@ export const en = {
   "sender.sendAria": "Send {name}: {text}",
   "sender.optionsFor": "Options for {name}",
   "sender.more": "More",
+  "wb.moreActions": "More actions",
   "sender.stopAfterLine": "Stop after the current line",
   "sender.stopSending": "Stop sending",
   "sender.repeating": "Repeating {text} · click to stop",

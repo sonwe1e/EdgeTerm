@@ -19,6 +19,7 @@ import App from "../App";
 import { useStore } from "../store";
 import { Workbench } from "../workbench/Workbench";
 import "../styles.css";
+import { page, userEvent } from "vitest/browser";
 
 afterEach(async () => { await browserAfterEach(); vi.restoreAllMocks(); });
 
@@ -118,6 +119,59 @@ const filerDock = (root: ParentNode) =>
     .find((dock) => dock.querySelector(".panel-title.is-filer"));
 
 describe("layout regressions (Wave B)", () => {
+  it("keeps workbench controls and host chips within the dock-reduced width at both font sizes", async () => {
+    await page.viewport(1440, 900);
+    const mounted = mount(h(Workbench));
+    mounted.container.classList.add("app");
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    for (const language of ["en", "zh-CN"] as const) {
+      useStore.setState({ language });
+      for (const font of [12, 18]) {
+        mounted.container.style.setProperty("--panel-font-size", `${font}px`);
+        for (const available of [918, 578, 378, 260]) {
+          mounted.container.style.width = `${available}px`;
+          await twoFrames();
+          const top = document.querySelector(".wb-top")!.getBoundingClientRect();
+          for (const element of document.querySelectorAll<HTMLElement>(".wb-top button, .wb-host-chip")) {
+            const rect = element.getBoundingClientRect();
+            if (!rect.width || !rect.height) continue;
+            expect(rect.left, `${language}/${font}/${available}: ${element.textContent} left`).toBeGreaterThanOrEqual(top.left);
+            expect(rect.right, `${language}/${font}/${available}: ${element.textContent} right`).toBeLessThanOrEqual(top.right + 1);
+            if (!element.closest(".wb-top")) continue;
+            const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+            let text: Node | null;
+            while ((text = walker.nextNode())) {
+              if (!text.textContent?.trim()) continue;
+              const range = document.createRange();
+              range.selectNodeContents(text);
+              const label = range.getBoundingClientRect();
+              expect(label.top).toBeGreaterThanOrEqual(rect.top - 1);
+              expect(label.bottom).toBeLessThanOrEqual(rect.bottom + 1);
+              expect(label.right).toBeLessThanOrEqual(rect.right + 1);
+            }
+          }
+        }
+      }
+    }
+    useStore.setState({ language: "en" });
+  });
+
+  it("keeps secondary actions reachable in a narrow workbench", async () => {
+    useStore.setState({ language: "en" });
+    const mounted = mount(h(Workbench));
+    mounted.container.classList.add("app");
+    mounted.container.style.width = "378px";
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    await userEvent.click(document.querySelector(".wb-more")!);
+    const menu = document.querySelector(".context-menu")!;
+    expect(menu.getBoundingClientRect().right).toBeLessThanOrEqual(window.innerWidth);
+    const newProject = [...menu.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent?.includes("New project"))!;
+    await userEvent.click(newProject);
+    await twoFrames();
+    expect(document.querySelector("dialog[open]")).not.toBeNull();
+  });
+
   it("keeps the Filer dock mounted on a file session, with a reason (PD-01)", async () => {
     fileSessionTab();
     mount(h(App));

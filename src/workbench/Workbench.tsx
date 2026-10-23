@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Icon } from "../components/icons";
+import { ContextMenu } from "../components/ContextMenu";
 import { ModalDialog } from "../components/ModalDialog";
 import { errorText } from "../errorInfo";
 import { useStore } from "../store";
@@ -530,6 +531,7 @@ function Header({
   onTerminals: () => void;
 }) {
   const t = useT();
+  const [more, setMore] = useState<{ x: number; y: number } | null>(null);
   return (
     <header className="wb-top">
       <div className="wb-top-title">
@@ -558,24 +560,24 @@ function Header({
         </div>
       )}
       <div className="wb-top-actions">
-        <button type="button" className="btn wb-mini" onClick={onNewProject}>
+        <button type="button" className={`btn wb-mini${workspace ? " wb-secondary" : ""}`} onClick={onNewProject}>
           <Icon name="add" /> {t("wb.newProject")}
         </button>
-        <button type="button" className="btn wb-mini" disabled={!workspace} onClick={onNewRun}>
+        <button type="button" className={`btn wb-mini${workspace ? "" : " wb-secondary"}`} disabled={!workspace} onClick={onNewRun}>
           <Icon name="play" /> {t("wb.newRun")}
         </button>
-        <button type="button" className="wb-icon-button" title={t("wb.quickOpen")} disabled={!workspace} onClick={onQuickOpen}>
+        <button type="button" className="wb-icon-button wb-secondary" title={t("wb.quickOpen")} disabled={!workspace} onClick={onQuickOpen}>
           <Icon name="search" />
         </button>
-        <button type="button" className="wb-icon-button" title={t("wb.search")} disabled={!workspace} onClick={onSearch}>
+        <button type="button" className="wb-icon-button wb-secondary" title={t("wb.search")} disabled={!workspace} onClick={onSearch}>
           <Icon name="find-in-files" />
         </button>
-        <button type="button" className="btn wb-mini" disabled={!workspace} onClick={onOpenTerminal}>
+        <button type="button" className="btn wb-mini wb-secondary" disabled={!workspace} onClick={onOpenTerminal}>
           <Icon name="terminal" /> {t("wb.openTerminal")}
         </button>
         <button
           type="button"
-          className={`btn wb-mini${draftCount > 0 ? " is-attention" : ""}`}
+          className={`btn wb-mini wb-secondary${draftCount > 0 ? " is-attention" : ""}`}
           title={t("wb.draftsHint")}
           onClick={onDrafts}
         >
@@ -585,7 +587,23 @@ function Header({
         <button type="button" className="btn wb-mini" onClick={onTerminals}>
           {t("wb.backToTerminals")}
         </button>
+        <button type="button" className={`wb-icon-button wb-more${draftCount > 0 ? " is-attention" : ""}`}
+          aria-label={t("wb.moreActions")} title={t("wb.moreActions")}
+          aria-haspopup="menu" aria-expanded={more !== null}
+          onClick={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect();
+            setMore(more ? null : { x: rect.right, y: rect.bottom });
+          }}>
+          <Icon name="ellipsis" />
+        </button>
       </div>
+      {more && <ContextMenu {...more} align="right" onClose={() => setMore(null)} items={[
+        { label: t("wb.newProject"), icon: "add", action: onNewProject },
+        { label: t("wb.quickOpen"), icon: "search", disabled: !workspace, action: onQuickOpen },
+        { label: t("wb.search"), icon: "find-in-files", disabled: !workspace, action: onSearch },
+        { label: t("wb.openTerminal"), icon: "terminal", disabled: !workspace, action: onOpenTerminal },
+        { label: `${t("wb.drafts")}${draftCount > 0 ? ` (${draftCount})` : ""}`, action: onDrafts },
+      ]} />}
     </header>
   );
 }
