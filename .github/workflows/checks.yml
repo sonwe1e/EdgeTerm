@@ -48,8 +48,9 @@ jobs:
       - name: Install Tauri system dependencies
         run: |
           sudo apt-get update
+          # serialport's Linux device discovery needs libudev headers/pkg-config.
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
-            librsvg2-dev patchelf libgtk-3-dev
+            librsvg2-dev patchelf libgtk-3-dev libudev-dev
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
