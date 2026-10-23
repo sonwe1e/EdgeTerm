@@ -1,7 +1,7 @@
 // App font chain gate on a real production build: App → store
 // setPanelFontSize → the App-owned --panel-font-size variable → FilerPanel's
 // rowHeight prop and the real CSS row height → the actual virtual rows, at
-// the 1100px and 760px widths, with 10 000 synthetic entries proving the
+// the 1100px and minimum desktop widths, with 10 000 synthetic entries proving the
 // list stays windowed. Real App, real store, real FilerPanel; the IPC
 // boundary is a strict whitelist that records violations (production
 // swallows rejections, so the record is the gate).
@@ -45,6 +45,11 @@ const subjectRoot = process.env.EDGE_APP_FONT_ROOT
   ? path.resolve(process.env.EDGE_APP_FONT_ROOT)
   : repoRoot;
 const outDir = path.join(repoRoot, ".tmp", "app-font-check", `dist-${resultsArg}`);
+const config = JSON.parse(await fs.readFile(path.join(subjectRoot, "src-tauri/tauri.conf.json"), "utf8"));
+const desktopWindow = config.app.windows.find((window) => (window.label ?? "main") === "main");
+assert.ok(desktopWindow, "main desktop window configuration is required");
+const minimum = { width: desktopWindow.minWidth, height: desktopWindow.minHeight };
+assert.ok(minimum.width > 0 && minimum.height > 0, "desktop minimum window size is required");
 
 // The fixture entry: the real App with the real store, over the whitelist.
 const entryId = "\0app-font-chain-fixture.js";
@@ -66,7 +71,7 @@ window.__TAURI_INTERNALS__ = {
     calls.push({ command, args });
     if (command === "plugin:event|listen") return ++serial;
     if (command === "plugin:event|unlisten") return;
-    if (["list_profiles", "list_session_groups", "list_system_fonts", "list_port_forwards", "list_file_transfers"].includes(command)) return [];
+    if (["list_profiles", "list_session_groups", "list_system_fonts", "list_port_forwards", "list_file_transfers", "list_recoverable_transfers"].includes(command)) return [];
     if (command === "local_home") return "/synthetic";
     if (command === "local_list") return { path: args.path, entries: Array.from({ length: 10000 }, (_, i) => ({ name: "entry" + i + ".txt", path: args.path + "/entry" + i + ".txt", isDir: false, isSymlink: false, size: i, modified: 1700000000, permissions: null, owner: null, group: null })) };
     if (command === "system_monospace_family") return null;
@@ -75,7 +80,7 @@ window.__TAURI_INTERNALS__ = {
     if (command === "plugin:app|version") return "1.0.0";
     if (command === "plugin:window|is_maximized" || command === "plugin:window|is_fullscreen") return false;
     if (command === "plugin:updater|check") return null;
-    if (["set_startup_theme", "show_main_window", "finish_main_window", "plugin:window|set_title"].includes(command)) return;
+    if (["set_startup_theme", "set_close_to_tray", "show_main_window", "finish_main_window", "plugin:window|set_title"].includes(command)) return;
     unknown.push({ command, args });
     throw Error("Unexpected app-font fixture IPC: " + command);
   },
@@ -224,7 +229,7 @@ try {
   // audited literals (12px → 26px pitch / 24px row, 18px → 30px / 28px), not
   // values re-derived from the code under test.
   const failures = [];
-  const expectState = async (name, font, pitch, innerHeight) => {
+  const expectState = async (name, font, pitch, innerHeight, supportedWindow) => {
     const value = await sample();
     const checks = {
       appVariable: value.fontCss === `${font}px`,
@@ -233,24 +238,28 @@ try {
       innerHeight: value.entryHeight !== null &&
         Math.abs(value.entryHeight - innerHeight) < 0.1,
       dateFont: value.dateFont === `${font - 2}px`,
-      datesFit: value.datesFit,
+      // Full dates are required at every supported desktop size. Keep the
+      // old 760px probe, but report its clipping separately: Tauri cannot
+      // create that window. All font/pitch/virtualization checks still apply.
+      ...(supportedWindow ? { datesFit: value.datesFit } : {}),
       windowed: value.mountedRows < 100 && value.mountedRows > 1,
     };
     const failed = Object.entries(checks).filter(([, ok]) => !ok).map(([key]) => key);
     const passed = failed.length === 0;
-    results.push({ name, font, pitch, passed, failedChecks: failed, sample: value });
+    results.push({ name, font, pitch, supportedWindow, passed, failedChecks: failed, sample: value });
     if (!passed) failures.push({ name, failedChecks: failed, sample: value });
   };
 
   await fs.mkdir(path.dirname(resultsPath), { recursive: true });
-  for (const [width, height] of [[1100, 720], [760, 600]]) {
+  for (const [width, height] of [[1100, 720], [minimum.width, minimum.height], [760, 600]]) {
+    const supportedWindow = width >= minimum.width && height >= minimum.height;
     await page.setViewportSize({ width, height });
     await invoke("font", 12);
     await wait(200);
-    await expectState(`${width}x${height} at font 12`, 12, 26, 24);
+    await expectState(`${width}x${height} at font 12`, 12, 26, 24, supportedWindow);
     await invoke("font", 18);
     await wait(200);
-    await expectState(`${width}x${height} at font 18`, 18, 30, 28);
+    await expectState(`${width}x${height} at font 18`, 18, 30, 28, supportedWindow);
     await page.screenshot({ path: resultsPath.replace(/\.json$/, `-${width}.png`) });
   }
   assert.ok(failures.length === 0,
@@ -258,12 +267,16 @@ try {
 
   const unknownIpc = await page.evaluate(() => window.__appFontChain.unknown);
   const passedAll = results.every((entry) => entry.passed);
+  const boundaryFindings = results.filter((entry) => !entry.supportedWindow && !entry.sample.datesFit)
+    .map((entry) => ({ name: entry.name, finding: "date clipping below the desktop minimum", minimum }));
   const report = {
     at: new Date().toISOString(),
     browser: browserVersion,
     channel,
     subjectRoot,
-    scope: "Production build (real vite.config). Real App → store.setPanelFontSize → App-owned --panel-font-size → FilerPanel rowHeight + real CSS row height → virtual rows; 10k synthetic entries; consecutive-row pitch within 0.1px of 26/30; date text contained in its cell and list viewport; mounted rows < 100 (windowed); unexpected IPC recorded and gated.",
+    scope: "Production build (real vite.config). Real App → store.setPanelFontSize → App-owned --panel-font-size → FilerPanel rowHeight + real CSS row height → virtual rows; 10k synthetic entries; consecutive-row pitch within 0.1px of 26/30; full dates required at supported desktop sizes; 760px date clipping reported as a boundary finding; mounted rows < 100 (windowed); unexpected IPC recorded and gated.",
+    minimum,
+    boundaryFindings,
     passedAll,
     results,
     unknownIpc,
@@ -275,7 +288,8 @@ try {
   await fs.writeFile(resultsPath, JSON.stringify(report, null, 2));
   console.log(JSON.stringify({
     passedAll,
-    results: results.map(({ name, passed }) => ({ name, passed })),
+    results: results.map(({ name, passed, supportedWindow }) => ({ name, passed, supportedWindow })),
+    boundaryFindings,
     unknownIpc: unknownIpc.length,
     errors: errors.length,
     consoleErrors: consoleErrors.length,

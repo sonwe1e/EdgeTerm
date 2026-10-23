@@ -79,10 +79,15 @@ dev-mode Vitest contracts do not reproduce the production build's timing
 there. The font gate drives the real App over the real store chain (no
 terminal session is involved — that is the gutter gate's path) and asserts
 the audited 12/18px literals (App variable, inner row height, date-column
-font, consecutive-row pitch) at 1100px and 760px with 10,000 windowed
-entries. It also checks each rendered date's text bounds against its cell and
-the list viewport, and saves a screenshot at each width with the 18px panel
-font so clipping remains visible in the evidence.
+font, consecutive-row pitch) at 1100px and the minimum desktop size read from
+`tauri.conf.json` (currently 900×560), with 10,000 windowed entries. At supported
+sizes it also requires each rendered date's text to fit its cell and the list
+viewport. The older 760px browser probe remains: font, pitch and virtualization
+still gate the run, while date clipping below the desktop minimum is reported
+explicitly in `boundaryFindings`, not treated as a supported-window failure.
+Screenshots at every width with the 18px panel font preserve that evidence.
+The IPC whitelist includes recoverable-transfer listing and the close-to-tray
+preference; any other unexpected command still fails the gate.
 
 Run them with a unique results name (earlier results are never overwritten)
 and pick the engine with the environment knobs:
