@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { errorText } from "../errorInfo";
+import { GUIDE_URL } from "../distribution";
 import {
   getCurrentWindow,
   type Window as TauriWindow,
@@ -50,8 +51,6 @@ import { hasLeading, MenuLeading, menuRole, type MenuMark } from "./ContextMenu"
 import { Icon, type IconName } from "./icons";
 import { SettingsDialog } from "./SettingsDialog";
 import { submenuKey, useSubmenuHover } from "./submenuHover";
-
-const TUTORIAL_URL = "https://miskin-lee.github.io/EdgeTerm/tutorial.html";
 
 // The menubar is also the title bar: it is the window drag region and shares
 // its row with the window controls, laid out like VS Code's custom title bar.
@@ -751,7 +750,7 @@ export function MenuBar(props: Props) {
           label: t("menu.tutorial"),
           icon: "book",
           action: () => {
-            void openUrl(TUTORIAL_URL).catch((error) => {
+            void openUrl(GUIDE_URL).catch((error) => {
               setStatus(t("status.tutorialOpenFailed", { error: errorText(error) }));
             });
           },

@@ -11,8 +11,6 @@
     "core:window:allow-set-title",
     "opener:default",
     "dialog:default",
-    "updater:default",
-    "process:allow-restart",
     "process:allow-exit"
   ]
 }

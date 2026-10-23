@@ -1,187 +1,52 @@
 import { getVersion } from "@tauri-apps/api/app";
-import { errorText } from "./errorInfo";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { relaunch } from "@tauri-apps/plugin-process";
-import { check, type Update } from "@tauri-apps/plugin-updater";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { portableMode } from "./api";
-
-const RELEASES_URL = "https://github.com/miskin-lee/EdgeTerm/releases/latest";
+import { RELEASES_URL } from "./distribution";
+import { errorText } from "./errorInfo";
 
 export type UpdaterState =
   | { phase: "idle" }
-  | { phase: "checking" }
-  | { phase: "up-to-date" }
-  | {
-      phase: "available";
-      currentVersion: string;
-      version: string;
-      body?: string;
-      date?: string;
-    }
-  | {
-      phase: "downloading";
-      version: string;
-      downloaded: number;
-      total?: number;
-    }
-  | { phase: "installing"; version: string }
+  | { phase: "manual" }
   | { phase: "error"; message: string };
 
-function errorMessage(error: unknown): string {
-  return errorText(error);
-}
-
+/** This distribution publishes manual downloads, not a signed updater feed. */
 export function useUpdater() {
   const [appVersion, setAppVersion] = useState("");
-  const [portable, setPortable] = useState(false);
   const [state, setState] = useState<UpdaterState>({ phase: "idle" });
-  const updateRef = useRef<Update | null>(null);
-  /** The download continues while its dialog is hidden. */
-  const dialogHidden = useRef(false);
-  const checkPromiseRef = useRef<Promise<void> | null>(null);
-  const showCheckResultRef = useRef(false);
+  const requestId = useRef(0);
 
   useEffect(() => {
-    void getVersion().then(setAppVersion).catch(console.error);
-    void portableMode().then(setPortable).catch(console.error);
+    let disposed = false;
+    void getVersion().then((version) => {
+      if (!disposed) setAppVersion(version);
+    }).catch(console.error);
+    return () => {
+      disposed = true;
+      requestId.current += 1;
+    };
   }, []);
 
-  const checkForUpdates = useCallback((showResult = true): Promise<void> => {
-    if (showResult) {
-      showCheckResultRef.current = true;
-      setState({ phase: "checking" });
-    }
-
-    if (checkPromiseRef.current) return checkPromiseRef.current;
-
-    const request = (async () => {
-      try {
-        const update = await check({ timeout: 20_000 });
-        if (update) {
-          if (updateRef.current) await updateRef.current.close();
-          updateRef.current = update;
-          setState({
-            phase: "available",
-            currentVersion: update.currentVersion,
-            version: update.version,
-            body: update.body,
-            date: update.date,
-          });
-        } else if (showCheckResultRef.current) {
-          setState({ phase: "up-to-date" });
-        }
-      } catch (error) {
-        if (showCheckResultRef.current) {
-          setState({ phase: "error", message: errorMessage(error) });
-        } else {
-          console.warn("Automatic update check failed", error);
-        }
-      } finally {
-        showCheckResultRef.current = false;
-        checkPromiseRef.current = null;
-      }
-    })();
-
-    checkPromiseRef.current = request;
-    return request;
+  const checkForUpdates = useCallback(() => {
+    requestId.current += 1;
+    setState({ phase: "manual" });
   }, []);
-
-  useEffect(() => {
-    if (import.meta.env.DEV) return;
-    const timer = window.setTimeout(() => {
-      void checkForUpdates(false);
-    }, 1_500);
-    return () => window.clearTimeout(timer);
-  }, [checkForUpdates]);
-
-  useEffect(
-    () => () => {
-      if (updateRef.current) void updateRef.current.close();
-    },
-    [],
-  );
 
   const dismiss = useCallback(() => {
-    if (state.phase === "installing") return;
-    if (state.phase === "downloading") {
-      // Hiding is not cancelling: the download keeps running and the dialog
-      // returns when installation starts. There is no abort handle to offer.
-      dialogHidden.current = true;
-      setState({ phase: "idle" });
-      return;
-    }
-    dialogHidden.current = false;
-    const update = updateRef.current;
-    updateRef.current = null;
+    requestId.current += 1;
     setState({ phase: "idle" });
-    if (update) void update.close();
-  }, [state.phase]);
+  }, []);
 
-  const installUpdate = useCallback(async () => {
-    const update = updateRef.current;
-    if (!update) return;
-    dialogHidden.current = false;
-
-    if (portable) {
-      // A portable copy must not run the NSIS installer the updater target
-      // points at — that would silently turn it into an installed copy.
-      try {
-        await openUrl(RELEASES_URL);
-      } catch (error) {
-        setState({ phase: "error", message: errorMessage(error) });
-        return;
-      }
-      updateRef.current = null;
-      setState({ phase: "idle" });
-      void update.close().catch(() => undefined);
-      return;
-    }
-
-    let downloaded = 0;
-    let total: number | undefined;
-    let lastRenderedAt = 0;
-    setState({
-      phase: "downloading",
-      version: update.version,
-      downloaded,
-      total,
-    });
-
+  const openDownloads = useCallback(async () => {
+    const id = ++requestId.current;
     try {
-      await update.downloadAndInstall((event) => {
-        if (event.event === "Started") {
-          total = event.data.contentLength;
-        } else if (event.event === "Progress") {
-          downloaded += event.data.chunkLength;
-        }
-
-        const now = Date.now();
-        if (!dialogHidden.current && (event.event !== "Progress" || now - lastRenderedAt >= 80)) {
-          lastRenderedAt = now;
-          setState({
-            phase: "downloading",
-            version: update.version,
-            downloaded,
-            total,
-          });
-        }
-      });
-      setState({ phase: "installing", version: update.version });
-      await relaunch();
+      await openUrl(RELEASES_URL);
+      if (id === requestId.current) setState({ phase: "idle" });
     } catch (error) {
-      updateRef.current = null;
-      await update.close().catch(() => undefined);
-      setState({ phase: "error", message: errorMessage(error) });
+      if (id === requestId.current) {
+        setState({ phase: "error", message: errorText(error) });
+      }
     }
-  }, [portable]);
+  }, []);
 
-  return {
-    appVersion,
-    portable,
-    state,
-    checkForUpdates,
-    dismiss,
-    installUpdate,
-  };
+  return { appVersion, state, checkForUpdates, dismiss, openDownloads };
 }

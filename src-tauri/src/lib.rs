@@ -375,9 +375,6 @@ pub fn run() {
             // `gpu_fallback`.
             #[cfg(target_os = "windows")]
             gpu_fallback::apply();
-            #[cfg(desktop)]
-            app.handle()
-                .plugin(tauri_plugin_updater::Builder::new().build())?;
             create_main_window(app)?;
             #[cfg(target_os = "macos")]
             install_menu(app)?;
@@ -552,7 +549,7 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building EdgeTerm")
         .run(|app, event| match event {
-            // ⌘Q and the updater's relaunch never close the window.
+            // ⌘Q can exit without a window-close event.
             tauri::RunEvent::ExitRequested { .. } => app.state::<WindowMemory>().flush(),
             tauri::RunEvent::Exit => {
                 // Copies of remote files opened in local editors have no one

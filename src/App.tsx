@@ -58,6 +58,7 @@ import { allControllers, getController, setWebglEnabled } from "./terminalRegist
 import { isFileSession, type SessionProfile, type SessionState } from "./types";
 import { useT } from "./useT";
 import { useUpdater } from "./updater";
+import { REPOSITORY_URL, UPSTREAM_REPOSITORY_URL } from "./distribution";
 
 // The largest dialog in the application, and one nothing shows until the user
 // asks for a session, so it is not part of what the window opens with.
@@ -66,8 +67,6 @@ const SessionDialog = lazy(() =>
     default: module.SessionDialog,
   })),
 );
-
-const REPO_URL = "https://github.com/miskin-lee/EdgeTerm";
 
 /** Stable empty result for the closing-tabs selector (see `useShallow`). */
 const EMPTY_CLOSING_TABS: Tab[] = [];
@@ -840,11 +839,9 @@ export default function App() {
 
       <UpdateDialog
         appVersion={updater.appVersion}
-        portable={updater.portable}
         state={updater.state}
         onDismiss={updater.dismiss}
-        onInstall={() => void updater.installUpdate()}
-        onCheckAgain={() => void updater.checkForUpdates()}
+        onOpenDownloads={() => void updater.openDownloads()}
       />
 
       {dialog && (
@@ -1013,16 +1010,23 @@ export default function App() {
                 {t("about.madeBy")}{" "}
                 <a
                   className="about-link"
-                  href={REPO_URL}
+                  href={UPSTREAM_REPOSITORY_URL}
                   onClick={(event) => {
                     event.preventDefault();
-                    void openUrl(REPO_URL).catch((error) => {
+                    void openUrl(UPSTREAM_REPOSITORY_URL).catch((error) => {
                       console.error("Failed to open repository:", error);
                     });
                   }}
                 >
                   github.com/miskin-lee/EdgeTerm
                 </a>
+              </span>
+              <span>
+                {t("about.distribution")}{" "}
+                <a className="about-link" href={REPOSITORY_URL} onClick={(event) => {
+                  event.preventDefault();
+                  void openUrl(REPOSITORY_URL).catch(console.error);
+                }}>github.com/sonwe1e/EdgeTerm</a>
               </span>
             </div>
             <div className="dialog-footer">

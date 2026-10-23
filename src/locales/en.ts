@@ -75,7 +75,7 @@ export const en = {
   "menu.keyboardShortcuts": "Keyboard Shortcuts…",
 
   "menu.tutorial": "Tutorial",
-  "menu.checkForUpdates": "Check for Updates…",
+  "menu.checkForUpdates": "Downloads and Updates…",
   "menu.openLogDirectory": "Open Log Directory",
   "menu.exportDiagnostics": "Export Diagnostics…",
   "menu.restoreDefaultSettings": "Restore Default Settings…",
@@ -116,7 +116,8 @@ export const en = {
   "about.title": "About EdgeTerm",
   "about.tagline":
     "A small, fast terminal, SSH, SFTP, FTP and serial client. The installer is tiny, it starts instantly, and it stays out of your way.",
-  "about.madeBy": "Made by miskin ·",
+  "about.madeBy": "Original author: miskin ·",
+  "about.distribution": "This distribution ·",
 
   // --- status bar and imperative notices -----------------------------------
   "status.ready": "Ready",
@@ -325,27 +326,11 @@ export const en = {
   "search.close": "Close search",
 
   // UpdateDialog
-  "update.titleDefault": "Software Update",
-  "update.available": "Update Available",
-  "update.upToDate": "EdgeTerm Is Up to Date",
-  "update.failed": "Update Failed",
-  "update.checking": "Checking GitHub Releases for the latest version…",
-  "update.haveLatest": "You already have the latest version",
+  "update.titleDefault": "Downloads and Updates",
   "update.installed": "Installed: {version}",
-  "update.latest": "Latest: {version}",
-  "update.releaseNotes": "Release notes",
-  "update.portableHint":
-    "This is a portable copy, so the update is not installed in place. The download page opens in your browser; replace this copy with the new portable archive.",
-  "update.hint":
-    "EdgeTerm will download the signed update, install it, and restart. Active terminal connections will be closed.",
-  "update.downloading": "Downloading EdgeTerm {version}…",
-  "update.ofTotal": " of {total}",
-  "update.downloadedSuffix": " downloaded",
-  "update.installing": "Installing EdgeTerm {version} and restarting…",
-  "update.tryAgain": "Try Again",
-  "update.hide": "Hide",  "update.later": "Later",
-  "update.openDownload": "Open Download Page",
-  "update.downloadInstall": "Download and Install",
+  "update.manualHint": "You are using the sonwe1e/EdgeTerm distribution. Visit this fork's GitHub releases to review new versions and download updates manually. The app does not check for or install updates automatically.",
+  "update.packageHint": "Windows x64 installers and portable archives are currently available. Keep the data folder when replacing a portable copy; see the release page for other platforms.",
+  "update.openDownload": "Open This Fork's Releases",
 
   // SessionDialog — protocol picker
   "protocol.sshTelnet.label": "SSH / Telnet",
