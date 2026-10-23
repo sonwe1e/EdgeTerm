@@ -66,6 +66,13 @@ export function FilerColumnResizer({
 }) {
   const [dragging, setDragging] = useState(false);
   const drag = useRef<Drag | null>(null);
+  // What the frame batch applies. `finish` retires `drag.current` before it
+  // flushes the final frame — the window fallback and lostpointercapture may
+  // both arrive for one pointer — so the batch may not read that ref to find
+  // the drag it is still allowed to apply: a release landing before the
+  // scheduled frame would drop the pending movement. This ref holds the same
+  // drag until the flush or cancel has settled, and only then is cleared.
+  const live = useRef<Drag | null>(null);
 
   // The latest callbacks are read through refs: the panel's closures change as
   // the drag reshapes the listing, and the batch outlives one render.
@@ -76,7 +83,7 @@ export function FilerColumnResizer({
   const batch = useRef<ReturnType<typeof createFrameBatch> | null>(null);
   if (batch.current === null) {
     batch.current = createFrameBatch((delta) => {
-      const active = drag.current;
+      const active = live.current;
       if (!active) return;
       active.total += delta;
       latest.current(active.startWidth, active.total);
@@ -105,6 +112,7 @@ export function FilerColumnResizer({
       // pending work, without undoing widths already applied in earlier frames.
       if (active && commit) batch.current!.flush();
       else batch.current!.cancel();
+      live.current = null;
     }
   }, []);
 
@@ -150,6 +158,7 @@ export function FilerColumnResizer({
           window.removeEventListener("keydown", keydown, true);
         },
       };
+      live.current = drag.current;
       // Listen immediately, not after a render. A release outside the handle
       // must still terminate the drag if the WebView interrupts capture.
       window.addEventListener("pointerup", endPointer, true);
