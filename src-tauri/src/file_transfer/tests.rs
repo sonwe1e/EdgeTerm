@@ -271,7 +271,7 @@ fn checkpoint_attribution_covers_planned_children_not_foreign_paths() {
         directory: false,
     };
     // A planned child of the folder row, with the same relative path on
-    // both sides — and a Windows-style local path is a child too.
+    // both sides. Local separators follow the host platform.
     assert!(checkpoint_belongs(&file, &[folder.clone()]));
     let windows = Item {
         local: "G:\\src\\dir\\a".into(),
@@ -285,7 +285,11 @@ fn checkpoint_attribution_covers_planned_children_not_foreign_paths() {
         upload: true,
         directory: true,
     };
-    assert!(checkpoint_belongs(&windows, &[windows_folder.clone()]));
+    assert_eq!(
+        checkpoint_belongs(&windows, &[windows_folder.clone()]),
+        cfg!(windows),
+        "backslashes separate local components only on Windows"
+    );
     #[cfg(windows)]
     assert!(!checkpoint_belongs(
         &Item {
