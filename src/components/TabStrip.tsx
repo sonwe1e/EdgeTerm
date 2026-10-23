@@ -61,6 +61,9 @@ function activityLabel(tab: Tab): string | null {
 interface TabDrag {
   id: string;
   pointerId: number;
+  strip: HTMLDivElement;
+  originalIndex: number;
+  removeListeners: () => void;
   /** Pointer x at pointerdown, to tell a click from a drag. */
   startX: number;
   /** Where inside the tab it was grabbed, so it stays under the pointer. */
@@ -442,6 +445,36 @@ export function TabStrip({ paneId }: Props) {
   const drag = useRef<TabDrag | null>(null);
   const dragging = draggingTabId !== null && drag.current?.active === true;
 
+  // Retire the drag before releasing capture: lostpointercapture, the window
+  // fallback and the React handler may all observe the same release.
+  const finishDrag = useCallback((commit: boolean, target: DropTarget | null = null) => {
+    const state = drag.current;
+    if (!state) return;
+    drag.current = null;
+    state.removeListeners();
+    cancelAnimationFrame(state.scrollFrame);
+    hideGhost(state);
+    const element = state.strip.querySelector<HTMLElement>(".tab.is-dragging");
+    if (element) element.style.transform = "";
+    if (state.strip.hasPointerCapture(state.pointerId)) {
+      state.strip.releasePointerCapture(state.pointerId);
+    }
+    if (!state.active) return;
+    setTabDrag(null);
+    if (!commit) {
+      // Reordering previews live; abandoning the gesture restores its slot.
+      const tab = useStore.getState().tabs.find((item) => item.info.id === state.id);
+      if (tab?.paneId === paneId) moveTab(state.id, state.originalIndex);
+      return;
+    }
+    if (!target) return;
+    if (target.zone === "strip") moveTabToPane(state.id, target.paneId, target.index);
+    else if (target.zone === "center") moveTabToPane(state.id, target.paneId, Number.MAX_SAFE_INTEGER);
+    else splitPane(target.paneId, target.zone, state.id);
+  }, [paneId, moveTab, moveTabToPane, splitPane, setTabDrag]);
+
+  useEffect(() => () => finishDrag(false), [finishDrag]);
+
   // Places the dragged tab under the pointer relative to wherever layout put
   // it, and moves it in the store once it has crossed into another slot.
   const updateDrag = useCallback(() => {
@@ -504,7 +537,7 @@ export function TabStrip({ paneId }: Props) {
   }, [updateDrag]);
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || drag.current) return;
+    if (event.button !== 0 || !event.isPrimary || drag.current) return;
     const target = event.target as Element;
     if (target.closest(".tab-close")) return;
     const tab = target.closest<HTMLElement>(".tab");
@@ -514,9 +547,37 @@ export function TabStrip({ paneId }: Props) {
       if (!target.closest("button")) setActivePane(paneId);
       return;
     }
+    const strip = event.currentTarget;
+    try {
+      strip.setPointerCapture(event.pointerId);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "NotFoundError") return;
+      throw error;
+    }
+    const cancel = () => finishDrag(false);
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      cancel();
+    };
+    const visibility = () => { if (document.hidden) cancel(); };
+    const end = (e: PointerEvent) => {
+      if (e.pointerId !== drag.current?.pointerId) return;
+      finishDrag(e.type === "pointerup", dropTargetAt(e.clientX, e.clientY, paneId));
+    };
     drag.current = {
       id,
       pointerId: event.pointerId,
+      strip,
+      originalIndex: tabs.findIndex((item) => item.info.id === id),
+      removeListeners: () => {
+        window.removeEventListener("pointerup", end, true);
+        window.removeEventListener("pointercancel", end, true);
+        window.removeEventListener("keydown", key, true);
+        window.removeEventListener("blur", cancel);
+        document.removeEventListener("visibilitychange", visibility);
+      },
       startX: event.clientX,
       startY: event.clientY,
       grabX: event.clientX - tab.getBoundingClientRect().left,
@@ -526,12 +587,20 @@ export function TabStrip({ paneId }: Props) {
       scrollFrame: 0,
       ghost: null,
     };
-    event.currentTarget.setPointerCapture(event.pointerId);
+    window.addEventListener("pointerup", end, true);
+    window.addEventListener("pointercancel", end, true);
+    window.addEventListener("keydown", key, true);
+    window.addEventListener("blur", cancel);
+    document.addEventListener("visibilitychange", visibility);
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     const state = drag.current;
     if (!state || state.pointerId !== event.pointerId) return;
+    if (event.pointerType === "mouse" && (event.buttons & 1) === 0) {
+      finishDrag(false);
+      return;
+    }
     state.x = event.clientX;
     state.y = event.clientY;
     if (!state.active) {
@@ -553,31 +622,6 @@ export function TabStrip({ paneId }: Props) {
     }
     setTabDrag(state.id, target);
     updateDrag();
-  };
-
-  const endDrag = (event: React.PointerEvent<HTMLDivElement>) => {
-    const state = drag.current;
-    if (!state || state.pointerId !== event.pointerId) return;
-    cancelAnimationFrame(state.scrollFrame);
-    drag.current = null;
-    const strip = event.currentTarget;
-    if (strip.hasPointerCapture(event.pointerId)) {
-      strip.releasePointerCapture(event.pointerId);
-    }
-    if (!state.active) return;
-    hideGhost(state);
-    const element = strip.querySelector<HTMLElement>(".tab.is-dragging");
-    if (element) element.style.transform = "";
-    const target = useStore.getState().dropTarget;
-    setTabDrag(null);
-    if (!target || event.type === "pointercancel") return;
-    if (target.zone === "strip") {
-      moveTabToPane(state.id, target.paneId, target.index);
-    } else if (target.zone === "center") {
-      moveTabToPane(state.id, target.paneId, Number.MAX_SAFE_INTEGER);
-    } else {
-      splitPane(target.paneId, target.zone, state.id);
-    }
   };
 
   // Where a tab dragged from another strip would be inserted here.
@@ -605,8 +649,9 @@ export function TabStrip({ paneId }: Props) {
       onScroll={updateOverflow}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
-      onPointerUp={endDrag}
-      onPointerCancel={endDrag}
+      onLostPointerCapture={(event) => {
+        if (event.pointerId === drag.current?.pointerId) finishDrag(false);
+      }}
       onContextMenu={onContextMenu}
     >
       <div className="tabstrip-fade-left" aria-hidden="true" />
