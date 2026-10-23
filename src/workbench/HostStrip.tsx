@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { usePopoverDismiss } from "../components/usePopoverDismiss";
 import { transferBytes } from "../fileTransfers";
 import { useT } from "../useT";
 import { formatClock, hostIdentities } from "./model";
@@ -28,6 +29,10 @@ export function HostStrip() {
   useHostSampling(hosts);
   const samples = useHostSamples((state) => state.samples);
   const [open, setOpen] = useState<string | null>(null);
+  // Scope dismissal and focus return to the expanded host, not the strip's
+  // first host. Clicking another host still opens that host in one gesture.
+  const openRoot = useRef<HTMLDivElement>(null);
+  usePopoverDismiss(open !== null, () => setOpen(null), openRoot);
 
   if (hosts.length === 0) return null;
   return (
@@ -42,7 +47,7 @@ export function HostStrip() {
         const cpuTone = pressureOf(metrics?.cpuPercent ?? null, "cpu");
         const memTone = pressureOf(memPercent, "memory");
         return (
-          <div className="wb-host" key={host.key}>
+          <div className="wb-host" key={host.key} ref={open === host.key ? openRoot : undefined}>
             <button
               type="button"
               className={`wb-host-chip${sample?.error ? " is-error" : ""}${stale ? " is-stale" : ""}`}
@@ -67,7 +72,10 @@ export function HostStrip() {
                 <button
                   type="button"
                   className="btn"
-                  onClick={() => setOpen(null)}
+                  onClick={() => {
+                    openRoot.current?.querySelector("button")?.focus({ preventScroll: true });
+                    setOpen(null);
+                  }}
                 >
                   {t("common.close")}
                 </button>
