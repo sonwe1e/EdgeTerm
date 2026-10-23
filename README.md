@@ -6,20 +6,23 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/miskin-lee/EdgeTerm/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/miskin-lee/EdgeTerm?style=flat"></a>
-  <a href="https://qm.qq.com/q/oINZ2ffDOg"><img alt="Join the EdgeTerm QQ group: 1129162865" src="https://img.shields.io/badge/QQ%20group-Join%20discussion-12B7F5?style=flat"></a>
-  <a href="https://github.com/miskin-lee/EdgeTerm/releases"><img alt="GitHub release downloads" src="https://img.shields.io/github/downloads/miskin-lee/EdgeTerm/total?style=flat&amp;label=downloads"></a>
-  <a href="https://github.com/miskin-lee/EdgeTerm/releases/latest"><img alt="Latest GitHub release" src="https://img.shields.io/github/v/release/miskin-lee/EdgeTerm?style=flat"></a>
-  <a href="LICENSE"><img alt="GPL-3.0 license" src="https://img.shields.io/github/license/miskin-lee/EdgeTerm?style=flat"></a>
-  <a href="https://github.com/miskin-lee/EdgeTerm/graphs/contributors"><img alt="GitHub contributors" src="https://img.shields.io/github/contributors/miskin-lee/EdgeTerm?style=flat"></a>
+  <a href="https://github.com/sonwe1e/EdgeTerm/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/sonwe1e/EdgeTerm?style=flat"></a>
+  <a href="https://github.com/sonwe1e/EdgeTerm/releases"><img alt="GitHub release downloads" src="https://img.shields.io/github/downloads/sonwe1e/EdgeTerm/total?style=flat&amp;label=downloads"></a>
+  <a href="https://github.com/sonwe1e/EdgeTerm/releases/latest"><img alt="Latest GitHub release" src="https://img.shields.io/github/v/release/sonwe1e/EdgeTerm?style=flat"></a>
+  <a href="LICENSE"><img alt="GPL-3.0 license" src="https://img.shields.io/github/license/sonwe1e/EdgeTerm?style=flat"></a>
+  <a href="https://github.com/sonwe1e/EdgeTerm/graphs/contributors"><img alt="GitHub contributors" src="https://img.shields.io/github/contributors/sonwe1e/EdgeTerm?style=flat"></a>
 </p>
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
+This is the [sonwe1e/EdgeTerm](https://github.com/sonwe1e/EdgeTerm) distribution, derived from miskin's [upstream EdgeTerm](https://github.com/miskin-lee/EdgeTerm). This fork has an independent release series and currently provides Windows x64 downloads. Upstream packages do not include all of this fork's features. Original attribution and license notices are retained below.
+
+[Release history](docs/releases.zh-CN.md) · [Upstream ports](docs/upstream-ports.zh-CN.md) · [Branches and history](docs/history-and-branches.zh-CN.md) (Chinese)
+
 A small, fast terminal, SSH, Telnet, SFTP, FTP and serial client built with **Rust + Tauri**. Installers are about 4–5 MB.
 
 > [!TIP]
-> <a href="https://github.com/miskin-lee/serialX"><img src="https://raw.githubusercontent.com/miskin-lee/serialX/main/assets/icons/png/serialx-64.png" alt="serialX" width="20" height="20" align="top"></a> Doing embedded work and debugging devices over a serial port? Try **[serialX](https://github.com/miskin-lee/serialX)** from the same author, a workspace built for serial debugging.
+> <a href="https://github.com/miskin-lee/serialX"><img src="https://raw.githubusercontent.com/miskin-lee/serialX/main/assets/icons/png/serialx-64.png" alt="serialX" width="20" height="20" align="top"></a> Doing embedded work and debugging devices over a serial port? Try **[serialX](https://github.com/miskin-lee/serialX)** from the upstream author, a workspace built for serial debugging.
 
 <img src="docs/screenshot-dark.png" alt="EdgeTerm dark theme: split panes, colored log and switch output, Session tree, Filer and Sender" width="100%">
 
@@ -40,18 +43,12 @@ A small, fast terminal, SSH, Telnet, SFTP, FTP and serial client built with **Ru
 
 ## Install
 
-Download from [Releases](https://github.com/miskin-lee/EdgeTerm/releases):
+Download the Windows x64 installer (`.exe`) or portable archive (`.zip`) from [this fork's Releases](https://github.com/sonwe1e/EdgeTerm/releases), and verify it against `SHA256SUMS.txt` on the same page. As of 2026-10-23, this fork has not published macOS/Linux packages. Build from source for those platforms, or explicitly choose the [upstream distribution](https://github.com/miskin-lee/EdgeTerm/releases), which has a different feature set.
 
-| Platform | Package |
-| --- | --- |
-| Windows x64 | Installer (`.exe`) or portable `.zip` |
-| macOS Apple Silicon | `.dmg` |
-| Linux x64 / ARM64 | `.AppImage`, `.deb` or `.rpm` |
-
-- Builds are not notarized or Authenticode-signed, so the OS may warn on first launch.
-- The portable zip keeps all its data in the `data` folder next to `EdgeTerm.exe`. Saved passwords do not carry over to another machine.
-- The `.rpm` needs WebKitGTK 4.1 (Fedora has it). On older distributions, use the AppImage.
-- Installed copies update themselves (**Help → Check for Updates…**). The portable copy only tells you a new version is out.
+- Windows installers are not Authenticode-signed; the OS may warn on first launch.
+- Portable data lives in the `data` folder beside `EdgeTerm.exe`. Preserve that folder when upgrading; saved passwords are not guaranteed to transfer between machines.
+- This fork uses **manual updates**, with no signed updater manifest. In builds containing this cleanup, **Help → Downloads and Updates…** shows the installed version and opens this fork's release page. It does not check, install or restart automatically.
+- Published `1.2.8` and earlier binaries are unchanged and still have upstream update entry points. Download directly from this repository's releases instead of relying on those older update prompts.
 
 ## Getting started
 

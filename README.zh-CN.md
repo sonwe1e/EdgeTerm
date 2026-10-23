@@ -6,20 +6,23 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/miskin-lee/EdgeTerm/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/miskin-lee/EdgeTerm?style=flat"></a>
-  <a href="https://qm.qq.com/q/oINZ2ffDOg"><img alt="加入 EdgeTerm QQ 群：1129162865" src="https://img.shields.io/badge/QQ%20group-Join%20discussion-12B7F5?style=flat"></a>
-  <a href="https://github.com/miskin-lee/EdgeTerm/releases"><img alt="GitHub release downloads" src="https://img.shields.io/github/downloads/miskin-lee/EdgeTerm/total?style=flat&amp;label=downloads"></a>
-  <a href="https://github.com/miskin-lee/EdgeTerm/releases/latest"><img alt="最新 GitHub 发布版本" src="https://img.shields.io/github/v/release/miskin-lee/EdgeTerm?style=flat"></a>
-  <a href="LICENSE"><img alt="GPL-3.0 许可证" src="https://img.shields.io/github/license/miskin-lee/EdgeTerm?style=flat"></a>
-  <a href="https://github.com/miskin-lee/EdgeTerm/graphs/contributors"><img alt="GitHub 贡献者" src="https://img.shields.io/github/contributors/miskin-lee/EdgeTerm?style=flat"></a>
+  <a href="https://github.com/sonwe1e/EdgeTerm/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/sonwe1e/EdgeTerm?style=flat"></a>
+  <a href="https://github.com/sonwe1e/EdgeTerm/releases"><img alt="GitHub release downloads" src="https://img.shields.io/github/downloads/sonwe1e/EdgeTerm/total?style=flat&amp;label=downloads"></a>
+  <a href="https://github.com/sonwe1e/EdgeTerm/releases/latest"><img alt="最新 GitHub 发布版本" src="https://img.shields.io/github/v/release/sonwe1e/EdgeTerm?style=flat"></a>
+  <a href="LICENSE"><img alt="GPL-3.0 许可证" src="https://img.shields.io/github/license/sonwe1e/EdgeTerm?style=flat"></a>
+  <a href="https://github.com/sonwe1e/EdgeTerm/graphs/contributors"><img alt="GitHub 贡献者" src="https://img.shields.io/github/contributors/sonwe1e/EdgeTerm?style=flat"></a>
 </p>
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
+这是 [sonwe1e/EdgeTerm](https://github.com/sonwe1e/EdgeTerm) 维护的发行分支，源自 miskin 的 [上游 EdgeTerm](https://github.com/miskin-lee/EdgeTerm)。本分支独立发布版本，当前提供 Windows x64 下载；上游发布包不包含本分支的全部功能。原作者与许可声明保留在文末。
+
+[历史发布索引](docs/releases.zh-CN.md) · [上游移植记录](docs/upstream-ports.zh-CN.md) · [分支与历史维护](docs/history-and-branches.zh-CN.md)
+
 小巧、快速的终端 / SSH / Telnet / SFTP / FTP / 串口客户端，基于 **Rust + Tauri**，安装包约 4–5 MB。
 
 > [!TIP]
-> <a href="https://github.com/miskin-lee/serialX"><img src="https://raw.githubusercontent.com/miskin-lee/serialX/main/assets/icons/png/serialx-64.png" alt="serialX" width="20" height="20" align="top"></a> 做嵌入式开发、需要用串口调试设备？推荐使用同一作者的 **[serialX](https://github.com/miskin-lee/serialX)**，一款专为串口调试打造的工作台。
+> <a href="https://github.com/miskin-lee/serialX"><img src="https://raw.githubusercontent.com/miskin-lee/serialX/main/assets/icons/png/serialx-64.png" alt="serialX" width="20" height="20" align="top"></a> 做嵌入式开发、需要用串口调试设备？可以了解上游作者的 **[serialX](https://github.com/miskin-lee/serialX)**，一款专为串口调试打造的工作台。
 
 <img src="docs/screenshot-dark.png" alt="EdgeTerm 深色主题：分栏、着色的日志与交换机输出、会话树、Filer 与 Sender" width="100%">
 
@@ -40,18 +43,12 @@
 
 ## 安装
 
-从 [Releases](https://github.com/miskin-lee/EdgeTerm/releases) 下载：
+从[本分支 Releases](https://github.com/sonwe1e/EdgeTerm/releases) 下载 Windows x64 安装程序（`.exe`）或便携版（`.zip`），并核对同页的 `SHA256SUMS.txt`。截至 2026-10-23，本分支未发布 macOS/Linux 安装包；需要这些平台时可自行构建，或明确选择功能不同的[上游发行版](https://github.com/miskin-lee/EdgeTerm/releases)。
 
-| 平台 | 安装包 |
-| --- | --- |
-| Windows x64 | 安装程序（`.exe`）或便携版 `.zip` |
-| macOS Apple Silicon | `.dmg` |
-| Linux x64 / ARM64 | `.AppImage`、`.deb` 或 `.rpm` |
-
-- 未做 macOS 公证和 Windows Authenticode 签名，首次打开时系统可能会提示风险。
-- 便携版的数据都存在 `EdgeTerm.exe` 旁的 `data` 文件夹里；换机器后保存的密码不会带过去。
-- `.rpm` 需要 WebKitGTK 4.1（Fedora 有），较老的发行版请用 AppImage。
-- 安装版会自动更新（**Help → Check for Updates…**），便携版只提示有新版本。
+- 安装包未做 Windows Authenticode 签名，首次打开时系统可能提示风险。
+- 便携版的数据保存在 `EdgeTerm.exe` 旁的 `data` 文件夹；升级时保留该目录。保存的密码不保证能跨机器迁移。
+- 本分支采用**手动升级**，不提供签名自动更新清单。本次整理后的应用入口为 **帮助 → 下载与更新…**，显示当前版本并打开本分支发布页，不自动检查、安装或重启。
+- 已发布的 `1.2.8` 及更早安装包不会随源码修改而改变，其更新入口仍指向上游；请直接从本仓库发布页手动下载，勿依赖旧包中的更新提示。
 
 ## 快速上手
 

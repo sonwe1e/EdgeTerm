@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>EdgeTerm — Terminal, SSH, FTP &amp; Serial Client</title>
-<meta name="description" content="EdgeTerm — a fast, native terminal, SSH, FTP and serial client built with Rust + Tauri. From cloud servers to edge devices: pure-Rust SSH stack, timestamp gutter, ZMODEM transfers, auto updates.">
+<meta name="description" content="EdgeTerm — a fast, native terminal, SSH, FTP and serial client built with Rust + Tauri. From cloud servers to edge devices: pure-Rust SSH stack, timestamp gutter, ZMODEM transfers, manual updates for the sonwe1e distribution.">
 <link rel="icon" type="image/png" href="icon.png?v=2">
 <link rel="stylesheet" href="style.css">
 <style>
@@ -65,7 +65,7 @@
     <nav class="nav-links">
       <a class="nav-item" href="tutorial.html"><span data-i18n="en">Tutorial</span><span data-i18n="zh">使用教程</span></a>
       <a class="nav-item keep" href="#download"><span data-i18n="en">Download</span><span data-i18n="zh">下载</span></a>
-      <a class="nav-item" href="https://github.com/miskin-lee/EdgeTerm">GitHub</a>
+      <a class="nav-item" href="https://github.com/sonwe1e/EdgeTerm">GitHub</a>
       <button class="lang-btn" id="langBtn" type="button">中文</button>
     </nav>
   </div>
@@ -95,7 +95,7 @@
     <a class="btn btn-ghost" href="tutorial.html">
       <span data-i18n="en">📖 Tutorial</span><span data-i18n="zh">📖 使用教程</span>
     </a>
-    <a class="btn btn-ghost" href="https://github.com/miskin-lee/EdgeTerm">
+    <a class="btn btn-ghost" href="https://github.com/sonwe1e/EdgeTerm">
       <span data-i18n="en">★ Star on GitHub</span><span data-i18n="zh">★ GitHub 源码</span>
     </a>
   </div>
@@ -109,23 +109,23 @@
 <section id="download" class="container">
   <h2><span data-i18n="en">Download</span><span data-i18n="zh">下载</span></h2>
   <p class="section-sub">
-    <span data-i18n="en">Installers for every supported platform. In-app updates are cryptographically signed; the installers themselves are not code-signed yet.</span>
-    <span data-i18n="zh">各平台原生安装包，应用内更新经过签名校验；安装包本身暂未做代码签名。</span>
+    <span data-i18n="en">This fork currently publishes Windows x64 installers and portable archives, with manual updates. macOS/Linux links below lead to the separate upstream distribution.</span>
+    <span data-i18n="zh">本分支目前发布 Windows x64 安装包和便携包，采用手动升级。下方 macOS/Linux 链接指向功能不同的上游发行版。</span>
   </p>
   <div class="dl-grid">
-    <a class="dl-card" href="https://github.com/miskin-lee/EdgeTerm/releases/latest">
+    <a class="dl-card" href="https://github.com/sonwe1e/EdgeTerm/releases/latest">
       <div class="os" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><path d="M3 4.6 10.6 3.5v8.1H3zM11.9 3.3 21 2v9.6h-9.1zM3 12.9h7.6v8.1L3 19.9zM11.9 12.9H21V22l-9.1-1.2z"/></svg></div>
       <h3>Windows</h3>
       <p>x64 · installer .exe<br>or portable .zip</p>
     </a>
     <a class="dl-card" href="https://github.com/miskin-lee/EdgeTerm/releases/latest">
       <div class="os">🍎</div>
-      <h3>macOS</h3>
+      <h3>macOS · Upstream / 上游</h3>
       <p>Apple Silicon · .dmg</p>
     </a>
     <a class="dl-card" href="https://github.com/miskin-lee/EdgeTerm/releases/latest">
       <div class="os">🐧</div>
-      <h3>Linux</h3>
+      <h3>Linux · Upstream / 上游</h3>
       <p>x64 / ARM64 · .AppImage / .deb / .rpm</p>
     </a>
   </div>
@@ -136,8 +136,8 @@
       <span data-i18n="zh">该下载哪个文件？</span>
     </h3>
     <p>
-      <span data-i18n="en">Every download goes to the same GitHub Releases page; the newest release is at the top. Pick the file that matches your platform:</span>
-      <span data-i18n="zh">所有下载都指向同一个 GitHub Releases 页面，最新版本在最上方。按平台选择文件：</span>
+      <span data-i18n="en">Windows downloads come from this fork. The macOS/Linux packages listed below belong to upstream and have a different feature set:</span>
+      <span data-i18n="zh">Windows 下载来自本分支。下列 macOS/Linux 包属于上游发行版，功能与本分支不同：</span>
     </p>
     <ul>
       <li><span data-i18n="en"><code>EdgeTerm_&lt;version&gt;_x64-setup.exe</code> — Windows installer (recommended).</span><span data-i18n="zh"><code>EdgeTerm_&lt;version&gt;_x64-setup.exe</code> —— Windows 安装程序（推荐）。</span></li>
@@ -166,21 +166,21 @@
     <div class="trust-card">
       <h4><span data-i18n="en">Your servers stay yours</span><span data-i18n="zh">服务器信息留在本机</span></h4>
       <p>
-        <span data-i18n="en">No telemetry. Saved passwords never enter the page or <code>sessions.json</code>: they are sealed in <code>credentials.json</code>, with the key held by the OS credential store. The only automatic network request the app makes is the update check to GitHub.</span>
-        <span data-i18n="zh">没有遥测。保存的密码不会进入页面或 <code>sessions.json</code>：它们被封存在 <code>credentials.json</code>，密钥由系统凭据库保管。应用唯一的自动网络请求是向 GitHub 检查更新。</span>
+        <span data-i18n="en">No telemetry. Saved passwords never enter the page or <code>sessions.json</code>: they are sealed in <code>credentials.json</code>, with the key held by the OS credential store. This fork does not check for updates automatically. Help → Downloads and Updates opens this fork's releases when requested.</span>
+        <span data-i18n="zh">没有遥测。保存的密码不会进入页面或 <code>sessions.json</code>：它们被封存在 <code>credentials.json</code>，密钥由系统凭据库保管。本分支不自动检查更新；“帮助 → 下载与更新”在用户操作后打开本分支发布页。</span>
       </p>
     </div>
     <div class="trust-card">
       <h4><span data-i18n="en">Who makes it, and where to ask</span><span data-i18n="zh">谁在做，去哪里问</span></h4>
       <p>
-        <span data-i18n="en">Built and maintained by miskin on <a href="https://github.com/miskin-lee/EdgeTerm">GitHub</a>. Bugs and questions go to <a href="https://github.com/miskin-lee/EdgeTerm/issues">GitHub Issues</a>; there is also a QQ group linked from the repository.</span>
-        <span data-i18n="zh">由 miskin 在 <a href="https://github.com/miskin-lee/EdgeTerm">GitHub</a> 上开发维护。问题与建议请到 <a href="https://github.com/miskin-lee/EdgeTerm/issues">GitHub Issues</a>；仓库里也有 QQ 群入口。</span>
+        <span data-i18n="en">This distribution is maintained in <a href="https://github.com/sonwe1e/EdgeTerm">sonwe1e/EdgeTerm</a>, derived from <a href="https://github.com/miskin-lee/EdgeTerm">miskin’s upstream project</a>. Report issues with this fork to <a href="https://github.com/sonwe1e/EdgeTerm/issues">its issue tracker</a>.</span>
+        <span data-i18n="zh">本发行分支维护于 <a href="https://github.com/sonwe1e/EdgeTerm">sonwe1e/EdgeTerm</a>，源自 <a href="https://github.com/miskin-lee/EdgeTerm">miskin 的上游项目</a>。本分支问题请到<a href="https://github.com/sonwe1e/EdgeTerm/issues">本仓库 Issues</a>反馈。</span>
       </p>
     </div>
   </div>
   <p class="dl-note">
-    <span data-i18n="en">All builds on the <a href="https://github.com/miskin-lee/EdgeTerm/releases">GitHub Releases</a> page. New to EdgeTerm? Start with the <a href="tutorial.html">tutorial</a>.</span>
-    <span data-i18n="zh">全部版本见 <a href="https://github.com/miskin-lee/EdgeTerm/releases">GitHub Releases</a> 页面。第一次使用？请从<a href="tutorial.html">使用教程</a>开始。</span>
+    <span data-i18n="en">All builds on the <a href="https://github.com/sonwe1e/EdgeTerm/releases">GitHub Releases</a> page. New to EdgeTerm? Start with the <a href="tutorial.html">tutorial</a>.</span>
+    <span data-i18n="zh">全部版本见 <a href="https://github.com/sonwe1e/EdgeTerm/releases">GitHub Releases</a> 页面。第一次使用？请从<a href="tutorial.html">使用教程</a>开始。</span>
   </p>
 </section>
 
@@ -216,11 +216,11 @@
     <p>
       EdgeTerm · GPL-3.0 License ·
       <a href="tutorial.html"><span data-i18n="en">Tutorial</span><span data-i18n="zh">使用教程</span></a> ·
-      <a href="https://github.com/miskin-lee/EdgeTerm">GitHub</a> ·
-      <a href="https://github.com/miskin-lee/EdgeTerm/blob/main/LICENSE"><span data-i18n="en">Licence</span><span data-i18n="zh">许可证</span></a> ·
-      <a href="https://github.com/miskin-lee/EdgeTerm/issues"><span data-i18n="en">Issues</span><span data-i18n="zh">问题反馈</span></a> ·
-      <a href="https://github.com/miskin-lee/EdgeTerm/blob/main/README.md">README</a> ·
-      <a href="https://github.com/miskin-lee/EdgeTerm/blob/main/README.zh-CN.md">简体中文文档</a>
+      <a href="https://github.com/sonwe1e/EdgeTerm">GitHub</a> ·
+      <a href="https://github.com/sonwe1e/EdgeTerm/blob/main/LICENSE"><span data-i18n="en">Licence</span><span data-i18n="zh">许可证</span></a> ·
+      <a href="https://github.com/sonwe1e/EdgeTerm/issues"><span data-i18n="en">Issues</span><span data-i18n="zh">问题反馈</span></a> ·
+      <a href="https://github.com/sonwe1e/EdgeTerm/blob/main/README.md">README</a> ·
+      <a href="https://github.com/sonwe1e/EdgeTerm/blob/main/README.zh-CN.md">简体中文文档</a>
     </p>
     <p style="margin-top: 6px;">
       <span data-i18n="en">Built with Rust + Tauri. © 2026 miskin.</span>

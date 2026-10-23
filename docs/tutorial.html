@@ -84,7 +84,7 @@
     <nav class="nav-links">
       <a class="nav-item is-active" href="tutorial.html"><span data-i18n="en">Tutorial</span><span data-i18n="zh">使用教程</span></a>
       <a class="nav-item" href="./#download"><span data-i18n="en">Download</span><span data-i18n="zh">下载</span></a>
-      <a class="nav-item" href="https://github.com/miskin-lee/EdgeTerm">GitHub</a>
+      <a class="nav-item" href="https://github.com/sonwe1e/EdgeTerm">GitHub</a>
       <button class="lang-btn" id="langBtn" type="button">中文</button>
     </nav>
   </div>
@@ -105,7 +105,7 @@
     <a href="#zmodem"><span data-i18n="en">ZMODEM Transfers</span><span data-i18n="zh">ZMODEM 传输</span></a>
     <a href="#display"><span data-i18n="en">Display Settings</span><span data-i18n="zh">显示设置</span></a>
     <a href="#data"><span data-i18n="en">Export &amp; Import</span><span data-i18n="zh">数据导出与导入</span></a>
-    <a href="#updates"><span data-i18n="en">Updates</span><span data-i18n="zh">自动更新</span></a>
+    <a href="#updates"><span data-i18n="en">Updates</span><span data-i18n="zh">手动更新</span></a>
     <a href="#shortcuts"><span data-i18n="en">Keyboard Shortcuts</span><span data-i18n="zh">快捷键一览</span></a>
     <a href="#faq"><span data-i18n="en">Limitations &amp; FAQ</span><span data-i18n="zh">限制与常见问题</span></a>
   </nav>
@@ -124,18 +124,18 @@
     <section id="getting-started">
       <h2><span class="sec-icon">🚀</span><span data-i18n="en">Getting Started</span><span data-i18n="zh">快速上手</span></h2>
       <p>
-        <span data-i18n="en">Download the installer for your platform from <a href="https://github.com/miskin-lee/EdgeTerm/releases/latest">GitHub Releases</a>:</span>
-        <span data-i18n="zh">从 <a href="https://github.com/miskin-lee/EdgeTerm/releases/latest">GitHub Releases</a> 下载对应平台的安装包：</span>
+        <span data-i18n="en">This fork publishes Windows x64 packages. Download from <a href="https://github.com/sonwe1e/EdgeTerm/releases/latest">GitHub Releases</a>:</span>
+        <span data-i18n="zh">本分支提供 Windows x64 包，从 <a href="https://github.com/sonwe1e/EdgeTerm/releases/latest">本仓库 Releases</a> 下载。下方 macOS/Linux 操作仅适用于另行选择的上游发行版：</span>
       </p>
       <ul>
         <li><strong>Windows</strong> — <span data-i18n="en">run the NSIS <code>.exe</code> installer (x64), or unzip the portable build. EdgeTerm renders with Microsoft's WebView2 runtime, which ships with Windows 11 and with a current Microsoft Edge on Windows 10.</span><span data-i18n="zh">运行 NSIS <code>.exe</code> 安装程序（x64），或解压便携版使用。EdgeTerm 使用 Microsoft WebView2 运行时渲染；Windows 11 自带，Windows 10 随较新的 Microsoft Edge 提供。</span></li>
-        <li><strong>macOS</strong> — <span data-i18n="en">open the <code>.dmg</code> and drag EdgeTerm into Applications (Apple Silicon).</span><span data-i18n="zh">打开 <code>.dmg</code>，把 EdgeTerm 拖入「应用程序」（Apple Silicon）。</span></li>
-        <li><strong>Linux</strong> — <span data-i18n="en">install the <code>.deb</code> (Debian, Ubuntu) or the <code>.rpm</code> (Fedora, RHEL), or <code>chmod +x</code> the <code>.AppImage</code> and run it directly (x64 / ARM64).</span><span data-i18n="zh">安装 <code>.deb</code>（Debian、Ubuntu）或 <code>.rpm</code>（Fedora、RHEL），或给 <code>.AppImage</code> 加执行权限（<code>chmod +x</code>）后直接运行（x64 / ARM64）。</span></li>
+        <li><strong>macOS (upstream / 上游)</strong> — <span data-i18n="en">open the <code>.dmg</code> and drag EdgeTerm into Applications (Apple Silicon).</span><span data-i18n="zh">打开 <code>.dmg</code>，把 EdgeTerm 拖入「应用程序」（Apple Silicon）。</span></li>
+        <li><strong>Linux (upstream / 上游)</strong> — <span data-i18n="en">install the <code>.deb</code> (Debian, Ubuntu) or the <code>.rpm</code> (Fedora, RHEL), or <code>chmod +x</code> the <code>.AppImage</code> and run it directly (x64 / ARM64).</span><span data-i18n="zh">安装 <code>.deb</code>（Debian、Ubuntu）或 <code>.rpm</code>（Fedora、RHEL），或给 <code>.AppImage</code> 加执行权限（<code>chmod +x</code>）后直接运行（x64 / ARM64）。</span></li>
       </ul>
       <div class="callout warn">
         <span class="callout-tag"><span data-i18n="en">Note</span><span data-i18n="zh">注意</span></span>
-        <span data-i18n="en">Releases are not yet notarized on macOS or Authenticode-signed on Windows, so the OS may warn on first launch. On macOS, right-click the app and choose <em>Open</em>; on Windows, click <em>More info → Run anyway</em>. In-app updates are signature-verified, but the installer you download first is not signed.</span>
-        <span data-i18n="zh">当前版本尚未做 macOS 公证 / Windows 代码签名，首次启动系统可能弹出安全提示。macOS 下右键应用选择「打开」；Windows 下点击「更多信息 → 仍要运行」。应用内更新经过签名校验，但首次下载的安装包本身没有签名。</span>
+        <span data-i18n="en">Releases are not yet notarized on macOS or Authenticode-signed on Windows, so the OS may warn on first launch. On macOS, right-click the app and choose <em>Open</em>; on Windows, click <em>More info → Run anyway</em>. This fork uses manual downloads; it does not provide signed in-app updates.</span>
+        <span data-i18n="zh">当前版本尚未做 macOS 公证 / Windows 代码签名，首次启动系统可能弹出安全提示。macOS 下右键应用选择「打开」；Windows 下点击「更多信息 → 仍要运行」。本分支手动下载升级，不提供签名应用内更新。</span>
       </div>
     </section>
 
@@ -371,14 +371,14 @@
     </section>
 
     <section id="updates">
-      <h2><span class="sec-icon">🔄</span><span data-i18n="en">Updates</span><span data-i18n="zh">自动更新</span></h2>
+      <h2><span class="sec-icon">🔄</span><span data-i18n="en">Manual updates</span><span data-i18n="zh">手动更新</span></h2>
       <p>
-        <span data-i18n="en">EdgeTerm checks the latest GitHub Release on startup. When a newer version exists, it can download, verify, install and restart — all in-app. You can also check manually via <span class="menu-path">Help → Check for Updates…</span>.</span>
-        <span data-i18n="zh">EdgeTerm 启动时自动检查 GitHub 最新 Release。发现新版本后可在应用内完成下载、校验、安装并重启。也可以随时通过 <span class="menu-path">Help → Check for Updates…</span> 手动检查。</span>
+        <span data-i18n="en">This is the sonwe1e/EdgeTerm distribution. In builds containing the history cleanup, <span class="menu-path">Help → Downloads and Updates…</span> shows the installed version and opens <a href="https://github.com/sonwe1e/EdgeTerm/releases/latest">this fork’s releases</a> on request. The app does not check for updates on startup, install packages or restart automatically.</span>
+        <span data-i18n="zh">这是 sonwe1e/EdgeTerm 发行分支。包含本次历史整理的构建中，<span class="menu-path">帮助 → 下载与更新…</span>显示当前版本，在用户操作后打开<a href="https://github.com/sonwe1e/EdgeTerm/releases/latest">本分支发布页</a>。应用不会在启动时检查更新、自动安装或重启。</span>
       </p>
-      <p class="dim">
-        <span data-i18n="en">Update bundles are signed with a Tauri updater key and verification cannot be disabled. Supported: Windows x64, macOS Apple Silicon, Linux x64 / ARM64; Linux AppImage, DEB and RPM installs update in their original package format.</span>
-        <span data-i18n="zh">更新包使用 Tauri updater 密钥签名，签名校验不可关闭。支持 Windows x64、macOS Apple Silicon、Linux x64 / ARM64；Linux AppImage、DEB 和 RPM 安装会按原包格式更新。</span>
+      <p>
+        <span data-i18n="en">Published 1.2.8 and earlier binaries still point at upstream. Download this fork’s packages directly from its releases, verify SHA256SUMS.txt, and preserve the data folder when replacing a portable copy. macOS/Linux packages from <a href="https://github.com/miskin-lee/EdgeTerm/releases">upstream</a> have a different feature set.</span>
+        <span data-i18n="zh">已发布的 1.2.8 及更早二进制仍指向上游。请直接从本分支发布页下载，核对 SHA256SUMS.txt；便携版升级保留 data 文件夹。<a href="https://github.com/miskin-lee/EdgeTerm/releases">上游 macOS/Linux 发行包</a>的功能与本分支不同。</span>
       </p>
     </section>
 
@@ -419,8 +419,8 @@
         <li><span data-i18n="en"><strong>OS warning on first install</strong> — expected while releases are not notarized / Authenticode-signed; see <a href="#getting-started">Getting Started</a>.</span><span data-i18n="zh"><strong>首次安装的系统警告</strong> —— 由于版本暂未做公证 / 代码签名，属预期现象；见<a href="#getting-started">快速上手</a>。</span></li>
       </ul>
       <p>
-        <span data-i18n="en">Found a bug or want a feature? Open an issue on <a href="https://github.com/miskin-lee/EdgeTerm/issues">GitHub</a>.</span>
-        <span data-i18n="zh">发现问题或想要新功能？欢迎到 <a href="https://github.com/miskin-lee/EdgeTerm/issues">GitHub</a> 提 issue。</span>
+        <span data-i18n="en">Found a bug or want a feature? Open an issue on <a href="https://github.com/sonwe1e/EdgeTerm/issues">GitHub</a>.</span>
+        <span data-i18n="zh">发现问题或想要新功能？欢迎到 <a href="https://github.com/sonwe1e/EdgeTerm/issues">GitHub</a> 提 issue。</span>
       </p>
     </section>
 
@@ -432,9 +432,9 @@
     <p>
       EdgeTerm · GPL-3.0 License ·
       <a href="./"><span data-i18n="en">Home</span><span data-i18n="zh">首页</span></a> ·
-      <a href="https://github.com/miskin-lee/EdgeTerm">GitHub</a> ·
-      <a href="https://github.com/miskin-lee/EdgeTerm/blob/main/README.md">README</a> ·
-      <a href="https://github.com/miskin-lee/EdgeTerm/blob/main/README.zh-CN.md">简体中文文档</a>
+      <a href="https://github.com/sonwe1e/EdgeTerm">GitHub</a> ·
+      <a href="https://github.com/sonwe1e/EdgeTerm/blob/main/README.md">README</a> ·
+      <a href="https://github.com/sonwe1e/EdgeTerm/blob/main/README.zh-CN.md">简体中文文档</a>
     </p>
     <p style="margin-top: 6px;">
       <span data-i18n="en">Built with Rust + Tauri.</span>
