@@ -21,7 +21,8 @@ fn invoke(
             cmd: cmd.into(),
             callback: tauri::ipc::CallbackFn(0),
             error: tauri::ipc::CallbackFn(1),
-            url: "http://tauri.localhost".parse().unwrap(),
+            // Use the runtime's local origin (tauri:// on Linux/macOS).
+            url: window.url().unwrap(),
             body: tauri::ipc::InvokeBody::Json(args),
             headers: Default::default(),
             invoke_key: tauri::test::INVOKE_KEY.into(),
@@ -72,7 +73,7 @@ fn raw_file_commands_cross_tauri_ipc_with_bounded_chunks_and_offsets() {
                 cmd: cmd.into(),
                 callback: tauri::ipc::CallbackFn(0),
                 error: tauri::ipc::CallbackFn(1),
-                url: "http://tauri.localhost".parse().unwrap(),
+                url: window.url().unwrap(),
                 body,
                 headers,
                 invoke_key: tauri::test::INVOKE_KEY.into(),
