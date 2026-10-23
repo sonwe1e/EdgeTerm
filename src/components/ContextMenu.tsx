@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 
 import { Icon, type IconName } from "./icons";
@@ -65,6 +66,11 @@ interface Props {
 /** Approximate submenu width, used to decide which side it opens on. */
 const SUBMENU_WIDTH = 200;
 const EDGE_MARGIN = 6;
+
+const MENU_ITEMS = '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]';
+const levelItems = (level: HTMLElement | null) =>
+  [...(level?.querySelectorAll<HTMLElement>(MENU_ITEMS) ?? [])]
+    .filter((item) => item.closest(".menu-dropdown") === level && !item.matches(":disabled"));
 
 function isAction(item: MenuItem): item is MenuAction {
   return typeof item !== "string" && "label" in item;
@@ -170,6 +176,82 @@ export function ContextMenu({
     flipped: boolean;
   }>({ left: x, top: y, flipped: false });
   const submenu = useSubmenuHover();
+  const [keyboardOpen, setKeyboardOpen] = useState<string | null | undefined>(undefined);
+  const focusFrame = useRef(0);
+  const shown = (path: string) => keyboardOpen === undefined
+    ? submenu.isOpen(path)
+    : keyboardOpen === path || keyboardOpen?.startsWith(`${path}.`) === true;
+
+  // Right-clicking a tab does not blur xterm. Own focus before the next key
+  // can reach the terminal; only return it if no other control took focus.
+  useLayoutEffect(() => {
+    const element = ref.current;
+    const opener = document.activeElement as HTMLElement | null;
+    (levelItems(element)[0] ?? element)?.focus({ preventScroll: true });
+    return () => {
+      cancelAnimationFrame(focusFrame.current);
+      if (opener?.isConnected &&
+          (element?.contains(document.activeElement) || document.activeElement === document.body)) {
+        opener.focus({ preventScroll: true });
+      }
+    };
+  }, []);
+
+  const focusInto = (path: string) => {
+    setKeyboardOpen(path);
+    cancelAnimationFrame(focusFrame.current);
+    focusFrame.current = requestAnimationFrame(() => {
+      const level = ref.current?.querySelector<HTMLElement>(
+        `[data-submenu-key="${path}"] > .menu-submenu`,
+      ) ?? null;
+      levelItems(level)[0]?.focus({ preventScroll: true });
+    });
+  };
+
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    // Even unhandled keys must not run window/terminal shortcuts underneath.
+    event.stopPropagation();
+    if (event.nativeEvent.isComposing) return;
+    if (event.key === "Escape" || event.key === "Tab") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    const item = (event.target as HTMLElement).closest<HTMLElement>(MENU_ITEMS);
+    const level = item?.closest<HTMLElement>(".menu-dropdown") ?? null;
+    const entries = levelItems(level);
+    const index = item ? entries.indexOf(item) : -1;
+    if (index < 0) return;
+    const focus = (next: HTMLElement) => {
+      event.preventDefault();
+      next.focus({ preventScroll: true });
+    };
+    switch (event.key) {
+      case "ArrowDown": return focus(entries[(index + 1) % entries.length]);
+      case "ArrowUp": return focus(entries[(index - 1 + entries.length) % entries.length]);
+      case "Home": return focus(entries[0]);
+      case "End": return focus(entries[entries.length - 1]);
+      case "ArrowRight": {
+        event.preventDefault();
+        const path = item?.parentElement?.dataset.submenuKey;
+        if (path !== undefined) focusInto(path);
+        return;
+      }
+      case "ArrowLeft": {
+        event.preventDefault();
+        const parent = level?.closest<HTMLElement>(".menu-submenu-entry");
+        if (!parent) return;
+        const path = parent.dataset.submenuKey!;
+        setKeyboardOpen(path.includes(".") ? path.slice(0, path.lastIndexOf(".")) : null);
+        parent.querySelector<HTMLElement>(":scope > .menu-entry")?.focus({ preventScroll: true });
+        return;
+      }
+      case "Enter":
+      case " ":
+        event.preventDefault();
+        item?.click();
+    }
+  };
 
   useLayoutEffect(() => {
     const element = ref.current;
@@ -190,24 +272,20 @@ export function ContextMenu({
     const onMouseDown = (event: MouseEvent) => {
       if (!ref.current?.contains(event.target as Node)) onClose();
     };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        onClose();
-      }
+    const onFocus = (event: FocusEvent) => {
+      if (!ref.current?.contains(event.target as Node)) onClose();
     };
     // Capture phase: a scroll anywhere (the panel body included) would leave
     // the fixed-position menu floating away from its row.
     document.addEventListener("mousedown", onMouseDown, true);
     document.addEventListener("scroll", onClose, true);
-    window.addEventListener("keydown", onKeyDown, true);
+    document.addEventListener("focusin", onFocus);
     window.addEventListener("blur", onClose);
     window.addEventListener("resize", onClose);
     return () => {
       document.removeEventListener("mousedown", onMouseDown, true);
       document.removeEventListener("scroll", onClose, true);
-      window.removeEventListener("keydown", onKeyDown, true);
+      document.removeEventListener("focusin", onFocus);
       window.removeEventListener("blur", onClose);
       window.removeEventListener("resize", onClose);
     };
@@ -233,19 +311,29 @@ export function ContextMenu({
       const key = `${item.label}-${index}`;
       if (item.children) {
         const path = submenuKey(parent, index);
+        const hover = submenu.entryProps(path);
+        const isOpen = shown(path);
         return (
           <div
             key={key}
-            className={`menu-submenu-entry${submenu.isOpen(path) ? " is-open" : ""}`}
-            {...submenu.entryProps(path)}
+            className={`menu-submenu-entry${isOpen ? " is-open" : ""}`}
+            data-submenu-key={path}
+            {...hover}
+            onMouseEnter={() => {
+              if (item.disabled) return;
+              setKeyboardOpen(undefined);
+              hover.onMouseEnter();
+            }}
           >
-            <div className="menu-entry" role="menuitem" aria-haspopup="menu">
+            <button type="button" className="menu-entry" role="menuitem"
+              aria-haspopup="menu" aria-expanded={isOpen} tabIndex={-1}
+              disabled={item.disabled} onClick={() => focusInto(path)}>
               {showLeading && <MenuLeading entry={item} />}
               <span className="menu-entry-label">{item.label}</span>
               <span className="menu-submenu-arrow" aria-hidden="true">
                 <Icon name="chevron-right" />
               </span>
-            </div>
+            </button>
             <div className="menu-dropdown menu-submenu" role="menu">
               {renderItems(item.children, path)}
             </div>
@@ -256,6 +344,7 @@ export function ContextMenu({
         <button
           key={key}
           type="button"
+          tabIndex={-1}
           role={menuRole(item)}
           aria-checked={item.checked !== undefined ? item.checked : undefined}
           className={[
@@ -306,6 +395,9 @@ export function ContextMenu({
         .filter(Boolean)
         .join(" ")}
       role="menu"
+      tabIndex={-1}
+      onKeyDown={onKeyDown}
+      onKeyUp={(event) => event.stopPropagation()}
       style={{ left: placement.left, top: placement.top }}
       onContextMenu={(event) => event.preventDefault()}
       {...submenu.rootProps}
