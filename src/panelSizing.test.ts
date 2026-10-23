@@ -9,7 +9,6 @@ import {
   clampBottom,
   clampSide,
   fitSides,
-  resizeSides,
   loadPanelSizing,
   savePanelSizing,
 } from "./panelSizing";
@@ -35,23 +34,20 @@ describe("clampSide", () => {
   it("never returns a fractional width", () => {
     expect(clampSide(300.6, 1440, 220)).toBe(301);
   });
-});
 
-describe("resizeSides", () => {
-  it("gives the dragged side priority and shrinks the other to its minimum", () => {
-    const sides = resizeSides("left", 700, 700, 900);
-    expect(sides.left).toBe(900 - SIDE_MIN - MIN_CENTER_WIDTH - 2);
-    expect(sides.right).toBe(SIDE_MIN);
-    expect(sides.left + sides.right + MIN_CENTER_WIDTH + 2).toBe(900);
+  it("answers for one side only, so a drag cannot move the opposite dock", () => {
+    // The old rule resolved a drag across both docks: the dragged side took
+    // what it asked for and the opposite gave way down to its minimum.
+    // clampSide is the whole rule for the dragged side alone — the opposite
+    // dock's width is an input it must respect, and nothing about dragging
+    // one side rewrites the other. Whatever the pointer asks for past the
+    // centre's reserve, the answer stops there.
+    expect(clampSide(2000, 900, 400)).toBe(900 - 400 - MIN_CENTER_WIDTH - 2);
+    expect(clampSide(2000, 900, 0)).toBe(900 - MIN_CENTER_WIDTH - 2);
   });
 
-  it("leaves the opposite dock alone while the window has room", () => {
-    expect(resizeSides("left", 300, 260, 1440)).toEqual({ left: 300, right: 260 });
-  });
-
-  it("does not reserve space for a hidden dock", () => {
-    const sides = resizeSides("left", 700, 0, 900);
-    expect(sides).toEqual({ left: 900 - MIN_CENTER_WIDTH - 2, right: 0 });
+  it("leaves a width that already fits untouched", () => {
+    expect(clampSide(300, 1440, 260)).toBe(300);
   });
 });
 

@@ -49,6 +49,12 @@ const finite = (value: unknown, fallback: number) =>
 /**
  * The widest this side dock may be without taking the terminal below its
  * minimum. `other` is the opposite dock's width, 0 when it is hidden.
+ *
+ * This is the whole rule for one splitter drag: the dragged side stops where
+ * the centre's reserve begins, and the opposite dock is nobody's to shrink —
+ * a drag on one side never decides what the other side shows. Both the
+ * pointer and the keyboard go through it, so every way of asking for a width
+ * meets the same boundary.
  */
 export function clampSide(
   desired: number,
@@ -57,38 +63,6 @@ export function clampSide(
 ): number {
   const fit = viewportWidth - other - MIN_CENTER_WIDTH - 2;
   return Math.round(clamp(Math.min(desired, fit), SIDE_MIN, SIDE_MAX));
-}
-
-/**
- * One splitter drag, resolved across both side docks. The dragged side gets
- * the space it asks for first; the opposite side gives way down to its
- * minimum, and only then does the dragged side stop. `other` is 0 when that
- * dock is hidden (nothing to shrink).
- */
-export function resizeSides(
-  dragged: "left" | "right",
-  desired: number,
-  other: number,
-  viewportWidth: number,
-): { left: number; right: number } {
-  const roomForDragged = Math.max(
-    SIDE_MIN,
-    viewportWidth - (other > 0 ? SIDE_MIN : 0) - MIN_CENTER_WIDTH - 2,
-  );
-  let target = clamp(desired, SIDE_MIN, Math.min(SIDE_MAX, roomForDragged));
-  let opposite = other > 0 ? clamp(other, SIDE_MIN, SIDE_MAX) : 0;
-  if (opposite > 0) {
-    const room = viewportWidth - target - MIN_CENTER_WIDTH - 2;
-    opposite = clamp(Math.min(opposite, room), SIDE_MIN, SIDE_MAX);
-    const hardMax = Math.max(
-      SIDE_MIN,
-      viewportWidth - opposite - MIN_CENTER_WIDTH - 2,
-    );
-    target = clamp(Math.min(target, hardMax), SIDE_MIN, SIDE_MAX);
-  }
-  return dragged === "left"
-    ? { left: Math.round(target), right: Math.round(opposite) }
-    : { left: Math.round(opposite), right: Math.round(target) };
 }
 
 /** The tallest the bottom dock may be on this window. */

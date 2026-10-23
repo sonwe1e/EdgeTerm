@@ -36,8 +36,12 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function render(orientation: "vertical" | "horizontal" = "vertical", onResize = resize) {
-  act(() => root.render(h(Splitter, { orientation, onResize })));
+function render(
+  orientation: "vertical" | "horizontal" = "vertical",
+  onResize = resize,
+  extra: { onDragStart?: () => void; onEnd?: (committed: boolean) => void } = {},
+) {
+  act(() => root.render(h(Splitter, { orientation, onResize, ...extra })));
   splitter = host.firstElementChild as HTMLDivElement;
 }
 
@@ -216,5 +220,59 @@ describe("Splitter drag lifecycle", () => {
     pointer("pointerup", { buttons: 0 });
     expect(resize).not.toHaveBeenCalled();
     expect(next.mock.calls).toEqual([[30]]);
+  });
+
+  it("reports one drag start, and an end after the release's final frame", () => {
+    const began = vi.fn();
+    const ended = vi.fn();
+    render("vertical", resize, { onDragStart: began, onEnd: ended });
+    pointer("pointerdown");
+    expect(began).toHaveBeenCalledTimes(1);
+    pointer("pointermove", { clientX: 130 });
+    pointer("pointerup", { buttons: 0 });
+    // The window fallback and lostpointercapture may both arrive; each
+    // notifies at most once, and the end lands after the flushed frame.
+    pointer("lostpointercapture");
+    act(() => vi.advanceTimersByTime(32));
+    expect(began).toHaveBeenCalledTimes(1);
+    expect(ended).toHaveBeenCalledTimes(1);
+    expect(ended).toHaveBeenCalledWith(true);
+    expect(ended.mock.invocationCallOrder[0]).toBeGreaterThan(
+      resize.mock.invocationCallOrder[0],
+    );
+    expect(resize.mock.calls).toEqual([[30]]);
+  });
+
+  it("ends an interrupted drag with committed=false after dropping pending work", () => {
+    const began = vi.fn();
+    const ended = vi.fn();
+    render("vertical", resize, { onDragStart: began, onEnd: ended });
+    pendingDrag();
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+    expect(ended).toHaveBeenCalledTimes(1);
+    expect(ended).toHaveBeenCalledWith(false);
+    expect(resize).not.toHaveBeenCalled();
+  });
+
+  it("does not report drag start or end for keyboard resizing", () => {
+    const began = vi.fn();
+    const ended = vi.fn();
+    render("vertical", resize, { onDragStart: began, onEnd: ended });
+    act(() =>
+      splitter.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }),
+      ),
+    );
+    expect(resize.mock.calls).toEqual([[8]]);
+    expect(began).not.toHaveBeenCalled();
+    expect(ended).not.toHaveBeenCalled();
+  });
+
+  it("does not report an end when unmounting mid-drag", () => {
+    const ended = vi.fn();
+    render("vertical", resize, { onEnd: ended });
+    pendingDrag();
+    act(() => root.render(null));
+    expect(ended).not.toHaveBeenCalled();
   });
 });

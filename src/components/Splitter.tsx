@@ -12,6 +12,20 @@ interface Props {
   orientation: "vertical" | "horizontal";
   /** Receives the pointer delta in pixels since the last application. */
   onResize: (delta: number) => void;
+  /**
+   * Called once per pointer drag, after capture. Lets the owner snapshot
+   * whatever the deltas will move — a base size measured now, not on every
+   * frame. Keyboard resizing never triggers it.
+   */
+  onDragStart?: () => void;
+  /**
+   * Called once when a pointer drag ends, after the final frame was flushed
+   * (committed) or dropped (interrupted). `committed` is true only for a
+   * normal release. An interruption has already applied its earlier frames,
+   * so the owner keeps what was shown and uses this to make its state match
+   * the DOM. Not called for keyboard resizing or an unmount.
+   */
+  onEnd?: (committed: boolean) => void;
 }
 
 interface Drag {
@@ -21,7 +35,7 @@ interface Drag {
   removeListeners: () => void;
 }
 
-export function Splitter({ orientation, onResize }: Props) {
+export function Splitter({ orientation, onResize, onDragStart, onEnd }: Props) {
   const t = useT();
   const [dragging, setDragging] = useState(false);
   const drag = useRef<Drag | null>(null);
@@ -30,9 +44,14 @@ export function Splitter({ orientation, onResize }: Props) {
   // layout around the splitter, so the deltas between two frames are folded
   // into one application; see frameBatch.ts. The latest `onResize` is read
   // through a ref because its closure (which way a panel clamps, whether the
-  // Sender expands) changes as the drag reshapes the app.
+  // Sender expands) changes as the drag reshapes the app. The drag-lifetime
+  // callbacks ride the same refs: they outlive one render too.
   const latest = useRef(onResize);
   latest.current = onResize;
+  const began = useRef(onDragStart);
+  began.current = onDragStart;
+  const ended = useRef(onEnd);
+  ended.current = onEnd;
   const batch = useRef<ReturnType<typeof createFrameBatch> | null>(null);
   if (batch.current === null) {
     batch.current = createFrameBatch((delta) => latest.current(delta));
@@ -61,6 +80,10 @@ export function Splitter({ orientation, onResize }: Props) {
       if (active && commit) batch.current!.flush();
       else batch.current!.cancel();
     }
+    // After the flush, so the owner's commit sees the width the release just
+    // applied. Unmounts (updateState=false) end silently: there is no state
+    // left to reconcile.
+    if (active && updateState) ended.current?.(commit);
   }, []);
 
   useEffect(() => {
@@ -105,6 +128,7 @@ export function Splitter({ orientation, onResize }: Props) {
       window.addEventListener("blur", cancel);
       window.addEventListener("keydown", keydown, true);
       document.addEventListener("visibilitychange", visibility);
+      began.current?.();
       setDragging(true);
     },
     [finish, orientation],

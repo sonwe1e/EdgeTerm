@@ -226,7 +226,14 @@ interface DockAreaProps {
   dock: PanelDock;
   /** The panels shown in this dock, in order; the dock is not rendered empty. */
   panels: PanelName[];
-  /** Width of a side dock or height of the bottom one, in pixels. */
+  /**
+   * Height of the bottom dock, in pixels. A side dock is sized by the
+   * `--dock-<side>-w` variable its ancestor sets — App renders it from the
+   * committed width and writes it directly while a splitter drag is under
+   * way — so a drag costs no re-render of the tree around it. `size` is the
+   * variable's fallback, which only a dock mounted without that ancestor
+   * (a standalone test) ever uses.
+   */
   size: number;
   render: (panel: PanelName) => ReactNode;
 }
@@ -395,7 +402,11 @@ export function DockArea({ dock, panels, size, render }: DockAreaProps) {
       ref={ref}
       className={side ? `sidebar sidebar-${dock}` : "bottom-dock"}
       data-dock={dock}
-      style={side ? { width: size, flex: `0 0 ${size}px` } : { height: size }}
+      style={
+        side
+          ? { width: `var(--dock-${dock}-w, ${size}px)`, flex: `0 0 var(--dock-${dock}-w, ${size}px)` }
+          : { height: size }
+      }
     >
       {panels.map((panel, index) => (
         <Fragment key={panel}>

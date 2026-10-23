@@ -52,7 +52,7 @@ import { commandHistory } from "./history";
 import type { PanelDock } from "./panelDock";
 import { HAS_TRAY, IS_WINDOWS } from "./platform";
 import { matchAppShortcut } from "./shortcuts";
-import { clampBottom, fitSides, loadPanelSizing, resizeSides, savePanelSizing } from "./panelSizing";
+import { clampBottom, clampSide, fitSides, loadPanelSizing, savePanelSizing } from "./panelSizing";
 import { type PanelName, tabTitle, useStore, type Tab } from "./store";
 import { allControllers, getController, setWebglEnabled } from "./terminalRegistry";
 import { isFileSession, type SessionProfile, type SessionState } from "./types";
@@ -210,9 +210,16 @@ export default function App() {
   const panelPreferencesRevision = useStore((s) => s.panelPreferencesRevision);
   const widthRefs = useRef({ left: leftWidth, right: rightWidth });
   widthRefs.current = { left: leftWidth, right: rightWidth };
+  // What the user asked each side dock to be — the persisted preference — as
+  // distinct from the width currently shown. A window too small for both
+  // docks shrinks what is shown (the resize handler below re-fits from these
+  // values) without overwriting the preference, so widening the window again
+  // gives the arrangement back instead of cementing the temporary squeeze.
+  const preferredSides = useRef({ left: initialSizing.left, right: initialSizing.right });
 
   useEffect(() => {
     const next = loadPanelSizing();
+    preferredSides.current = { left: next.left, right: next.right };
     setLeftWidth(next.left);
     setRightWidth(next.right);
     setBottomHeight(next.bottom);
@@ -223,8 +230,8 @@ export default function App() {
     const timer = window.setTimeout(
       () =>
         savePanelSizing({
-          left: leftWidth,
-          right: rightWidth,
+          left: preferredSides.current.left,
+          right: preferredSides.current.right,
           bottom: bottomHeight,
           senderExpanded,
         }),
@@ -234,13 +241,13 @@ export default function App() {
   }, [leftWidth, rightWidth, bottomHeight, senderExpanded]);
 
   // A smaller window must not keep a dock width that no longer leaves room
-  // for the terminal; fit both sides together rather than one against a
-  // stale value of the other.
+  // for the terminal; fit both sides together — from the preference, never
+  // from the shown widths, so the squeeze this causes is not what gets saved.
   useEffect(() => {
     const onResize = () => {
       const sides = fitSides(
-        widthRefs.current.left,
-        widthRefs.current.right,
+        preferredSides.current.left,
+        preferredSides.current.right,
         window.innerWidth,
       );
       setLeftWidth(sides.left);
@@ -621,6 +628,86 @@ export default function App() {
   const bottom = shown("bottom");
   const senderCanCompact = bottom.length === 1 && bottom[0] === "sender";
   const senderCompact = senderCanCompact && !senderExpanded;
+
+  // --- side dock drags -------------------------------------------------------
+  //
+  // One side splitter drag, deliberately outside React: each frame's target
+  // is written straight onto the layout row as a CSS variable (the side docks
+  // are sized by it), so following the pointer costs no App re-render. The
+  // release commits the shown width into state and the preference, which
+  // re-renders with the very value the DOM already has — nothing jumps. Only
+  // the real layout work (the terminal re-fitting its container) remains per
+  // frame, and the terminal's own debouncing manages that.
+  const mainRef = useRef<HTMLDivElement>(null);
+  const sideDrag = useRef<{
+    side: "left" | "right";
+    /** The dock's width when the drag began; deltas are measured against it. */
+    base: number;
+    /** Pointer movement since the drag began, never clamped — the clamp is
+     * applied to the target each frame, so backing away from a boundary the
+     * drag just hit moves the splitter again on the very next frame. */
+    total: number;
+    /** The last width actually shown: what a release or a cancel commits. */
+    shown: number;
+  } | null>(null);
+
+  const otherShownSide = (side: "left" | "right") =>
+    side === "left"
+      ? right.length > 0
+        ? widthRefs.current.right
+        : 0
+      : left.length > 0
+        ? widthRefs.current.left
+        : 0;
+
+  const commitSide = (side: "left" | "right", width: number) => {
+    preferredSides.current[side] = width;
+    if (side === "left") setLeftWidth(width);
+    else setRightWidth(width);
+  };
+
+  const beginSideDrag = (side: "left" | "right") => {
+    sideDrag.current = {
+      side,
+      base: widthRefs.current[side],
+      total: 0,
+      shown: widthRefs.current[side],
+    };
+  };
+
+  const applySideFrame = (side: "left" | "right", delta: number) => {
+    const live = sideDrag.current;
+    if (!live || live.side !== side) {
+      // A keypress arrives with no drag behind it: apply it immediately,
+      // through the same clamp the pointer meets, and commit like a release.
+      commitSide(
+        side,
+        clampSide(widthRefs.current[side] + delta, window.innerWidth, otherShownSide(side)),
+      );
+      return;
+    }
+    live.total += delta;
+    const target = clampSide(
+      live.base + (side === "left" ? live.total : -live.total),
+      window.innerWidth,
+      otherShownSide(side),
+    );
+    live.shown = target;
+    mainRef.current?.style.setProperty(
+      side === "left" ? "--dock-left-w" : "--dock-right-w",
+      `${target}px`,
+    );
+  };
+
+  const endSideDrag = () => {
+    const live = sideDrag.current;
+    sideDrag.current = null;
+    // A release and an interruption alike keep what the user watched: the
+    // frames already applied are real widths, and committing them is what
+    // stops the next render from snapping the dock back to its old value.
+    if (live) commitSide(live.side, live.shown);
+  };
+
   const renderPanel = (panel: PanelName) =>
     panel === "sessions" ? (
       <SessionPanel
@@ -664,7 +751,16 @@ export default function App() {
       />
 
       <div className="app-body">
-        <div className="main">
+        <div
+          className="main"
+          ref={mainRef}
+          style={
+            {
+              "--dock-left-w": `${leftWidth}px`,
+              "--dock-right-w": `${rightWidth}px`,
+            } as CSSProperties
+          }
+        >
           {left.length > 0 && (
             <>
               <DockArea
@@ -675,16 +771,9 @@ export default function App() {
               />
               <Splitter
                 orientation="vertical"
-                onResize={(delta) => {
-                  const sides = resizeSides(
-                    "left",
-                    leftWidth + delta,
-                    right.length > 0 ? rightWidth : 0,
-                    window.innerWidth,
-                  );
-                  setLeftWidth(sides.left);
-                  if (right.length > 0) setRightWidth(sides.right);
-                }}
+                onDragStart={() => beginSideDrag("left")}
+                onResize={(delta) => applySideFrame("left", delta)}
+                onEnd={() => endSideDrag()}
               />
             </>
           )}
@@ -707,16 +796,9 @@ export default function App() {
             <>
               <Splitter
                 orientation="vertical"
-                onResize={(delta) => {
-                  const sides = resizeSides(
-                    "right",
-                    rightWidth - delta,
-                    left.length > 0 ? leftWidth : 0,
-                    window.innerWidth,
-                  );
-                  setRightWidth(sides.right);
-                  if (left.length > 0) setLeftWidth(sides.left);
-                }}
+                onDragStart={() => beginSideDrag("right")}
+                onResize={(delta) => applySideFrame("right", delta)}
+                onEnd={() => endSideDrag()}
               />
               <DockArea
                 dock="right"
