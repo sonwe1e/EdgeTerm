@@ -415,6 +415,20 @@ fn cancellation_interrupts_a_blocked_ftp_data_socket() {
 
 #[test]
 fn ftp_upload_restarts_safely_when_append_is_unsupported() {
+    assert_upload_restarts_after_append_rejection(None);
+}
+
+#[test]
+fn ftp_upload_reads_append_rejection_after_passive_connection_errors() {
+    for kind in [
+        std::io::ErrorKind::ConnectionReset,
+        std::io::ErrorKind::ConnectionRefused,
+    ] {
+        assert_upload_restarts_after_append_rejection(Some(kind));
+    }
+}
+
+fn assert_upload_restarts_after_append_rejection(error: Option<std::io::ErrorKind>) {
     let f = Fixture::new(Server {
         fail_append: 1,
         reject_append: true,
@@ -434,9 +448,23 @@ fn ftp_upload_restarts_safely_when_append_is_unsupported() {
     assert!(copy(&job, &mut conn.stream, &item).is_err());
     drop(conn);
     let mut conn = connect(&job.profile).unwrap();
+    if let Some(kind) = error {
+        let connections = AtomicUsize::new(0);
+        conn.stream = conn.stream.passive_stream_builder(move |address| {
+            // The resume first reads the prefix via RETR, then sends APPE.
+            // Inject the OS error at that second data connection so this
+            // regression does not depend on the listener-close race.
+            if connections.fetch_add(1, Ordering::SeqCst) == 1 {
+                return Err(FtpError::ConnectionError(kind.into()));
+            }
+            TcpStream::connect(address).map_err(FtpError::ConnectionError)
+        });
+    }
     copy(&job, &mut conn.stream, &item).unwrap();
     assert_eq!(f.state.lock().files["/target"], bytes);
     assert_eq!(f.state.lock().received, [1024 * 1024, 2 * 1024 * 1024 + 17]);
+    assert_eq!(f.count("APPE"), 1);
+    assert_eq!(f.count("STOR"), 2);
 }
 
 /// A fresh small upload is the bulk-transfer case B10 streamlines. Each round

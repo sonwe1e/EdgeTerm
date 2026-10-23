@@ -592,9 +592,10 @@ fn upload(job: &Job, ftp: &mut FtpStream, cp: &mut Checkpoint, fresh: bool) -> T
         let append = ftp.append_with_stream(&cp.temporary);
         // SuppaFTP sends APPE before opening the passive data socket. A server
         // rejecting APPE may already have closed that listener, so the library
-        // returns ConnectionRefused before consuming the 5xx control reply.
+        // returns ConnectionRefused or ConnectionReset before consuming the
+        // 5xx control reply. Only that reply can justify restarting the upload.
         let append = match append {
-            Err(error) if matches!(&error, FtpError::ConnectionError(io) if io.kind() == std::io::ErrorKind::ConnectionRefused) =>
+            Err(error) if matches!(&error, FtpError::ConnectionError(io) if matches!(io.kind(), std::io::ErrorKind::ConnectionRefused | std::io::ErrorKind::ConnectionReset)) =>
             {
                 ftp.get_ref()
                     .set_read_timeout(Some(Duration::from_secs(3)))?;
