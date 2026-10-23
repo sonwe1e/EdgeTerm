@@ -38,10 +38,7 @@ vi.mock("../api", async (importOriginal) => {
     localList: vi.fn(async (p: string) => listing(p, "local")),
     localParent: vi.fn(async () => "/"),
     newTransferId: vi.fn(() => `transfer-${Math.random().toString(36).slice(2)}`),
-    sftpUpload: vi.fn(async () => undefined),
-    sftpDownload: vi.fn(async () => undefined),
-    sftpUploadDirectory: vi.fn(async () => undefined),
-    sftpDownloadDirectory: vi.fn(async () => undefined),
+    transferFiles: vi.fn(async () => undefined),
     sftpMkdir: vi.fn(async () => undefined),
     sftpRename: vi.fn(async () => undefined),
     sftpRemove: vi.fn(async () => undefined),
@@ -201,22 +198,32 @@ describe("the dual-pane browser across the 800px breakpoint", () => {
     // may fire (the same-side refusal, at the real drop call site).
     await drag(localFile, localFolder);
     await wait(150);
-    expect(api.sftpUpload).not.toHaveBeenCalled();
-    expect(api.sftpDownload).not.toHaveBeenCalled();
+    expect(api.transferFiles).not.toHaveBeenCalled();
 
-    // Local → remote: a real upload with the fixture paths.
+    // Local → remote: a real upload with the fixture paths, queued through
+    // the batch transfer API as one item.
     await drag(localFile, remoteList);
-    await vi.waitFor(() => expect(api.sftpUpload).toHaveBeenCalledTimes(1));
-    expect(vi.mocked(api.sftpUpload).mock.calls[0][1]).toBe("/local/file-local.txt");
-    expect(vi.mocked(api.sftpUpload).mock.calls[0][2]).toBe("/remote/file-local.txt");
-    expect(api.sftpDownload).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(api.transferFiles).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(api.transferFiles).mock.calls[0][1]).toEqual([
+      {
+        local: "/local/file-local.txt",
+        remote: "/remote/file-local.txt",
+        upload: true,
+        directory: false,
+      },
+    ]);
 
     // Remote → local: the download direction.
     await drag(remoteFile, localList);
-    await vi.waitFor(() => expect(api.sftpDownload).toHaveBeenCalledTimes(1));
-    expect(vi.mocked(api.sftpDownload).mock.calls[0][1]).toBe("/remote/file-remote.txt");
-    expect(vi.mocked(api.sftpDownload).mock.calls[0][2]).toBe("/local/file-remote.txt");
-    expect(api.sftpUpload).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(api.transferFiles).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(api.transferFiles).mock.calls[1][1]).toEqual([
+      {
+        local: "/local/file-remote.txt",
+        remote: "/remote/file-remote.txt",
+        upload: false,
+        directory: false,
+      },
+    ]);
   });
 
   it("Escape cancels a drag and the drop never fires", async () => {
@@ -241,8 +248,7 @@ describe("the dual-pane browser across the 800px breakpoint", () => {
     await mouse.moveTo(to.x, to.y);
     await mouse.release(to.x, to.y);
     await wait(150);
-    expect(api.sftpUpload).not.toHaveBeenCalled();
-    expect(api.sftpDownload).not.toHaveBeenCalled();
+    expect(api.transferFiles).not.toHaveBeenCalled();
   });
 
   it("hiding the pane mid-drag stops the drop", async () => {
@@ -267,8 +273,7 @@ describe("the dual-pane browser across the 800px breakpoint", () => {
     await mouse.moveTo(to.x, to.y);
     await mouse.release(to.x, to.y);
     await wait(150);
-    expect(api.sftpUpload).not.toHaveBeenCalled();
-    expect(api.sftpDownload).not.toHaveBeenCalled();
+    expect(api.transferFiles).not.toHaveBeenCalled();
   });
 });
 
