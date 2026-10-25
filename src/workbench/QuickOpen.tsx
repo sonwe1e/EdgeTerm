@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useT } from "../useT";
 import { fuzzyFilter } from "./model";
 import type { FileList } from "./types";
@@ -21,6 +21,7 @@ export function QuickOpen({
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const input = useRef<HTMLInputElement>(null);
+  const list = useRef<HTMLDivElement>(null);
   const results = useMemo(
     () => (files ? fuzzyFilter(query, files.files, 200) : []),
     [files, query],
@@ -32,7 +33,19 @@ export function QuickOpen({
 
   useEffect(() => {
     setActive(0);
-  }, [query]);
+  }, [results]);
+
+  useLayoutEffect(() => {
+    const container = list.current;
+    const row = container?.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (!container || !row) return;
+    const viewport = container.getBoundingClientRect();
+    const selected = row.getBoundingClientRect();
+    if (selected.top < viewport.top) container.scrollTop += selected.top - viewport.top;
+    else if (selected.bottom > viewport.bottom) {
+      container.scrollTop += selected.bottom - viewport.bottom;
+    }
+  }, [active, results]);
 
   const choose = (path: string) => {
     onOpen(path);
@@ -48,12 +61,13 @@ export function QuickOpen({
         aria-label={t("wb.quickOpen")}
         onMouseDown={(event) => event.stopPropagation()}
         onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing) return;
           if (event.key === "Escape") {
             event.preventDefault();
             onClose();
           } else if (event.key === "ArrowDown") {
             event.preventDefault();
-            setActive((index) => Math.min(results.length - 1, index + 1));
+            setActive((index) => Math.max(0, Math.min(results.length - 1, index + 1)));
           } else if (event.key === "ArrowUp") {
             event.preventDefault();
             setActive((index) => Math.max(0, index - 1));
@@ -73,7 +87,7 @@ export function QuickOpen({
           spellCheck={false}
           onChange={(event) => setQuery(event.target.value)}
         />
-        <div className="wb-quickopen-results" role="listbox">
+        <div ref={list} className="wb-quickopen-results" role="listbox">
           {results.length === 0 && (
             <div className="wb-quickopen-empty">
               <p className={error ? "is-error" : undefined}>

@@ -21,29 +21,40 @@ export function ProjectSearch({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLInputElement>(null);
-  const live = useRef(true);
+  const generation = useRef(0);
+  const pending = useRef(false);
 
   useEffect(() => {
     input.current?.focus();
+    pending.current = false;
+    setBusy(false);
+    setResult(null);
+    setError(null);
     return () => {
-      live.current = false;
+      generation.current++;
     };
-  }, []);
+  }, [sessionId, root]);
 
   const run = async () => {
-    if (!sessionId || !query.trim() || busy) return;
+    if (!sessionId || !query.trim() || pending.current) return;
+    const request = ++generation.current;
+    pending.current = true;
     setBusy(true);
     setError(null);
+    setResult(null);
     try {
       const found = await wb.search(sessionId, root, query.trim());
-      if (live.current) setResult(found);
+      if (generation.current === request) setResult(found);
     } catch (failure) {
-      if (live.current) {
+      if (generation.current === request) {
         setResult(null);
         setError(errorText(failure));
       }
     } finally {
-      if (live.current) setBusy(false);
+      if (generation.current === request) {
+        pending.current = false;
+        setBusy(false);
+      }
     }
   };
 
@@ -73,7 +84,7 @@ export function ProjectSearch({
             spellCheck={false}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "Enter") void run();
+              if (event.key === "Enter" && !event.nativeEvent.isComposing) void run();
             }}
           />
           <button
