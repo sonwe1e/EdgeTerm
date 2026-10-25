@@ -152,7 +152,14 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(function Sea
   // Find in Selection range), so they can be dropped when the search
   // moves elsewhere or ends.
   const searchedRef = useRef<string | null>(null);
-  const error = queryError(query, options);
+  const syntaxError = queryError(query, options);
+  const error =
+    syntaxError ??
+    (results?.error === "timeout"
+      ? t("search.timeout")
+      : results?.error === "unavailable"
+        ? t("search.unavailable")
+        : null);
 
   // Select the previous query on focus so a new search (typed or pasted)
   // replaces it instead of being appended to it. A query taken from the
@@ -242,7 +249,7 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(function Sea
   }, [activeId, clearSearch]);
 
   // Subscribed before the initial search below so its count is not missed:
-  // the engine reports results synchronously.
+  // plain-text results and the regex busy state are reported synchronously.
   useEffect(() => {
     if (!activeId) return;
     const listener = getController(activeId)?.onSearchResults(setResults);
@@ -341,11 +348,15 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(function Sea
 
   const status = notice
     ? t(notice)
-    : error
+    : syntaxError
       ? t("search.invalidRegex")
-      : query && results
-        ? formatResults(results)
-        : "";
+      : error
+        ? error
+        : results?.busy
+          ? t("search.searching")
+          : query && results
+            ? formatResults(results)
+            : "";
 
   return (
     <div ref={boxRef} className="terminal-search" role="search" onKeyDown={onKeyDown}>
@@ -371,9 +382,12 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(function Sea
       </div>
       <span
         className={`search-count${
-          notice || error || (query && results?.resultCount === 0) ? " is-empty" : ""
+          notice || error || (query && !results?.busy && results?.resultCount === 0)
+            ? " is-empty"
+            : ""
         }`}
         aria-live="polite"
+        title={error ?? undefined}
       >
         {status}
       </span>

@@ -13,6 +13,8 @@ export interface SearchResults {
   resultIndex: number;
   /** Highlighted match count, capped at SEARCH_HIGHLIGHT_LIMIT. */
   resultCount: number;
+  busy?: boolean;
+  error?: "timeout" | "unavailable";
 }
 
 /** The find box's toggles, VS Code's three (issue #95). */
@@ -72,7 +74,15 @@ function isWholeWord(text: string, start: number, end: number): boolean {
  * still finds the second word of `foobar foo`.
  */
 export function findInText(text: string, pattern: RegExp, wholeWord: boolean): [number, number][] {
-  const found: [number, number][] = [];
+  return [...iterateMatches(text, pattern, wholeWord)];
+}
+
+/** Streaming matches let callers stop at the highlight limit without allocating every hit. */
+export function* iterateMatches(
+  text: string,
+  pattern: RegExp,
+  wholeWord: boolean,
+): Generator<[number, number]> {
   pattern.lastIndex = 0;
   for (let match = pattern.exec(text); match; match = pattern.exec(text)) {
     const start = match.index;
@@ -81,9 +91,8 @@ export function findInText(text: string, pattern: RegExp, wholeWord: boolean): [
       pattern.lastIndex = start + 1;
       continue;
     }
-    found.push([start, end]);
+    yield [start, end];
   }
-  return found;
 }
 
 // The box also closes on Esc pressed in the terminal (issue #95), as VS

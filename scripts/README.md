@@ -165,6 +165,20 @@ followed by immediate byte-for-byte reads, a Unicode path, a nonzero typed-array
 offset, and file-read offsets. This exercises real WebView2 IPC and local disk;
 it does not validate remote transfer engines or other desktop platforms.
 
+### Terminal search responsiveness
+
+`./dev.ps1 script scripts/check-search-responsiveness.mjs <output.json>` starts
+an isolated Vite/Edge instance with one real xterm and synthetic text. It runs
+`^(a+)+$` against 32 `a` characters followed by `!`, probes renderer liveness
+from outside the page, checks the explicit timeout, then searches again.
+Failure exits nonzero and the browser/server are closed even when the renderer
+stalls. Reports include source hash, browser, OS and workload. This is a
+front-end liveness regression, not a native WebView2 or server benchmark.
+`src/test/terminalRegex.browser.test.ts` covers cancellation, search-box recovery,
+selection, wrapping, navigation past the highlight limit and bounded painting;
+`src/workbench/searchInteraction.browser.test.ts` covers StrictMode request
+completion and quick-open keyboard navigation with fixture IPC responses.
+
 ### Static checks
 
 `npm run format` applies Biome 2.5.15 formatting; `npm run format:check` checks

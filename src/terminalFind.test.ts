@@ -1,6 +1,20 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Terminal } from "@xterm/xterm";
 
+// jsdom has no workers. Keep the real matching algorithm; worker isolation,
+// cancellation and timeouts are covered by terminalRegex.browser.test.ts.
+vi.mock("./terminalRegexWorker", async () => {
+  const { searchRegex } = await import("./terminalRegex");
+  return {
+    TerminalRegexWorker: class {
+      cancel() {}
+      async search(request: Parameters<typeof searchRegex>[0]) {
+        return searchRegex(request);
+      }
+    },
+  };
+});
+
 vi.mock("./platform", () => ({
   HAS_TRAY: true,
   IS_MAC: true,
@@ -113,6 +127,27 @@ afterEach(() => {
 });
 
 describe("finding in the buffer", () => {
+  it("stops scanning a dense plain-text line when the highlight limit is reached", async () => {
+    const { term, find, last } = setup(200);
+    await write(term, "x ".repeat(4000));
+    const exec = RegExp.prototype.exec;
+    let searched = 0;
+    const spy = vi.spyOn(RegExp.prototype, "exec").mockImplementation(function (
+      this: RegExp,
+      text: string,
+    ) {
+      if (this.source === "x") searched++;
+      return exec.call(this, text);
+    });
+    try {
+      find.find("x", options(), true, true);
+      expect(last()).toEqual({ resultCount: 1000, resultIndex: 0 });
+      expect(searched).toBeLessThanOrEqual(1001);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("counts the matches and selects the first", async () => {
     const { term, find, last } = setup();
     await write(term, lines("one foo", "two", "foo foo"));
@@ -178,7 +213,7 @@ describe("finding in the buffer", () => {
   it("clears the highlights for an invalid regex and leaves the selection", async () => {
     const { term, find, last } = setup();
     await write(term, "foo (bar");
-    find.find("foo", options({ regex: true }), true, true);
+    await find.find("foo", options({ regex: true }), true, true);
 
     find.find("(", options({ regex: true }), true, true);
 

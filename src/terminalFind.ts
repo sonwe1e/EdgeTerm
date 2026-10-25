@@ -3,11 +3,13 @@ import type { IBufferCell, IDecoration, IDisposable, IMarker, Terminal } from "@
 import {
   compileQuery,
   DEFAULT_FIND_OPTIONS,
-  findInText,
+  iterateMatches,
   SEARCH_HIGHLIGHT_LIMIT,
   type FindOptions,
   type SearchResults,
 } from "./terminalSearch";
+import { TerminalRegexWorker } from "./terminalRegexWorker";
+import type { RegexMatch, RegexPosition, RegexRequest } from "./terminalRegex";
 
 /** Find highlight colors; decorations take #RRGGBB only. */
 export interface FindColors {
@@ -53,6 +55,9 @@ const compare = (a: Position, b: Position) => a.row - b.row || a.col - b.col;
 
 const sameSpan = (a: Span, b: Span) =>
   compare(a.start, b.start) === 0 && compare(a.end, b.end) === 0;
+
+const sameOptionalSpan = (a: Span | null, b: Span | null) =>
+  a === null || b === null ? a === b : sameSpan(a, b);
 
 const disposeAll = (items: IDisposable[]) => {
   for (const item of items) item.dispose();
@@ -107,10 +112,13 @@ export class TerminalFind {
   /** Logical lines by first row; reading the whole scrollback on every keystroke is the expensive part. */
   private lines = new Map<number, LogicalLine>();
   private refreshTimer: number | null = null;
-  private scopeSyncQueued = false;
+  private viewportSyncQueued = false;
   private cell: IBufferCell | undefined;
   private readonly listeners = new Set<(results: SearchResults) => void>();
   private readonly subscriptions: IDisposable[];
+  private readonly regexWorker = new TerminalRegexWorker();
+  private revision = 0;
+  private regexError: SearchResults["error"];
 
   constructor(
     private readonly term: Terminal,
@@ -120,13 +128,13 @@ export class TerminalFind {
       term.onWriteParsed(() => this.bufferChanged()),
       term.onResize(() => {
         this.bufferChanged();
-        this.queueScopeSync();
+        this.queueViewportSync();
       }),
       term.buffer.onBufferChange(() => {
         this.bufferChanged();
-        this.queueScopeSync();
+        this.queueViewportSync();
       }),
-      term.onScroll(() => this.queueScopeSync()),
+      term.onScroll(() => this.queueViewportSync()),
       term.onSelectionChange(() => {
         if (!this.settingSelection) this.selectionMoved = true;
       }),
@@ -144,6 +152,8 @@ export class TerminalFind {
    * when it still matches, instead of moving past it.
    */
   find(query: string, options: FindOptions, forward: boolean, incremental: boolean) {
+    this.cancelRegex();
+    this.regexError = undefined;
     let pattern: RegExp | null = null;
     try {
       if (query) pattern = compileQuery(query, options);
@@ -154,6 +164,7 @@ export class TerminalFind {
       this.stale ||
       pattern?.source !== this.pattern?.source ||
       pattern?.flags !== this.pattern?.flags ||
+      options.regex !== this.options.regex ||
       options.wholeWord !== this.options.wholeWord;
     this.pattern = pattern;
     this.options = { ...options };
@@ -163,6 +174,10 @@ export class TerminalFind {
     if (this.selectionMoved) {
       this.untrack(this.replaced);
       this.replaced = selection ? this.track(selection) : null;
+    }
+
+    if (pattern && options.regex) {
+      return this.findRegex(selection, forward, incremental, false);
     }
 
     if (changed) this.collect();
@@ -192,6 +207,7 @@ export class TerminalFind {
    * to, the selection the user had made before.
    */
   setScope(on: boolean): boolean {
+    this.cancelRegex();
     this.untrack(this.scope);
     this.scope = null;
     if (on) {
@@ -216,15 +232,18 @@ export class TerminalFind {
 
   /** Forget the buffer as read; for changes that come without a write. */
   bufferChanged() {
+    this.cancelRegex();
     this.stale = true;
     this.lines.clear();
-    if (!this.pattern) return;
+    if (!this.pattern || this.regexError) return;
     this.cancelRefresh();
     this.refreshTimer = window.setTimeout(() => this.refresh(), REFRESH_DELAY_MS);
   }
 
   /** Drop the highlights and the range. The selection, the last match, stays. */
   clear() {
+    this.cancelRegex();
+    this.regexError = undefined;
     this.cancelRefresh();
     this.pattern = null;
     this.matches = [];
@@ -330,11 +349,12 @@ export class TerminalFind {
   }
 
   /** The matches of one logical line that lie within `bounds`. */
-  private matchesIn(line: LogicalLine, bounds: Span): Span[] {
-    if (!this.pattern) return [];
-    return findInText(line.text, this.pattern, this.options.wholeWord)
-      .map(([start, end]) => this.toSpan(line, start, end))
-      .filter((span) => this.within(span, bounds));
+  private *matchesIn(line: LogicalLine, bounds: Span): Generator<Span> {
+    if (!this.pattern) return;
+    for (const [start, end] of iterateMatches(line.text, this.pattern, this.options.wholeWord)) {
+      const span = this.toSpan(line, start, end);
+      if (this.within(span, bounds)) yield span;
+    }
   }
 
   /** The matches from the top, as many as get highlighted. */
@@ -346,8 +366,8 @@ export class TerminalFind {
     for (let row = this.lineStart(bounds.start.row); row <= bounds.end.row; ) {
       const line = this.readLine(row);
       for (const span of this.matchesIn(line, bounds)) {
-        if (this.matches.length === SEARCH_HIGHLIGHT_LIMIT) return;
         this.matches.push(span);
+        if (this.matches.length === SEARCH_HIGHLIGHT_LIMIT) return;
       }
       row += line.starts.length;
     }
@@ -364,8 +384,9 @@ export class TerminalFind {
     if (from && compare(from, bounds.start) > 0) {
       for (let row = this.lineStart(from.row); row <= bounds.end.row; ) {
         const line = this.readLine(row);
-        const found = this.matchesIn(line, bounds).find((span) => compare(span.start, from) >= 0);
-        if (found) return found;
+        for (const span of this.matchesIn(line, bounds)) {
+          if (compare(span.start, from) >= 0) return span;
+        }
         row += line.starts.length;
       }
     }
@@ -381,10 +402,12 @@ export class TerminalFind {
       let row = this.lineStart(Math.min(until.row, bounds.end.row));
       for (;;) {
         const line = this.readLine(row);
-        const spans = this.matchesIn(line, bounds);
-        for (let index = spans.length - 1; index >= 0; index--) {
-          if (compare(spans[index].start, until) < 0) return spans[index];
+        let found: Span | null = null;
+        for (const span of this.matchesIn(line, bounds)) {
+          if (compare(span.start, until) >= 0) break;
+          found = span;
         }
+        if (found) return found;
         if (row <= bounds.start.row) return null;
         row = this.lineStart(row - 1);
       }
@@ -397,12 +420,118 @@ export class TerminalFind {
     const bounds = this.bounds();
     if (!bounds || at.row >= this.term.buffer.active.length) return null;
     const line = this.readLine(this.lineStart(at.row));
-    return this.matchesIn(line, bounds).find((span) => compare(span.start, at) === 0) ?? null;
+    for (const span of this.matchesIn(line, bounds)) {
+      const order = compare(span.start, at);
+      if (order === 0) return span;
+      if (order > 0) break;
+    }
+    return null;
+  }
+
+  private cancelRegex() {
+    this.revision++;
+    this.regexWorker.cancel();
+  }
+
+  /** Preserve full-line anchors while restricting matches to selection cell boundaries. */
+  private offsetOf(position: Position): RegexPosition {
+    const row = this.lineStart(position.row);
+    const line = this.readLine(row);
+    const text =
+      this.term.buffer.active.getLine(position.row)?.translateToString(false, 0, position.col) ??
+      "";
+    const index = position.row - row;
+    // readLine omits the spare cell before a wide character wraps. A
+    // selection ending there must not include that next row's character.
+    return {
+      row,
+      offset: Math.min(
+        (line.starts[index] ?? line.text.length) + text.length,
+        line.starts[index + 1] ?? line.text.length,
+      ),
+    };
+  }
+
+  private async findRegex(
+    selection: Span | null,
+    forward: boolean,
+    incremental: boolean,
+    refresh: boolean,
+  ) {
+    this.cancelRegex();
+    this.stale = true;
+    const revision = this.revision;
+    const bounds = this.bounds();
+    if (!this.pattern || !bounds) {
+      this.matches = [];
+      this.setActive(null);
+      this.redraw();
+      this.fire();
+      return;
+    }
+    this.fire({ busy: true });
+    const lines: RegexRequest["lines"] = [];
+    const snapshot = new Map<number, LogicalLine>();
+    const start = this.offsetOf(bounds.start);
+    const end = this.offsetOf(bounds.end);
+    const selected = selection
+      ? { start: this.offsetOf(selection.start), end: this.offsetOf(selection.end) }
+      : null;
+    let sliceStart = performance.now();
+    for (let row = start.row; row <= bounds.end.row; ) {
+      const line = this.readLine(row);
+      snapshot.set(row, line);
+      lines.push({
+        row,
+        text: line.text,
+        min: row === start.row ? start.offset : 0,
+        max: row === end.row ? end.offset : line.text.length,
+      });
+      row += line.starts.length;
+      if (performance.now() - sliceStart >= 4) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        if (revision !== this.revision) return;
+        sliceStart = performance.now();
+      }
+    }
+    const response = await this.regexWorker.search({
+      source: this.pattern.source,
+      flags: this.pattern.flags,
+      wholeWord: this.options.wholeWord,
+      lines,
+      selection: selected,
+      forward,
+      incremental,
+      refresh,
+    });
+    if (revision !== this.revision || !response) return;
+    if ("error" in response) {
+      this.regexError = response.error;
+      this.matches = [];
+      this.setActive(null);
+      this.redraw();
+      this.fire({ error: response.error });
+      return;
+    }
+    const span = (match: RegexMatch) =>
+      this.toSpan(snapshot.get(match.row)!, match.start, match.end);
+    this.matches = response.matches.map(span);
+    const target = response.target ? span(response.target) : null;
+    this.stale = false;
+    this.setActive(target);
+    this.redraw();
+    // User selection made while a worker was running owns the caret.
+    if (!refresh && sameOptionalSpan(selection, this.selection())) this.select(target);
+    this.fire();
   }
 
   /** Recompute after output, keeping the current match while it still matches. */
   private refresh() {
     this.cancelRefresh();
+    if (this.pattern && this.options.regex) {
+      if (!this.regexError) void this.findRegex(this.spanOf(this.active), true, true, true);
+      return;
+    }
     this.collect();
     const current = this.spanOf(this.active);
     const still = current && this.matchAt(current.start);
@@ -417,10 +546,11 @@ export class TerminalFind {
     this.refreshTimer = null;
   }
 
-  private fire() {
+  private fire(state: Pick<SearchResults, "busy" | "error"> = {}) {
     const results = {
       resultIndex: this.activeIndex,
       resultCount: this.matches.length,
+      ...state,
     };
     for (const listener of this.listeners) listener(results);
   }
@@ -502,12 +632,14 @@ export class TerminalFind {
 
   // --- decorations ------------------------------------------------------------
 
-  /** One decoration per row the span covers. */
+  /** Paint only visible rows, including when a single match spans the scrollback. */
   private decorate(span: Span, color: string, layer: "top" | "bottom") {
     const buffer = this.term.buffer.active;
     const cursor = buffer.baseY + buffer.cursorY;
     const decorations: IDecoration[] = [];
-    for (let row = span.start.row; row <= span.end.row; row++) {
+    const first = Math.max(span.start.row, buffer.viewportY);
+    const last = Math.min(span.end.row, buffer.viewportY + this.term.rows - 1);
+    for (let row = first; row <= last; row++) {
       const x = row === span.start.row ? span.start.col : 0;
       const end = row === span.end.row ? span.end.col : this.term.cols;
       if (end <= x) continue;
@@ -564,13 +696,14 @@ export class TerminalFind {
     this.activeDecorations = span ? this.decorate(span, this.colors.activeMatch, "top") : [];
   }
 
-  private queueScopeSync() {
-    if (!this.scope || this.scopeSyncQueued) return;
-    this.scopeSyncQueued = true;
+  private queueViewportSync() {
+    if ((!this.scope && !this.matches.length) || this.viewportSyncQueued) return;
+    this.viewportSyncQueued = true;
     // onScroll fires once per line of a flood; one pass per parse slice
     // is enough, and a microtask still lands before the paint.
     queueMicrotask(() => {
-      this.scopeSyncQueued = false;
+      this.viewportSyncQueued = false;
+      if (!this.stale) this.redraw();
       this.syncScope();
     });
   }

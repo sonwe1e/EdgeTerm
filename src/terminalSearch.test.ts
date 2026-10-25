@@ -2,6 +2,19 @@ import { act, createElement as h } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// jsdom boundary only; browser tests exercise the real worker lifecycle.
+vi.mock("./terminalRegexWorker", async () => {
+  const { searchRegex } = await import("./terminalRegex");
+  return {
+    TerminalRegexWorker: class {
+      cancel() {}
+      async search(request: Parameters<typeof searchRegex>[0]) {
+        return searchRegex(request);
+      }
+    },
+  };
+});
+
 vi.mock("./platform", () => ({
   HAS_TRAY: true,
   IS_MAC: false,
