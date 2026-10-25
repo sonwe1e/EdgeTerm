@@ -31,7 +31,9 @@ it("keeps each session reserved until its own pending send settles after a sibli
     await Promise.resolve();
   }
 
-  await expect(sendUnits(["pending"], ["after\n"], "lf", newStopSignal()))
-    .resolves.toEqual({ sent: ["pending"], skipped: [] });
+  await expect(sendUnits(["pending"], ["after\n"], "lf", newStopSignal())).resolves.toEqual({
+    sent: ["pending"],
+    skipped: [],
+  });
   expect(api.writeSession).toHaveBeenLastCalledWith("pending", "after\n");
 });

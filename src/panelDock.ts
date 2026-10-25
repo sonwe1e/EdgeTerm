@@ -10,11 +10,7 @@ import type { PanelName } from "./store";
 export type PanelDock = "left" | "right" | "bottom";
 export type PanelDocks = Record<PanelDock, PanelName[]>;
 
-export const PANEL_NAMES: readonly PanelName[] = [
-  "sessions",
-  "filer",
-  "sender",
-];
+export const PANEL_NAMES: readonly PanelName[] = ["sessions", "filer", "sender"];
 export const DOCK_NAMES: readonly PanelDock[] = ["left", "right", "bottom"];
 
 /** Display names for the three tool panels. */
@@ -70,8 +66,7 @@ export function movePanel(
 export const samePanelDocks = (a: PanelDocks, b: PanelDocks): boolean =>
   DOCK_NAMES.every(
     (dock) =>
-      a[dock].length === b[dock].length &&
-      a[dock].every((name, index) => b[dock][index] === name),
+      a[dock].length === b[dock].length && a[dock].every((name, index) => b[dock][index] === name),
   );
 
 /**

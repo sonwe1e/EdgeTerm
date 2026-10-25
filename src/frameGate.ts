@@ -7,9 +7,7 @@
  * gesture that ends can neither lag a frame behind nor fire after it is
  * over.
  */
-export function createFrameGate<T>(
-  apply: (value: T) => void,
-): {
+export function createFrameGate<T>(apply: (value: T) => void): {
   /** Records `value` as the one the next frame will apply. */
   schedule: (value: T) => void;
   /** Cancels the scheduled frame and applies anything pending now. */

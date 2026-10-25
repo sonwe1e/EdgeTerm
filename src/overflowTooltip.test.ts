@@ -1,11 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-import {
-  hideOverflowTooltip,
-  installOverflowTooltip,
-  truncatedLabel,
-} from "./overflowTooltip";
+import { hideOverflowTooltip, installOverflowTooltip, truncatedLabel } from "./overflowTooltip";
 
 // jsdom does no layout, so a label's widths are set by hand.
 function label(text: string, scrollWidth: number, clientWidth = 100) {
@@ -23,13 +19,9 @@ function label(text: string, scrollWidth: number, clientWidth = 100) {
 }
 
 const over = (target: Element) =>
-  target.dispatchEvent(
-    new MouseEvent("pointerover", { bubbles: true }) as PointerEvent,
-  );
+  target.dispatchEvent(new MouseEvent("pointerover", { bubbles: true }) as PointerEvent);
 const out = (target: Element, relatedTarget: Element | null) =>
-  target.dispatchEvent(
-    new MouseEvent("pointerout", { bubbles: true, relatedTarget }),
-  );
+  target.dispatchEvent(new MouseEvent("pointerout", { bubbles: true, relatedTarget }));
 const tip = () => document.querySelector<HTMLElement>(".overflow-tooltip");
 
 beforeAll(() => installOverflowTooltip());
@@ -70,9 +62,7 @@ describe("overflow tooltip", () => {
     expect(tip()?.classList.contains("is-visible") ?? false).toBe(false);
     vi.advanceTimersByTime(1);
     expect(tip()?.classList.contains("is-visible")).toBe(true);
-    expect(tip()?.querySelector("div")?.textContent).toBe(
-      "a-very-long-session-name",
-    );
+    expect(tip()?.querySelector("div")?.textContent).toBe("a-very-long-session-name");
     expect(tip()?.querySelector("span")?.textContent).toBe("user@example:22");
     // The native tooltip would cover ours: the title is lifted meanwhile.
     expect(row.hasAttribute("title")).toBe(false);

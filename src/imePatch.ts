@@ -155,11 +155,7 @@ class ImeInput implements CompositionHelperLike {
 
   /** Replaces `CoreBrowserTerminal._inputEvent`. */
   inputEvent(ev: InputEvent): boolean {
-    if (
-      !ev.data ||
-      ev.inputType !== "insertText" ||
-      this.term.options.screenReaderMode
-    ) {
+    if (!ev.data || ev.inputType !== "insertText" || this.term.options.screenReaderMode) {
       return false;
     }
     // Text inserted while a composition is active, or while its committed
@@ -201,9 +197,7 @@ class ImeInput implements CompositionHelperLike {
    */
   updateCompositionElements(dontRecurse?: boolean) {
     if (!this.composing) return;
-    const screen = this.term.element?.querySelector<HTMLElement>(
-      ".xterm-screen",
-    );
+    const screen = this.term.element?.querySelector<HTMLElement>(".xterm-screen");
     const { cols, rows } = this.term;
     if (screen && cols > 0 && rows > 0) {
       const buf = this.term.buffer.active;
@@ -245,10 +239,7 @@ class ImeInput implements CompositionHelperLike {
    */
   private sendUnsent(includeComposition = false) {
     const value = this.textarea.value;
-    const end =
-      this.composing && !includeComposition
-        ? this.compositionStart
-        : value.length;
+    const end = this.composing && !includeComposition ? this.compositionStart : value.length;
     const start = Math.min(this.sent, value.length);
     const text = value.substring(start, Math.max(start, end));
     this.sent = Math.max(start, end);

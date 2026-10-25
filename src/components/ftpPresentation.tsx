@@ -141,10 +141,7 @@ export function FileBrowser({
   // The keyboard model of the list: one Tab stop on the listbox, a cursor
   // announced through aria-activedescendant, selection following the
   // cursor. Mirrors the Filer panel's list (see useFileListKeyboard).
-  const optionId = useCallback(
-    (path: string) => ftpOptionId(side, path),
-    [side],
-  );
+  const optionId = useCallback((path: string) => ftpOptionId(side, path), [side]);
   const { activeDescendant, onKeyDown, onRowSelect } = useFileListKeyboard({
     entries: sortedEntries,
     rowHeight: 29,
@@ -223,7 +220,11 @@ export function FileBrowser({
           <ToolButton label={t("filer.home")} onClick={onHome} disabled={loading}>
             <Icon name="home" />
           </ToolButton>
-          <ToolButton label={t("filer.parentFolder")} onClick={onParent} disabled={loading || !path}>
+          <ToolButton
+            label={t("filer.parentFolder")}
+            onClick={onParent}
+            disabled={loading || !path}
+          >
             <Icon name="arrow-up" />
           </ToolButton>
           <ToolButton label={t("filer.refresh")} onClick={onRefresh} disabled={loading}>

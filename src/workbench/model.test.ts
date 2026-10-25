@@ -83,7 +83,12 @@ const data: WorkspaceData = {
   runs: [],
 };
 
-const run = (id: string, workspaceId: string, experimentId: string, startedAt: number): RunRecord => ({
+const run = (
+  id: string,
+  workspaceId: string,
+  experimentId: string,
+  startedAt: number,
+): RunRecord => ({
   id,
   workspaceId,
   experimentId,

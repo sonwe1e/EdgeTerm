@@ -47,7 +47,9 @@ async function main() {
 
   const si = await ev(`Math.max(0, document.querySelectorAll(".splitter.is-vertical").length - 1)`);
   console.log("using splitter index", si);
-  const x0 = await ev(`Math.round(document.querySelectorAll(".splitter.is-vertical")[${si}].getBoundingClientRect().x)`);
+  const x0 = await ev(
+    `Math.round(document.querySelectorAll(".splitter.is-vertical")[${si}].getBoundingClientRect().x)`,
+  );
   await fire("pointerdown", x0, si);
   for (let i = 1; i <= 10; i++) {
     await fire("pointermove", x0 + i * 8, si);
@@ -60,9 +62,14 @@ async function main() {
   console.log("pane sizes seen:", await ev(`JSON.stringify(window.__sizes.slice(0, 60))`));
   console.log(
     "status:",
-    await ev(`(() => { const s = document.querySelector("[class*=status]")?.textContent || ""; const m = s.match(/Window (\\d+)×(\\d+)/); return m ? m[1] + "x" + m[2] : s.slice(0, 50); })()`),
+    await ev(
+      `(() => { const s = document.querySelector("[class*=status]")?.textContent || ""; const m = s.match(/Window (\\d+)×(\\d+)/); return m ? m[1] + "x" + m[2] : s.slice(0, 50); })()`,
+    ),
   );
   process.exit(0);
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

@@ -55,9 +55,7 @@ const { port } = server.httpServer.address();
 const base = `http://127.0.0.1:${port}`;
 
 const channel = process.env.PERF_BROWSER?.trim();
-const browser = await chromium.launch(
-  channel ? { channel, headless: true } : { headless: true },
-);
+const browser = await chromium.launch(channel ? { channel, headless: true } : { headless: true });
 try {
   for (const theme of ["dark", "light"]) {
     const context = await browser.newContext({ viewport: { width: 980, height: 420 } });

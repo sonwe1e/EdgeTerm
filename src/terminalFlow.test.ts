@@ -4,10 +4,20 @@ import { TerminalController } from "./terminal";
 
 const controllers: TerminalController[] = [];
 function createController() {
-  const c = new TerminalController("flow-test", {
-    onData() {}, onResize() {}, onStatus() {}, onCommand() {},
-    onCommandState() {}, suggest: () => [], forgetSuggestion() {},
-  }, 13, 100);
+  const c = new TerminalController(
+    "flow-test",
+    {
+      onData() {},
+      onResize() {},
+      onStatus() {},
+      onCommand() {},
+      onCommandState() {},
+      suggest: () => [],
+      forgetSuggestion() {},
+    },
+    13,
+    100,
+  );
   controllers.push(c);
   return c;
 }
@@ -21,7 +31,8 @@ describe("terminal output and resize scheduling", () => {
     const c = createController();
     const bytes = new TextEncoder().encode("你好 🙂\r\nfinal tail");
     const consumed: number[] = [];
-    for (let i = 0; i < bytes.length; i++) c.write(bytes.subarray(i, i + 1), () => consumed.push(i));
+    for (let i = 0; i < bytes.length; i++)
+      c.write(bytes.subarray(i, i + 1), () => consumed.push(i));
     await new Promise<void>((resolve) => c.term.write("", resolve));
     expect(consumed).toEqual(Array.from({ length: bytes.length }, (_, i) => i));
     expect(c.term.buffer.active.getLine(0)?.translateToString(true)).toBe("你好 🙂");
@@ -52,7 +63,9 @@ describe("terminal output and resize scheduling", () => {
 
   it("does not wait for terminal data when a transfer owns the stream", async () => {
     const c = createController();
-    const internals = c as unknown as { zmodem: { isActive(): boolean; consume(bytes: Uint8Array): void } };
+    const internals = c as unknown as {
+      zmodem: { isActive(): boolean; consume(bytes: Uint8Array): void };
+    };
     vi.spyOn(internals.zmodem, "isActive").mockReturnValue(true);
     const consume = vi.spyOn(internals.zmodem, "consume").mockImplementation(() => {});
     const raw = Uint8Array.of(1, 2, 3);
@@ -70,9 +83,8 @@ describe("terminal output and resize scheduling", () => {
     };
     const cancel = vi.spyOn(internals.zmodem, "cancel").mockReturnValue(true);
     internals.showTransferNotice("ZMODEM: waiting for a file offer…", "active");
-    const button = internals.transferNotice.querySelector<HTMLButtonElement>(
-      ".transfer-notice-cancel",
-    );
+    const button =
+      internals.transferNotice.querySelector<HTMLButtonElement>(".transfer-notice-cancel");
     expect(button).not.toBeNull();
     expect(button?.hidden).toBe(false);
     button?.click();
@@ -81,5 +93,4 @@ describe("terminal output and resize scheduling", () => {
     internals.showTransferNotice("ZMODEM: transfer canceled", "success");
     expect(button?.hidden).toBe(true);
   });
-
 });

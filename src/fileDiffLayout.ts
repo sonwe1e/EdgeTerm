@@ -36,7 +36,8 @@ export function diffRowAt(offsets: readonly number[], top: number): number {
 export function estimateDiffHeight(row: DiffRow, width: number, wrap: boolean): number {
   if (!wrap) return DIFF_ROW_HEIGHT;
   const columns = Math.max(1, Math.floor((width / 2 - 124) / 7.3));
-  const length = (text: string | null) => (text ?? "").replace(/\t/g, "    ").replace(/[^\x00-\x7f]/g, "xx").length;
+  const length = (text: string | null) =>
+    (text ?? "").replace(/\t/g, "    ").replace(/[^\x00-\x7f]/g, "xx").length;
   const lines = Math.max(1, Math.ceil(Math.max(length(row.left), length(row.right)) / columns));
   return lines * DIFF_LINE_HEIGHT + 8;
 }

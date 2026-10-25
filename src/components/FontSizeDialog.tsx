@@ -1,12 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { listSystemFonts, type FontFamily } from "../api";
-import {
-  fontChoices,
-  fontStack,
-  installedFonts,
-  symbolFallbacks,
-} from "../fonts";
+import { fontChoices, fontStack, installedFonts, symbolFallbacks } from "../fonts";
 import {
   BUFFER_FONT_SIZE,
   PANEL_FONT_SIZE,
@@ -35,8 +30,7 @@ interface Props extends DisplaySettings {
   onClose: () => void;
 }
 
-const clamp = (value: number, min: number, max: number) =>
-  Math.min(max, Math.max(min, value));
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 export function FontSizeDialog({
   panelFontSize,
@@ -65,9 +59,7 @@ export function FontSizeDialog({
   // The saved family is kept in its list even where it is not installed, so a
   // setting brought in from another machine stays visible.
   const [probedUi] = useState(() => installedFonts("ui", panelFontFamily));
-  const [probedMono] = useState(() =>
-    installedFonts("mono", bufferFontFamily),
-  );
+  const [probedMono] = useState(() => installedFonts("mono", bufferFontFamily));
   // The backend reads the font directories meanwhile: every family it finds
   // joins the suggestions when it answers, and the probe stands on its own if
   // it never does (see fontChoices). The terminal's icon fallback takes the
@@ -86,10 +78,7 @@ export function FontSizeDialog({
       live = false;
     };
   }, []);
-  const uiFonts = useMemo(
-    () => fontChoices("ui", probedUi, systemFonts),
-    [probedUi, systemFonts],
-  );
+  const uiFonts = useMemo(() => fontChoices("ui", probedUi, systemFonts), [probedUi, systemFonts]);
   const monoFonts = useMemo(
     () => fontChoices("mono", probedMono, systemFonts),
     [probedMono, systemFonts],
@@ -149,7 +138,9 @@ export function FontSizeDialog({
           });
         }}
       >
-        <div className="dialog-header" id="display-settings-title">{t("fontDialog.title")}</div>
+        <div className="dialog-header" id="display-settings-title">
+          {t("fontDialog.title")}
+        </div>
         <div className="dialog-body font-size-dialog-body">
           <label className="font-size-setting">
             <span>
@@ -248,9 +239,7 @@ export function FontSizeDialog({
               onChange={(event) => setCursor(event.target.value as CursorStyle)}
             >
               <option value="block">{t("fontDialog.cursorBlock")}</option>
-              <option value="underline">
-                {t("fontDialog.cursorUnderline")}
-              </option>
+              <option value="underline">{t("fontDialog.cursorUnderline")}</option>
               <option value="bar">{t("fontDialog.cursorBar")}</option>
             </select>
             <label className="cursor-blink">

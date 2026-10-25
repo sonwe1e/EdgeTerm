@@ -46,16 +46,18 @@ export class ZmodemInput {
       }
       // Passing an Array avoids the library's extra Uint8Array copy.
       this.sentry.consume(Array.from(bytes));
-      this.remaining = lastCan < 0
-        ? Math.max(0, this.remaining - bytes.length)
-        : Math.max(0, 21 - (bytes.length - lastCan + 2));
+      this.remaining =
+        lastCan < 0
+          ? Math.max(0, this.remaining - bytes.length)
+          : Math.max(0, 21 - (bytes.length - lastCan + 2));
       if (!this.sentry.get_confirmed_session() && this.remaining === 0) {
         this.sentry = null;
       }
     }
     // Store numbers, not a tiny view retaining a potentially large IPC buffer.
-    this.tail = bytes.length > 1
-      ? [bytes[bytes.length - 2], bytes[bytes.length - 1]]
-      : [...this.tail.slice(-1), bytes[0]];
+    this.tail =
+      bytes.length > 1
+        ? [bytes[bytes.length - 2], bytes[bytes.length - 1]]
+        : [...this.tail.slice(-1), bytes[0]];
   }
 }

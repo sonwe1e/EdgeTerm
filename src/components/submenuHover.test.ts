@@ -12,9 +12,7 @@ import {
   type Triangle,
 } from "./submenuHover";
 
-(
-  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-).IS_REACT_ACT_ENVIRONMENT = true;
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // The View menu's Theme row and its submenu in viewport pixels: the row runs
 // from x 7 to 217 at y 300–328; the submenu opens 4px to its right and one
@@ -83,11 +81,7 @@ function Harness(): ReactElement {
         ...submenu.entryProps(key),
       },
       createElement("div", { className: "menu-entry" }, label),
-      createElement(
-        "div",
-        { className: "menu-dropdown menu-submenu" },
-        ...children,
-      ),
+      createElement("div", { className: "menu-dropdown menu-submenu" }, ...children),
     );
   return createElement(
     "div",
@@ -116,30 +110,20 @@ describe("useSubmenuHover", () => {
     if (!found) throw new Error(`no button labelled ${label}`);
     return found;
   };
-  const isOpen = (key: string) =>
-    element(`[data-key="${key}"]`).classList.contains("is-open");
+  const isOpen = (key: string) => element(`[data-key="${key}"]`).classList.contains("is-open");
 
   /**
    * Moves the pointer from one element to another (null: outside the menu)
    * the way the browser reports it: the boundary events, then the move.
    * React derives mouseenter / mouseleave from mouseout's relatedTarget.
    */
-  const pointerMove = (
-    from: Element | null,
-    to: Element | null,
-    x: number,
-    y: number,
-  ) => {
+  const pointerMove = (from: Element | null, to: Element | null, x: number, y: number) => {
     const init = { bubbles: true, clientX: x, clientY: y };
     act(() => {
       if (from && from !== to) {
-        from.dispatchEvent(
-          new MouseEvent("mouseout", { ...init, relatedTarget: to }),
-        );
+        from.dispatchEvent(new MouseEvent("mouseout", { ...init, relatedTarget: to }));
       } else if (!from && to) {
-        to.dispatchEvent(
-          new MouseEvent("mouseover", { ...init, relatedTarget: null }),
-        );
+        to.dispatchEvent(new MouseEvent("mouseover", { ...init, relatedTarget: null }));
       }
       (to ?? document.body).dispatchEvent(new MouseEvent("mousemove", init));
     });

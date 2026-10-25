@@ -27,23 +27,17 @@ const options = (overrides: Partial<FindOptions> = {}): FindOptions => ({
 });
 
 const matches = (text: string, query: string, opts = options()) =>
-  findInText(text, compileQuery(query, opts), opts.wholeWord).map(([s, e]) =>
-    text.slice(s, e),
-  );
+  findInText(text, compileQuery(query, opts), opts.wholeWord).map(([s, e]) => text.slice(s, e));
 
 const offsets = (text: string, query: string, opts = options()) =>
   findInText(text, compileQuery(query, opts), opts.wholeWord).map(([s]) => s);
 
 describe("matching a line", () => {
   it("ignores case unless Match Case is on", () => {
-    expect(matches("Error error ERROR", "error")).toEqual([
-      "Error",
+    expect(matches("Error error ERROR", "error")).toEqual(["Error", "error", "ERROR"]);
+    expect(matches("Error error ERROR", "error", options({ caseSensitive: true }))).toEqual([
       "error",
-      "ERROR",
     ]);
-    expect(
-      matches("Error error ERROR", "error", options({ caseSensitive: true })),
-    ).toEqual(["error"]);
   });
 
   it("takes plain text literally", () => {

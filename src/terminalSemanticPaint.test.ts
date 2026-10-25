@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./platform", () => ({ HAS_TRAY: true,
-  IS_MAC: true,
-  IS_WINDOWS: false,
-}));
+vi.mock("./platform", () => ({ HAS_TRAY: true, IS_MAC: true, IS_WINDOWS: false }));
 
 import { TerminalController } from "./terminal";
 
@@ -66,7 +63,9 @@ function bg(controller: TerminalController, row: number, col: number): string | 
 
 /** Lets the backlog pass run: it waits for output to pause, then slices. */
 async function settle(controller: TerminalController) {
-  const internals = (controller as unknown as { semantic: { backlogTimer: number | null; scheduleBacklog(): void } }).semantic;
+  const internals = (
+    controller as unknown as { semantic: { backlogTimer: number | null; scheduleBacklog(): void } }
+  ).semantic;
   controller.setVisible(true);
   internals.scheduleBacklog();
   for (let i = 0; i < 200 && internals.backlogTimer !== null; i += 1) {
@@ -80,7 +79,8 @@ const IP_COLOR_REF = "#5fd7c0";
 
 describe("resize and the semantic colors", () => {
   const backlogPending = (controller: TerminalController) =>
-    (controller as unknown as { semantic: { backlogTimer: number | null } }).semantic.backlogTimer !== null;
+    (controller as unknown as { semantic: { backlogTimer: number | null } }).semantic
+      .backlogTimer !== null;
 
   it("does not recolor the history when only the height changes", async () => {
     const controller = createController();

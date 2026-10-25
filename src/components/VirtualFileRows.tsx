@@ -11,12 +11,13 @@ const VIRTUAL_THRESHOLD = 200;
 const OVERSCAN = 6;
 
 /** The visible interval, with a few rows on either side for smooth scrolling. */
-export function fileRowRange(
-  count: number, top: number, height: number, pitch: number,
-) {
+export function fileRowRange(count: number, top: number, height: number, pitch: number) {
   top = Math.min(top, Math.max(0, count * pitch - height));
   const start = Math.max(0, Math.min(count, Math.floor(Math.max(0, top) / pitch) - OVERSCAN));
-  const end = Math.min(count, Math.max(start, Math.ceil(Math.max(0, top + height) / pitch) + OVERSCAN));
+  const end = Math.min(
+    count,
+    Math.max(start, Math.ceil(Math.max(0, top + height) / pitch) + OVERSCAN),
+  );
   return { start, end };
 }
 
@@ -40,7 +41,7 @@ export function VirtualFileRows<T extends { path: string }>({
   const [viewport, setViewport] = useState({ top: 0, height: 600 });
   const [captured, setCaptured] = useState<string | null>(null);
   const capturedIndex = useMemo(
-    () => captured === null ? -1 : entries.findIndex((entry) => entry.path === captured),
+    () => (captured === null ? -1 : entries.findIndex((entry) => entry.path === captured)),
     [entries, captured],
   );
   const measureRef = useRef<() => void>(() => {});
@@ -51,10 +52,13 @@ export function VirtualFileRows<T extends { path: string }>({
     const scroller = element.parentElement!;
     let frame: number | null = null;
     const measure = () => {
-      const offset = element.getBoundingClientRect().top
-        - scroller.getBoundingClientRect().top + scroller.scrollTop - scroller.clientTop;
+      const offset =
+        element.getBoundingClientRect().top -
+        scroller.getBoundingClientRect().top +
+        scroller.scrollTop -
+        scroller.clientTop;
       const next = { top: scroller.scrollTop - offset, height: scroller.clientHeight };
-      setViewport((old) => old.top === next.top && old.height === next.height ? old : next);
+      setViewport((old) => (old.top === next.top && old.height === next.height ? old : next));
     };
     measureRef.current = measure;
     const schedule = () => {
@@ -112,10 +116,9 @@ export function VirtualFileRows<T extends { path: string }>({
   // reset. Content above the rows arrives through the sibling observer above.
   // A parent re-render with unchanged inputs — a tab switch, a transfer tick —
   // must not force a synchronous layout of every mounted list.
-  useLayoutEffect(
-    () => { measureRef.current(); },
-    [entries.length, rowHeight, resetKey],
-  );
+  useLayoutEffect(() => {
+    measureRef.current();
+  }, [entries.length, rowHeight, resetKey]);
 
   const { start, end } = virtual
     ? fileRowRange(entries.length, viewport.top, viewport.height, rowHeight)
@@ -128,7 +131,10 @@ export function VirtualFileRows<T extends { path: string }>({
     ? { position: "relative", height: entries.length * rowHeight, overflowAnchor: "none" }
     : undefined;
   return (
-    <div ref={root} style={style} className="virtual-file-rows"
+    <div
+      ref={root}
+      style={style}
+      className="virtual-file-rows"
       onGotPointerCapture={(event) => {
         const slot = (event.target as HTMLElement).closest<HTMLElement>("[data-file-path]");
         if (slot) setCaptured(slot.dataset.filePath ?? null);
@@ -136,8 +142,14 @@ export function VirtualFileRows<T extends { path: string }>({
       onLostPointerCapture={() => setCaptured(null)}
     >
       {indices.map((index) => (
-        <div key={entries[index].path} data-file-path={entries[index].path}
-          style={virtual ? { position: "absolute", top: index * rowHeight, width: "100%", height: rowHeight } : undefined}
+        <div
+          key={entries[index].path}
+          data-file-path={entries[index].path}
+          style={
+            virtual
+              ? { position: "absolute", top: index * rowHeight, width: "100%", height: rowHeight }
+              : undefined
+          }
         >
           {children(entries[index], index)}
         </div>

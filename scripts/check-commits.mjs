@@ -24,12 +24,33 @@ const IGNORED_FOR_SIZE = [/(^|\/)package-lock\.json$/, /(^|\/)Cargo\.lock$/];
 
 // Absolute or unprovable words in a subject. Word-bounded for English.
 export const OVERCLAIM_WORDS = [
-  "all", "every", "entire", "entirely", "whole", "fully", "completely",
-  "always", "never", "reliable", "robust", "seamless", "guarantee",
-  "guaranteed", "guarantees", "eliminate", "eliminates",
+  "all",
+  "every",
+  "entire",
+  "entirely",
+  "whole",
+  "fully",
+  "completely",
+  "always",
+  "never",
+  "reliable",
+  "robust",
+  "seamless",
+  "guarantee",
+  "guaranteed",
+  "guarantees",
+  "eliminate",
+  "eliminates",
 ];
 export const OVERCLAIM_WORDS_ZH = [
-  "全部", "所有", "彻底", "完全", "已解决", "根治", "永不", "一劳永逸",
+  "全部",
+  "所有",
+  "彻底",
+  "完全",
+  "已解决",
+  "根治",
+  "永不",
+  "一劳永逸",
 ];
 
 const QUANT_CLAIM = /\b\d+(\.\d+)?\s*(x|×|%|ms|s|fps|倍)(?![a-z])|\b\d+(\.\d+)?\s*倍/i;
@@ -63,35 +84,59 @@ const item = (level, rule, message) => ({ level, rule, message });
 
 /** Message rules (R9). `commit` = { subject, body } or { message }. */
 export function lintMessage(commit) {
-  const msg = commit.message !== undefined
-    ? parseMessage(commit.message)
-    : parseMessage(`${commit.subject ?? ""}\n\n${commit.body ?? ""}`);
+  const msg =
+    commit.message !== undefined
+      ? parseMessage(commit.message)
+      : parseMessage(`${commit.subject ?? ""}\n\n${commit.body ?? ""}`);
   const out = [];
   const { subject, fields, prefix } = msg;
 
   if (!prefix || !ALLOWED_PREFIXES.includes(prefix) || msg.scoped) {
-    out.push(item("ERROR", "prefix",
-      `subject must start with one of ${ALLOWED_PREFIXES.map((p) => p + ":").join(" ")} (no scope)`));
+    out.push(
+      item(
+        "ERROR",
+        "prefix",
+        `subject must start with one of ${ALLOWED_PREFIXES.map((p) => p + ":").join(" ")} (no scope)`,
+      ),
+    );
   }
   if (subject.length > MAX_SUBJECT) {
-    out.push(item("ERROR", "subject-length", `subject is ${subject.length} chars (max ${MAX_SUBJECT})`));
+    out.push(
+      item("ERROR", "subject-length", `subject is ${subject.length} chars (max ${MAX_SUBJECT})`),
+    );
   }
 
   if (prefix === "perf") {
     const measured = fields.Measured;
     const unmeasured = fields.Unmeasured;
     if (measured === undefined && unmeasured === undefined) {
-      out.push(item("ERROR", "perf-evidence",
-        "perf: needs a `Measured: baseline … / candidate … / env …` line or an explicit `Unmeasured: <reason>` line"));
+      out.push(
+        item(
+          "ERROR",
+          "perf-evidence",
+          "perf: needs a `Measured: baseline … / candidate … / env …` line or an explicit `Unmeasured: <reason>` line",
+        ),
+      );
     } else if (measured !== undefined) {
       if (!measured || !/baseline/i.test(measured) || !/candidate/i.test(measured)) {
-        out.push(item("WARN", "perf-evidence",
-          "Measured: should name baseline, candidate and environment"));
+        out.push(
+          item(
+            "WARN",
+            "perf-evidence",
+            "Measured: should name baseline, candidate and environment",
+          ),
+        );
       }
     } else {
       if (!unmeasured) out.push(item("ERROR", "perf-evidence", "Unmeasured: needs a reason"));
       if (QUANT_CLAIM.test(subject)) {
-        out.push(item("ERROR", "perf-evidence", "Unmeasured perf commit makes a quantitative claim in the subject"));
+        out.push(
+          item(
+            "ERROR",
+            "perf-evidence",
+            "Unmeasured perf commit makes a quantitative claim in the subject",
+          ),
+        );
       }
     }
   }
@@ -99,10 +144,17 @@ export function lintMessage(commit) {
   if (prefix === "fix") {
     const tests = fields.Tests;
     if (tests === undefined) {
-      out.push(item("ERROR", "fix-tests",
-        "fix: needs `Tests: <regression test, shown failing on old code>` or `Tests: none — <reason>`"));
+      out.push(
+        item(
+          "ERROR",
+          "fix-tests",
+          "fix: needs `Tests: <regression test, shown failing on old code>` or `Tests: none — <reason>`",
+        ),
+      );
     } else if (/^none\b/i.test(tests) && !/^none\s*[—–:-]+\s*\S/i.test(tests)) {
-      out.push(item("ERROR", "fix-tests", "`Tests: none` must give a reason (`Tests: none — <reason>`)"));
+      out.push(
+        item("ERROR", "fix-tests", "`Tests: none` must give a reason (`Tests: none — <reason>`)"),
+      );
     } else if (!tests) {
       out.push(item("ERROR", "fix-tests", "Tests: line is empty"));
     }
@@ -110,11 +162,22 @@ export function lintMessage(commit) {
 
   const words = findOverclaims(subject);
   if (words.length) {
-    out.push(item("WARN", "overclaim",
-      `subject uses absolute wording (${words.join(", ")}); keep it only if the diff proves it`));
+    out.push(
+      item(
+        "WARN",
+        "overclaim",
+        `subject uses absolute wording (${words.join(", ")}); keep it only if the diff proves it`,
+      ),
+    );
   }
   if (/\baddress(es|ed)?\b.*\breview\b|评审|review (fix|feedback)/i.test(subject)) {
-    out.push(item("WARN", "review-followup", "review follow-up commit: must be re-reviewed against each item, not by title"));
+    out.push(
+      item(
+        "WARN",
+        "review-followup",
+        "review follow-up commit: must be re-reviewed against each item, not by title",
+      ),
+    );
   }
   return out;
 }
@@ -161,8 +224,13 @@ export function parseNameStatus(text) {
 }
 
 const area = (p) =>
-  p.startsWith("src-tauri/") ? "backend" : p.startsWith("src/") ? "frontend"
-    : p.startsWith("docs/") || /(^|\/)README[^/]*\.md$/i.test(p) || p === "AGENTS.md" ? "docs" : "other";
+  p.startsWith("src-tauri/")
+    ? "backend"
+    : p.startsWith("src/")
+      ? "frontend"
+      : p.startsWith("docs/") || /(^|\/)README[^/]*\.md$/i.test(p) || p === "AGENTS.md"
+        ? "docs"
+        : "other";
 
 /**
  * Scope heuristics (R8), warn-only. `commit` = { subject, body, numstat,
@@ -180,26 +248,56 @@ export function scopeHeuristics(commit, { typecheck = false } = {}) {
   const hasScope = msg.fields.Scope !== undefined && msg.fields.Scope.length > 0;
 
   if (!hasScope && (lines > LIMITS.changedLines || files > LIMITS.files)) {
-    out.push(item("WARN", "size",
-      `${lines} changed lines in ${files} files (limits ${LIMITS.changedLines}/${LIMITS.files}); split it or add a \`Scope:\` line explaining why it cannot be split`));
+    out.push(
+      item(
+        "WARN",
+        "size",
+        `${lines} changed lines in ${files} files (limits ${LIMITS.changedLines}/${LIMITS.files}); split it or add a \`Scope:\` line explaining why it cannot be split`,
+      ),
+    );
   }
   const areas = new Set(numstat.map((r) => area(r.path)));
   if (!hasScope && areas.has("frontend") && areas.has("backend") && areas.has("docs")) {
-    out.push(item("WARN", "areas", "touches src/, src-tauri/ and docs together; check it is one concern"));
+    out.push(
+      item("WARN", "areas", "touches src/, src-tauri/ and docs together; check it is one concern"),
+    );
   }
   if (msg.prefix === "docs") {
     const code = numstat.filter((r) => area(r.path) === "frontend" || area(r.path) === "backend");
-    if (code.length) out.push(item("WARN", "docs-with-code", `docs: commit changes code (${code[0].path}${code.length > 1 ? ", …" : ""})`));
+    if (code.length)
+      out.push(
+        item(
+          "WARN",
+          "docs-with-code",
+          `docs: commit changes code (${code[0].path}${code.length > 1 ? ", …" : ""})`,
+        ),
+      );
   }
   // \b does not work after CJK characters, so the Chinese openers are separate.
-  if (/^(also|additionally|plus)\b/im.test(msg.body) || /^(另外|顺带|顺便|同时还)/m.test(msg.body)) {
-    out.push(item("WARN", "second-concern", "body discloses a second concern (\"Also …\"); split it out or justify with `Scope:`"));
+  if (
+    /^(also|additionally|plus)\b/im.test(msg.body) ||
+    /^(另外|顺带|顺便|同时还)/m.test(msg.body)
+  ) {
+    out.push(
+      item(
+        "WARN",
+        "second-concern",
+        'body discloses a second concern ("Also …"); split it out or justify with `Scope:`',
+      ),
+    );
   }
   if (!typecheck) {
-    const gone = names.filter((r) => (r.status === "D" || r.status === "R") && /\.(m?[jt]sx?)$/.test(r.from ?? r.path));
+    const gone = names.filter(
+      (r) => (r.status === "D" || r.status === "R") && /\.(m?[jt]sx?)$/.test(r.from ?? r.path),
+    );
     if (gone.length) {
-      out.push(item("INFO", "moved-source",
-        `deletes/renames ${gone.map((r) => r.from ?? r.path).join(", ")}; run with --typecheck to prove importers changed in the same commit`));
+      out.push(
+        item(
+          "INFO",
+          "moved-source",
+          `deletes/renames ${gone.map((r) => r.from ?? r.path).join(", ")}; run with --typecheck to prove importers changed in the same commit`,
+        ),
+      );
     }
   }
   return out;
@@ -207,13 +305,23 @@ export function scopeHeuristics(commit, { typecheck = false } = {}) {
 
 /** Summarise tsc output: error count and first lines. */
 export function summarizeTsc(output, max = 5) {
-  const errors = String(output).split(/\r?\n/).filter((l) => /error TS\d+/.test(l)).map((l) => l.trim());
+  const errors = String(output)
+    .split(/\r?\n/)
+    .filter((l) => /error TS\d+/.test(l))
+    .map((l) => l.trim());
   return { count: errors.length, first: errors.slice(0, max) };
 }
 
 /** Parse CLI arguments. Throws on unknown flags. */
 export function parseArgs(argv) {
-  const opts = { range: null, typecheck: false, lint: false, json: false, includeMerges: false, cleanStale: false };
+  const opts = {
+    range: null,
+    typecheck: false,
+    lint: false,
+    json: false,
+    includeMerges: false,
+    cleanStale: false,
+  };
   for (const a of argv) {
     if (a === "--typecheck") opts.typecheck = true;
     else if (a === "--lint") opts.lint = true;
@@ -262,10 +370,17 @@ function readCommit(root, sha) {
   const [short, parents, message] = meta.split("\0");
   const msg = parseMessage(message);
   const numstat = parseNumstat(git(["show", "--numstat", "-M", "--format=", sha], root).stdout);
-  const nameStatus = parseNameStatus(git(["show", "--name-status", "-M", "--format=", sha], root).stdout);
+  const nameStatus = parseNameStatus(
+    git(["show", "--name-status", "-M", "--format=", sha], root).stdout,
+  );
   return {
-    sha, short, merge: parents.trim().split(/\s+/).length > 1,
-    subject: msg.subject, body: msg.body, numstat, nameStatus,
+    sha,
+    short,
+    merge: parents.trim().split(/\s+/).length > 1,
+    subject: msg.subject,
+    body: msg.body,
+    numstat,
+    nameStatus,
   };
 }
 
@@ -274,7 +389,9 @@ const worktreeBase = (root) => path.join(root, ".tmp", "commit-check");
 function isRegisteredWorktree(root, dir) {
   const list = git(["worktree", "list", "--porcelain"], root).stdout;
   const norm = (p) => path.resolve(p).replace(/\\/g, "/").toLowerCase();
-  return list.split(/\r?\n/).some((l) => l.startsWith("worktree ") && norm(l.slice(9)) === norm(dir));
+  return list
+    .split(/\r?\n/)
+    .some((l) => l.startsWith("worktree ") && norm(l.slice(9)) === norm(dir));
 }
 
 function removeWorktree(root, dir) {
@@ -286,7 +403,11 @@ function removeWorktree(root, dir) {
 // Remove .tmp/commit-check and .tmp if they are empty; never deletes content.
 function pruneEmptyDirs(root) {
   for (const dir of [worktreeBase(root), path.join(root, ".tmp")]) {
-    try { if (existsSync(dir) && readdirSync(dir).length === 0) rmdirSync(dir); } catch { /* keep */ }
+    try {
+      if (existsSync(dir) && readdirSync(dir).length === 0) rmdirSync(dir);
+    } catch {
+      /* keep */
+    }
   }
 }
 
@@ -301,12 +422,16 @@ function checkStale(root, cleanStale) {
   const leftovers = readdirSync(base);
   if (!leftovers.length) return;
   if (!cleanStale) {
-    throw new Error(`${base} has leftovers from a previous run (${leftovers.join(", ")}); rerun with --clean-stale or inspect them`);
+    throw new Error(
+      `${base} has leftovers from a previous run (${leftovers.join(", ")}); rerun with --clean-stale or inspect them`,
+    );
   }
   for (const name of leftovers) {
     const dir = path.join(base, name);
     if (!isRegisteredWorktree(root, dir)) {
-      throw new Error(`${dir} is not a registered git worktree; refusing to delete it, remove it by hand`);
+      throw new Error(
+        `${dir} is not a registered git worktree; refusing to delete it, remove it by hand`,
+      );
     }
     if (!removeWorktree(root, dir)) throw new Error(`could not remove stale worktree ${dir}`);
   }
@@ -321,27 +446,46 @@ function typecheckCommit(root, commit, active, opts) {
     const tsc = path.join(root, "node_modules", "typescript", "bin", "tsc");
     if (!existsSync(tsc)) throw new Error(`missing ${tsc}; run npm ci in the main checkout`);
     const r = spawnSync(process.execPath, [tsc, "--noEmit", "-p", dir], {
-      cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024,
+      cwd: root,
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
     });
     const output = `${r.stdout ?? ""}${r.stderr ?? ""}`;
     let lint = { skipped: true, reason: "commit predates biome.json" };
     if (opts.lint && existsSync(path.join(dir, "biome.json"))) {
       const biome = path.join(root, "node_modules", "@biomejs", "biome", "bin", "biome");
-      const checked = spawnSync(process.execPath, [biome, "lint"], { cwd: dir, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-      lint = { pass: checked.status === 0, output: `${checked.stdout ?? ""}${checked.stderr ?? ""}`.slice(0, 8000) };
+      const checked = spawnSync(process.execPath, [biome, "lint"], {
+        cwd: dir,
+        encoding: "utf8",
+        maxBuffer: 64 * 1024 * 1024,
+      });
+      lint = {
+        pass: checked.status === 0,
+        output: `${checked.stdout ?? ""}${checked.stderr ?? ""}`.slice(0, 8000),
+      };
     }
-    return { lint, pass: r.status === 0, ...summarizeTsc(output), raw: r.status === 0 ? "" : output.trim().split(/\r?\n/).slice(0, 5) };
+    return {
+      lint,
+      pass: r.status === 0,
+      ...summarizeTsc(output),
+      raw: r.status === 0 ? "" : output.trim().split(/\r?\n/).slice(0, 5),
+    };
   } finally {
     const removed = removeWorktree(root, dir);
     active.delete(dir);
-    if (!removed) process.stderr.write(`warning: could not remove ${dir}; run with --clean-stale\n`);
+    if (!removed)
+      process.stderr.write(`warning: could not remove ${dir}; run with --clean-stale\n`);
   }
 }
 
 function format(results) {
   const lines = [];
   for (const r of results) {
-    const worst = r.items.some((i) => i.level === "ERROR") ? "FAIL" : r.items.some((i) => i.level === "WARN") ? "WARN" : "ok";
+    const worst = r.items.some((i) => i.level === "ERROR")
+      ? "FAIL"
+      : r.items.some((i) => i.level === "WARN")
+        ? "WARN"
+        : "ok";
     lines.push(`${worst.padEnd(4)} ${r.short} ${r.subject}`);
     for (const i of r.items) lines.push(`     ${i.level.padEnd(5)} [${i.rule}] ${i.message}`);
   }
@@ -354,15 +498,23 @@ function format(results) {
 async function main(argv) {
   const opts = parseArgs(argv);
   if (opts.help) {
-    console.log("usage: node scripts/check-commits.mjs [<base>..<head>] [--typecheck] [--lint] [--json] [--include-merges] [--clean-stale]");
+    console.log(
+      "usage: node scripts/check-commits.mjs [<base>..<head>] [--typecheck] [--lint] [--json] [--include-merges] [--clean-stale]",
+    );
     return 0;
   }
   const root = git(["rev-parse", "--show-toplevel"], process.cwd()).stdout.trim();
   const range = opts.range ?? defaultRange(root);
   const shas = listCommits(root, range, opts.includeMerges);
   const active = new Set();
-  const cleanup = () => { for (const d of active) removeWorktree(root, d); pruneEmptyDirs(root); };
-  const onSignal = () => { cleanup(); process.exit(130); };
+  const cleanup = () => {
+    for (const d of active) removeWorktree(root, d);
+    pruneEmptyDirs(root);
+  };
+  const onSignal = () => {
+    cleanup();
+    process.exit(130);
+  };
   process.on("SIGINT", onSignal);
   process.on("SIGTERM", onSignal);
 
@@ -380,7 +532,13 @@ async function main(argv) {
         if (tc.lint.pass === false) items.push(item("ERROR", "lint", tc.lint.output));
         if (!tc.pass) {
           const detail = tc.first.length ? tc.first : tc.raw;
-          items.push(item("ERROR", "typecheck", `tsc --noEmit failed (${tc.count} errors)${detail.length ? ":\n       " + detail.join("\n       ") : ""}`));
+          items.push(
+            item(
+              "ERROR",
+              "typecheck",
+              `tsc --noEmit failed (${tc.count} errors)${detail.length ? ":\n       " + detail.join("\n       ") : ""}`,
+            ),
+          );
         }
       }
       results.push(result);
@@ -394,10 +552,14 @@ async function main(argv) {
   return results.some((r) => r.items.some((i) => i.level === "ERROR")) ? 1 : 0;
 }
 
-const invokedDirectly = process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url;
+const invokedDirectly =
+  process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url;
 if (invokedDirectly) {
   main(process.argv.slice(2)).then(
     (code) => process.exit(code),
-    (err) => { console.error(`check-commits: ${err.message}`); process.exit(2); },
+    (err) => {
+      console.error(`check-commits: ${err.message}`);
+      process.exit(2);
+    },
   );
 }

@@ -109,6 +109,8 @@
 
 ## 开发与复审
 
+代码排版、编辑器配置、常用命令和调试入口见[代码风格与开发调试](docs/code-style.zh-CN.md)。
+
 修改代码前请阅读[工程规范](docs/engineering-standards.zh-CN.md)、[测试与验收方案](docs/test-plan.zh-CN.md)及[逐提交复审记录](docs/audit-2026-10-14.zh-CN.md)。复审记录区分已验证行为、夹具测量和仍需真实环境补测的项目。
 
 ## 许可证

@@ -30,7 +30,9 @@ describe("validateProfile", () => {
   });
 
   it("keeps the serial and local rules", () => {
-    expect(validateProfile({ id: "console", name: "console", kind: "serial", baudRate: 9600 })).toBeNull();
+    expect(
+      validateProfile({ id: "console", name: "console", kind: "serial", baudRate: 9600 }),
+    ).toBeNull();
     expect(validateProfile({ id: "console", name: "console", kind: "serial" })).toContain("Baud");
     expect(validateProfile({ id: "shell", name: "shell", kind: "local" })).toBeNull();
   });
@@ -47,9 +49,7 @@ describe("invalidField", () => {
     expect(invalidField(ssh({ host: "   " }))).toBe("host");
     expect(invalidField(ssh({ port: 70000 }))).toBe("port");
     expect(invalidField(ssh({ locale: "not a locale" }))).toBe("locale");
-    expect(invalidField({ id: "console", name: "console", kind: "serial" })).toBe(
-      "baudRate",
-    );
+    expect(invalidField({ id: "console", name: "console", kind: "serial" })).toBe("baudRate");
     expect(invalidField({ id: "shell", name: "shell", kind: "local" })).toBeNull();
   });
 });

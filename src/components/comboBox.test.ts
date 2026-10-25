@@ -4,9 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ComboBox, comboMatches } from "./ComboBox";
 
-(
-  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-).IS_REACT_ACT_ENVIRONMENT = true;
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const RATES = ["9600", "19200", "115200", "230400", "921600"];
 
@@ -49,29 +47,20 @@ describe("ComboBox", () => {
   }
 
   const input = () => container.querySelector("input") as HTMLInputElement;
-  const toggle = () =>
-    container.querySelector(".combo-toggle") as HTMLButtonElement;
+  const toggle = () => container.querySelector(".combo-toggle") as HTMLButtonElement;
   const rows = () =>
-    [...document.querySelectorAll(".combo-list .combo-option")].map(
-      (row) => row.textContent,
-    );
-  const activeRow = () =>
-    document.querySelector(".combo-option.is-active")?.textContent ?? null;
+    [...document.querySelectorAll(".combo-list .combo-option")].map((row) => row.textContent);
+  const activeRow = () => document.querySelector(".combo-option.is-active")?.textContent ?? null;
 
   const type = (text: string) =>
     act(() => {
-      const setter = Object.getOwnPropertyDescriptor(
-        HTMLInputElement.prototype,
-        "value",
-      )!.set!;
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
       setter.call(input(), text);
       input().dispatchEvent(new Event("input", { bubbles: true }));
     });
   const key = (name: string) =>
     act(() => {
-      input().dispatchEvent(
-        new KeyboardEvent("keydown", { key: name, bubbles: true }),
-      );
+      input().dispatchEvent(new KeyboardEvent("keydown", { key: name, bubbles: true }));
     });
 
   beforeEach(() => {
@@ -95,9 +84,10 @@ describe("ComboBox", () => {
     type("9");
     expect(rows()).toEqual(["9600", "921600"]);
     expect(activeRow()).toBeNull();
-    expect(
-      [...document.querySelectorAll(".combo-match")].map((m) => m.textContent),
-    ).toEqual(["9", "9"]);
+    expect([...document.querySelectorAll(".combo-match")].map((m) => m.textContent)).toEqual([
+      "9",
+      "9",
+    ]);
 
     key("ArrowDown");
     key("ArrowDown");
@@ -112,9 +102,7 @@ describe("ComboBox", () => {
     act(() => toggle().click());
     expect(rows()).toEqual(RATES);
     expect(activeRow()).toBe("115200");
-    expect(
-      document.querySelectorAll(".combo-option .menu-check .icon"),
-    ).toHaveLength(1);
+    expect(document.querySelectorAll(".combo-option .menu-check .icon")).toHaveLength(1);
     expect(document.activeElement).toBe(input());
 
     act(() => toggle().click());
@@ -134,9 +122,7 @@ describe("ComboBox", () => {
 
     key("ArrowDown");
     act(() => {
-      document.body.dispatchEvent(
-        new MouseEvent("mousedown", { bubbles: true }),
-      );
+      document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
     });
     expect(rows()).toEqual([]);
   });

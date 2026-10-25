@@ -12,11 +12,21 @@ import { EMPTY_SELECTION, type FileSelection } from "../fileBatch";
 import { FileBrowser } from "../components/ftpPresentation";
 import type { FileEntry } from "../types";
 
-afterEach(async () => { await browserAfterEach(); vi.restoreAllMocks(); });
+afterEach(async () => {
+  await browserAfterEach();
+  vi.restoreAllMocks();
+});
 
 const entry = (name: string, isDir = false): FileEntry => ({
-  name, path: `/remote/${name}`, isDir, isSymlink: false, size: 100, modified: 1700000000,
-  permissions: null, owner: null, group: null,
+  name,
+  path: `/remote/${name}`,
+  isDir,
+  isSymlink: false,
+  size: 100,
+  modified: 1700000000,
+  permissions: null,
+  owner: null,
+  group: null,
 });
 const entries = [entry("folder-a", true), entry("file-b.txt"), entry("file-c.txt")];
 const optionId = (path: string) => `ftp-option-remote-${encodeURIComponent(path)}`;
@@ -70,16 +80,19 @@ describe("FTP/SFTP dual-pane keyboard (IX-03)", () => {
     await userEvent.keyboard("{ArrowDown}");
     await twoFrames();
     expect(list().getAttribute("aria-activedescendant")).toBe(optionId("/remote/folder-a"));
-    expect(document.getElementById(optionId("/remote/folder-a"))?.getAttribute("aria-selected"))
-      .toBe("true");
+    expect(
+      document.getElementById(optionId("/remote/folder-a"))?.getAttribute("aria-selected"),
+    ).toBe("true");
 
     await userEvent.keyboard("{ArrowDown}");
     await twoFrames();
     expect(list().getAttribute("aria-activedescendant")).toBe(optionId("/remote/file-b.txt"));
-    expect(document.getElementById(optionId("/remote/file-b.txt"))?.getAttribute("aria-selected"))
-      .toBe("true");
-    expect(document.getElementById(optionId("/remote/folder-a"))?.getAttribute("aria-selected"))
-      .toBe("false");
+    expect(
+      document.getElementById(optionId("/remote/file-b.txt"))?.getAttribute("aria-selected"),
+    ).toBe("true");
+    expect(
+      document.getElementById(optionId("/remote/folder-a"))?.getAttribute("aria-selected"),
+    ).toBe("false");
 
     await userEvent.keyboard("{Home}");
     await twoFrames();
@@ -98,9 +111,12 @@ describe("FTP/SFTP dual-pane keyboard (IX-03)", () => {
     await userEvent.keyboard("{ArrowDown}{Enter}");
     await twoFrames();
     expect(onActivate).toHaveBeenCalledTimes(1);
-    expect(onActivate).toHaveBeenCalledWith(expect.objectContaining({
-      path: "/remote/folder-a", isDir: true,
-    }));
+    expect(onActivate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: "/remote/folder-a",
+        isDir: true,
+      }),
+    );
   });
 
   it("dispatches the menu key on the cursor row, the way the Filer panel does", async () => {

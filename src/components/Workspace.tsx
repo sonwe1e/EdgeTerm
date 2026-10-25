@@ -133,15 +133,9 @@ export function Workspace({ onNewSession }: Props) {
   const resize = (splitter: SplitterRect, deltaPx: number) => {
     const box = ref.current?.getBoundingClientRect();
     if (!box) return;
-    const size =
-      (splitter.direction === "row" ? box.width : box.height) * splitter.extent;
+    const size = (splitter.direction === "row" ? box.width : box.height) * splitter.extent;
     if (size <= 0) return;
-    resizeLayout(
-      splitter.path,
-      splitter.index,
-      deltaPx / size,
-      MIN_PANE_PX / size,
-    );
+    resizeLayout(splitter.path, splitter.index, deltaPx / size, MIN_PANE_PX / size);
   };
 
   return (
@@ -150,9 +144,7 @@ export function Workspace({ onNewSession }: Props) {
         const rect = rects.panes.get(pane.id);
         if (!rect) return null;
         const zone =
-          dropTarget?.paneId === pane.id && dropTarget.zone !== "strip"
-            ? dropTarget.zone
-            : null;
+          dropTarget?.paneId === pane.id && dropTarget.zone !== "strip" ? dropTarget.zone : null;
         return (
           <div
             key={pane.id}
@@ -163,12 +155,7 @@ export function Workspace({ onNewSession }: Props) {
             <div className="pane-stack" data-pane-id={pane.id}>
               {tabs.length === 0 && (
                 <div className="term-empty">
-                  <img
-                    className="term-empty-icon"
-                    src={appIcon}
-                    alt=""
-                    draggable={false}
-                  />
+                  <img className="term-empty-icon" src={appIcon} alt="" draggable={false} />
                   <h1>EdgeTerm</h1>
                   <p className="term-empty-hint">
                     {newSessionKey ? (
@@ -193,26 +180,20 @@ export function Workspace({ onNewSession }: Props) {
                         // The visible text is label + chord + hint; the
                         // accessible name keeps the label and its chord, the
                         // way the bar's own buttons name themselves.
-                        aria-label={
-                          entry.chord ? `${entry.label} (${entry.chord})` : entry.label
-                        }
+                        aria-label={entry.chord ? `${entry.label} (${entry.chord})` : entry.label}
                         onClick={entry.action}
                       >
                         <span className="term-empty-entry-label">
                           {entry.label}
                           {entry.chord && <kbd>{entry.chord}</kbd>}
                         </span>
-                        <span className="term-empty-entry-hint">
-                          {entry.hint}
-                        </span>
+                        <span className="term-empty-entry-hint">{entry.hint}</span>
                       </button>
                     ))}
                   </div>
                 </div>
               )}
-              {zone && (
-                <div className={`pane-drop is-${zone}`} aria-hidden="true" />
-              )}
+              {zone && <div className={`pane-drop is-${zone}`} aria-hidden="true" />}
             </div>
           </div>
         );

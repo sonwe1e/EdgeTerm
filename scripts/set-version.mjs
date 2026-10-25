@@ -1,7 +1,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
 const version = process.argv[2];
-const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+const semverPattern =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
 if (!version || !semverPattern.test(version)) {
   console.error("Usage: npm run version:set -- <major.minor.patch>");
@@ -33,7 +34,8 @@ const updatedCargoManifest = cargoManifest.replace(cargoManifestVersionPattern, 
 writeFileSync(cargoManifestPath, updatedCargoManifest);
 
 const cargoLock = readFileSync(cargoLockPath, "utf8");
-const cargoLockVersionPattern = /(\[\[package\]\]\r?\nname = "edgeterm"\r?\nversion = ")[^"]+("\r?\n)/;
+const cargoLockVersionPattern =
+  /(\[\[package\]\]\r?\nname = "edgeterm"\r?\nversion = ")[^"]+("\r?\n)/;
 if (!cargoLockVersionPattern.test(cargoLock)) {
   throw new Error("Could not update the EdgeTerm version in src-tauri/Cargo.lock");
 }

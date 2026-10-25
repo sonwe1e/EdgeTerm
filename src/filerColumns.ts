@@ -110,8 +110,7 @@ export function suggestColumnWidth(options: {
     if (width > widest) widest = width;
   }
   ctx.font = caption.font;
-  const captionWidth =
-    ctx.measureText(caption.text.toUpperCase()).width + caption.arrow + 6;
+  const captionWidth = ctx.measureText(caption.text.toUpperCase()).width + caption.arrow + 6;
   const fit = Math.ceil(Math.max(widest, captionWidth)) + 8;
   if (!Number.isFinite(fit) || fit <= 0) return null;
   return Math.round(Math.min(max, Math.max(min ?? 0, fit)));
@@ -141,9 +140,7 @@ export function parseFilerColumns(value: unknown): FilerColumns | null {
 
 export function loadFilerColumns(): FilerColumns {
   try {
-    const parsed = parseFilerColumns(
-      JSON.parse(localStorage.getItem(FILER_COLUMNS_KEY) ?? "null"),
-    );
+    const parsed = parseFilerColumns(JSON.parse(localStorage.getItem(FILER_COLUMNS_KEY) ?? "null"));
     if (parsed) return parsed;
   } catch {
     // A corrupt or blocked entry falls through to the defaults.

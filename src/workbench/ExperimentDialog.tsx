@@ -22,10 +22,10 @@ export function ExperimentDialog({
     (item) => item.kind === "baseline" && item.id !== experiment?.id,
   );
   const [name, setName] = useState(experiment?.name ?? "");
-  const [kind, setKind] = useState<ExperimentKind>(experiment?.kind ?? (baselines.length ? "variant" : "baseline"));
-  const [baselineId, setBaselineId] = useState(
-    experiment?.baselineId ?? baselines[0]?.id ?? "",
+  const [kind, setKind] = useState<ExperimentKind>(
+    experiment?.kind ?? (baselines.length ? "variant" : "baseline"),
   );
+  const [baselineId, setBaselineId] = useState(experiment?.baselineId ?? baselines[0]?.id ?? "");
   const [root, setRoot] = useState(experiment?.root ?? "");
   const [branch, setBranch] = useState(experiment?.branch ?? "");
   const [notes, setNotes] = useState(experiment?.notes ?? "");
@@ -63,7 +63,12 @@ export function ExperimentDialog({
   };
 
   return (
-    <ModalDialog open onClose={onClose} ariaLabel={t("wb.newExperiment")} contentClassName="wb-form-dialog">
+    <ModalDialog
+      open
+      onClose={onClose}
+      ariaLabel={t("wb.newExperiment")}
+      contentClassName="wb-form-dialog"
+    >
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -72,22 +77,41 @@ export function ExperimentDialog({
       >
         <div className="wb-dialog-header">
           <strong>{experiment ? t("wb.editExperiment") : t("wb.newExperiment")}</strong>
-          <button type="button" className="wb-icon-button" aria-label={t("common.close")} onClick={onClose}>
+          <button
+            type="button"
+            className="wb-icon-button"
+            aria-label={t("common.close")}
+            onClick={onClose}
+          >
             ×
           </button>
         </div>
         <div className="wb-form">
           <label className="wb-field">
             <span>{t("wb.experimentName")}</span>
-            <input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="ablation A" />
+            <input
+              autoFocus
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="ablation A"
+            />
           </label>
           <label className="wb-field">
             <span>{t("wb.experimentKind")}</span>
-            <select value={kind} onChange={(event) => setKind(event.target.value as ExperimentKind)}>
-              <option value="baseline" disabled={baselines.length > 0 && experiment?.kind !== "baseline"}>
+            <select
+              value={kind}
+              onChange={(event) => setKind(event.target.value as ExperimentKind)}
+            >
+              <option
+                value="baseline"
+                disabled={baselines.length > 0 && experiment?.kind !== "baseline"}
+              >
                 {t("wb.baseline")}
               </option>
-              <option value="variant" disabled={baselines.length === 0 && experiment?.kind !== "variant"}>
+              <option
+                value="variant"
+                disabled={baselines.length === 0 && experiment?.kind !== "variant"}
+              >
                 {t("wb.variant")}
               </option>
             </select>
@@ -117,7 +141,11 @@ export function ExperimentDialog({
           </label>
           <label className="wb-field">
             <span>{t("wb.branch")}</span>
-            <input value={branch} spellCheck={false} onChange={(event) => setBranch(event.target.value)} />
+            <input
+              value={branch}
+              spellCheck={false}
+              onChange={(event) => setBranch(event.target.value)}
+            />
           </label>
           <label className="wb-field">
             <span>{t("wb.notes")}</span>
@@ -129,7 +157,11 @@ export function ExperimentDialog({
             />
           </label>
         </div>
-        {error && <p className="wb-dialog-error" role="alert">{error}</p>}
+        {error && (
+          <p className="wb-dialog-error" role="alert">
+            {error}
+          </p>
+        )}
         <div className="wb-dialog-actions">
           <button type="button" className="btn" onClick={onClose}>
             {t("common.cancel")}

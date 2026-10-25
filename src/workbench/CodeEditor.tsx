@@ -116,9 +116,7 @@ export function CodeEditor({
   return (
     <div className="wb-editor-host">
       <div className="wb-editor-mount" ref={host} aria-label={doc.path} />
-      {!ready && !failed && (
-        <div className="wb-editor-loading">{t("wb.loading")}</div>
-      )}
+      {!ready && !failed && <div className="wb-editor-loading">{t("wb.loading")}</div>}
       {failed && (
         <div className="wb-editor-loading" role="alert">
           {failed}

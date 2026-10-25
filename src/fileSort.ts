@@ -54,11 +54,12 @@ function compareNames(a: string, b: string): number {
  * column sorting existed. Every current default (and every column click)
  * goes through the collator, so file2 precedes file10.
  */
-export function sortFileEntries(
-  entries: readonly FileEntry[],
-  sort: FileSort,
-): FileEntry[] {
-  if (!sort.explicit && sort.key === DEFAULT_FILE_SORT.key && sort.direction === DEFAULT_FILE_SORT.direction) {
+export function sortFileEntries(entries: readonly FileEntry[], sort: FileSort): FileEntry[] {
+  if (
+    !sort.explicit &&
+    sort.key === DEFAULT_FILE_SORT.key &&
+    sort.direction === DEFAULT_FILE_SORT.direction
+  ) {
     return [...entries];
   }
   const descending = sort.direction === "desc";
@@ -93,15 +94,16 @@ export function parseFileSort(value: unknown): FileSort | null {
   ) {
     return null;
   }
-  return { key: candidate.key as SortKey, direction: candidate.direction,
-    ...(candidate.explicit === true ? { explicit: true as const } : {}) };
+  return {
+    key: candidate.key as SortKey,
+    direction: candidate.direction,
+    ...(candidate.explicit === true ? { explicit: true as const } : {}),
+  };
 }
 
 export function loadFileSort(): FileSort {
   try {
-    const parsed = parseFileSort(JSON.parse(
-      localStorage.getItem(SORT_STORAGE_KEY) ?? "null",
-    ));
+    const parsed = parseFileSort(JSON.parse(localStorage.getItem(SORT_STORAGE_KEY) ?? "null"));
     if (parsed) return parsed;
   } catch {
     // A corrupt or blocked entry falls through to the default.

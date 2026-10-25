@@ -137,8 +137,14 @@ button.status-item:focus-visible {
 }
 /* The message slot is the shrinkable one; the ellipsis lives on its text so
    the dismiss button keeps its full hit area. */
-.statusbar > .status-item:first-child { min-width: 0; }
-.statusbar .resource-monitor, .statusbar .forward-center, .statusbar .transfer-center { flex-shrink: 0; }
+.statusbar > .status-item:first-child {
+  min-width: 0;
+}
+.statusbar .resource-monitor,
+.statusbar .forward-center,
+.statusbar .transfer-center {
+  flex-shrink: 0;
+}
 
 /* The active session is being recorded to a file; the button opens the
    folder. The dot is the Codicon, tinted the recording red. The button's
@@ -269,4 +275,3 @@ button.status-item:focus-visible {
 .app:has(.splitter.is-horizontal.is-dragging) * {
   cursor: row-resize !important;
 }
-

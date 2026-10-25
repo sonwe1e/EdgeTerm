@@ -40,9 +40,7 @@ function cleanupMounts(): void {
   if (errors.length > 0) {
     // AggregateError needs lib ES2021; the repo's target is older, so fold
     // every cleanup failure into one error the test run reports.
-    const detail = errors
-      .map((error, index) => `[${index}] ${String(error)}`)
-      .join("\n");
+    const detail = errors.map((error, index) => `[${index}] ${String(error)}`).join("\n");
     throw new Error(`browser harness cleanup failed:\n${detail}`);
   }
 }
@@ -107,9 +105,7 @@ export const frame = (): Promise<void> =>
 const inputSettle = frame;
 
 export const twoFrames = (): Promise<void> =>
-  new Promise((resolve) =>
-    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-  );
+  new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
 
 export const wait = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
@@ -121,11 +117,7 @@ export const wait = (ms: number): Promise<void> =>
  * transform scale (frameRect / offsetWidth) and its border before being sent
  * outside. With scale 1 and no border this is the plain offset sum.
  */
-export function pagePoint(
-  element: Element,
-  fx = 0.5,
-  fy = 0.5,
-): { x: number; y: number } {
+export function pagePoint(element: Element, fx = 0.5, fy = 0.5): { x: number; y: number } {
   const frame = window.frameElement as HTMLIFrameElement | null;
   if (!frame) throw new Error("browser tests run inside an iframe");
   const frameRect = frame.getBoundingClientRect();
@@ -144,12 +136,14 @@ export function pagePoint(
 export function frameFacts(): string {
   const frame = window.frameElement as HTMLIFrameElement;
   const rect = frame.getBoundingClientRect();
-  return `frameRect=${Math.round(rect.left)},${Math.round(rect.top)} ` +
+  return (
+    `frameRect=${Math.round(rect.left)},${Math.round(rect.top)} ` +
     `${Math.round(rect.width)}x${Math.round(rect.height)}` +
     ` offset=${frame.offsetWidth}x${frame.offsetHeight}` +
     ` border=${frame.clientLeft},${frame.clientTop}` +
     ` inner=${window.innerWidth}x${window.innerHeight}` +
-    ` scale=${(rect.width / frame.offsetWidth).toFixed(4)}`;
+    ` scale=${(rect.width / frame.offsetWidth).toFixed(4)}`
+  );
 }
 
 type CdpLike = {
@@ -178,7 +172,12 @@ export const mouse = {
   },
   async press(x: number, y: number): Promise<void> {
     await cdpSession().send("Input.dispatchMouseEvent", {
-      type: "mousePressed", x, y, button: "left", buttons: 1, clickCount: 1,
+      type: "mousePressed",
+      x,
+      y,
+      button: "left",
+      buttons: 1,
+      clickCount: 1,
     });
     pressedAt = { x, y };
     await inputSettle();
@@ -191,14 +190,23 @@ export const mouse = {
     // drivers (Playwright's RawMouseImpl) always send both fields.
     const held = pressedAt !== null;
     await cdpSession().send("Input.dispatchMouseEvent", {
-      type: "mouseMoved", x, y, button: held ? "left" : "none", buttons: held ? 1 : 0,
+      type: "mouseMoved",
+      x,
+      y,
+      button: held ? "left" : "none",
+      buttons: held ? 1 : 0,
     });
     if (held) pressedAt = { x, y };
     await inputSettle();
   },
   async release(x: number, y: number): Promise<void> {
     await cdpSession().send("Input.dispatchMouseEvent", {
-      type: "mouseReleased", x, y, button: "left", buttons: 0, clickCount: 1,
+      type: "mouseReleased",
+      x,
+      y,
+      button: "left",
+      buttons: 0,
+      clickCount: 1,
     });
     pressedAt = null;
     await inputSettle();
@@ -213,7 +221,12 @@ export const mouse = {
     if (!pressedAt) return;
     const { x, y } = pressedAt;
     await cdpSession().send("Input.dispatchMouseEvent", {
-      type: "mouseReleased", x, y, button: "left", buttons: 0, clickCount: 1,
+      type: "mouseReleased",
+      x,
+      y,
+      button: "left",
+      buttons: 0,
+      clickCount: 1,
     });
     pressedAt = null;
   },
@@ -221,8 +234,13 @@ export const mouse = {
   async wheel(x: number, y: number, deltaY: number): Promise<void> {
     const held = pressedAt !== null;
     await cdpSession().send("Input.dispatchMouseEvent", {
-      type: "mouseWheel", x, y, deltaX: 0, deltaY,
-      button: held ? "left" : "none", buttons: held ? 1 : 0,
+      type: "mouseWheel",
+      x,
+      y,
+      deltaX: 0,
+      deltaY,
+      button: held ? "left" : "none",
+      buttons: held ? 1 : 0,
     });
     await inputSettle();
   },

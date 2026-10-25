@@ -1,7 +1,11 @@
 import { useEffect, useRef, type RefObject } from "react";
 
 /** Status popovers close when focus/pointer moves away or Escape is pressed. */
-export function usePopoverDismiss(open: boolean, close: () => void, root: RefObject<HTMLElement | null>) {
+export function usePopoverDismiss(
+  open: boolean,
+  close: () => void,
+  root: RefObject<HTMLElement | null>,
+) {
   const dismiss = useRef(close);
   dismiss.current = close;
   useEffect(() => {
@@ -29,7 +33,9 @@ export function usePopoverDismiss(open: boolean, close: () => void, root: RefObj
     };
     const escape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      event.preventDefault(); dismiss.current(); root.current?.querySelector("button")?.focus();
+      event.preventDefault();
+      dismiss.current();
+      root.current?.querySelector("button")?.focus();
     };
     document.addEventListener("pointerdown", outside);
     document.addEventListener("focusin", outside);

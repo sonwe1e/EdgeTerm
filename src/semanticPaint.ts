@@ -52,8 +52,12 @@ export type PaintLine = LineInternals;
 export function internalLine(line: IBufferLine | undefined): PaintLine | null {
   const inner = (line as unknown as { _line?: LineInternals } | undefined)?._line;
   if (!inner || !(inner._data instanceof Uint32Array)) return null;
-  if (!Number.isInteger(inner.length) || inner.length < 0 ||
-      inner._data.length !== inner.length * CELL_SIZE) return null;
+  if (
+    !Number.isInteger(inner.length) ||
+    inner.length < 0 ||
+    inner._data.length !== inner.length * CELL_SIZE
+  )
+    return null;
   return inner;
 }
 
@@ -136,12 +140,7 @@ export function unpaint(line: PaintLine): number {
 }
 
 /** Sets the background of [start, end) (a line band or a pill's ground). */
-export function paintBackground(
-  line: PaintLine,
-  start: number,
-  end: number,
-  color: number,
-) {
+export function paintBackground(line: PaintLine, start: number, end: number, color: number) {
   const data = line._data;
   const stop = Math.min(end, line.length);
   for (let col = Math.max(start, 0); col < stop; col += 1) {

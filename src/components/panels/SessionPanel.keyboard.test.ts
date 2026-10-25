@@ -9,9 +9,13 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../platform", () => ({ HAS_TRAY: true, IS_MAC: false, IS_WINDOWS: true }));
-vi.mock("../../nativeDialog", () => ({ ask: vi.fn(async () => true), open: vi.fn(), save: vi.fn() }));
+vi.mock("../../nativeDialog", () => ({
+  ask: vi.fn(async () => true),
+  open: vi.fn(),
+  save: vi.fn(),
+}));
 vi.mock("../../api", async (original) => ({
-  ...await original<typeof import("../../api")>(),
+  ...(await original<typeof import("../../api")>()),
   closeSession: vi.fn(async () => {}),
   listSenderCommands: vi.fn(async () => []),
   deleteProfile: vi.fn(async () => {}),
@@ -27,7 +31,12 @@ let host: HTMLDivElement;
 let root: Root;
 
 const profile = (id: string, name: string): SessionProfile => ({
-  id, name, kind: "ssh", host: "10.0.1.11", port: 22, username: "deploy",
+  id,
+  name,
+  kind: "ssh",
+  host: "10.0.1.11",
+  port: 22,
+  username: "deploy",
 });
 
 const profiles = [profile("p1", "web-prod-01"), profile("p2", "db-prod-01")];
@@ -42,17 +51,23 @@ const mount = (onEditProfile = vi.fn()) => {
 
 const tree = () => host.querySelector<HTMLDivElement>('.panel-body[role="tree"]')!;
 const profileRow = (id: string) => host.querySelector<HTMLElement>(`#${rowId(id)}`)!;
-const menuItems = () => [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')]
-  .map((element) => element.textContent?.trim() ?? "");
+const menuItems = () =>
+  [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].map(
+    (element) => element.textContent?.trim() ?? "",
+  );
 
 /** A pointer press on a row marks it active and keeps the tree focused. */
-const pressRow = (id: string) => act(() => {
-  profileRow(id).dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
-});
+const pressRow = (id: string) =>
+  act(() => {
+    profileRow(id).dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+  });
 /** A key pressed while the tree itself holds focus, the way a user's is. */
-const treeKey = (init: KeyboardEventInit) => act(() => {
-  tree().dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }));
-});
+const treeKey = (init: KeyboardEventInit) =>
+  act(() => {
+    tree().dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }),
+    );
+  });
 
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -61,8 +76,18 @@ beforeEach(() => {
   // jsdom implements neither of these; the tree scrolls the active row into
   // view and the panel measures nothing, so both are stubbed.
   Element.prototype.scrollIntoView = vi.fn();
-  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
-  useStore.setState({ ...initialState, language: "en", profiles, groups: [], tabs: [], activeId: null }, true);
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  useStore.setState(
+    { ...initialState, language: "en", profiles, groups: [], tabs: [], activeId: null },
+    true,
+  );
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -94,12 +119,16 @@ describe("Session tree keyboard equivalence (IX-02)", () => {
     const onEditProfile = mount();
     pressRow("p1");
 
-    const buttons = [...profileRow("p1").querySelectorAll<HTMLButtonElement>("button.panel-action")];
+    const buttons = [
+      ...profileRow("p1").querySelectorAll<HTMLButtonElement>("button.panel-action"),
+    ];
     expect(buttons).toHaveLength(2);
     for (const button of buttons) expect(button.tabIndex).toBe(-1);
 
     const edit = buttons.find((button) => button.getAttribute("aria-label") === "Edit")!;
-    act(() => { edit.click(); });
+    act(() => {
+      edit.click();
+    });
     expect(onEditProfile).toHaveBeenCalledWith(expect.objectContaining({ id: "p1" }));
   });
 
@@ -108,9 +137,12 @@ describe("Session tree keyboard equivalence (IX-02)", () => {
     pressRow("p1");
     treeKey({ key: "ContextMenu" });
 
-    const deleteItem = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')]
-      .find((element) => /Delete/.test(element.textContent?.trim() ?? ""))!;
-    await act(async () => { deleteItem.click(); });
+    const deleteItem = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+      (element) => /Delete/.test(element.textContent?.trim() ?? ""),
+    )!;
+    await act(async () => {
+      deleteItem.click();
+    });
 
     // The confirmation path starts: the scoped-command lookup runs and the
     // delete confirmation dialog takes over.

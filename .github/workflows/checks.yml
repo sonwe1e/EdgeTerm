@@ -27,6 +27,7 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
+      - run: npm run format:check
       - run: npm test
       - name: Check commit messages and per-commit typecheck
         if: github.event_name == 'pull_request'

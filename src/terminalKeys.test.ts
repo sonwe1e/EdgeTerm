@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./platform", () => ({ HAS_TRAY: true,
-  IS_MAC: true,
-  IS_WINDOWS: false,
-}));
+vi.mock("./platform", () => ({ HAS_TRAY: true, IS_MAC: true, IS_WINDOWS: false }));
 
 import {
   defaultShortcuts,
@@ -13,7 +10,16 @@ import {
 } from "./shortcuts";
 import { TerminalController } from "./terminal";
 
-const clipboard = (controller: TerminalController) => (controller as unknown as { clipboard: { copySelection(): boolean; pasteFromClipboard(): void; selectionChanged: boolean } }).clipboard;
+const clipboard = (controller: TerminalController) =>
+  (
+    controller as unknown as {
+      clipboard: {
+        copySelection(): boolean;
+        pasteFromClipboard(): void;
+        selectionChanged: boolean;
+      };
+    }
+  ).clipboard;
 const controllers: TerminalController[] = [];
 
 function createController() {
@@ -42,9 +48,7 @@ function createController() {
 /** A keydown as xterm's key filter receives it. */
 function press(
   code: string,
-  modifiers: Partial<
-    Pick<KeyboardEvent, "ctrlKey" | "altKey" | "shiftKey" | "metaKey">
-  > = {},
+  modifiers: Partial<Pick<KeyboardEvent, "ctrlKey" | "altKey" | "shiftKey" | "metaKey">> = {},
   key = /^Key[A-Z]$/.test(code) ? code.slice(3).toLowerCase() : code,
 ) {
   const event = {
@@ -64,10 +68,7 @@ function press(
   };
 }
 
-const chord = (
-  code: string,
-  mods: Partial<Omit<KeyChord, "code">>,
-): KeyChord => ({
+const chord = (code: string, mods: Partial<Omit<KeyChord, "code">>): KeyChord => ({
   ctrl: false,
   alt: false,
   shift: false,
@@ -157,9 +158,7 @@ describe("copy, paste and select all keys", () => {
   it("lets a plain Ctrl+letter copy key reach the shell when nothing is selected", () => {
     bind({ copy: chord("KeyC", { ctrl: true }) });
     const controller = createController();
-    const hasSelection = vi
-      .spyOn(controller.term, "hasSelection")
-      .mockReturnValue(false);
+    const hasSelection = vi.spyOn(controller.term, "hasSelection").mockReturnValue(false);
 
     // ^C still interrupts, as in Windows Terminal.
     const interrupt = press("KeyC", { ctrlKey: true });
@@ -210,9 +209,7 @@ describe("Backspace", () => {
 
   it("sends ^H, with ^? one Ctrl away, where the profile asks for it (#89)", () => {
     const controller = createController();
-    const input = vi
-      .spyOn(controller.term, "input")
-      .mockImplementation(() => {});
+    const input = vi.spyOn(controller.term, "input").mockImplementation(() => {});
     controller.setBackspace("controlH");
 
     const plain = press("Backspace");

@@ -224,8 +224,7 @@ export class TerminalCommands {
     // A recognized prompt of another shape counts too: a REPL's continuation
     // prompt, a device prompt naming the view just entered, or the prompt
     // back after the statement (see `terminalPrompt.ts`).
-    const knownPrompt =
-      this.commandPromptRecognized && isInputPrompt(current.text);
+    const knownPrompt = this.commandPromptRecognized && isInputPrompt(current.text);
     if (samePrompt || knownPrompt) this.finishCommand();
   }
 

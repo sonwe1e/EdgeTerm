@@ -5,14 +5,20 @@ const { sleep, findPageWs, connect } = require("./cdp-helpers.cjs");
 
 async function main() {
   const cdp = await connect(await findPageWs());
-  const ev = (js) => cdp.eval(js).then((r) => (r.result && "value" in r.result ? r.result.value : JSON.stringify(r.result)));
-  const evOrThrow = (js) => cdp.eval(js).then((r) => {
-    if (r.exceptionDetails) throw new Error("page exception: " + JSON.stringify(r.exceptionDetails).slice(0, 400));
-    return r.result.value;
-  });
+  const ev = (js) =>
+    cdp
+      .eval(js)
+      .then((r) => (r.result && "value" in r.result ? r.result.value : JSON.stringify(r.result)));
+  const evOrThrow = (js) =>
+    cdp.eval(js).then((r) => {
+      if (r.exceptionDetails)
+        throw new Error("page exception: " + JSON.stringify(r.exceptionDetails).slice(0, 400));
+      return r.result.value;
+    });
 
   // 1. wrap the IPC entry point to count invokes
-  console.log(await evOrThrow(`(() => {
+  console.log(
+    await evOrThrow(`(() => {
     if (!window.__ipc) {
       window.__ipc = { n: 0, byCmd: {} };
       const orig = window.__TAURI_INTERNALS__.invoke;
@@ -23,10 +29,12 @@ async function main() {
       };
     }
     return "ipc counter ready";
-  })()`));
+  })()`),
+  );
 
   // 2. install renderer probes
-  console.log(await evOrThrow(`(() => {
+  console.log(
+    await evOrThrow(`(() => {
     if (!window.__diag) {
       window.__diag = { frames: 0, ro: 0, wedged: false };
       const bump = () => { window.__diag.frames++; requestAnimationFrame(bump); };
@@ -38,10 +46,12 @@ async function main() {
       window.__diagRo.observe(pane);
     }
     return "probes ready, pane=" + !!pane;
-  })()`));
+  })()`),
+  );
 
   // 3. start continuous output in the shell by typing a busy loop command
-  const typeKey = (key, keyCode) => evOrThrow(`(() => {
+  const typeKey = (key, keyCode) =>
+    evOrThrow(`(() => {
     const ta = document.querySelector('.xterm-helper-textarea');
     if (!ta) return 'NO_TEXTAREA';
     ta.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, keyCode: ${keyCode}, which: ${keyCode}, bubbles: true, cancelable: true }));
@@ -59,10 +69,16 @@ async function main() {
   await sleep(1500);
 
   // confirm output is flowing: terminal buffer line count grows
-  const lines1 = await ev(`(() => { const t = document.querySelector('.xterm-rows'); return t ? t.children.length : -1; })()`);
+  const lines1 = await ev(
+    `(() => { const t = document.querySelector('.xterm-rows'); return t ? t.children.length : -1; })()`,
+  );
   await sleep(1000);
-  const lines2 = await ev(`(() => { const t = document.querySelector('.xterm-rows'); return t ? t.children.length : -1; })()`);
-  console.log(`output lines: ${lines1} -> ${lines2} ${lines2 > lines1 ? "(streaming)" : "(NOT streaming!)"}`);
+  const lines2 = await ev(
+    `(() => { const t = document.querySelector('.xterm-rows'); return t ? t.children.length : -1; })()`,
+  );
+  console.log(
+    `output lines: ${lines1} -> ${lines2} ${lines2 > lines1 ? "(streaming)" : "(NOT streaming!)"}`,
+  );
 
   // 4. drag storm on the splitter: real-path pointermove (elementFromPoint),
   //    alternating directions, mixed speeds, many rounds
@@ -79,7 +95,8 @@ async function main() {
       return JSON.stringify(window.__rc);
     })()`);
     const start = JSON.parse(r);
-    const fire = (type, x, y) => evOrThrow(`(() => {
+    const fire = (type, x, y) =>
+      evOrThrow(`(() => {
       const s = document.querySelector('.splitter.is-vertical');
       // dispatch on the splitter while captured; also on whatever is under the
       // cursor for the rest of the page to see hover, like a real drag
@@ -114,15 +131,23 @@ async function main() {
       console.log(`round ${round}: RENDERER STOPPED RESPONDING - stuck state reproduced`);
       return 2;
     }
-    const b = JSON.parse(before), a = JSON.parse(after);
-    const df = a.d.frames - b.d.frames, dro = a.d.ro - b.d.ro, di = a.ipc - b.ipc;
-    console.log(`round ${round} (dir=${dir} step=${stepMs}ms): frames +${df} ro +${dro} ipc +${di}`);
+    const b = JSON.parse(before),
+      a = JSON.parse(after);
+    const df = a.d.frames - b.d.frames,
+      dro = a.d.ro - b.d.ro,
+      di = a.ipc - b.ipc;
+    console.log(
+      `round ${round} (dir=${dir} step=${stepMs}ms): frames +${df} ro +${dro} ipc +${di}`,
+    );
     if (df === 0) {
       console.log(`round ${round}: rAF starved - renderer wedged. Stuck state reproduced.`);
       return 3;
     }
     if (round % 10 === 0) {
-      console.log("  ipc by command so far:", JSON.stringify(await ev(`JSON.stringify(window.__ipc.byCmd)`)));
+      console.log(
+        "  ipc by command so far:",
+        JSON.stringify(await ev(`JSON.stringify(window.__ipc.byCmd)`)),
+      );
     }
   }
   console.log("storm completed; renderer healthy");
@@ -132,5 +157,8 @@ async function main() {
 
 main().then(
   (code) => process.exit(code),
-  (e) => { console.error(e.stack || e); process.exit(1); },
+  (e) => {
+    console.error(e.stack || e);
+    process.exit(1);
+  },
 );

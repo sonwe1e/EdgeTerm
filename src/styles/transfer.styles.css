@@ -5,7 +5,9 @@
    panels' tests use to find it, and deliberately carries no declarations:
    the shared frame must not be restyled per feature. */
 
-:root .transfer-center { position: relative; }
+:root .transfer-center {
+  position: relative;
+}
 
 /* Header actions live in the shared 38px header: compact buttons, not a bar.
    The shared `.status-popover button` rule is one class stronger than a lone

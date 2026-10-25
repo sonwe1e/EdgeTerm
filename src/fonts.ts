@@ -146,10 +146,7 @@ export function applyFonts(
   systemMono = "",
   root: HTMLElement = document.documentElement,
 ) {
-  root.style.setProperty(
-    "--font-mono",
-    fontStack("mono", monoFamily, symbols, systemMono),
-  );
+  root.style.setProperty("--font-mono", fontStack("mono", monoFamily, symbols, systemMono));
   root.style.setProperty("--font-ui", fontStack("ui", uiFamily));
 }
 
@@ -171,10 +168,10 @@ const SYMBOL_FALLBACK_LIMIT = 2;
 export function symbolFallbacks(system: readonly FontFamily[]): string[] {
   const names = system.filter((family) => family.symbols).map((f) => f.name);
   const symbolsOnly = (name: string) => name.startsWith("Symbols Nerd Font");
-  return [
-    ...names.filter(symbolsOnly),
-    ...names.filter((name) => !symbolsOnly(name)),
-  ].slice(0, SYMBOL_FALLBACK_LIMIT);
+  return [...names.filter(symbolsOnly), ...names.filter((name) => !symbolsOnly(name))].slice(
+    0,
+    SYMBOL_FALLBACK_LIMIT,
+  );
 }
 
 // Rendering the same string in the candidate and in a generic family gives
@@ -203,9 +200,7 @@ export function isFontInstalled(family: string): boolean {
   const context = probeContext;
   if (!context) return false;
   return GENERIC_FAMILIES.some(
-    (generic) =>
-      measure(context, `${quote(name)}, ${generic}`) !==
-      measure(context, generic),
+    (generic) => measure(context, `${quote(name)}, ${generic}`) !== measure(context, generic),
   );
 }
 

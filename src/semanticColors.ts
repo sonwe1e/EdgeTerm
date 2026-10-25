@@ -153,9 +153,7 @@ function blend(base: string, color: string, alpha: number): string {
   const channel = (hex: string, i: number) => parseInt(hex.slice(i, i + 2), 16);
   let out = "#";
   for (let i = 1; i < 7; i += 2) {
-    const value = Math.round(
-      channel(base, i) + (channel(color, i) - channel(base, i)) * alpha,
-    );
+    const value = Math.round(channel(base, i) + (channel(color, i) - channel(base, i)) * alpha);
     out += value.toString(16).padStart(2, "0");
   }
   return out;
@@ -211,8 +209,7 @@ function gitStatusColor(status: string): string {
   if (status.includes("D")) return SEMANTIC_COLORS.red;
   if (status.includes("?")) return SEMANTIC_COLORS.cyan;
   if (status.includes("A")) return SEMANTIC_COLORS.green;
-  if (status.includes("R") || status.includes("C"))
-    return SEMANTIC_COLORS.violet;
+  if (status.includes("R") || status.includes("C")) return SEMANTIC_COLORS.violet;
   if (status.includes("U")) return SEMANTIC_COLORS.rose;
   return SEMANTIC_COLORS.amber;
 }
@@ -293,8 +290,7 @@ const BARE_PROMPT = /^([A-Za-z~/][\w.~/-]*\s?)?(>>>|[$#%>❯➜])(?=\s)/;
  * cmd.exe and PowerShell prompts: `C:\Users\x>dir`, `PS C:\Users\x> ls`,
  * `PS /home/x> ls`, `PS> ls`. Group 1 is the `PS` tag, group 2 or 3 the path.
  */
-const WINDOWS_PROMPT =
-  /^(?:(PS)\s?([A-Za-z]:\\[^<>|]*?|[/~][^<>|]*?)?|([A-Za-z]:\\[^<>|]*?))>/;
+const WINDOWS_PROMPT = /^(?:(PS)\s?([A-Za-z]:\\[^<>|]*?|[/~][^<>|]*?)?|([A-Za-z]:\\[^<>|]*?))>/;
 
 /**
  * End column of a shell prompt at the start of `text`, or -1 when the line
@@ -309,9 +305,7 @@ export function shellPromptEnd(text: string): number {
   const userPrompt = USER_PROMPT.exec(text);
   if (userPrompt) return userPrompt[0].length;
   const barePrompt = BARE_PROMPT.exec(text);
-  return barePrompt && (barePrompt[1] || barePrompt[2] !== "#")
-    ? barePrompt[0].length
-    : -1;
+  return barePrompt && (barePrompt[1] || barePrompt[2] !== "#") ? barePrompt[0].length : -1;
 }
 
 /** True when the line contains a prompt alone, with no submitted command. */
@@ -361,12 +355,7 @@ function windtermLine(text: string): SemanticLine {
   // First rule to claim a character wins; a bitmap keeps that O(span) instead
   // of scanning every earlier range.
   const claimed = new Uint8Array(text.length);
-  const add = (
-    start: number,
-    end: number,
-    color: string,
-    underline?: boolean,
-  ) => {
+  const add = (start: number, end: number, color: string, underline?: boolean) => {
     if (end > text.length) end = text.length;
     if (start < 0 || end <= start) return;
     if (ranges.length >= MAX_RANGES_PER_LINE) return;
@@ -381,11 +370,7 @@ function windtermLine(text: string): SemanticLine {
       }
     }
   };
-  const addCaptureMatches = (
-    pattern: RegExp,
-    capture: number,
-    color: string,
-  ) => {
+  const addCaptureMatches = (pattern: RegExp, capture: number, color: string) => {
     for (const match of text.matchAll(pattern)) {
       if (match.index === undefined || !match[capture]) continue;
       const offset = match[0].indexOf(match[capture]);
@@ -395,10 +380,7 @@ function windtermLine(text: string): SemanticLine {
       }
     }
   };
-  const addParts = (
-    match: RegExpMatchArray,
-    parts: readonly (readonly [string, string])[],
-  ) => {
+  const addParts = (match: RegExpMatchArray, parts: readonly (readonly [string, string])[]) => {
     if (match.index === undefined) return;
     let from = match.index;
     for (const [value, color] of parts) {
@@ -492,8 +474,7 @@ function windtermLine(text: string): SemanticLine {
   // and the shell's own highlighting owns it anyway.
   let commandFrom = -1;
   const windowsPrompt = wholeLine ? null : WINDOWS_PROMPT.exec(text);
-  const userPrompt =
-    wholeLine || windowsPrompt ? null : USER_PROMPT.exec(text);
+  const userPrompt = wholeLine || windowsPrompt ? null : USER_PROMPT.exec(text);
   if (windowsPrompt) {
     addParts(windowsPrompt, [
       [windowsPrompt[1] ?? "", C.mint],
@@ -556,18 +537,12 @@ function windtermLine(text: string): SemanticLine {
     1,
     C.mint,
   );
-  addMatches(
-    /\b(?:\d{1,3}\.){3}\d{1,3}(?:\/(?:[12]?\d|3[0-2]))?\b/g,
-    C.mint,
-  );
+  addMatches(/\b(?:\d{1,3}\.){3}\d{1,3}(?:\/(?:[12]?\d|3[0-2]))?\b/g, C.mint);
   addMatches(
     /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi,
     C.orchid,
   );
-  addMatches(
-    /\b(?:sha(?:1|224|256|384|512):)?[0-9a-f]{7,64}\b/gi,
-    C.pink,
-  );
+  addMatches(/\b(?:sha(?:1|224|256|384|512):)?[0-9a-f]{7,64}\b/gi, C.pink);
   addMatches(/\b0x[0-9a-f]+\b/gi, C.purple);
 
   // JSON/configuration keys stay distinct from quoted values; environment
@@ -576,22 +551,10 @@ function windtermLine(text: string): SemanticLine {
   // Quoted strings are one token, so a keyword or number inside keeps the
   // string color. Single quotes only count when they cannot be apostrophes.
   addMatches(/"(?:\\.|[^"\\])*"/g, C.gold);
-  addCaptureMatches(
-    /(?:^|[^\w\p{L}])('(?:\\.|[^'\\])*')(?![\w\p{L}])/gu,
-    1,
-    C.gold,
-  );
+  addCaptureMatches(/(?:^|[^\w\p{L}])('(?:\\.|[^'\\])*')(?![\w\p{L}])/gu, 1, C.gold);
   addMatches(/\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/g, C.coral);
-  addCaptureMatches(
-    /(?:^|[\s\[|])(--?[A-Za-z][\w-]*)(?=[\s=,\]]|$)/g,
-    1,
-    C.orange,
-  );
-  addCaptureMatches(
-    /(?:^|[\s,{])([A-Za-z_][\w.-]*)(?=\s*=)/g,
-    1,
-    C.sky,
-  );
+  addCaptureMatches(/(?:^|[\s\[|])(--?[A-Za-z][\w-]*)(?=[\s=,\]]|$)/g, 1, C.orange);
+  addCaptureMatches(/(?:^|[\s,{])([A-Za-z_][\w.-]*)(?=\s*=)/g, 1, C.sky);
 
   // Filesystem artifacts and common source/config filenames. `\p{L}` keeps
   // path segments and filenames whole when they contain CJK or other
@@ -620,14 +583,9 @@ function windtermLine(text: string): SemanticLine {
 
   // HTTP requests and responses use the familiar success/redirect/client/server
   // error progression without coloring unrelated three-digit numbers.
-  addMatches(
-    /\b(?:CONNECT|DELETE|GET|HEAD|OPTIONS|PATCH|POST|PUT|TRACE)\b/g,
-    C.cyan,
-  );
+  addMatches(/\b(?:CONNECT|DELETE|GET|HEAD|OPTIONS|PATCH|POST|PUT|TRACE)\b/g, C.cyan);
   addMatches(/\bHTTP\/\d(?:\.\d)?\b/g, C.slate);
-  for (const match of text.matchAll(
-    /\bHTTP\/\d(?:\.\d)?\s+([1-5]\d{2})\b/g,
-  )) {
+  for (const match of text.matchAll(/\bHTTP\/\d(?:\.\d)?\s+([1-5]\d{2})\b/g)) {
     if (match.index === undefined) continue;
     const code = match[1];
     const start = match.index + match[0].lastIndexOf(code);
@@ -715,29 +673,16 @@ function windtermLine(text: string): SemanticLine {
       [match[2] ?? "", C.purple],
     ]);
   }
-  addMatches(
-    /\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/g,
-    C.orchid,
-  );
+  addMatches(/\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/g, C.orchid);
   addMatches(/\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b/g, C.orchid);
-  addMatches(
-    /\b\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2}|\s?[AP]M)?\b/g,
-    C.green,
-  );
-  addMatches(
-    /\bv?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?\b/g,
-    C.violet,
-  );
+  addMatches(/\b\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2}|\s?[AP]M)?\b/g, C.green);
+  addMatches(/\bv?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?\b/g, C.violet);
   addMatches(/\b\d+(?:\.\d+)?e[+-]?\d+\b/gi, C.purple);
   addMatches(
     /\b\d+(?:\.\d+)?\s?(?:B|GB|GiB|KB|KiB|MB|MiB|TB|TiB|[KMGTP]|bps|d|fps|h|kHz|MHz|GHz|min|ms|ns|ops|req\/s|s|µs)(?![\w])/gi,
     C.amber,
   );
-  addCaptureMatches(
-    /(?:^|[^\w.])([-+]?\d+(?:\.\d+)?(?:%|°[CF]?))(?![\w])/gu,
-    1,
-    C.amber,
-  );
+  addCaptureMatches(/(?:^|[^\w.])([-+]?\d+(?:\.\d+)?(?:%|°[CF]?))(?![\w])/gu, 1, C.amber);
   addMatches(/\b(?:\d+[dhms])+(?:\d+ms)?\b/g, C.amber);
   addMatches(/\b(?:false|null|nil|none|true|undefined)\b/gi, C.purple);
 
@@ -750,20 +695,13 @@ function windtermLine(text: string): SemanticLine {
   // Option values (`--level=debug`), YAML keys and HTTP header names come after
   // the value classes so a path or number keeps its own color.
   addCaptureMatches(/\s--?[\w-]+=(\S+)/g, 1, C.sky);
-  addCaptureMatches(
-    /^\s*(?:-\s+)?([A-Za-z_][\w.-]*)\s*:(?:\s|$)/g,
-    1,
-    C.sky,
-  );
+  addCaptureMatches(/^\s*(?:-\s+)?([A-Za-z_][\w.-]*)\s*:(?:\s|$)/g, 1, C.sky);
 
   // Operators and brackets last, so they only pick up punctuation nothing
   // else claimed (a `:` inside a time or a `=` inside a URL stays put).
   // Brackets cycle through three hues by nesting depth.
   if (text.length <= PUNCTUATION_MAX_LENGTH) {
-    addMatches(
-      /-->|<--|&&|\|\||>>|<<|=>|->|::|==|!=|<=|>=|\+=|-=|\*\*|[|;&<>=:?*!^~]/g,
-      C.lime,
-    );
+    addMatches(/-->|<--|&&|\|\||>>|<<|=>|->|::|==|!=|<=|>=|\+=|-=|\*\*|[|;&<>=:?*!^~]/g, C.lime);
     addCaptureMatches(/(?:^|\s)([-+])(?=\s|$)/g, 1, C.lime);
     const bracketLevels = [C.lime, C.orchid, C.blue];
     let depth = 0;

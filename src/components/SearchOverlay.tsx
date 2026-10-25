@@ -11,13 +11,7 @@ import { flushSync } from "react-dom";
 
 import { type MessageKey, t as translateMsg } from "../i18n";
 import { IS_MAC } from "../platform";
-import {
-  chordLabel,
-  chordMatches,
-  keyLabel,
-  matchAppShortcut,
-  type KeyChord,
-} from "../shortcuts";
+import { chordLabel, chordMatches, keyLabel, matchAppShortcut, type KeyChord } from "../shortcuts";
 import { useActiveTab, useStore } from "../store";
 import {
   DEFAULT_FIND_OPTIONS,
@@ -49,10 +43,8 @@ export interface SearchOverlayHandle {
 // Find / Find Next while typing in the box: ⌘F / ⌘G on macOS,
 // Ctrl+Shift+F / Ctrl+Shift+G elsewhere. The window-level shortcut handler
 // ignores key events from inputs, so the shortcuts are mirrored here.
-const isFindKey = (event: KeyboardEvent) =>
-  matchAppShortcut(event)?.kind === "find";
-const isFindNextKey = (event: KeyboardEvent) =>
-  matchAppShortcut(event)?.kind === "findNext";
+const isFindKey = (event: KeyboardEvent) => matchAppShortcut(event)?.kind === "find";
+const isFindNextKey = (event: KeyboardEvent) => matchAppShortcut(event)?.kind === "findNext";
 
 /**
  * The toggles' keys, VS Code's: Alt+letter, and ⌥⌘letter on macOS, where
@@ -128,9 +120,7 @@ const selectedText = (sessionId: string | null) => {
 const formatResults = ({ resultIndex, resultCount }: SearchResults) => {
   if (resultCount === 0) return translateMsg("search.noResults");
   const total =
-    resultCount >= SEARCH_HIGHLIGHT_LIMIT
-      ? `${SEARCH_HIGHLIGHT_LIMIT}+`
-      : String(resultCount);
+    resultCount >= SEARCH_HIGHLIGHT_LIMIT ? `${SEARCH_HIGHLIGHT_LIMIT}+` : String(resultCount);
   return resultIndex >= 0 ? `${resultIndex + 1}/${total}` : total;
 };
 
@@ -139,290 +129,279 @@ const formatResults = ({ resultIndex, resultCount }: SearchResults) => {
  * opening starts from the terminal selection (or empty) rather than from
  * the previous query.
  */
-export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
-  function SearchOverlay({ onClose }, ref) {
-    const tab = useActiveTab();
-    const activeId = useStore((s) => s.activeId);
-    const t = useT();
-    const [query, setQuery] = useState(() => selectedText(activeId));
-    const [options, setOptions] = useState(lastOptions);
-    const [inSelection, setInSelection] = useState(false);
-    // The toggles as of the last key, which a second key in the same event
-    // loop turn must see before React has rendered the first one.
-    const optionsRef = useRef(options);
-    const inSelectionRef = useRef(false);
-    // Why Find in Selection did not turn on, until the next change.
-    const [notice, setNotice] = useState<MessageKey | null>(null);
-    const [results, setResults] = useState<SearchResults | null>(null);
-    const boxRef = useRef<HTMLDivElement>(null);
-    const inputRef = useRef<HTMLInputElement>(null);
-    // The session whose buffer currently carries match highlights (or a
-    // Find in Selection range), so they can be dropped when the search
-    // moves elsewhere or ends.
-    const searchedRef = useRef<string | null>(null);
-    const error = queryError(query, options);
+export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(function SearchOverlay(
+  { onClose },
+  ref,
+) {
+  const tab = useActiveTab();
+  const activeId = useStore((s) => s.activeId);
+  const t = useT();
+  const [query, setQuery] = useState(() => selectedText(activeId));
+  const [options, setOptions] = useState(lastOptions);
+  const [inSelection, setInSelection] = useState(false);
+  // The toggles as of the last key, which a second key in the same event
+  // loop turn must see before React has rendered the first one.
+  const optionsRef = useRef(options);
+  const inSelectionRef = useRef(false);
+  // Why Find in Selection did not turn on, until the next change.
+  const [notice, setNotice] = useState<MessageKey | null>(null);
+  const [results, setResults] = useState<SearchResults | null>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // The session whose buffer currently carries match highlights (or a
+  // Find in Selection range), so they can be dropped when the search
+  // moves elsewhere or ends.
+  const searchedRef = useRef<string | null>(null);
+  const error = queryError(query, options);
 
-    // Select the previous query on focus so a new search (typed or pasted)
-    // replaces it instead of being appended to it. A query taken from the
-    // terminal selection is already being searched, so the caret just sits
-    // after it.
-    const focusInput = useStableCallback((selectQuery = true) => {
-      const input = inputRef.current;
-      if (!input) return;
-      input.focus();
-      if (selectQuery) input.select();
-      else input.setSelectionRange(input.value.length, input.value.length);
-    });
+  // Select the previous query on focus so a new search (typed or pasted)
+  // replaces it instead of being appended to it. A query taken from the
+  // terminal selection is already being searched, so the caret just sits
+  // after it.
+  const focusInput = useStableCallback((selectQuery = true) => {
+    const input = inputRef.current;
+    if (!input) return;
+    input.focus();
+    if (selectQuery) input.select();
+    else input.setSelectionRange(input.value.length, input.value.length);
+  });
 
-    const clearSearch = useStableCallback(() => {
-      if (searchedRef.current) getController(searchedRef.current)?.clearSearch();
-      searchedRef.current = null;
-      setResults(null);
-      setNotice(null);
-      inSelectionRef.current = false;
-      setInSelection(false);
-    });
+  const clearSearch = useStableCallback(() => {
+    if (searchedRef.current) getController(searchedRef.current)?.clearSearch();
+    searchedRef.current = null;
+    setResults(null);
+    setNotice(null);
+    inSelectionRef.current = false;
+    setInSelection(false);
+  });
 
-    // An empty query clears the highlights but keeps a Find in Selection
-    // range, which is drawn before anything is typed.
-    const runSearch = useStableCallback(
-      (
-        forward: boolean,
-        incremental: boolean = false,
-        term: string = query,
-        opts: FindOptions = optionsRef.current,
-      ) => {
-        if (!activeId) return;
-        if (searchedRef.current !== activeId) clearSearch();
-        searchedRef.current = activeId;
-        getController(activeId)?.search(term, forward, incremental, opts);
-      },
-    );
-
-    const toggleOption = useStableCallback((key: keyof FindOptions) => {
-      const current = optionsRef.current;
-      const next = { ...current, [key]: !current[key] };
-      optionsRef.current = next;
-      lastOptions = next;
-      setOptions(next);
-      setNotice(null);
-      // Incremental, so the current match stays when it still matches.
-      runSearch(true, true, query, next);
-    });
-
-    const toggleInSelection = useStableCallback(() => {
-      const controller = activeId ? getController(activeId) : undefined;
-      if (!activeId || !controller) return;
+  // An empty query clears the highlights but keeps a Find in Selection
+  // range, which is drawn before anything is typed.
+  const runSearch = useStableCallback(
+    (
+      forward: boolean,
+      incremental: boolean = false,
+      term: string = query,
+      opts: FindOptions = optionsRef.current,
+    ) => {
+      if (!activeId) return;
       if (searchedRef.current !== activeId) clearSearch();
       searchedRef.current = activeId;
-      const was = inSelectionRef.current;
-      const on = controller.setSearchScope(!was);
-      inSelectionRef.current = on;
-      setInSelection(on);
-      setNotice(on || was ? null : "search.noSelection");
-      runSearch(true, true);
-    });
+      getController(activeId)?.search(term, forward, incremental, opts);
+    },
+  );
 
-    const toggle = useStableCallback((id: Toggle) => {
-      if (id === "inSelection") toggleInSelection();
-      else toggleOption(id);
-    });
+  const toggleOption = useStableCallback((key: keyof FindOptions) => {
+    const current = optionsRef.current;
+    const next = { ...current, [key]: !current[key] };
+    optionsRef.current = next;
+    lastOptions = next;
+    setOptions(next);
+    setNotice(null);
+    // Incremental, so the current match stays when it still matches.
+    runSearch(true, true, query, next);
+  });
 
-    // Closing from the box hands the keyboard back to the terminal, as VS
-    // Code does; Esc pressed in the terminal leaves the focus where it is.
-    const close = useStableCallback(() => {
-      const focused = boxRef.current?.contains(document.activeElement);
-      onClose();
-      if (focused && activeId) getController(activeId)?.focus();
-    });
+  const toggleInSelection = useStableCallback(() => {
+    const controller = activeId ? getController(activeId) : undefined;
+    if (!activeId || !controller) return;
+    if (searchedRef.current !== activeId) clearSearch();
+    searchedRef.current = activeId;
+    const was = inSelectionRef.current;
+    const on = controller.setSearchScope(!was);
+    inSelectionRef.current = on;
+    setInSelection(on);
+    setNotice(on || was ? null : "search.noSelection");
+    runSearch(true, true);
+  });
 
-    // Esc pressed in the terminal runs this too, through the engine's
-    // module-level closer (that key filter is not React).
-    useEffect(() => {
-      setFindCloser(close);
-      return () => setFindCloser(null);
-    }, [close]);
+  const toggle = useStableCallback((id: Toggle) => {
+    if (id === "inSelection") toggleInSelection();
+    else toggleOption(id);
+  });
 
-    // Highlights and the counter belong to one session; switching tabs ends
-    // that search rather than showing stale numbers.
-    useEffect(() => {
-      if (searchedRef.current && searchedRef.current !== activeId) clearSearch();
-    }, [activeId, clearSearch]);
+  // Closing from the box hands the keyboard back to the terminal, as VS
+  // Code does; Esc pressed in the terminal leaves the focus where it is.
+  const close = useStableCallback(() => {
+    const focused = boxRef.current?.contains(document.activeElement);
+    onClose();
+    if (focused && activeId) getController(activeId)?.focus();
+  });
 
-    // Subscribed before the initial search below so its count is not missed:
-    // the engine reports results synchronously.
-    useEffect(() => {
-      if (!activeId) return;
-      const listener = getController(activeId)?.onSearchResults(setResults);
-      return () => listener?.dispose();
-    }, [activeId]);
+  // Esc pressed in the terminal runs this too, through the engine's
+  // module-level closer (that key filter is not React).
+  useEffect(() => {
+    setFindCloser(close);
+    return () => setFindCloser(null);
+  }, [close]);
 
-    // Search the seeded selection right away; the search starts at the
-    // selection, so it stays the current match. Closing the box drops the
-    // highlights.
-    const [seededQuery] = useState(query);
-    useEffect(() => {
-      if (seededQuery) runSearch(true, true, seededQuery);
-      return clearSearch;
-    }, [seededQuery, runSearch, clearSearch]);
+  // Highlights and the counter belong to one session; switching tabs ends
+  // that search rather than showing stale numbers.
+  useEffect(() => {
+    if (searchedRef.current && searchedRef.current !== activeId) clearSearch();
+  }, [activeId, clearSearch]);
 
-    // The tab the box opened in. Its seeded query is left unselected there;
-    // after a tab switch the query is selected so typing replaces it. (Kept
-    // as state, not a mutable ref, so StrictMode's repeated effects agree.)
-    const [openedIn] = useState({ tab: tab?.info.id, seeded: query !== "" });
-    const tabId = tab?.info.id;
-    const tabKind = tab?.info.kind;
-    useEffect(() => {
-      if (tabKind && isFileSession(tabKind)) return;
-      focusInput(!(openedIn.seeded && tabId === openedIn.tab));
-    }, [tabId, tabKind, openedIn, focusInput]);
+  // Subscribed before the initial search below so its count is not missed:
+  // the engine reports results synchronously.
+  useEffect(() => {
+    if (!activeId) return;
+    const listener = getController(activeId)?.onSearchResults(setResults);
+    return () => listener?.dispose();
+  }, [activeId]);
 
-    // Adopt a fresh terminal selection as the query and search it. The input
-    // is updated synchronously so the focus that follows sees the new text.
-    const adoptSelection = useStableCallback(() => {
-      const term = selectedText(activeId);
-      if (!term || term === query) return false;
-      flushSync(() => setQuery(term));
-      runSearch(true, true, term);
-      return true;
-    });
+  // Search the seeded selection right away; the search starts at the
+  // selection, so it stays the current match. Closing the box drops the
+  // highlights.
+  const [seededQuery] = useState(query);
+  useEffect(() => {
+    if (seededQuery) runSearch(true, true, seededQuery);
+    return clearSearch;
+  }, [seededQuery, runSearch, clearSearch]);
 
-    useImperativeHandle(
-      ref,
-      () => ({
-        findNext: () => {
-          if (query) runSearch(true);
-          else focusInput();
-        },
-        focus: () => {
-          const adopted = adoptSelection();
-          focusInput(!adopted);
-        },
-      }),
-      [query, runSearch, focusInput, adoptSelection],
-    );
+  // The tab the box opened in. Its seeded query is left unselected there;
+  // after a tab switch the query is selected so typing replaces it. (Kept
+  // as state, not a mutable ref, so StrictMode's repeated effects agree.)
+  const [openedIn] = useState({ tab: tab?.info.id, seeded: query !== "" });
+  const tabId = tab?.info.id;
+  const tabKind = tab?.info.kind;
+  useEffect(() => {
+    if (tabKind && isFileSession(tabKind)) return;
+    focusInput(!(openedIn.seeded && tabId === openedIn.tab));
+  }, [tabId, tabKind, openedIn, focusInput]);
 
-    if (!tab || isFileSession(tab.info.kind)) return null;
+  // Adopt a fresh terminal selection as the query and search it. The input
+  // is updated synchronously so the focus that follows sees the new text.
+  const adoptSelection = useStableCallback(() => {
+    const term = selectedText(activeId);
+    if (!term || term === query) return false;
+    flushSync(() => setQuery(term));
+    runSearch(true, true, term);
+    return true;
+  });
 
-    const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-      // Enter and Esc belong to the IME while it composes.
-      if (event.nativeEvent.isComposing) return;
-      const pressed = TOGGLES.find(({ chord }) => chordMatches(chord, event));
-      if (pressed) {
-        event.preventDefault();
-        toggle(pressed.id);
-      } else if (event.key === "Escape") {
-        event.preventDefault();
-        close();
-      } else if (event.target !== inputRef.current) {
-        // The buttons keep their own Enter and Space.
-      } else if (event.key === "Enter") {
-        runSearch(!event.shiftKey);
-      } else if (isFindKey(event)) {
-        // ⌘F inside the box re-selects the query, like ⌘F elsewhere.
-        event.preventDefault();
-        event.currentTarget.querySelector("input")?.select();
-      } else if (isFindNextKey(event)) {
-        event.preventDefault();
-        runSearch(true);
-      }
-    };
+  useImperativeHandle(
+    ref,
+    () => ({
+      findNext: () => {
+        if (query) runSearch(true);
+        else focusInput();
+      },
+      focus: () => {
+        const adopted = adoptSelection();
+        focusInput(!adopted);
+      },
+    }),
+    [query, runSearch, focusInput, adoptSelection],
+  );
 
-    const toggleButton = ({
-      id,
-      label,
-      icon,
-      chord,
-    }: (typeof TOGGLES)[number]) => {
-      const on = id === "inSelection" ? inSelection : options[id];
-      return (
-        <button
-          key={id}
-          className={`search-toggle${on ? " is-on" : ""}`}
-          // Clicking keeps the focus where it was, so typing goes on into
-          // the query (or the terminal).
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => toggle(id)}
-          title={`${t(label)} (${chordLabel(chord)})`}
-          aria-label={t(label)}
-          aria-pressed={on}
-        >
-          <Icon name={icon} />
-        </button>
-      );
-    };
+  if (!tab || isFileSession(tab.info.kind)) return null;
 
-    const status = notice
-      ? t(notice)
-      : error
-        ? t("search.invalidRegex")
-        : query && results
-          ? formatResults(results)
-          : "";
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    // Enter and Esc belong to the IME while it composes.
+    if (event.nativeEvent.isComposing) return;
+    const pressed = TOGGLES.find(({ chord }) => chordMatches(chord, event));
+    if (pressed) {
+      event.preventDefault();
+      toggle(pressed.id);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      close();
+    } else if (event.target !== inputRef.current) {
+      // The buttons keep their own Enter and Space.
+    } else if (event.key === "Enter") {
+      runSearch(!event.shiftKey);
+    } else if (isFindKey(event)) {
+      // ⌘F inside the box re-selects the query, like ⌘F elsewhere.
+      event.preventDefault();
+      event.currentTarget.querySelector("input")?.select();
+    } else if (isFindNextKey(event)) {
+      event.preventDefault();
+      runSearch(true);
+    }
+  };
 
+  const toggleButton = ({ id, label, icon, chord }: (typeof TOGGLES)[number]) => {
+    const on = id === "inSelection" ? inSelection : options[id];
     return (
-      <div
-        ref={boxRef}
-        className="terminal-search"
-        role="search"
-        onKeyDown={onKeyDown}
+      <button
+        key={id}
+        className={`search-toggle${on ? " is-on" : ""}`}
+        // Clicking keeps the focus where it was, so typing goes on into
+        // the query (or the terminal).
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => toggle(id)}
+        title={`${t(label)} (${chordLabel(chord)})`}
+        aria-label={t(label)}
+        aria-pressed={on}
       >
-        <div className={`search-field${error ? " is-invalid" : ""}`}>
-          <input
-            ref={inputRef}
-            value={query}
-            placeholder={t("search.placeholder")}
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            title={error ?? undefined}
-            aria-invalid={error ? true : undefined}
-            onChange={(event) => {
-              const term = event.target.value;
-              setQuery(term);
-              setNotice(null);
-              // Search as the query is typed so the counter always matches it.
-              runSearch(true, true, term);
-            }}
-          />
-          {TOGGLES.slice(0, 3).map(toggleButton)}
-        </div>
-        <span
-          className={`search-count${
-            notice || error || (query && results?.resultCount === 0)
-              ? " is-empty"
-              : ""
-          }`}
-          aria-live="polite"
-        >
-          {status}
-        </span>
-        <button
-          className="panel-action"
-          onClick={() => runSearch(false)}
-          title={`${t("search.previous")} (${SHIFT_ENTER_LABEL})`}
-          aria-label={t("search.previous")}
-        >
-          <Icon name="arrow-up" />
-        </button>
-        <button
-          className="panel-action"
-          onClick={() => runSearch(true)}
-          title={`${t("search.next")} (${ENTER_LABEL})`}
-          aria-label={t("search.next")}
-        >
-          <Icon name="arrow-down" />
-        </button>
-        {toggleButton(TOGGLES[3])}
-        <button
-          className="panel-action"
-          onClick={close}
-          title={`${t("search.close")} (Esc)`}
-          aria-label={t("search.close")}
-        >
-          <Icon name="close" />
-        </button>
-      </div>
+        <Icon name={icon} />
+      </button>
     );
-  },
-);
+  };
+
+  const status = notice
+    ? t(notice)
+    : error
+      ? t("search.invalidRegex")
+      : query && results
+        ? formatResults(results)
+        : "";
+
+  return (
+    <div ref={boxRef} className="terminal-search" role="search" onKeyDown={onKeyDown}>
+      <div className={`search-field${error ? " is-invalid" : ""}`}>
+        <input
+          ref={inputRef}
+          value={query}
+          placeholder={t("search.placeholder")}
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          title={error ?? undefined}
+          aria-invalid={error ? true : undefined}
+          onChange={(event) => {
+            const term = event.target.value;
+            setQuery(term);
+            setNotice(null);
+            // Search as the query is typed so the counter always matches it.
+            runSearch(true, true, term);
+          }}
+        />
+        {TOGGLES.slice(0, 3).map(toggleButton)}
+      </div>
+      <span
+        className={`search-count${
+          notice || error || (query && results?.resultCount === 0) ? " is-empty" : ""
+        }`}
+        aria-live="polite"
+      >
+        {status}
+      </span>
+      <button
+        className="panel-action"
+        onClick={() => runSearch(false)}
+        title={`${t("search.previous")} (${SHIFT_ENTER_LABEL})`}
+        aria-label={t("search.previous")}
+      >
+        <Icon name="arrow-up" />
+      </button>
+      <button
+        className="panel-action"
+        onClick={() => runSearch(true)}
+        title={`${t("search.next")} (${ENTER_LABEL})`}
+        aria-label={t("search.next")}
+      >
+        <Icon name="arrow-down" />
+      </button>
+      {toggleButton(TOGGLES[3])}
+      <button
+        className="panel-action"
+        onClick={close}
+        title={`${t("search.close")} (Esc)`}
+        aria-label={t("search.close")}
+      >
+        <Icon name="close" />
+      </button>
+    </div>
+  );
+});

@@ -50,8 +50,15 @@ const makeTab = (id: string): Tab => ({
 });
 
 const entry = (dir: string, name: string): FileEntry => ({
-  path: `${dir}/${name}`, name, isDir: false, isSymlink: false,
-  size: 1, modified: 1, permissions: null, owner: null, group: null,
+  path: `${dir}/${name}`,
+  name,
+  isDir: false,
+  isSymlink: false,
+  size: 1,
+  modified: 1,
+  permissions: null,
+  owner: null,
+  group: null,
 });
 
 let host: HTMLDivElement;
@@ -61,9 +68,14 @@ beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   localStorage.clear();
   // jsdom has no ResizeObserver; the virtual list observes its scroller.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {} unobserve() {} disconnect() {}
-  });
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
   vi.mocked(api.sftpHome).mockImplementation(async (id: string) => `/home/${id}`);
   useStore.setState(
     {
@@ -94,7 +106,9 @@ describe("Filer listing when coming back to an SSH session", () => {
     let visits = 0;
     vi.mocked(api.sftpList).mockImplementation(async (id: string, path: string) => {
       if (id === "a" && ++visits === 2) {
-        return new Promise((resolve) => { finishRevisit = resolve; });
+        return new Promise((resolve) => {
+          finishRevisit = resolve;
+        });
       }
       return { path, entries: [entry(path, `${id}-file.txt`)] };
     });
@@ -110,9 +124,12 @@ describe("Filer listing when coming back to an SSH session", () => {
     expect(host.textContent).toContain("a-file.txt");
     expect(host.textContent).not.toContain("b-file.txt");
 
-    await act(async () => finishRevisit({
-      path: "/home/a", entries: [entry("/home/a", "a-file.txt"), entry("/home/a", "new.txt")],
-    }));
+    await act(async () =>
+      finishRevisit({
+        path: "/home/a",
+        entries: [entry("/home/a", "a-file.txt"), entry("/home/a", "new.txt")],
+      }),
+    );
     expect(host.textContent).toContain("new.txt");
   });
 

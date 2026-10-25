@@ -12,10 +12,7 @@ import "./styles.css";
 // publish both as --font-mono / --font-ui so CSS and xterm agree on one
 // value. Applied before the first render, so the page never paints a frame
 // in a font the user replaced.
-applyFonts(
-  useStore.getState().bufferFontFamily,
-  useStore.getState().panelFontFamily,
-);
+applyFonts(useStore.getState().bufferFontFamily, useStore.getState().panelFontFamily);
 
 // The WebView's native context menu exposes a Reload action. Reloading only
 // resets the React page while the Rust session manager (and serial handles)
@@ -27,8 +24,7 @@ document.addEventListener(
   "keydown",
   (event) => {
     const reloadShortcut =
-      event.key === "F5" ||
-      ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "r");
+      event.key === "F5" || ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "r");
     if (reloadShortcut) event.preventDefault();
   },
   { capture: true },

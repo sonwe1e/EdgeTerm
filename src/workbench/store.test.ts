@@ -320,16 +320,8 @@ describe("workbench store: three projects", () => {
     expect(first?.id).not.toBe(second?.id);
     expect(second?.projectName).toBe("ablation A");
     expect(second?.serverLabel).toContain("lab@gpu-01:22");
-    expect(vi.mocked(wb.readText)).toHaveBeenNthCalledWith(
-      1,
-      "s1",
-      "/data/vfi/base/src/train.py",
-    );
-    expect(vi.mocked(wb.readText)).toHaveBeenNthCalledWith(
-      2,
-      "s1",
-      "/data/vfi/abl_a/src/train.py",
-    );
+    expect(vi.mocked(wb.readText)).toHaveBeenNthCalledWith(1, "s1", "/data/vfi/base/src/train.py");
+    expect(vi.mocked(wb.readText)).toHaveBeenNthCalledWith(2, "s1", "/data/vfi/abl_a/src/train.py");
   });
 
   it("refuses to read a project whose server is not connected", async () => {
@@ -361,7 +353,12 @@ describe("workbench store: drafts and saves", () => {
     draftStore.failSave = false;
     resetStore();
     vi.mocked(wb.loadData).mockResolvedValue(structuredClone(DATA));
-    vi.mocked(wb.listFiles).mockResolvedValue({ root: "", files: [], truncated: false, source: "git" });
+    vi.mocked(wb.listFiles).mockResolvedValue({
+      root: "",
+      files: [],
+      truncated: false,
+      source: "git",
+    });
     vi.mocked(wb.gitState).mockResolvedValue({
       isRepository: false,
       branch: "",
@@ -611,7 +608,12 @@ describe("workbench store: runs", () => {
     const data = structuredClone(DATA);
     data.runs = [running];
     vi.mocked(wb.loadData).mockResolvedValue(data);
-    vi.mocked(wb.listFiles).mockResolvedValue({ root: "", files: [], truncated: false, source: "git" });
+    vi.mocked(wb.listFiles).mockResolvedValue({
+      root: "",
+      files: [],
+      truncated: false,
+      source: "git",
+    });
     vi.mocked(wb.gitState).mockResolvedValue({
       isRepository: true,
       branch: "main",

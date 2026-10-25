@@ -22,8 +22,15 @@ import type { Tab } from "./store";
 import type { FileEntry } from "./types";
 
 const entry = (dir: string, name: string, isDir = false): FileEntry => ({
-  path: `${dir}/${name}`, name, isDir, isSymlink: false,
-  size: 10, modified: 1, permissions: null, owner: null, group: null,
+  path: `${dir}/${name}`,
+  name,
+  isDir,
+  isSymlink: false,
+  size: 10,
+  modified: 1,
+  permissions: null,
+  owner: null,
+  group: null,
 });
 
 const remoteEntries = [entry("/remote", "folder", true), entry("/remote", "a.txt")];
@@ -61,9 +68,14 @@ let under: Element | null = null;
 beforeEach(async () => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   localStorage.clear();
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {} unobserve() {} disconnect() {}
-  });
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
   // jsdom has no layout, so what sits under the pointer is stated by the test.
   Object.defineProperty(document, "elementFromPoint", {
     configurable: true,
@@ -71,7 +83,10 @@ beforeEach(async () => {
   });
   vi.mocked(api.sftpHome).mockResolvedValue("/remote");
   vi.mocked(api.localHome).mockResolvedValue("/local");
-  vi.mocked(api.sftpList).mockImplementation(async (_id, path) => ({ path, entries: remoteEntries }));
+  vi.mocked(api.sftpList).mockImplementation(async (_id, path) => ({
+    path,
+    entries: remoteEntries,
+  }));
   vi.mocked(api.localList).mockImplementation(async (path) => ({ path, entries: localEntries }));
   vi.mocked(api.transferFiles).mockResolvedValue(undefined);
   vi.mocked(api.newTransferId).mockReturnValue("queue-1");
@@ -91,14 +106,17 @@ afterEach(() => {
 });
 
 const row = (path: string) => host.querySelector<HTMLElement>(`[role=option][title="${path}"]`)!;
-const list = (label: string) => host.querySelector<HTMLElement>(`[role=listbox][aria-label="${label}"]`)!;
+const list = (label: string) =>
+  host.querySelector<HTMLElement>(`[role=listbox][aria-label="${label}"]`)!;
 
 /** Presses `from`, drags it far enough to count, and releases over `to`. */
 async function drag(from: HTMLElement, to: Element) {
   from.setPointerCapture = () => {};
   under = to;
   await act(async () => {
-    from.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 0, clientY: 0 }));
+    from.dispatchEvent(
+      new MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 0, clientY: 0 }),
+    );
     from.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 40, clientY: 40 }));
     from.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 40, clientY: 40 }));
   });
@@ -120,7 +138,10 @@ const onlyTransfer = () => {
 
 describe("dragging between and within the dual panes, through FtpPane", () => {
   it("compares only a selected file on each side through the dialog IPC", async () => {
-    const compare = () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Compare")!;
+    const compare = () =>
+      [...host.querySelectorAll<HTMLButtonElement>("button")].find(
+        (b) => b.textContent === "Compare",
+      )!;
     vi.mocked(api.compareFiles).mockReturnValue(new Promise(() => {}));
     vi.mocked(api.cancelFileDiff).mockResolvedValue(undefined);
     expect(compare().disabled).toBe(true);
@@ -130,9 +151,16 @@ describe("dragging between and within the dual panes, through FtpPane", () => {
     await act(async () => row("/remote/a.txt").click());
     expect(compare().disabled).toBe(false);
     await act(async () => compare().click());
-    expect(api.compareFiles).toHaveBeenCalledWith("sftp1", expect.any(String), "/local/up.txt", "/remote/a.txt");
+    expect(api.compareFiles).toHaveBeenCalledWith(
+      "sftp1",
+      expect.any(String),
+      "/local/up.txt",
+      "/remote/a.txt",
+    );
     const id = vi.mocked(api.compareFiles).mock.calls[0][1];
-    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Close file comparison"]')!.click());
+    await act(async () =>
+      host.querySelector<HTMLButtonElement>('[aria-label="Close file comparison"]')!.click(),
+    );
     expect(api.cancelFileDiff).toHaveBeenCalledWith(id);
   });
   it("uploads a local file dropped on the remote list (the harness works)", async () => {
@@ -144,9 +172,9 @@ describe("dragging between and within the dual panes, through FtpPane", () => {
       queue: "queue-1",
     });
     // The destination pane is reloaded once the queued transfer settles.
-    expect(
-      vi.mocked(api.sftpList).mock.calls.filter(([, path]) => path === "/remote").length,
-    ).toBe(2);
+    expect(vi.mocked(api.sftpList).mock.calls.filter(([, path]) => path === "/remote").length).toBe(
+      2,
+    );
   });
 
   it("downloads a remote file dropped on the local list", async () => {
@@ -156,9 +184,9 @@ describe("dragging between and within the dual panes, through FtpPane", () => {
       items: [{ local: "/local/a.txt", remote: "/remote/a.txt", upload: false, directory: false }],
       queue: "queue-1",
     });
-    expect(
-      vi.mocked(api.localList).mock.calls.filter(([path]) => path === "/local").length,
-    ).toBe(2);
+    expect(vi.mocked(api.localList).mock.calls.filter(([path]) => path === "/local").length).toBe(
+      2,
+    );
   });
 
   it("does nothing for a remote file dropped on a remote folder or its own list", async () => {

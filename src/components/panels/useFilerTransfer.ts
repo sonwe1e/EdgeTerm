@@ -127,13 +127,10 @@ export function useFilerTransfer({ setError, error, t }: Options) {
     // three-second blink it used to get was over before the user had read
     // it, and the Retry button needs a stable target to sit beside.
     if (status === "error") return;
-    transferClearTimer.current = window.setTimeout(
-      () => {
-        setTransfer(null);
-        transferClearTimer.current = null;
-      },
-      1800,
-    );
+    transferClearTimer.current = window.setTimeout(() => {
+      setTransfer(null);
+      transferClearTimer.current = null;
+    }, 1800);
   };
 
   /**

@@ -84,11 +84,7 @@ export function SenderLibrary({
         <div className="sender-library-empty">
           <p>{emptyMessage}</p>
           {visibleCommands.length === 0 && (
-            <button
-              type="button"
-              className="sender-save-btn"
-              onClick={openComposer}
-            >
+            <button type="button" className="sender-save-btn" onClick={openComposer}>
               {t("sender.createFirst")}
             </button>
           )}

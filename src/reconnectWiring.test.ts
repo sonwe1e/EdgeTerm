@@ -118,9 +118,7 @@ describe("Enter on an ended session, through the wiring in actions.ts", () => {
   it("reconnects with the saved profile, not the copy the tab opened with", async () => {
     const controller = await ended("wired-edited");
     useStore.setState({
-      profiles: [
-        { id: "wired-edited", name: "edited", kind: "local", shell: "/bin/zsh" },
-      ],
+      profiles: [{ id: "wired-edited", name: "edited", kind: "local", shell: "/bin/zsh" }],
     });
     press(controller, "\r");
 
@@ -137,17 +135,17 @@ describe("Enter on an ended session, through the wiring in actions.ts", () => {
     expect(api.writeSession).toHaveBeenCalledWith("wired-live", "\r");
   });
 
-it("cancels a connect that is still negotiating instead of ignoring the request", async () => {
-  const id = "wired-connecting";
-  ids.push(id);
-  useStore.setState({
-    tabs: [...useStore.getState().tabs, makeTab(id, "connecting")],
-    activeId: id,
-    panes: [{ id: initialState.activePaneId, activeTabId: id }],
+  it("cancels a connect that is still negotiating instead of ignoring the request", async () => {
+    const id = "wired-connecting";
+    ids.push(id);
+    useStore.setState({
+      tabs: [...useStore.getState().tabs, makeTab(id, "connecting")],
+      activeId: id,
+      panes: [{ id: initialState.activePaneId, activeTabId: id }],
+    });
+    await ensureController(id);
+    await disconnectSession(id);
+    expect(useStore.getState().tabs.find((tab) => tab.info.id === id)?.state).toBe("closed");
+    expect(api.closeSession).toHaveBeenCalledWith(id);
   });
-  await ensureController(id);
-  await disconnectSession(id);
-  expect(useStore.getState().tabs.find((tab) => tab.info.id === id)?.state).toBe("closed");
-  expect(api.closeSession).toHaveBeenCalledWith(id);
-});
 });

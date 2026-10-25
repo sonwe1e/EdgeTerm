@@ -69,9 +69,7 @@ describe("fitSides", () => {
 
   it("scales both sides down on a smaller window without starving either", () => {
     const fitted = fitSides(700, 700, 900);
-    expect(fitted.left + fitted.right).toBeLessThanOrEqual(
-      900 - MIN_CENTER_WIDTH - 2,
-    );
+    expect(fitted.left + fitted.right).toBeLessThanOrEqual(900 - MIN_CENTER_WIDTH - 2);
     expect(fitted.left).toBeGreaterThanOrEqual(SIDE_MIN);
     expect(fitted.right).toBeGreaterThanOrEqual(SIDE_MIN);
   });
@@ -113,8 +111,6 @@ describe("loadPanelSizing", () => {
     );
     window.innerWidth = 900;
     const loaded = loadPanelSizing();
-    expect(loaded.left + loaded.right + MIN_CENTER_WIDTH + 2).toBeLessThanOrEqual(
-      900,
-    );
+    expect(loaded.left + loaded.right + MIN_CENTER_WIDTH + 2).toBeLessThanOrEqual(900);
   });
 });

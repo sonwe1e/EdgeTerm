@@ -97,10 +97,14 @@ function measureLayout(config) {
   const box = (element) => {
     const rect = element.getBoundingClientRect();
     return {
-      x: n(rect.x), y: n(rect.y),
-      width: n(rect.width), height: n(rect.height),
-      left: n(rect.left), top: n(rect.top),
-      right: n(rect.right), bottom: n(rect.bottom),
+      x: n(rect.x),
+      y: n(rect.y),
+      width: n(rect.width),
+      height: n(rect.height),
+      left: n(rect.left),
+      top: n(rect.top),
+      right: n(rect.right),
+      bottom: n(rect.bottom),
     };
   };
 
@@ -120,12 +124,17 @@ function measureLayout(config) {
     const srgb = value.match(/^color\(\s*srgb\s+([^)]+)\)$/i);
     const body = rgb ? rgb[1] : srgb ? srgb[1] : null;
     if (!body) return null;
-    const parts = body.split(/[,\s/]+/).filter(Boolean).map(Number);
+    const parts = body
+      .split(/[,\s/]+/)
+      .filter(Boolean)
+      .map(Number);
     if (parts.length < 3 || parts.slice(0, 3).some((part) => !Number.isFinite(part))) return null;
     const scale = srgb ? 255 : 1;
     const alpha = parts.length > 3 && Number.isFinite(parts[3]) ? parts[3] : 1;
     return {
-      r: parts[0] * scale, g: parts[1] * scale, b: parts[2] * scale,
+      r: parts[0] * scale,
+      g: parts[1] * scale,
+      b: parts[2] * scale,
       a: Math.max(0, Math.min(1, alpha)),
     };
   };
@@ -260,7 +269,9 @@ function measureLayout(config) {
     };
     const body = popover.querySelector(selectors.body);
     const bodyScroll = body ? scrollOf(body) : null;
-    const scrollsVertically = Boolean(bodyScroll && bodyScroll.scrollHeight > bodyScroll.clientHeight + 1);
+    const scrollsVertically = Boolean(
+      bodyScroll && bodyScroll.scrollHeight > bodyScroll.clientHeight + 1,
+    );
 
     push(
       "popover.margin",
@@ -284,7 +295,10 @@ function measureLayout(config) {
       const sides = [];
       if (rect.left < inner.left - limits.tolerance) sides.push("left");
       if (rect.right > inner.right + limits.tolerance) sides.push("right");
-      if (rect.top < inner.top - limits.tolerance && !(bodyScroll && bodyScroll.scrollTop > limits.tolerance)) {
+      if (
+        rect.top < inner.top - limits.tolerance &&
+        !(bodyScroll && bodyScroll.scrollTop > limits.tolerance)
+      ) {
         sides.push("top");
       }
       if (rect.bottom > inner.bottom + limits.tolerance && !scrollsVertically) sides.push("bottom");
@@ -309,15 +323,20 @@ function measureLayout(config) {
       crossings.length === 0,
       crossings.length === 0
         ? "no descendant crosses the frame's inner edges"
-        : `${crossings.length} crossing(s): ${crossings.slice(0, 4).map((item) => `${item.element}(${item.sides.join("+")})`).join(", ")}`,
+        : `${crossings.length} crossing(s): ${crossings
+            .slice(0, 4)
+            .map((item) => `${item.element}(${item.sides.join("+")})`)
+            .join(", ")}`,
     );
 
     record.popover = {
       rect: box(popover),
       margins,
       inner: {
-        left: n(inner.left), top: n(inner.top),
-        right: n(inner.right), bottom: n(inner.bottom),
+        left: n(inner.left),
+        top: n(inner.top),
+        right: n(inner.right),
+        bottom: n(inner.bottom),
       },
       body: bodyScroll ? { ...bodyScroll, scrollsVertically } : null,
       crossings,
@@ -336,7 +355,11 @@ function measureLayout(config) {
     const scroll = scrollOf(element);
     const fit = scroll.scrollWidth <= scroll.clientWidth + limits.tolerance;
     record.containers.push({ selector, present: true, scroll, fit });
-    push(`container.${selector}.fit`, fit, `${selector} scrollWidth=${scroll.scrollWidth} clientWidth=${scroll.clientWidth}`);
+    push(
+      `container.${selector}.fit`,
+      fit,
+      `${selector} scrollWidth=${scroll.scrollWidth} clientWidth=${scroll.clientWidth}`,
+    );
   }
 
   // --- row fit and rhythm ---------------------------------------------------
@@ -391,7 +414,13 @@ function measureLayout(config) {
         failing.length === 0,
         failing.length === 0
           ? `${elements.length} row(s) fit`
-          : `${failing.length}/${elements.length} overflow: ${failing.slice(0, 3).map((entry) => `#${entry.index} ${entry.scrollWidth}x${entry.scrollHeight} in ${entry.clientWidth}x${entry.clientHeight}`).join(", ")}`,
+          : `${failing.length}/${elements.length} overflow: ${failing
+              .slice(0, 3)
+              .map(
+                (entry) =>
+                  `#${entry.index} ${entry.scrollWidth}x${entry.scrollHeight} in ${entry.clientWidth}x${entry.clientHeight}`,
+              )
+              .join(", ")}`,
       );
       row.fit = fit;
     }
@@ -447,7 +476,7 @@ function measureLayout(config) {
       if (!wrapper) continue;
       const button = wrapper.matches("button")
         ? wrapper
-        : wrapper.querySelector("button[aria-expanded]") ?? wrapper.querySelector("button");
+        : (wrapper.querySelector("button[aria-expanded]") ?? wrapper.querySelector("button"));
       if (!button) continue;
       const trigger = box(button);
       triggers.push({
@@ -469,13 +498,33 @@ function measureLayout(config) {
       }
     }
     const heightsOk = triggers.every((item) => Math.abs(item.height - limits.triggerHeight) <= 0.5);
-    const centersOk = triggers.every((item) => Math.abs(item.centerDelta) <= limits.centerTolerance);
+    const centersOk = triggers.every(
+      (item) => Math.abs(item.centerDelta) <= limits.centerTolerance,
+    );
     const barFits = barScroll.scrollWidth <= barScroll.clientWidth + limits.tolerance;
 
-    push("statusbar.height", heightsOk, triggers.map((item) => `${item.trigger} ${item.height}px`).join(", "));
-    push("statusbar.overlap", overlaps.length === 0, overlaps.length === 0 ? "no trigger overlap" : overlaps.map((pair) => pair.join("/")).join(", "));
-    push("statusbar.horizontalOverflow", barFits, `bar scrollWidth=${barScroll.scrollWidth} clientWidth=${barScroll.clientWidth}`);
-    push("statusbar.verticalCenter", centersOk, triggers.map((item) => `${item.trigger} ${item.centerDelta}px`).join(", "));
+    push(
+      "statusbar.height",
+      heightsOk,
+      triggers.map((item) => `${item.trigger} ${item.height}px`).join(", "),
+    );
+    push(
+      "statusbar.overlap",
+      overlaps.length === 0,
+      overlaps.length === 0
+        ? "no trigger overlap"
+        : overlaps.map((pair) => pair.join("/")).join(", "),
+    );
+    push(
+      "statusbar.horizontalOverflow",
+      barFits,
+      `bar scrollWidth=${barScroll.scrollWidth} clientWidth=${barScroll.clientWidth}`,
+    );
+    push(
+      "statusbar.verticalCenter",
+      centersOk,
+      triggers.map((item) => `${item.trigger} ${item.centerDelta}px`).join(", "),
+    );
 
     record.statusbar = {
       rect: barBox,
@@ -496,29 +545,46 @@ function measureLayout(config) {
 
     for (const selector of config.elements.visible ?? []) {
       const elements = Array.from(document.querySelectorAll(selector));
-      const visible = elements.length > 0 && elements.every((element) => {
-        const rect = element.getBoundingClientRect();
-        return displayOf(element) !== "none" && rect.width > 0 && rect.height > 0;
-      });
+      const visible =
+        elements.length > 0 &&
+        elements.every((element) => {
+          const rect = element.getBoundingClientRect();
+          return displayOf(element) !== "none" && rect.width > 0 && rect.height > 0;
+        });
       measured.visible.push({ selector, count: elements.length, visible });
-      push(`elements.${selector}.visible`, visible, `${selector} present=${elements.length} visible=${visible}`);
+      push(
+        `elements.${selector}.visible`,
+        visible,
+        `${selector} present=${elements.length} visible=${visible}`,
+      );
     }
 
     for (const selector of config.elements.hidden ?? []) {
       const elements = Array.from(document.querySelectorAll(selector));
-      const hidden = elements.length > 0 && elements.every((element) => {
-        const rect = element.getBoundingClientRect();
-        return displayOf(element) === "none" || rect.width === 0 || rect.height === 0;
-      });
+      const hidden =
+        elements.length > 0 &&
+        elements.every((element) => {
+          const rect = element.getBoundingClientRect();
+          return displayOf(element) === "none" || rect.width === 0 || rect.height === 0;
+        });
       measured.hidden.push({ selector, count: elements.length, hidden });
-      push(`elements.${selector}.hidden`, hidden, `${selector} present=${elements.length} hidden=${hidden}`);
+      push(
+        `elements.${selector}.hidden`,
+        hidden,
+        `${selector} present=${elements.length} hidden=${hidden}`,
+      );
     }
 
     for (const spec of config.elements.fitWithin ?? []) {
       const elements = Array.from(document.querySelectorAll(spec.selector));
       const container = document.querySelector(spec.within);
       if (!container || elements.length === 0) {
-        measured.fitWithin.push({ selector: spec.selector, within: spec.within, present: false, fit: false });
+        measured.fitWithin.push({
+          selector: spec.selector,
+          within: spec.within,
+          present: false,
+          fit: false,
+        });
         push(
           `elements.${spec.selector}.fitWithin`,
           false,
@@ -538,9 +604,10 @@ function measureLayout(config) {
           rect.right <= outer.right + limits.tolerance &&
           rect.top >= outer.top - limits.tolerance &&
           rect.bottom <= outer.bottom + limits.tolerance;
-        const heightOk = typeof spec.maxHeight === "number"
-          ? rect.height <= spec.maxHeight + limits.tolerance
-          : true;
+        const heightOk =
+          typeof spec.maxHeight === "number"
+            ? rect.height <= spec.maxHeight + limits.tolerance
+            : true;
         return {
           width: n(rect.width),
           height: n(rect.height),
@@ -551,7 +618,13 @@ function measureLayout(config) {
         };
       });
       const fit = boxesOf.every((entry) => entry.pass);
-      measured.fitWithin.push({ selector: spec.selector, within: spec.within, count: elements.length, boxes: boxesOf, fit });
+      measured.fitWithin.push({
+        selector: spec.selector,
+        within: spec.within,
+        count: elements.length,
+        boxes: boxesOf,
+        fit,
+      });
       push(
         `elements.${spec.selector}.fitWithin`,
         fit,
@@ -566,11 +639,10 @@ function measureLayout(config) {
 
   if (popover) {
     for (const selector of config.contrast) {
-      const elements = Array.from(popover.querySelectorAll(selector))
-        .filter((element) => {
-          const rect = element.getBoundingClientRect();
-          return rect.width > 0 && rect.height > 0 && (element.textContent ?? "").trim().length > 0;
-        });
+      const elements = Array.from(popover.querySelectorAll(selector)).filter((element) => {
+        const rect = element.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 && (element.textContent ?? "").trim().length > 0;
+      });
       if (elements.length === 0) {
         record.contrast.push({ selector, present: false });
         continue;
@@ -600,10 +672,16 @@ function measureLayout(config) {
         pass,
         samples,
       });
-      push(`contrast.${selector}`, pass, `${selector} min=${minRatio.toFixed(2)}:1, needs ${required}:1 (${samples.length} sample(s))`);
+      push(
+        `contrast.${selector}`,
+        pass,
+        `${selector} min=${minRatio.toFixed(2)}:1, needs ${required}:1 (${samples.length} sample(s))`,
+      );
     }
   }
 
-  record.failures = assertions.filter((assertion) => !assertion.pass).map((assertion) => `${assertion.id}: ${assertion.detail}`);
+  record.failures = assertions
+    .filter((assertion) => !assertion.pass)
+    .map((assertion) => `${assertion.id}: ${assertion.detail}`);
   return record;
 }

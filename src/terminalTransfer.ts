@@ -48,10 +48,7 @@ export class BufferedFileWriter {
     const source = Uint8Array.from(bytes);
     let sourceOffset = 0;
     while (sourceOffset < source.length) {
-      const length = Math.min(
-        FILE_CHUNK_SIZE - this.buffered,
-        source.length - sourceOffset,
-      );
+      const length = Math.min(FILE_CHUNK_SIZE - this.buffered, source.length - sourceOffset);
       this.parts.push(source.subarray(sourceOffset, sourceOffset + length));
       this.buffered += length;
       sourceOffset += length;
@@ -117,10 +114,7 @@ export class ChunkedFileReader {
     }
     if (offset >= this.size || length <= 0) return new Uint8Array(0);
     const end = Math.min(offset + length, this.size);
-    if (
-      offset < this.chunkOffset ||
-      end > this.chunkOffset + this.chunk.length
-    ) {
+    if (offset < this.chunkOffset || end > this.chunkOffset + this.chunk.length) {
       await this.load(offset);
       if (end > this.chunkOffset + this.chunk.length) {
         throw new Error("the file ended before its reported size");

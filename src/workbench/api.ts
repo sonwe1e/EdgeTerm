@@ -99,26 +99,17 @@ export const statFile = (sessionId: string, path: string): Promise<FileStat> =>
 export const listFiles = (sessionId: string, root: string): Promise<FileList> =>
   commands.projectListFiles(sessionId, root) as Promise<FileList>;
 
-export const search = (
-  sessionId: string,
-  root: string,
-  query: string,
-): Promise<SearchResult> => commands.projectSearch(sessionId, root, query) as Promise<SearchResult>;
+export const search = (sessionId: string, root: string, query: string): Promise<SearchResult> =>
+  commands.projectSearch(sessionId, root, query) as Promise<SearchResult>;
 
 export const gitState = (sessionId: string, root: string): Promise<GitState> =>
   commands.projectGitState(sessionId, root) as Promise<GitState>;
 
-export const gitDiff = (
-  sessionId: string,
-  root: string,
-  path: string | null,
-): Promise<DiffText> => commands.projectGitDiff(sessionId, root, path) as Promise<DiffText>;
+export const gitDiff = (sessionId: string, root: string, path: string | null): Promise<DiffText> =>
+  commands.projectGitDiff(sessionId, root, path) as Promise<DiffText>;
 
-export const readLog = (
-  sessionId: string,
-  path: string,
-  offset: number,
-): Promise<LogChunk> => commands.projectReadLog(sessionId, path, offset) as Promise<LogChunk>;
+export const readLog = (sessionId: string, path: string, offset: number): Promise<LogChunk> =>
+  commands.projectReadLog(sessionId, path, offset) as Promise<LogChunk>;
 
 export const startRun = (
   sessionId: string,

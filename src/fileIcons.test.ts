@@ -14,9 +14,7 @@ describe("bundled Material file icons", () => {
     expect(fileIconSource("First.TS", false, "dark")).toBe(
       fileIconSource("first.ts", false, "dark"),
     );
-    expect(fileIconSource("a.ts", false, "dark")).toBe(
-      fileIconSource("b.ts", false, "dark"),
-    );
+    expect(fileIconSource("a.ts", false, "dark")).toBe(fileIconSource("b.ts", false, "dark"));
   });
 
   it("prefers the longest matching suffix the theme actually maps", () => {
@@ -51,13 +49,9 @@ describe("bundled Material file icons", () => {
     expect(fileIconSource("sconstruct", false, "light")).not.toBe(
       fileIconSource("sconstruct", false, "dark"),
     );
-    expect(fileIconSource("a.ts", false, "light")).toBe(
-      fileIconSource("a.ts", false, "dark"),
-    );
+    expect(fileIconSource("a.ts", false, "light")).toBe(fileIconSource("a.ts", false, "dark"));
     // Same for folders: "src" has no light folder icon of its own.
-    expect(fileIconSource("src", true, "light")).toBe(
-      fileIconSource("src", true, "dark"),
-    );
+    expect(fileIconSource("src", true, "light")).toBe(fileIconSource("src", true, "dark"));
   });
 
   it("keeps separate defaults for unknown files and folders", () => {

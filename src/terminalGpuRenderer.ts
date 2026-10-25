@@ -76,9 +76,11 @@ export class TerminalGpuRenderer {
     // fallback factory (also used after context loss), keeping resize and
     // selection state intact; the normal show/fit refresh paints it later.
     type Renderer = { renderRows(start: number, end: number): void };
-    const core = (this.context.term as unknown as {
-      _core?: { _createRenderer(): Renderer };
-    })._core;
+    const core = (
+      this.context.term as unknown as {
+        _core?: { _createRenderer(): Renderer };
+      }
+    )._core;
     if (!core?._createRenderer) return;
     const createRenderer = core._createRenderer.bind(core);
     core._createRenderer = () => {

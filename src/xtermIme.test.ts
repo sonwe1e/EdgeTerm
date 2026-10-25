@@ -53,9 +53,7 @@ class Harness {
   }
 
   keydown(key: string, keyCode: number, extra: KeyboardEventInit = {}) {
-    this.textarea.dispatchEvent(
-      keyEvent("keydown", { key, keyCode, ...extra }),
-    );
+    this.textarea.dispatchEvent(keyEvent("keydown", { key, keyCode, ...extra }));
   }
 
   keyup(key: string, keyCode: number, extra: KeyboardEventInit = {}) {
@@ -117,8 +115,7 @@ class Harness {
    * fires, then an `input` of type insertFromComposition.
    */
   compositionEnd(committed: string) {
-    this.textarea.value =
-      this.textarea.value.slice(0, this.markStart) + committed;
+    this.textarea.value = this.textarea.value.slice(0, this.markStart) + committed;
     this.textarea.dispatchEvent(
       new CompositionEvent("compositionend", {
         data: committed,
@@ -236,9 +233,7 @@ describe("IME input on xterm", () => {
     h.compositionUpdate("nihao");
     // Marked text withdrawn: compositionend reports what is left (nothing).
     h.textarea.value = "";
-    h.textarea.dispatchEvent(
-      new CompositionEvent("compositionend", { data: "", bubbles: true }),
-    );
+    h.textarea.dispatchEvent(new CompositionEvent("compositionend", { data: "", bubbles: true }));
     h.insert("你好");
     h.keydown(" ", IME_KEYCODE);
     h.keyup(" ", 32);

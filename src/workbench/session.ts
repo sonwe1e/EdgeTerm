@@ -11,8 +11,7 @@ import type { ServerRef } from "./types";
  * while `profileId` (or the endpoint) is what a project is bound to.
  */
 
-const endpointOf = (server: ServerRef): string =>
-  `${server.host}:${server.port || 22}`;
+const endpointOf = (server: ServerRef): string => `${server.host}:${server.port || 22}`;
 
 export function connectedTabFor(server: ServerRef): Tab | undefined {
   const endpoint = endpointOf(server);
@@ -112,18 +111,14 @@ export async function openWorkspaceTerminal(
     .getState()
     .tabs.find(
       (tab) =>
-        tab.workspaceId === workspaceId &&
-        tab.state === "connected" &&
-        tab.info.kind === "ssh",
+        tab.workspaceId === workspaceId && tab.state === "connected" && tab.info.kind === "ssh",
     );
   if (existing) {
     useStore.getState().setActive(existing.info.id);
     return existing.info.id;
   }
   const sessionId = await ensureSessionFor(server);
-  useStore
-    .getState()
-    .setTabWorkspace(sessionId, workspaceId, `${workspaceName} · ${server.host}`);
+  useStore.getState().setTabWorkspace(sessionId, workspaceId, `${workspaceName} · ${server.host}`);
   await waitForSession(sessionId);
   // The shell may still be printing its prompt; one write after the backend
   // reports connected is enough, and a failure only costs the `cd`.

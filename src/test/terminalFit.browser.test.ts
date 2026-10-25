@@ -26,13 +26,17 @@ import type { Tab } from "../store";
 const live: TerminalController[] = [];
 let previousWebgl: boolean | null = null;
 
-const make = (pane: HTMLElement): { controller: TerminalController; resizes: { cols: number; rows: number; at: number }[] } => {
+const make = (
+  pane: HTMLElement,
+): { controller: TerminalController; resizes: { cols: number; rows: number; at: number }[] } => {
   const resizes: { cols: number; rows: number; at: number }[] = [];
   const controller = new TerminalController(
     `fit-browser-${live.length}-${Date.now()}`,
     {
       onData: () => {},
-      onResize: (cols, rows) => { resizes.push({ cols, rows, at: performance.now() }); },
+      onResize: (cols, rows) => {
+        resizes.push({ cols, rows, at: performance.now() });
+      },
       onStatus: () => {},
       onCommand: () => {},
       onCommandState: () => {},
@@ -55,10 +59,7 @@ const write = (controller: TerminalController, text: string): Promise<void> =>
 const lines = (n: number): string =>
   Array.from({ length: n }, (_, index) => `line ${index}`).join("\r\n");
 
-const settles = async (
-  predicate: () => boolean,
-  timeoutMs = 2000,
-): Promise<boolean> => {
+const settles = async (predicate: () => boolean, timeoutMs = 2000): Promise<boolean> => {
   const deadline = performance.now() + timeoutMs;
   for (;;) {
     if (predicate()) return true;
@@ -89,11 +90,15 @@ const pixelContract = (controller: TerminalController): { ok: boolean; detail: s
   const reserved = vScrollbar ? vScrollbar.offsetWidth : 0;
   const availableW = host.clientWidth - reserved;
   const availableH = host.clientHeight;
-  const ok = screenW <= availableW + 1 && screenW + 2 * cellW > availableW + 1 &&
-    screenH <= availableH + 1 && screenH + 2 * cellH > availableH + 1;
+  const ok =
+    screenW <= availableW + 1 &&
+    screenW + 2 * cellW > availableW + 1 &&
+    screenH <= availableH + 1 &&
+    screenH + 2 * cellH > availableH + 1;
   return {
     ok,
-    detail: `cols=${cols} rows=${rows} screen=${screenW}x${screenH} ` +
+    detail:
+      `cols=${cols} rows=${rows} screen=${screenW}x${screenH} ` +
       `host=${host.clientWidth}x${host.clientHeight} reserved=${reserved} ` +
       `vbar=${vScrollbar ? "found" : "missing"}`,
   };
@@ -221,8 +226,10 @@ describe("TerminalController fit in a real container", () => {
     controller.fit(true);
 
     await write(controller, lines(199));
-    expect(controller.term.buffer.normal.length,
-      "the 199-line input really sits in the normal buffer").toBe(199);
+    expect(
+      controller.term.buffer.normal.length,
+      "the 199-line input really sits in the normal buffer",
+    ).toBe(199);
 
     resizePane(pane, 780, 480);
     controller.scheduleFit();
@@ -243,8 +250,7 @@ describe("TerminalController fit in a real container", () => {
     controller.fit(true);
 
     await write(controller, lines(200));
-    expect(controller.term.buffer.normal.length,
-      "the threshold line count is exact").toBe(200);
+    expect(controller.term.buffer.normal.length, "the threshold line count is exact").toBe(200);
 
     // Column-only, large buffer: the scheduleFit call returns with columns
     // still unchanged — that is synchronous truth, not a race against the
@@ -252,10 +258,13 @@ describe("TerminalController fit in a real container", () => {
     const colsBefore = controller.term.cols;
     resizePane(pane, 900, 400);
     controller.scheduleFit();
-    expect(controller.term.cols,
-      "columns are still pending the moment scheduleFit returns").toBe(colsBefore);
-    expect(await settles(() => controller.term.cols !== colsBefore),
-      "pending columns apply after the settle").toBe(true);
+    expect(controller.term.cols, "columns are still pending the moment scheduleFit returns").toBe(
+      colsBefore,
+    );
+    expect(
+      await settles(() => controller.term.cols !== colsBefore),
+      "pending columns apply after the settle",
+    ).toBe(true);
     const colsAt900 = controller.term.cols;
     expect(colsAt900).toBeGreaterThan(colsBefore);
 
@@ -263,8 +272,9 @@ describe("TerminalController fit in a real container", () => {
     const rowsAt400 = controller.term.rows;
     resizePane(pane, 900, 560);
     controller.scheduleFit();
-    expect(controller.term.rows,
-      "rows move at once even for a large buffer").toBeGreaterThan(rowsAt400);
+    expect(controller.term.rows, "rows move at once even for a large buffer").toBeGreaterThan(
+      rowsAt400,
+    );
     expect(resizes[resizes.length - 1].rows).toBe(controller.term.rows);
 
     // Diagonal, large buffer: the rows phase lands synchronously with the
@@ -273,15 +283,22 @@ describe("TerminalController fit in a real container", () => {
     const rowsAt560 = controller.term.rows;
     resizePane(pane, 1060, 640);
     controller.scheduleFit();
-    expect(controller.term.rows,
-      "diagonal rows applied at once for the new height").toBeGreaterThan(rowsAt560);
-    expect(controller.term.cols,
-      "diagonal keeps the old columns in the rows phase").toBe(colsAt900);
+    expect(
+      controller.term.rows,
+      "diagonal rows applied at once for the new height",
+    ).toBeGreaterThan(rowsAt560);
+    expect(controller.term.cols, "diagonal keeps the old columns in the rows phase").toBe(
+      colsAt900,
+    );
     const rowsAt640 = controller.term.rows;
-    expect(await settles(() => controller.term.cols !== colsAt900),
-      "diagonal columns apply after the settle").toBe(true);
-    expect(controller.term.rows,
-      "the rows phase result is final; the settle only moves columns").toBe(rowsAt640);
+    expect(
+      await settles(() => controller.term.cols !== colsAt900),
+      "diagonal columns apply after the settle",
+    ).toBe(true);
+    expect(
+      controller.term.rows,
+      "the rows phase result is final; the settle only moves columns",
+    ).toBe(rowsAt640);
     const pixels = pixelContract(controller);
     expect(pixels.ok, pixels.detail).toBe(true);
     const colsAt1060 = controller.term.cols;
@@ -295,11 +312,12 @@ describe("TerminalController fit in a real container", () => {
     await wait(30);
     resizePane(pane, 1060, 640);
     controller.scheduleFit();
-    expect(await settles(() => controller.term.cols === colsAt1060),
-      "the later width event replaced the pending one").toBe(true);
+    expect(
+      await settles(() => controller.term.cols === colsAt1060),
+      "the later width event replaced the pending one",
+    ).toBe(true);
     await wait(250);
-    expect(controller.term.cols,
-      "no late change from the superseded 1140 task").toBe(colsAt1060);
+    expect(controller.term.cols, "no late change from the superseded 1140 task").toBe(colsAt1060);
   });
 
   it("hiding cancels the pending column task and the terminal stops fitting", async () => {
@@ -318,8 +336,7 @@ describe("TerminalController fit in a real container", () => {
     controller.setVisible(false);
 
     await wait(250);
-    expect(controller.term.cols,
-      "the pending column fit was cancelled by hide").toBe(colsBefore);
+    expect(controller.term.cols, "the pending column fit was cancelled by hide").toBe(colsBefore);
     expect(controller.fit(), "fit refuses while hidden").toBeNull();
     const resizesAtHide = resizes.length;
 
@@ -356,8 +373,10 @@ describe("TerminalController fit in a real container", () => {
     expect(resizes[resizes.length - 1].rows).toBe(controller.term.rows);
     const pixels = pixelContract(controller);
     expect(pixels.ok, pixels.detail).toBe(true);
-    expect(controller.term.rows,
-      "the 600px-tall pane fits more rows than the 400px one did").toBeGreaterThan(rowsAtHide);
+    expect(
+      controller.term.rows,
+      "the 600px-tall pane fits more rows than the 400px one did",
+    ).toBeGreaterThan(rowsAtHide);
   });
 
   it("the real SessionPane hides without fitting and refits on show", async () => {
@@ -379,8 +398,10 @@ describe("TerminalController fit in a real container", () => {
     // behind its callbacks is unreachable in a plain browser, where those
     // promises reject and are swallowed by the production catch handlers.
     const session = mount(paneProps(false, 640, 400));
-    expect(await settles(() => getController(id) !== undefined, 3000),
-      "the pane's ensureController wiring registered the terminal").toBe(true);
+    expect(
+      await settles(() => getController(id) !== undefined, 3000),
+      "the pane's ensureController wiring registered the terminal",
+    ).toBe(true);
     const controller = getController(id)!;
     live.push(controller);
     await twoFrames();
@@ -389,16 +410,20 @@ describe("TerminalController fit in a real container", () => {
     // Showing runs the component's own effect chain: setVisible(true), then
     // a frame later fit(true).
     session.render(paneProps(true, 640, 400));
-    expect(await settles(() => controller.term.cols !== 80, 3000),
-      "the visible pane fit through its own effect").toBe(true);
+    expect(
+      await settles(() => controller.term.cols !== 80, 3000),
+      "the visible pane fit through its own effect",
+    ).toBe(true);
     const pixels = pixelContract(controller);
     expect(pixels.ok, pixels.detail).toBe(true);
 
     // Real output sits in the buffer, so the shown large-buffer contract and
     // the gutter rows are exercised over actual content, not an empty pane.
     await write(controller, lines(300));
-    expect(controller.term.buffer.normal.length,
-      "the written session output is really in the normal buffer").toBe(300);
+    expect(
+      controller.term.buffer.normal.length,
+      "the written session output is really in the normal buffer",
+    ).toBe(300);
     await wait(100);
 
     // Hidden at a new geometry: no fit. Shown again: the new geometry is
@@ -408,8 +433,10 @@ describe("TerminalController fit in a real container", () => {
     await twoFrames();
     expect(controller.term.cols, "the hidden pane keeps its old fit").toBe(colsShown);
     session.render(paneProps(true, 900, 560));
-    expect(await settles(() => controller.term.cols !== colsShown, 3000),
-      "the resized pane refits on show").toBe(true);
+    expect(
+      await settles(() => controller.term.cols !== colsShown, 3000),
+      "the resized pane refits on show",
+    ).toBe(true);
     expect(controller.term.cols).toBeGreaterThan(colsShown);
 
     // The gutter rides the same chain: its rows size themselves from the
@@ -418,34 +445,52 @@ describe("TerminalController fit in a real container", () => {
     // frames after the show — before any later resize task can run — the
     // gutter pitch and the DOM text row pitch must already agree, and stay
     // agreed once settled, with no extra fit call to mask a stale value.
-    const gutterAlignment = (): { gutterPitch: number; textPitch: number; maxRowOffset: number; rows: number } => {
+    const gutterAlignment = (): {
+      gutterPitch: number;
+      textPitch: number;
+      maxRowOffset: number;
+      rows: number;
+    } => {
       const gutters = Array.from(document.querySelectorAll<HTMLElement>(".gutter-row"));
       const texts = Array.from(document.querySelectorAll<HTMLElement>(".xterm-rows > div"));
-      const gutterPitch = gutters.length > 1
-        ? gutters[1].getBoundingClientRect().top - gutters[0].getBoundingClientRect().top
-        : Number.NaN;
-      const textPitch = texts.length > 1
-        ? texts[1].getBoundingClientRect().top - texts[0].getBoundingClientRect().top
-        : Number.NaN;
+      const gutterPitch =
+        gutters.length > 1
+          ? gutters[1].getBoundingClientRect().top - gutters[0].getBoundingClientRect().top
+          : Number.NaN;
+      const textPitch =
+        texts.length > 1
+          ? texts[1].getBoundingClientRect().top - texts[0].getBoundingClientRect().top
+          : Number.NaN;
       const count = Math.min(gutters.length, texts.length);
       let maxRowOffset = 0;
       for (let index = 0; index < count; index += 1) {
-        maxRowOffset = Math.max(maxRowOffset, Math.abs(
-          gutters[index].getBoundingClientRect().top - texts[index].getBoundingClientRect().top,
-        ));
+        maxRowOffset = Math.max(
+          maxRowOffset,
+          Math.abs(
+            gutters[index].getBoundingClientRect().top - texts[index].getBoundingClientRect().top,
+          ),
+        );
       }
       return { gutterPitch, textPitch, maxRowOffset, rows: count };
     };
     const expectAligned = (when: string) => {
       const sample = gutterAlignment();
-      expect(sample.rows, `${when}: gutter and text rows rendered (${sample.rows})`).toBeGreaterThan(1);
-      expect(Number.isFinite(sample.gutterPitch) && Number.isFinite(sample.textPitch),
-        `${when}: pitches measurable`).toBe(true);
-      expect(Math.abs(sample.gutterPitch - sample.textPitch),
-        `${when}: gutter pitch ${sample.gutterPitch} must equal text pitch ${sample.textPitch}`)
-        .toBeLessThan(0.1);
-      expect(sample.maxRowOffset, `${when}: max gutter/text row offset ${sample.maxRowOffset}`)
-        .toBeLessThan(0.5);
+      expect(
+        sample.rows,
+        `${when}: gutter and text rows rendered (${sample.rows})`,
+      ).toBeGreaterThan(1);
+      expect(
+        Number.isFinite(sample.gutterPitch) && Number.isFinite(sample.textPitch),
+        `${when}: pitches measurable`,
+      ).toBe(true);
+      expect(
+        Math.abs(sample.gutterPitch - sample.textPitch),
+        `${when}: gutter pitch ${sample.gutterPitch} must equal text pitch ${sample.textPitch}`,
+      ).toBeLessThan(0.1);
+      expect(
+        sample.maxRowOffset,
+        `${when}: max gutter/text row offset ${sample.maxRowOffset}`,
+      ).toBeLessThan(0.5);
     };
 
     // A font change while hidden lands at the show boundary, and the LAST
@@ -462,9 +507,10 @@ describe("TerminalController fit in a real container", () => {
     await wait(250);
     const afterRoundtrip = gutterAlignment();
     expect(afterRoundtrip.rows).toBeGreaterThan(1);
-    expect(Math.abs(afterRoundtrip.textPitch - beforeRoundtrip.textPitch),
-      `round-tripped font renders at the final size: ${afterRoundtrip.textPitch} vs ${beforeRoundtrip.textPitch}`)
-      .toBeLessThan(0.1);
+    expect(
+      Math.abs(afterRoundtrip.textPitch - beforeRoundtrip.textPitch),
+      `round-tripped font renders at the final size: ${afterRoundtrip.textPitch} vs ${beforeRoundtrip.textPitch}`,
+    ).toBeLessThan(0.1);
     await twoFrames();
     expectAligned("two frames after the resized show");
     await wait(250);

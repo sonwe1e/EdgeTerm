@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { OutputConsumption } from "./outputFlow";
 
 afterEach(() => vi.useRealTimers());
-const tick = async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); };
+const tick = async () => {
+  for (let i = 0; i < 6; i++) await Promise.resolve();
+};
 
 describe("output consumption", () => {
   it("holds credit until consumed, batches callbacks and ignores duplicate completions", async () => {
@@ -12,7 +14,9 @@ describe("output consumption", () => {
     const two = flow.receive(200);
     await tick();
     expect(ack).not.toHaveBeenCalled();
-    one(); two(); one();
+    one();
+    two();
+    one();
     await tick();
     expect(ack.mock.calls).toEqual([[300]]);
   });
@@ -32,11 +36,17 @@ describe("output consumption", () => {
 
   it("allows only one IPC in flight and sends the latest cumulative offset next", async () => {
     let release!: () => void;
-    const ack = vi.fn(() => new Promise<void>((resolve) => { release = resolve; }));
+    const ack = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
     const flow = new OutputConsumption(ack);
     flow.receive(10)();
     await tick();
-    flow.receive(20)(); flow.receive(30)();
+    flow.receive(20)();
+    flow.receive(30)();
     await tick();
     expect(ack.mock.calls).toEqual([[10]]);
     release();
@@ -65,7 +75,8 @@ describe("output consumption", () => {
     flow.receive(10)();
     const pending = flow.receive(20);
     await tick();
-    flow.dispose(); pending();
+    flow.dispose();
+    pending();
     await vi.advanceTimersByTimeAsync(1000);
     expect(ack).toHaveBeenCalledTimes(1);
   });

@@ -56,9 +56,7 @@ export function PasteWarningDialog({ text, onConfirm, onCancel }: Props) {
     >
       <div className="dialog-header" id="paste-warning-title">
         {t("common.paste")}{" "}
-        {lines > 1
-          ? t("pasteWarning.linesTitle", { count: lines })
-          : t("pasteWarning.longText")}
+        {lines > 1 ? t("pasteWarning.linesTitle", { count: lines }) : t("pasteWarning.longText")}
       </div>
       <div className="dialog-body confirm-dialog-body">
         <span>
@@ -74,9 +72,7 @@ export function PasteWarningDialog({ text, onConfirm, onCancel }: Props) {
           ) : (
             <>
               {t("pasteWarning.holds")}
-              <strong>
-                {t("common.characters", { count: text.length.toLocaleString() })}
-              </strong>
+              <strong>{t("common.characters", { count: text.length.toLocaleString() })}</strong>
               {t("pasteWarning.onOneLine")}
             </>
           )}
@@ -84,9 +80,7 @@ export function PasteWarningDialog({ text, onConfirm, onCancel }: Props) {
         <pre className="paste-warning-preview">
           {shown.map((line, index) => (
             <span key={index}>
-              {line.length > PREVIEW_COLUMNS
-                ? `${line.slice(0, PREVIEW_COLUMNS)}…`
-                : line}
+              {line.length > PREVIEW_COLUMNS ? `${line.slice(0, PREVIEW_COLUMNS)}…` : line}
               {"\n"}
             </span>
           ))}
@@ -109,8 +103,7 @@ export function PasteWarningDialog({ text, onConfirm, onCancel }: Props) {
       </div>
       <div className="dialog-footer confirm-dialog-footer">
         <span className="confirm-dialog-keys">
-          <kbd>Enter</kbd> {t("keys.paste")} · <kbd>Esc</kbd>{" "}
-          {t("keys.cancel")}
+          <kbd>Enter</kbd> {t("keys.paste")} · <kbd>Esc</kbd> {t("keys.cancel")}
         </span>
         <button type="button" className="btn" onClick={onCancel}>
           {t("common.cancel")}

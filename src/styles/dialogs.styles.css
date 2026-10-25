@@ -283,8 +283,7 @@ dialog.dialog-backdrop.is-fallback[open] {
   border-radius: var(--radius-lg);
   color: var(--session-color);
   background: color-mix(in srgb, var(--session-color) 16%, transparent);
-  box-shadow: inset 0 0 0 1px
-    color-mix(in srgb, var(--session-color) 34%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--session-color) 34%, transparent);
 }
 
 .session-dialog-heading {
@@ -1342,8 +1341,7 @@ dialog.dialog-backdrop.is-fallback[open] {
   background: color-mix(in srgb, var(--accent) 16%, transparent);
   color: var(--fg);
   font-weight: 600;
-  box-shadow: inset 0 0 0 1px
-    color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 .kind-option:focus-visible {

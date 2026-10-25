@@ -15,32 +15,66 @@ const fixture = vi.hoisted(() => ({
   pending: new Map<string, { resolve: () => void; reject: (error: Error) => void }>(),
 }));
 vi.mock("../api", async (original) => ({
-  ...await original<typeof import("../api")>(),
+  ...(await original<typeof import("../api")>()),
   sftpHome: vi.fn(async () => "/queue-fixture"),
-  sftpList: vi.fn(async (_id: string, path: string) => ({ path, entries: Array.from({ length: 20 }, (_, index) => ({
-    name: `file${index}.txt`, path: `${path}/file${index}.txt`, isDir: false, isSymlink: false,
-    size: 100, modified: 1, permissions: null, owner: null, group: null,
-  })) })),
+  sftpList: vi.fn(async (_id: string, path: string) => ({
+    path,
+    entries: Array.from({ length: 20 }, (_, index) => ({
+      name: `file${index}.txt`,
+      path: `${path}/file${index}.txt`,
+      isDir: false,
+      isSymlink: false,
+      size: 100,
+      modified: 1,
+      permissions: null,
+      owner: null,
+      group: null,
+    })),
+  })),
   onRemoteEditState: async () => () => {},
   onFileTransfer: vi.fn(async (callback: (job: FileTransfer) => void) => {
     fixture.changed = callback;
-    return () => { fixture.changed = null; };
+    return () => {
+      fixture.changed = null;
+    };
   }),
   onFileTransferRemoved: vi.fn(async () => () => {}),
-  listFileTransfers: vi.fn(async () => []), listRecoverableTransfers: vi.fn(async () => []),
-  transferFiles: vi.fn((sessionId: string, items: TransferItem[], _progress: unknown, transfer: string) => {
-    // Scheduling here is a frontend fixture. The real manager/queue and
-    // downloaded bytes are checked separately by the Rust FTP fixture.
-    const index = fixture.pending.size;
-    const promise = new Promise<void>((resolve, reject) => fixture.pending.set(transfer, { resolve, reject }));
-    fixture.changed?.({
-      id: transfer, sessionId, name: items[0].remote.split("/").pop()!, revision: 1,
-      status: index < 2 ? "running" : "queued", phase: index < 2 ? "transferring" : "queued",
-      transferred: 0, total: 100, completedFiles: 0, totalFiles: 1, failedFiles: [], error: null, attempt: 1,
-      options: { requests: 32, chunkKib: 128, files: 16, durable: false, tar: false, rateLimitBps: 0 },
-    });
-    return promise;
-  }),
+  listFileTransfers: vi.fn(async () => []),
+  listRecoverableTransfers: vi.fn(async () => []),
+  transferFiles: vi.fn(
+    (sessionId: string, items: TransferItem[], _progress: unknown, transfer: string) => {
+      // Scheduling here is a frontend fixture. The real manager/queue and
+      // downloaded bytes are checked separately by the Rust FTP fixture.
+      const index = fixture.pending.size;
+      const promise = new Promise<void>((resolve, reject) =>
+        fixture.pending.set(transfer, { resolve, reject }),
+      );
+      fixture.changed?.({
+        id: transfer,
+        sessionId,
+        name: items[0].remote.split("/").pop()!,
+        revision: 1,
+        status: index < 2 ? "running" : "queued",
+        phase: index < 2 ? "transferring" : "queued",
+        transferred: 0,
+        total: 100,
+        completedFiles: 0,
+        totalFiles: 1,
+        failedFiles: [],
+        error: null,
+        attempt: 1,
+        options: {
+          requests: 32,
+          chunkKib: 128,
+          files: 16,
+          durable: false,
+          tar: false,
+          rateLimitBps: 0,
+        },
+      });
+      return promise;
+    },
+  ),
   controlFileTransfer: vi.fn(async (id: string, action: string) => {
     if (action !== "cancel") return;
     const job = useFileTransfers.getState().jobs[id];
@@ -59,50 +93,102 @@ vi.mock("@tauri-apps/api/webview", () => ({
 
 const initialState = useStore.getState();
 beforeEach(() => {
-  vi.clearAllMocks(); fixture.pending.clear();
+  vi.clearAllMocks();
+  fixture.pending.clear();
   useFileTransfers.setState({ jobs: {}, open: false });
   const tab: Tab = {
-    info: { id: "queue-ssh", profileId: null, name: "Queue fixture", kind: "ssh", protocol: "ssh", address: "fixture",
-      color: "", supportsRemoteFiles: true, recording: null, legacyAlgorithms: [], sharedConnection: false },
-    profile: { id: "queue-ssh", name: "Queue fixture", kind: "ssh" }, number: 1, ordinal: 0, state: "connected",
-    commandActivity: "idle", activityKind: "command", cols: 80, rows: 24, paneId: initialState.activePaneId,
+    info: {
+      id: "queue-ssh",
+      profileId: null,
+      name: "Queue fixture",
+      kind: "ssh",
+      protocol: "ssh",
+      address: "fixture",
+      color: "",
+      supportsRemoteFiles: true,
+      recording: null,
+      legacyAlgorithms: [],
+      sharedConnection: false,
+    },
+    profile: { id: "queue-ssh", name: "Queue fixture", kind: "ssh" },
+    number: 1,
+    ordinal: 0,
+    state: "connected",
+    commandActivity: "idle",
+    activityKind: "command",
+    cols: 80,
+    rows: 24,
+    paneId: initialState.activePaneId,
   };
-  useStore.setState({ ...initialState, tabs: [tab], activeId: tab.info.id,
-    panes: [{ id: initialState.activePaneId, activeTabId: tab.info.id }] }, true);
+  useStore.setState(
+    {
+      ...initialState,
+      tabs: [tab],
+      activeId: tab.info.id,
+      panes: [{ id: initialState.activePaneId, activeTabId: tab.info.id }],
+    },
+    true,
+  );
   useStore.getState().setLanguage("en");
 });
 afterEach(async () => {
   await browserAfterEach();
-  fixture.pending.forEach((task) => task.resolve()); fixture.pending.clear();
-  useStore.setState(initialState, true); useStore.getState().setLanguage(initialState.language);
+  fixture.pending.forEach((task) => task.resolve());
+  fixture.pending.clear();
+  useStore.setState(initialState, true);
+  useStore.getState().setLanguage(initialState.language);
   useFileTransfers.setState({ jobs: {}, open: false });
   document.documentElement.removeAttribute("data-theme");
 });
 
-for (const theme of ["dark", "light"]) it(`submits downloads continuously and opens the real transfer center in ${theme}`, async () => {
-  await page.viewport(1100, 820);
-  document.documentElement.setAttribute("data-theme", theme);
-  mount(h("div", null,
-    h("div", { style: { width: 440, height: 720, display: "flex", margin: 24 } }, h(FilerPanel)),
-    h("div", { className: "statusbar", style: { position: "absolute", bottom: 0, width: "100%", justifyContent: "flex-end" } }, h(TransferCenter)),
-  ));
-  await expect.poll(() => document.querySelectorAll(".filer-entry").length).toBeGreaterThan(0);
-  for (const name of ["file0.txt", "file1.txt", "file2.txt"]) {
-    await userEvent.click(page.getByText(name, { exact: true }));
-    await userEvent.click(page.getByRole("button", { name: "Download file or folder", exact: true }));
-    expect(page.getByRole("button", { name: "Download file or folder", exact: true }).element()).not.toBeDisabled();
-  }
-  expect(api.transferFiles).toHaveBeenCalledTimes(3);
-  const summary = document.querySelector<HTMLElement>(".filer-transfer-summary")!;
-  expect(summary.textContent).toContain("2 running · 1 queued");
-  await userEvent.click(page.getByRole("button", { name: "Open transfer queue", exact: true }));
-  await twoFrames();
-  const popup = document.querySelector<HTMLElement>(".transfer-center-popover")!;
-  expect(popup).not.toBeNull();
-  expect(popup.getBoundingClientRect().right).toBeLessThanOrEqual(innerWidth);
-  await page.screenshot({ path: `../../artifacts/performance/filer-queue/${theme}.png` });
-  const queued = [...popup.querySelectorAll<HTMLElement>(".transfer-job")].find((job) => job.textContent!.includes("file2.txt"))!;
-  await userEvent.click([...queued.querySelectorAll("button")].find((button) => button.textContent === "Cancel")!);
-  await expect.poll(() => summary.textContent).toContain("2 running · 0 queued");
-  expect(useStore.getState().error).toBeNull();
-});
+for (const theme of ["dark", "light"])
+  it(`submits downloads continuously and opens the real transfer center in ${theme}`, async () => {
+    await page.viewport(1100, 820);
+    document.documentElement.setAttribute("data-theme", theme);
+    mount(
+      h(
+        "div",
+        null,
+        h(
+          "div",
+          { style: { width: 440, height: 720, display: "flex", margin: 24 } },
+          h(FilerPanel),
+        ),
+        h(
+          "div",
+          {
+            className: "statusbar",
+            style: { position: "absolute", bottom: 0, width: "100%", justifyContent: "flex-end" },
+          },
+          h(TransferCenter),
+        ),
+      ),
+    );
+    await expect.poll(() => document.querySelectorAll(".filer-entry").length).toBeGreaterThan(0);
+    for (const name of ["file0.txt", "file1.txt", "file2.txt"]) {
+      await userEvent.click(page.getByText(name, { exact: true }));
+      await userEvent.click(
+        page.getByRole("button", { name: "Download file or folder", exact: true }),
+      );
+      expect(
+        page.getByRole("button", { name: "Download file or folder", exact: true }).element(),
+      ).not.toBeDisabled();
+    }
+    expect(api.transferFiles).toHaveBeenCalledTimes(3);
+    const summary = document.querySelector<HTMLElement>(".filer-transfer-summary")!;
+    expect(summary.textContent).toContain("2 running · 1 queued");
+    await userEvent.click(page.getByRole("button", { name: "Open transfer queue", exact: true }));
+    await twoFrames();
+    const popup = document.querySelector<HTMLElement>(".transfer-center-popover")!;
+    expect(popup).not.toBeNull();
+    expect(popup.getBoundingClientRect().right).toBeLessThanOrEqual(innerWidth);
+    await page.screenshot({ path: `../../artifacts/performance/filer-queue/${theme}.png` });
+    const queued = [...popup.querySelectorAll<HTMLElement>(".transfer-job")].find((job) =>
+      job.textContent!.includes("file2.txt"),
+    )!;
+    await userEvent.click(
+      [...queued.querySelectorAll("button")].find((button) => button.textContent === "Cancel")!,
+    );
+    await expect.poll(() => summary.textContent).toContain("2 running · 0 queued");
+    expect(useStore.getState().error).toBeNull();
+  });

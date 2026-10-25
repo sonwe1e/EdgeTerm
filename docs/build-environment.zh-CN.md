@@ -6,6 +6,7 @@
 ```powershell
 ./dev.ps1 doctor
 ./dev.ps1 typecheck
+./dev.ps1 format:check
 ./dev.ps1 test
 ./dev.ps1 build
 ./dev.ps1 test:rust
@@ -76,6 +77,7 @@ CPU affinity 不是固定的整机占用百分比承诺；逻辑处理器的性�
 
 ```powershell
 ./dev.ps1 test src/fileSort.test.ts
+./dev.ps1 format src/workbench/HostStrip.tsx
 ./dev.ps1 test:browser
 ./dev.ps1 cargo check --locked --manifest-path src-tauri/Cargo.toml
 ./dev.ps1 cargo fmt --manifest-path src-tauri/Cargo.toml -- --check

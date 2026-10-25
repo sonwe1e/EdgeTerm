@@ -56,11 +56,7 @@ export function graceTriangle(
   if (exit.x <= submenu.left) edge = submenu.left;
   else if (exit.x >= submenu.right) edge = submenu.right;
   else return null;
-  return [
-    exit,
-    { x: edge, y: submenu.top - margin },
-    { x: edge, y: submenu.bottom + margin },
-  ];
+  return [exit, { x: edge, y: submenu.top - margin }, { x: edge, y: submenu.bottom + margin }];
 }
 
 /** Whether the point lies in the triangle, its edges included. */
@@ -74,9 +70,7 @@ export function insideTriangle(point: Point, [a, b, c]: Triangle): boolean {
 }
 
 function cross(from: Point, to: Point, point: Point): number {
-  return (
-    (to.x - from.x) * (point.y - from.y) - (to.y - from.y) * (point.x - from.x)
-  );
+  return (to.x - from.x) * (point.y - from.y) - (to.y - from.y) * (point.x - from.x);
 }
 
 /** The key of the submenu entry at `index` in the level under `parent` (undefined at the top). */
@@ -124,18 +118,12 @@ export function useSubmenuHover(): SubmenuHover {
     if (!pending) return;
     const now = Date.now();
     const point = { x: event.clientX, y: event.clientY };
-    if (
-      pending.triangle &&
-      now <= pending.until &&
-      insideTriangle(point, pending.triangle)
-    ) {
+    if (pending.triangle && now <= pending.until && insideTriangle(point, pending.triangle)) {
       pending.until = now + SUBMENU_GRACE_MS;
       return;
     }
     grace.current = null;
-    setOpen((current) =>
-      within(pending.key, current) ? parentKey(pending.key) : current,
-    );
+    setOpen((current) => (within(pending.key, current) ? parentKey(pending.key) : current));
   };
 
   return {
@@ -150,9 +138,7 @@ export function useSubmenuHover(): SubmenuHover {
         const exit = { x: event.clientX, y: event.clientY };
         grace.current = {
           key,
-          triangle: submenu
-            ? graceTriangle(exit, submenu.getBoundingClientRect())
-            : null,
+          triangle: submenu ? graceTriangle(exit, submenu.getBoundingClientRect()) : null,
           until: Date.now() + SUBMENU_GRACE_MS,
         };
       },

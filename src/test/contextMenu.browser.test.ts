@@ -9,14 +9,20 @@ afterEach(browserAfterEach);
 
 function Fixture({ items, input }: { items: MenuItem[]; input: (key: string) => void }) {
   const [open, setOpen] = useState(false);
-  return h("div", null,
+  return h(
+    "div",
+    null,
     h("textarea", {
       "aria-label": "Terminal input",
       onKeyDown: (event) => input(event.key),
-      onContextMenu: (event) => { event.preventDefault(); setOpen(true); },
+      onContextMenu: (event) => {
+        event.preventDefault();
+        setOpen(true);
+      },
     }),
     h("button", { id: "outside" }, "Outside"),
-    open && h(ContextMenu, { x: 100, y: 100, items, onClose: () => setOpen(false) }));
+    open && h(ContextMenu, { x: 100, y: 100, items, onClose: () => setOpen(false) }),
+  );
 }
 
 async function open(items: MenuItem[]) {
@@ -32,7 +38,9 @@ async function open(items: MenuItem[]) {
 it("owns navigation and Enter while open, without delivering input to the terminal", async () => {
   const action = vi.fn();
   const { terminal, input } = await open([
-    { label: "First" }, { label: "Unavailable", disabled: true }, { label: "Run", action },
+    { label: "First" },
+    { label: "Unavailable", disabled: true },
+    { label: "Run", action },
   ]);
   await userEvent.keyboard("{ArrowDown}{Enter}");
   expect(input).not.toHaveBeenCalled();

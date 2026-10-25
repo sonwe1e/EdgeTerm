@@ -6,11 +6,7 @@ import { t } from "./i18n";
 import { IS_WINDOWS } from "./platform";
 import { tabTitle, useStore, type HostKeyPrompt, type Tab } from "./store";
 import type { TerminalController } from "./terminal";
-import {
-  disposeController,
-  getController,
-  setController,
-} from "./terminalRegistry";
+import { disposeController, getController, setController } from "./terminalRegistry";
 import { isFileSession, type SessionInfo, type SessionProfile } from "./types";
 
 /**
@@ -25,12 +21,8 @@ function newSessionId(): string {
   return `s-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
 }
 
-function pendingSessionInfo(
-  id: string,
-  profile: SessionProfile,
-): SessionInfo {
-  const name =
-    profile.name || profile.host || profile.portName || "session";
+function pendingSessionInfo(id: string, profile: SessionProfile): SessionInfo {
+  const name = profile.name || profile.host || profile.portName || "session";
 
   let protocol: string;
   let address: string;
@@ -164,9 +156,7 @@ export async function ensureController(id: string): Promise<TerminalController> 
   );
   // A paste that would submit several commands stops here and asks; App
   // renders the dialog and pastes it once the user agrees.
-  controller.onConfirmPaste((text) =>
-    useStore.getState().setPastePrompt({ sessionId: id, text }),
-  );
+  controller.onConfirmPaste((text) => useStore.getState().setPastePrompt({ sessionId: id, text }));
   setController(id, controller);
   return controller;
 }
@@ -184,9 +174,7 @@ export async function openSession(
   reuseSessionId?: string,
 ): Promise<string | null> {
   const id = newSessionId();
-  useStore
-    .getState()
-    .addTab(pendingSessionInfo(id, profile), profile, "connecting");
+  useStore.getState().addTab(pendingSessionInfo(id, profile), profile, "connecting");
   if (!isFileSession(profile.kind)) await ensureController(id);
   return connectSession(id, profile, reuseSessionId);
 }
@@ -221,10 +209,7 @@ export const canDuplicateSshChannel = (tab: Tab): boolean =>
  * two places. The profile is the tab's own copy, secrets included, so a
  * saved password or passphrase is not asked for again.
  */
-export async function splitSession(
-  id: string,
-  side: "right" | "down",
-): Promise<string | null> {
+export async function splitSession(id: string, side: "right" | "down"): Promise<string | null> {
   const store = useStore.getState();
   const tab = store.tabs.find((item) => item.info.id === id);
   if (!tab) return null;
@@ -254,9 +239,7 @@ export async function disconnectSession(id: string): Promise<void> {
     const message = t("status.connectionCancelled");
     store.applyState(id, "closed", message);
     store.setStatus(message);
-    getController(id)?.writeText(
-      `\r\n\x1b[33m${message}\x1b[0m\r\n`,
-    );
+    getController(id)?.writeText(`\r\n\x1b[33m${message}\x1b[0m\r\n`);
     await api.closeSession(id).catch(() => undefined);
     return;
   }
@@ -456,9 +439,7 @@ function failSession(id: string, message: string, hint = true): void {
   const terminalMessage = message.replace(/[\x00-\x1f\x7f]/g, " ");
   const failed = t("terminal.connectionFailed", { message: terminalMessage });
   getController(id)?.writeText(
-    `\r\n\x1b[31m${failed}${
-      hint ? t("terminal.pressEnterToReconnect") : ""
-    }]\x1b[0m\r\n`,
+    `\r\n\x1b[31m${failed}${hint ? t("terminal.pressEnterToReconnect") : ""}]\x1b[0m\r\n`,
   );
 }
 
@@ -554,8 +535,6 @@ export async function revealCwdInFiler(id: string): Promise<void> {
     useStore.getState().revealInFiler(id, path);
     useStore.getState().setStatus(t("status.filerPath", { path }));
   } catch (error) {
-    useStore
-      .getState()
-      .setError(t("status.filerError", { error: errorText(error) }), id);
+    useStore.getState().setError(t("status.filerError", { error: errorText(error) }), id);
   }
 }

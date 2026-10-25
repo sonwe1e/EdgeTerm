@@ -8,13 +8,24 @@ import { useStore } from "../store";
 import "../styles.css";
 
 vi.mock("../api", async (original) => ({
-  ...await original<typeof import("../api")>(),
+  ...(await original<typeof import("../api")>()),
   localHome: vi.fn(async () => "/columns-browser"),
-  localList: vi.fn(async (path: string) => ({ path, entries: Array.from({ length: 12 }, (_, index) => ({
-    name: `file${index}.txt`, path: `${path}/file${index}.txt`, isDir: false, isSymlink: false,
-    size: 10, modified: 1, permissions: null, owner: null, group: null,
-  })) })),
-  startFileDrag: vi.fn(async () => {}), localRemove: vi.fn(async () => {}),
+  localList: vi.fn(async (path: string) => ({
+    path,
+    entries: Array.from({ length: 12 }, (_, index) => ({
+      name: `file${index}.txt`,
+      path: `${path}/file${index}.txt`,
+      isDir: false,
+      isSymlink: false,
+      size: 10,
+      modified: 1,
+      permissions: null,
+      owner: null,
+      group: null,
+    })),
+  })),
+  startFileDrag: vi.fn(async () => {}),
+  localRemove: vi.fn(async () => {}),
   onRemoteEditState: async () => () => {},
 }));
 vi.mock("@tauri-apps/api/webview", () => ({
@@ -59,7 +70,11 @@ async function dragHandleTo(handle: () => HTMLElement, x: number) {
 async function open() {
   await page.viewport(900, 720);
   mount(
-    h("div", { style: { width: 460, height: 650, display: "flex", margin: "24px auto" } }, h(FilerPanel)),
+    h(
+      "div",
+      { style: { width: 460, height: 650, display: "flex", margin: "24px auto" } },
+      h(FilerPanel),
+    ),
   );
   await expect.poll(() => document.querySelector(".filer-entry") !== null).toBe(true);
   await twoFrames();
@@ -94,16 +109,18 @@ it("widens the size column from its own right edge in the untouched state", asyn
 
   await dragHandleTo(sizeHandle, pagePoint(sizeHandle(), 0.5, 0.5).x + 80);
 
-  expect(
-    Math.abs(sizeCell().getBoundingClientRect().width - (floor! + 80)),
-  ).toBeLessThanOrEqual(1.5);
+  expect(Math.abs(sizeCell().getBoundingClientRect().width - (floor! + 80))).toBeLessThanOrEqual(
+    1.5,
+  );
   // The names paid: the boundary nobody was holding — name|size — travelled
   // left by the full 80px the size column took.
   expect(sizeLeftBefore - sizeCell().getBoundingClientRect().left).toBeGreaterThan(75);
   // The size|modified boundary did not move at all: the column after the one
   // being resized keeps both its edges while the names follow the layout.
   expect(Math.abs(dateCell().getBoundingClientRect().left - dateLeftBefore)).toBeLessThanOrEqual(1);
-  expect(Math.abs(dateCell().getBoundingClientRect().width - dateWidthBefore)).toBeLessThanOrEqual(1);
+  expect(Math.abs(dateCell().getBoundingClientRect().width - dateWidthBefore)).toBeLessThanOrEqual(
+    1,
+  );
 });
 
 it("narrows a counted column past its suggested width down to the drag floor", async () => {
@@ -136,9 +153,9 @@ it("moves only the column whose edge is held", async () => {
   // exactly the width it had, and only the modified column grew.
   await dragHandleTo(dateHandle, pagePoint(dateHandle(), 0.5, 0.5).x + 80);
 
-  expect(
-    Math.abs(sizeCell().getBoundingClientRect().width - sizeWidthBefore),
-  ).toBeLessThanOrEqual(1);
+  expect(Math.abs(sizeCell().getBoundingClientRect().width - sizeWidthBefore)).toBeLessThanOrEqual(
+    1,
+  );
   expect(
     Math.abs(dateCell().getBoundingClientRect().width - (dateWidthBefore + 80)),
   ).toBeLessThanOrEqual(1.5);
@@ -201,9 +218,7 @@ it("fits a double-clicked column back to its content", async () => {
 
   // A double-click measures the column's caption and its values — not the
   // neighbours, not the rows' layout — and sizes the column to what fits.
-  sizeHandle().dispatchEvent(
-    new MouseEvent("dblclick", { bubbles: true, cancelable: true }),
-  );
+  sizeHandle().dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
   await twoFrames();
 
   const width = sizeCell().getBoundingClientRect().width;

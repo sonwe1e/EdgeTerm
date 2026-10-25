@@ -1,13 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./platform", () => ({ HAS_TRAY: true,
-  IS_MAC: true,
-  IS_WINDOWS: false,
-}));
+vi.mock("./platform", () => ({ HAS_TRAY: true, IS_MAC: true, IS_WINDOWS: false }));
 
 import { TerminalController } from "./terminal";
 
-const clipboard = (controller: TerminalController) => (controller as unknown as { clipboard: { copySelection(): boolean; pasteFromClipboard(): void; selectionChanged: boolean } }).clipboard;
+const clipboard = (controller: TerminalController) =>
+  (
+    controller as unknown as {
+      clipboard: {
+        copySelection(): boolean;
+        pasteFromClipboard(): void;
+        selectionChanged: boolean;
+      };
+    }
+  ).clipboard;
 const controllers: TerminalController[] = [];
 const hosts: HTMLElement[] = [];
 
@@ -40,8 +46,7 @@ function createController() {
 
 /** What xterm reports while the pointer drags across the screen. */
 function selectionChanges(controller: TerminalController) {
-  clipboard(controller).selectionChanged =
-    true;
+  clipboard(controller).selectionChanged = true;
 }
 
 /**

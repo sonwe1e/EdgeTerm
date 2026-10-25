@@ -40,7 +40,13 @@ if (!/^[a-z0-9-]+$/.test(resultsArg)) {
   console.error("usage: node scripts/check-gutter-alignment.mjs <results-name>");
   process.exit(2);
 }
-const resultsPath = path.join(repoRoot, ".tmp", "records", "implementation-03", `gutter-check-${resultsArg}.json`);
+const resultsPath = path.join(
+  repoRoot,
+  ".tmp",
+  "records",
+  "implementation-03",
+  `gutter-check-${resultsArg}.json`,
+);
 try {
   await fs.access(resultsPath);
   console.error(`results file already exists, refusing to overwrite: ${resultsPath}`);
@@ -109,14 +115,18 @@ const badResources = [];
 const results = [];
 let browserVersion = "";
 try {
-  browser = engine === "webkit"
-    ? await webkit.launch({ headless: true })
-    : await chromium.launch(channel === "chromium" ? { headless: true } : { channel, headless: true });
+  browser =
+    engine === "webkit"
+      ? await webkit.launch({ headless: true })
+      : await chromium.launch(
+          channel === "chromium" ? { headless: true } : { channel, headless: true },
+        );
   browserVersion = browser.version();
   const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
   page.on("pageerror", (error) => errors.push(String(error)));
   page.on("response", (response) => {
-    if (response.status() >= 400) badResources.push({ status: response.status(), url: response.url() });
+    if (response.status() >= 400)
+      badResources.push({ status: response.status(), url: response.url() });
   });
   await page.addInitScript(() => {
     let serial = 0;
@@ -141,48 +151,62 @@ try {
     window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
   });
   await page.goto(`http://127.0.0.1:${server.address().port}/${htmlPath.split("\\").join("/")}`);
-  await page.waitForFunction(() => window.__gutterCheckReady === true, undefined, { timeout: 15000 });
+  await page.waitForFunction(() => window.__gutterCheckReady === true, undefined, {
+    timeout: 15000,
+  });
 
   // Every step gets a bounded diagnostic timeout so a hung fixture call
   // fails fast with its phase name instead of stalling the run.
   const phase = (name) => console.error(`[phase] ${name}`);
-  const withTimeout = (name, promise, ms = 20000) => Promise.race([
-    promise,
-    new Promise((_, reject) => setTimeout(
-      () => reject(new Error(`phase "${name}" timed out after ${ms}ms`)), ms,
-    )),
-  ]);
+  const withTimeout = (name, promise, ms = 20000) =>
+    Promise.race([
+      promise,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`phase "${name}" timed out after ${ms}ms`)), ms),
+      ),
+    ]);
   const aligned = (sample) =>
-    Number.isFinite(sample.gutterPitch) && Number.isFinite(sample.textPitch) &&
+    Number.isFinite(sample.gutterPitch) &&
+    Number.isFinite(sample.textPitch) &&
     Math.abs(sample.gutterPitch - sample.textPitch) < 0.1 &&
-    sample.maxRowOffset !== null && sample.maxRowOffset < 0.5;
+    sample.maxRowOffset !== null &&
+    sample.maxRowOffset < 0.5;
   // The real fit relation from the live geometry: the screen fills the host
   // up to the terminal's own scrollbar reservation and is maximal at the
   // cell grid. This catches a fit that never applied (WebKit's hidden-first
   // mount kept 80x24 with a screen taller than the host) without any
   // arbitrary column-count threshold.
   const fitApplied = (sample) => {
-    if (sample.cols === null || sample.rows === null ||
-        sample.screenWidth === null || sample.screenHeight === null ||
-        sample.hostWidth === null || sample.hostHeight === null) return false;
+    if (
+      sample.cols === null ||
+      sample.rows === null ||
+      sample.screenWidth === null ||
+      sample.screenHeight === null ||
+      sample.hostWidth === null ||
+      sample.hostHeight === null
+    )
+      return false;
     const cellW = sample.screenWidth / sample.cols;
     const cellH = sample.screenHeight / sample.rows;
     if (!(cellW > 0 && cellH > 0)) return false;
     const availableW = sample.hostWidth - (sample.reservedScrollbar ?? 0);
-    return sample.screenWidth <= sample.hostWidth + 1 &&
+    return (
+      sample.screenWidth <= sample.hostWidth + 1 &&
       sample.screenWidth + 2 * cellW > availableW &&
       sample.screenHeight <= sample.hostHeight + 1 &&
-      sample.screenHeight + 2 * cellH > sample.hostHeight;
+      sample.screenHeight + 2 * cellH > sample.hostHeight
+    );
   };
 
   const record = (name, passed, sample) => {
     results.push({ name, expectPass: true, passed, sample });
   };
   const wait = (ms) => page.waitForTimeout(ms);
-  const invoke = (method, ...args) => withTimeout(`invoke ${method}`, page.evaluate(
-    ([method, args]) => window.__gutterCheck[method](...args),
-    [method, args],
-  ));
+  const invoke = (method, ...args) =>
+    withTimeout(
+      `invoke ${method}`,
+      page.evaluate(([method, args]) => window.__gutterCheck[method](...args), [method, args]),
+    );
   const evaluate = (fn) => withTimeout("evaluate", page.evaluate(fn));
 
   // Normal control 1: a real factory session shown directly stays aligned.
@@ -190,8 +214,11 @@ try {
   await withTimeout("createDirect", invoke("createDirect", 640, 400, 199));
   await wait(250);
   const directA = await evaluate(() => window.__gutterCheck.sample());
-  record("direct visible mount is aligned (normal control)",
-    aligned(directA) && fitApplied(directA), directA);
+  record(
+    "direct visible mount is aligned (normal control)",
+    aligned(directA) && fitApplied(directA),
+    directA,
+  );
 
   // Normal control 2: a visible direct resize really fits — the public
   // scheduleFit entry runs, and the dimensions must actually change.
@@ -200,9 +227,11 @@ try {
   await invoke("scheduleFit");
   await wait(250);
   const directB = await evaluate(() => window.__gutterCheck.sample());
-  record("direct visible resize is aligned (normal control)",
+  record(
+    "direct visible resize is aligned (normal control)",
     aligned(directB) && fitApplied(directB) && directB.cols !== directA.cols,
-    directB);
+    directB,
+  );
 
   // The component case: the production factory registers the session first,
   // the pane mounts hidden, real output lands in the buffer, then it shows.
@@ -222,8 +251,11 @@ try {
   await invoke("sessionMount", true, 640, 400);
   await wait(250);
   const firstShow = await evaluate(() => window.__gutterCheck.sample());
-  record("first show after hidden mount fits and is aligned",
-    aligned(firstShow) && fitApplied(firstShow), firstShow);
+  record(
+    "first show after hidden mount fits and is aligned",
+    aligned(firstShow) && fitApplied(firstShow),
+    firstShow,
+  );
 
   // Hidden → resize → show: the misaligned case.
   phase("hidden resize show");
@@ -232,10 +264,14 @@ try {
   await invoke("sessionMount", true, 900, 560);
   await wait(250);
   const resizedShow = await evaluate(() => window.__gutterCheck.sample());
-  record("show after hidden resize is aligned",
-    aligned(resizedShow) && fitApplied(resizedShow) &&
-    resizedShow.rows !== null && resizedShow.rows > firstShow.rows,
-    resizedShow);
+  record(
+    "show after hidden resize is aligned",
+    aligned(resizedShow) &&
+      fitApplied(resizedShow) &&
+      resizedShow.rows !== null &&
+      resizedShow.rows > firstShow.rows,
+    resizedShow,
+  );
 
   // Hidden → font increase → show: the new font must apply (text pitch up,
   // row count down) and stay aligned with the gutter.
@@ -246,16 +282,27 @@ try {
   await invoke("sessionMount", true, 900, 560);
   await wait(250);
   const fontShow = await evaluate(() => window.__gutterCheck.sample());
-  record("show after hidden font change applies the font and is aligned",
-    aligned(fontShow) && fitApplied(fontShow) &&
-    fontShow.textPitch !== null && fontShow.textPitch > resizedShow.textPitch &&
-    fontShow.rows !== null && fontShow.rows < resizedShow.rows,
-    fontShow);
+  record(
+    "show after hidden font change applies the font and is aligned",
+    aligned(fontShow) &&
+      fitApplied(fontShow) &&
+      fontShow.textPitch !== null &&
+      fontShow.textPitch > resizedShow.textPitch &&
+      fontShow.rows !== null &&
+      fontShow.rows < resizedShow.rows,
+    fontShow,
+  );
 
   const unexpectedIpc = await evaluate(() => window.__gutterCheckUnexpectedIpc);
   const alignedAll = results.every((entry) => entry.passed);
   await page.screenshot({
-    path: path.join(repoRoot, ".tmp", "records", "implementation-03", `gutter-check-${resultsArg}.png`),
+    path: path.join(
+      repoRoot,
+      ".tmp",
+      "records",
+      "implementation-03",
+      `gutter-check-${resultsArg}.png`,
+    ),
   });
   const report = {
     at: new Date().toISOString(),
@@ -263,7 +310,8 @@ try {
     channel,
     engine,
     subjectRoot: repoBase,
-    scope: "Production build (vite build with the real vite.config defines). Real SessionPane/TerminalController via ensureController registered before the component borrows it, DOM renderer through the public preference, 300 real buffer lines written through the xterm parser (term.write), store font chain. Gutter/text pitch must agree within 0.1px and rows within 0.5px at every settled state; fits must actually apply (screen vs host geometry with the terminal's own scrollbar reservation); unexpected IPC is a recorded gate; no extra fit call participates.",
+    scope:
+      "Production build (vite build with the real vite.config defines). Real SessionPane/TerminalController via ensureController registered before the component borrows it, DOM renderer through the public preference, 300 real buffer lines written through the xterm parser (term.write), store font chain. Gutter/text pitch must agree within 0.1px and rows within 0.5px at every settled state; fits must actually apply (screen vs host geometry with the terminal's own scrollbar reservation); unexpected IPC is a recorded gate; no extra fit call participates.",
     alignedAll,
     results,
     unexpectedIpc,
@@ -272,13 +320,15 @@ try {
   };
   await fs.mkdir(path.dirname(resultsPath), { recursive: true });
   await fs.writeFile(resultsPath, JSON.stringify(report, null, 2));
-  console.log(JSON.stringify({
-    alignedAll,
-    results: results.map(({ name, passed }) => ({ name, passed })),
-    unexpectedIpc: unexpectedIpc.length,
-    errors: errors.length,
-    badResources: badResources.length,
-  }));
+  console.log(
+    JSON.stringify({
+      alignedAll,
+      results: results.map(({ name, passed }) => ({ name, passed })),
+      unexpectedIpc: unexpectedIpc.length,
+      errors: errors.length,
+      badResources: badResources.length,
+    }),
+  );
   if (!alignedAll || errors.length > 0 || badResources.length > 0 || unexpectedIpc.length > 0) {
     process.exitCode = 1;
   }

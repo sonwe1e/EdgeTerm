@@ -169,9 +169,7 @@ export function joinRemote(root: string, relative: string): string {
 
 export function relativePath(root: string, absolute: string): string {
   const normalizedRoot = `${root.replace(/\/+$/, "")}/`;
-  return absolute.startsWith(normalizedRoot)
-    ? absolute.slice(normalizedRoot.length)
-    : absolute;
+  return absolute.startsWith(normalizedRoot) ? absolute.slice(normalizedRoot.length) : absolute;
 }
 
 export function experimentsOf(data: WorkspaceData, workspaceId: string): Experiment[] {
@@ -180,9 +178,7 @@ export function experimentsOf(data: WorkspaceData, workspaceId: string): Experim
     .filter((experiment) => experiment.workspaceId === workspaceId)
     .sort(
       (a, b) =>
-        order[a.kind] - order[b.kind] ||
-        a.createdAt - b.createdAt ||
-        a.name.localeCompare(b.name),
+        order[a.kind] - order[b.kind] || a.createdAt - b.createdAt || a.name.localeCompare(b.name),
     );
 }
 
@@ -208,8 +204,7 @@ export function runsOf(
   return data.runs
     .filter(
       (run) =>
-        run.workspaceId === workspaceId &&
-        (!experimentId || run.experimentId === experimentId),
+        run.workspaceId === workspaceId && (!experimentId || run.experimentId === experimentId),
     )
     .sort((a, b) => b.startedAt - a.startedAt);
 }
@@ -375,8 +370,6 @@ export function draftRun(input: {
 /** The command a project's saved entries suggest for a new run. */
 export function defaultCommand(workspace: Workspace): WorkspaceCommand | null {
   return (
-    workspace.commands.find((command) => command.kind === "train") ??
-    workspace.commands[0] ??
-    null
+    workspace.commands.find((command) => command.kind === "train") ?? workspace.commands[0] ?? null
   );
 }

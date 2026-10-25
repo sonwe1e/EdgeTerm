@@ -52,13 +52,9 @@ export function ExplorerPanel({
   const refreshFiles = useWorkbench((state) => state.refreshFiles);
   const refreshGit = useWorkbench((state) => state.refreshGit);
 
-  const tree = useMemo(
-    () => (listing ? buildTree(listing.files) : null),
-    [listing],
-  );
+  const tree = useMemo(() => (listing ? buildTree(listing.files) : null), [listing]);
   const matches = useMemo(
-    () =>
-      filter.trim() && listing ? fuzzyFilter(filter, listing.files, 400) : null,
+    () => (filter.trim() && listing ? fuzzyFilter(filter, listing.files, 400) : null),
     [filter, listing],
   );
 
@@ -125,8 +121,7 @@ export function ExplorerPanel({
     activeIdRef.current = id;
     setActiveId(id);
   };
-  const activeIndex =
-    activeId === null ? -1 : rows.findIndex((row) => row.id === activeId);
+  const activeIndex = activeId === null ? -1 : rows.findIndex((row) => row.id === activeId);
   const currentIndex =
     activeIndex >= 0 ? activeIndex : activeId !== null && rows.length > 0 ? 0 : -1;
   const currentRow = currentIndex >= 0 ? rows[currentIndex] : undefined;
@@ -277,9 +272,7 @@ export function ExplorerPanel({
               aria-label={t("wb.filter")}
               onChange={(event) => setFilter(event.target.value)}
             />
-            {listing && (
-              <span className="wb-filter-count">{listing.files.length}</span>
-            )}
+            {listing && <span className="wb-filter-count">{listing.files.length}</span>}
           </div>
           {listingError && <p className="wb-explorer-error">{listingError}</p>}
           <div
@@ -305,16 +298,12 @@ export function ExplorerPanel({
               : tree &&
                 renderDir(tree, 0, expanded, toggle, markActive, onOpenFile, onCompare, true)}
           </div>
-          {listing?.truncated && (
-            <p className="wb-explorer-note">{t("wb.filesTruncated")}</p>
-          )}
+          {listing?.truncated && <p className="wb-explorer-note">{t("wb.filesTruncated")}</p>}
         </>
       ) : (
         <>
           {gitError && <p className="wb-explorer-error">{gitError}</p>}
-          {git && !git.isRepository && (
-            <p className="wb-explorer-note">{t("wb.notGit")}</p>
-          )}
+          {git && !git.isRepository && <p className="wb-explorer-note">{t("wb.notGit")}</p>}
           {git?.isRepository && (
             <div className="wb-changes">
               <div className="wb-change-head">

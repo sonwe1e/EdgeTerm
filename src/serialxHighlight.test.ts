@@ -86,16 +86,11 @@ describe("serialX highlighting", () => {
     ]);
     expect(coloured("at 10:20:30 UTC")[0]).toEqual(["10", "time"]);
     expect(last(coloured("at 10:20:30 UTC"))).toEqual([" UTC", "zone"]);
-    expect(coloured("[    1.234567] usb 1-1")[1]).toEqual([
-      "    1.234567",
-      "uptime",
-    ]);
+    expect(coloured("[    1.234567] usb 1-1")[1]).toEqual(["    1.234567", "uptime"]);
   });
 
   it("splits a URL into its parts", () => {
-    expect(
-      coloured("see https://example.com:8080/api/v1?key=abc&n=2 now"),
-    ).toEqual([
+    expect(coloured("see https://example.com:8080/api/v1?key=abc&n=2 now")).toEqual([
       ["https", "urlScheme"],
       ["://", "urlSymbol"],
       ["example.com", "urlHost"],
@@ -287,9 +282,10 @@ describe("serialX highlighting", () => {
     expect(file).toContainEqual(["dietpi", "group"]);
     expect(file).toContainEqual(["May  9", "date"]);
     expect(last(file)).toEqual([".bash_logout", "fileName"]);
-    expect(
-      last(coloured("-rwxr-xr-x 1 root root 220 May  9 10:58 run.sh")),
-    ).toEqual(["run.sh", "executable"]);
+    expect(last(coloured("-rwxr-xr-x 1 root root 220 May  9 10:58 run.sh"))).toEqual([
+      "run.sh",
+      "executable",
+    ]);
     const link = coloured("lrwxrwxrwx 1 root root 7 Aug 19  2023 bin -> usr/bin");
     expect(link[0]).toEqual(["l", "symlink"]);
     expect(link).toContainEqual(["2023", "date"]);
@@ -321,10 +317,7 @@ describe("serialX highlighting", () => {
     expect(prompt).toContainEqual(["root", "user"]);
     expect(prompt).toContainEqual(["board", "host"]);
     expect(prompt).toContainEqual(["#", "prompt"]);
-    expect(last(coloured("sh: foo: command not found"))).toEqual([
-      "command not found",
-      "error",
-    ]);
+    expect(last(coloured("sh: foo: command not found"))).toEqual(["command not found", "error"]);
     // A clock without seconds is a clock; a minus before a digit is not a switch.
     expect(coloured("at 17:35 today")).toEqual([
       ["17", "time"],

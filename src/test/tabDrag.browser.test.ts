@@ -8,21 +8,57 @@ import "../styles.css";
 
 vi.mock("../components/TerminalPane", () => ({ useAccelerator: () => "" }));
 const initial = useStore.getState();
-beforeEach(async () => { await page.viewport(1100, 720); });
-afterEach(async () => { await browserAfterEach(); useStore.setState(initial); });
+beforeEach(async () => {
+  await page.viewport(1100, 720);
+});
+afterEach(async () => {
+  await browserAfterEach();
+  useStore.setState(initial);
+});
 
 function fixture() {
   const paneId = initial.activePaneId;
   const tabs: Tab[] = ["first", "second"].map((id, index) => ({
-    info: { id, name: id, kind: "local", protocol: "local", profileId: null,
-      address: "fixture", color: null, supportsRemoteFiles: false, recording: null,
-      legacyAlgorithms: [], sharedConnection: false },
-    profile: { id, name: id, kind: "local" }, number: index + 1, ordinal: index,
-    state: "connected", commandActivity: "idle", activityKind: "command", cols: 80, rows: 24, paneId,
+    info: {
+      id,
+      name: id,
+      kind: "local",
+      protocol: "local",
+      profileId: null,
+      address: "fixture",
+      color: null,
+      supportsRemoteFiles: false,
+      recording: null,
+      legacyAlgorithms: [],
+      sharedConnection: false,
+    },
+    profile: { id, name: id, kind: "local" },
+    number: index + 1,
+    ordinal: index,
+    state: "connected",
+    commandActivity: "idle",
+    activityKind: "command",
+    cols: 80,
+    rows: 24,
+    paneId,
   }));
-  useStore.setState({ ...initial, tabs, activeId: "first", panes: [{ id: paneId, activeTabId: "first" }] });
-  return mount(h("div", { className: "workspace pane-stack", "data-pane-id": paneId,
-    style: { width: 600, height: 400 } }, h(TabStrip, { paneId })));
+  useStore.setState({
+    ...initial,
+    tabs,
+    activeId: "first",
+    panes: [{ id: paneId, activeTabId: "first" }],
+  });
+  return mount(
+    h(
+      "div",
+      {
+        className: "workspace pane-stack",
+        "data-pane-id": paneId,
+        style: { width: 600, height: 400 },
+      },
+      h(TabStrip, { paneId }),
+    ),
+  );
 }
 
 async function start() {

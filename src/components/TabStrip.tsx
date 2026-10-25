@@ -10,11 +10,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 
-import {
-  canDuplicateSshChannel,
-  duplicateSshChannel,
-  splitSession,
-} from "../actions";
+import { canDuplicateSshChannel, duplicateSshChannel, splitSession } from "../actions";
 import { t as translateMsg } from "../i18n";
 import { tabTitle, useStore, type DropTarget, type Tab } from "../store";
 import { colorForSession } from "../types";
@@ -48,13 +44,9 @@ interface Props {
  */
 function activityLabel(tab: Tab): string | null {
   if (tab.commandActivity === "idle") return null;
-  const subject = tab.activityKind === "ai"
-    ? translateMsg("tab.ai")
-    : translateMsg("tab.command");
+  const subject = tab.activityKind === "ai" ? translateMsg("tab.ai") : translateMsg("tab.command");
   const state =
-    tab.commandActivity === "running"
-      ? translateMsg("tab.running")
-      : translateMsg("tab.finished");
+    tab.commandActivity === "running" ? translateMsg("tab.running") : translateMsg("tab.finished");
   return `${subject} ${state}`;
 }
 
@@ -116,11 +108,7 @@ const slotIndex = (strip: HTMLElement, x: number): number => {
  * `elementsFromPoint` looks through the session covering a pane, since the
  * session is placed over the pane rather than inside it (see Workspace).
  */
-const dropTargetAt = (
-  x: number,
-  y: number,
-  ownPaneId: string,
-): DropTarget | null => {
+const dropTargetAt = (x: number, y: number, ownPaneId: string): DropTarget | null => {
   for (const element of document.elementsFromPoint(x, y)) {
     const strip = element.closest<HTMLElement>(".tabstrip");
     if (strip) {
@@ -141,13 +129,7 @@ const dropTargetAt = (
         return paneId === ownPaneId ? null : { paneId, zone: "center" };
       }
       const zone =
-        nearest === px
-          ? "left"
-          : nearest === 1 - px
-            ? "right"
-            : nearest === py
-              ? "up"
-              : "down";
+        nearest === px ? "left" : nearest === 1 - px ? "right" : nearest === py ? "up" : "down";
       return { paneId, zone };
     }
   }
@@ -158,10 +140,7 @@ export function TabStrip({ paneId }: Props) {
   const t = useT();
   const allTabs = useStore((s) => s.tabs);
   // The strip is the pane's tabs in list order; see `placeTab` in the store.
-  const tabs = useMemo(
-    () => allTabs.filter((tab) => tab.paneId === paneId),
-    [allTabs, paneId],
-  );
+  const tabs = useMemo(() => allTabs.filter((tab) => tab.paneId === paneId), [allTabs, paneId]);
   const pane = useStore((s) => s.panes.find((item) => item.id === paneId));
   const shownId = pane?.activeTabId ?? null;
   const draggingTabId = useStore((s) => s.draggingTabId);
@@ -195,11 +174,7 @@ export function TabStrip({ paneId }: Props) {
   // Keys are consumed here so they cannot also drive the browser (Backspace
   // navigating back) or the window's shortcut handler. A drag only starts
   // from a pointer press, so none of these can begin one.
-  const onTabKeyDown = (
-    event: ReactKeyboardEvent<HTMLDivElement>,
-    index: number,
-    id: string,
-  ) => {
+  const onTabKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>, index: number, id: string) => {
     switch (event.key) {
       case "ArrowLeft":
         event.preventDefault();
@@ -241,14 +216,10 @@ export function TabStrip({ paneId }: Props) {
     // content when it does; measured with it, tabs that fit again after a
     // close would keep the strip scrolling by the block's width.
     const actions = strip.querySelector<HTMLElement>(".tabstrip-actions");
-    const fits =
-      strip.scrollWidth - (actions?.offsetWidth ?? 0) <= strip.clientWidth;
+    const fits = strip.scrollWidth - (actions?.offsetWidth ?? 0) <= strip.clientWidth;
     const left = !fits && strip.scrollLeft > 0;
-    const right =
-      !fits && strip.scrollLeft + strip.clientWidth < strip.scrollWidth - 1;
-    setOverflow((prev) =>
-      prev.left === left && prev.right === right ? prev : { left, right },
-    );
+    const right = !fits && strip.scrollLeft + strip.clientWidth < strip.scrollWidth - 1;
+    setOverflow((prev) => (prev.left === left && prev.right === right ? prev : { left, right }));
   }, []);
 
   useLayoutEffect(updateOverflow, [tabs, updateOverflow]);
@@ -272,18 +243,15 @@ export function TabStrip({ paneId }: Props) {
     if (direction === "left") {
       const hidden = edges.reverse().find((tab) => tab.left < rect.left - 1);
       if (hidden) {
-        strip.scrollLeft +=
-          hidden.left - (rect.left + parseFloat(style.scrollPaddingLeft));
+        strip.scrollLeft += hidden.left - (rect.left + parseFloat(style.scrollPaddingLeft));
       }
     } else {
       const edge =
-        strip
-          .querySelector<HTMLElement>(".tabstrip-actions")
-          ?.getBoundingClientRect().left ?? rect.right;
+        strip.querySelector<HTMLElement>(".tabstrip-actions")?.getBoundingClientRect().left ??
+        rect.right;
       const hidden = edges.find((tab) => tab.right > edge + 1);
       if (hidden) {
-        strip.scrollLeft +=
-          hidden.right - (rect.right - parseFloat(style.scrollPaddingRight));
+        strip.scrollLeft += hidden.right - (rect.right - parseFloat(style.scrollPaddingRight));
       }
     }
   };
@@ -291,18 +259,14 @@ export function TabStrip({ paneId }: Props) {
   // "All sessions" list, the fallback that works with any input device once
   // the strip holds more tabs than fit — scrolling through 20+ tabs is slower
   // than picking from a list.
-  const [listMenu, setListMenu] = useState<{ x: number; y: number } | null>(
-    null,
-  );
+  const [listMenu, setListMenu] = useState<{ x: number; y: number } | null>(null);
   const closeListMenu = useCallback(() => setListMenu(null), []);
   // ContextMenu closes itself on any outside mousedown, so by the time the
   // button's click fires the menu is already gone; remember whether it was
   // open so the button toggles instead of reopening.
   const listWasOpen = useRef(false);
   const listItems: MenuItem[] = tabs.map((tab) => ({
-    label: `${tab.number}. ${tabTitle(tab)}${
-      activityLabel(tab) ? ` · ${activityLabel(tab)}` : ""
-    }`,
+    label: `${tab.number}. ${tabTitle(tab)}${activityLabel(tab) ? ` · ${activityLabel(tab)}` : ""}`,
     checked: tab.info.id === shownId,
     mark: "radio" as const,
     action: () => setActive(tab.info.id),
@@ -317,8 +281,7 @@ export function TabStrip({ paneId }: Props) {
   } | null>(null);
   const closeTabMenu = useCallback(() => setTabMenu(null), []);
   const onContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
-    const id = (event.target as Element).closest<HTMLElement>(".tab")?.dataset
-      .tabId;
+    const id = (event.target as Element).closest<HTMLElement>(".tab")?.dataset.tabId;
     if (!id) return;
     event.preventDefault();
     setTabMenu({ x: event.clientX, y: event.clientY, id });
@@ -405,8 +368,7 @@ export function TabStrip({ paneId }: Props) {
       if (strip.scrollWidth <= strip.clientWidth) return;
       let delta = event.deltaY;
       if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) delta *= 16;
-      else if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE)
-        delta *= strip.clientWidth;
+      else if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) delta *= strip.clientWidth;
       const before = strip.scrollLeft;
       strip.scrollLeft += delta;
       if (strip.scrollLeft !== before) event.preventDefault();
@@ -447,31 +409,35 @@ export function TabStrip({ paneId }: Props) {
 
   // Retire the drag before releasing capture: lostpointercapture, the window
   // fallback and the React handler may all observe the same release.
-  const finishDrag = useCallback((commit: boolean, target: DropTarget | null = null) => {
-    const state = drag.current;
-    if (!state) return;
-    drag.current = null;
-    state.removeListeners();
-    cancelAnimationFrame(state.scrollFrame);
-    hideGhost(state);
-    const element = state.strip.querySelector<HTMLElement>(".tab.is-dragging");
-    if (element) element.style.transform = "";
-    if (state.strip.hasPointerCapture(state.pointerId)) {
-      state.strip.releasePointerCapture(state.pointerId);
-    }
-    if (!state.active) return;
-    setTabDrag(null);
-    if (!commit) {
-      // Reordering previews live; abandoning the gesture restores its slot.
-      const tab = useStore.getState().tabs.find((item) => item.info.id === state.id);
-      if (tab?.paneId === paneId) moveTab(state.id, state.originalIndex);
-      return;
-    }
-    if (!target) return;
-    if (target.zone === "strip") moveTabToPane(state.id, target.paneId, target.index);
-    else if (target.zone === "center") moveTabToPane(state.id, target.paneId, Number.MAX_SAFE_INTEGER);
-    else splitPane(target.paneId, target.zone, state.id);
-  }, [paneId, moveTab, moveTabToPane, splitPane, setTabDrag]);
+  const finishDrag = useCallback(
+    (commit: boolean, target: DropTarget | null = null) => {
+      const state = drag.current;
+      if (!state) return;
+      drag.current = null;
+      state.removeListeners();
+      cancelAnimationFrame(state.scrollFrame);
+      hideGhost(state);
+      const element = state.strip.querySelector<HTMLElement>(".tab.is-dragging");
+      if (element) element.style.transform = "";
+      if (state.strip.hasPointerCapture(state.pointerId)) {
+        state.strip.releasePointerCapture(state.pointerId);
+      }
+      if (!state.active) return;
+      setTabDrag(null);
+      if (!commit) {
+        // Reordering previews live; abandoning the gesture restores its slot.
+        const tab = useStore.getState().tabs.find((item) => item.info.id === state.id);
+        if (tab?.paneId === paneId) moveTab(state.id, state.originalIndex);
+        return;
+      }
+      if (!target) return;
+      if (target.zone === "strip") moveTabToPane(state.id, target.paneId, target.index);
+      else if (target.zone === "center")
+        moveTabToPane(state.id, target.paneId, Number.MAX_SAFE_INTEGER);
+      else splitPane(target.paneId, target.zone, state.id);
+    },
+    [paneId, moveTab, moveTabToPane, splitPane, setTabDrag],
+  );
 
   useEffect(() => () => finishDrag(false), [finishDrag]);
 
@@ -561,7 +527,9 @@ export function TabStrip({ paneId }: Props) {
       e.stopPropagation();
       cancel();
     };
-    const visibility = () => { if (document.hidden) cancel(); };
+    const visibility = () => {
+      if (document.hidden) cancel();
+    };
     const end = (e: PointerEvent) => {
       if (e.pointerId !== drag.current?.pointerId) return;
       finishDrag(e.type === "pointerup", dropTargetAt(e.clientX, e.clientY, paneId));
@@ -604,10 +572,7 @@ export function TabStrip({ paneId }: Props) {
     state.x = event.clientX;
     state.y = event.clientY;
     if (!state.active) {
-      const travelled = Math.hypot(
-        event.clientX - state.startX,
-        event.clientY - state.startY,
-      );
+      const travelled = Math.hypot(event.clientX - state.startX, event.clientY - state.startY);
       if (travelled < DRAG_THRESHOLD) return;
       state.active = true;
       setTabDrag(state.id);
@@ -626,9 +591,7 @@ export function TabStrip({ paneId }: Props) {
 
   // Where a tab dragged from another strip would be inserted here.
   const marker =
-    dropTarget?.paneId === paneId && dropTarget.zone === "strip"
-      ? dropTarget.index
-      : null;
+    dropTarget?.paneId === paneId && dropTarget.zone === "strip" ? dropTarget.index : null;
 
   return (
     <div
@@ -657,9 +620,7 @@ export function TabStrip({ paneId }: Props) {
       <div className="tabstrip-fade-left" aria-hidden="true" />
       {tabs.flatMap((tab, index) => {
         const active = tab.info.id === shownId;
-        const sessionColor =
-          tab.info.color ??
-          colorForSession(tab.info.profileId ?? tab.info.name);
+        const sessionColor = tab.info.color ?? colorForSession(tab.info.profileId ?? tab.info.name);
         const element = (
           <div
             key={tab.info.id}

@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./platform", () => ({ HAS_TRAY: true,
-  IS_MAC: true,
-  IS_WINDOWS: false,
-}));
+vi.mock("./platform", () => ({ HAS_TRAY: true, IS_MAC: true, IS_WINDOWS: false }));
 
 const writeClipboardText = vi.fn((_text: string) => Promise.resolve());
 vi.mock("./api", () => ({
@@ -14,8 +11,7 @@ vi.mock("./api", () => ({
 import { parseOsc52 } from "./osc52";
 import { TerminalController } from "./terminal";
 
-const base64 = (text: string) =>
-  btoa(String.fromCharCode(...new TextEncoder().encode(text)));
+const base64 = (text: string) => btoa(String.fromCharCode(...new TextEncoder().encode(text)));
 
 describe("parseOsc52", () => {
   it("decodes the text a program copies, UTF-8 included", () => {
@@ -59,9 +55,7 @@ function createController() {
 }
 
 function copy(controller: TerminalController, text: string): Promise<void> {
-  return new Promise((resolve) =>
-    controller.term.write(`\x1b]52;c;${base64(text)}\x07`, resolve),
-  );
+  return new Promise((resolve) => controller.term.write(`\x1b]52;c;${base64(text)}\x07`, resolve));
 }
 
 afterEach(() => {

@@ -4,13 +4,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../platform", () => ({ HAS_TRAY: true, IS_MAC: false, IS_WINDOWS: true }));
 vi.mock("./FileIcon", () => ({ FileIcon: () => null }));
 vi.mock("../actions", () => ({ revealCwdInFiler: vi.fn() }));
-vi.mock("@tauri-apps/api/webview", () => ({ getCurrentWebview: () => ({
-  onDragDropEvent: async () => () => {},
-}) }));
+vi.mock("@tauri-apps/api/webview", () => ({
+  getCurrentWebview: () => ({
+    onDragDropEvent: async () => () => {},
+  }),
+}));
 vi.mock("../api", async (original) => ({
-  ...await original<typeof import("../api")>(),
-  localHome: vi.fn(), localList: vi.fn(), localCreateFile: vi.fn(),
-  startFileDrag: vi.fn(), onRemoteEditState: async () => () => {},
+  ...(await original<typeof import("../api")>()),
+  localHome: vi.fn(),
+  localList: vi.fn(),
+  localCreateFile: vi.fn(),
+  startFileDrag: vi.fn(),
+  onRemoteEditState: async () => () => {},
 }));
 import * as api from "../api";
 import { EMPTY_SELECTION, type FileSelection } from "../fileBatch";
@@ -28,59 +33,126 @@ let prefix = 0;
 let above = 0;
 let observers: (() => void)[];
 const entries: FileEntry[] = Array.from({ length: 10_000 }, (_, i) => ({
-  path: `/test/file${i}`, name: `file${i}`, isDir: i % 10 === 0, isSymlink: false,
-  size: i, modified: i, permissions: null, owner: null, group: null,
+  path: `/test/file${i}`,
+  name: `file${i}`,
+  isDir: i % 10 === 0,
+  isSymlink: false,
+  size: i,
+  modified: i,
+  permissions: null,
+  owner: null,
+  group: null,
 }));
 
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-  vi.useFakeTimers(); height = 290; prefix = 0; above = 0; observers = [];
+  vi.useFakeTimers();
+  height = 290;
+  prefix = 0;
+  above = 0;
+  observers = [];
   localStorage.clear();
-  vi.stubGlobal("ResizeObserver", class {
-    constructor(callback: () => void) { observers.push(callback); }
-    observe() {} unobserve() {} disconnect() {}
-  });
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      constructor(callback: () => void) {
+        observers.push(callback);
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
   vi.stubGlobal("requestAnimationFrame", (fn: FrameRequestCallback) => setTimeout(() => fn(0), 16));
   vi.stubGlobal("cancelAnimationFrame", clearTimeout);
   vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(() => height);
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+    this: HTMLElement,
+  ) {
     const top = this.classList.contains("virtual-file-rows")
       ? above + prefix - this.parentElement!.scrollTop
       : 0;
-    return { x: 0, y: top, top, bottom: top + height, height, width: 600, left: 0, right: 600, toJSON() {} };
+    return {
+      x: 0,
+      y: top,
+      top,
+      bottom: top + height,
+      height,
+      width: 600,
+      left: 0,
+      right: 600,
+      toJSON() {},
+    };
   });
-  host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+  host = document.createElement("div");
+  document.body.append(host);
+  root = createRoot(host);
 });
 afterEach(() => {
-  act(() => root.unmount()); host.remove();
-  vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers();
+  act(() => root.unmount());
+  host.remove();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
-const advance = () => act(() => { vi.advanceTimersByTime(16); });
+const advance = () =>
+  act(() => {
+    vi.advanceTimersByTime(16);
+  });
 function scroll(scroller: HTMLElement, top: number) {
-  act(() => { scroller.scrollTop = top; scroller.dispatchEvent(new Event("scroll")); });
+  act(() => {
+    scroller.scrollTop = top;
+    scroller.dispatchEvent(new Event("scroll"));
+  });
   advance();
 }
 function renderRows(list = entries, resetKey = "same", pitch = 29, message = false) {
-  act(() => root.render(h("div", { className: "test-scroll" },
-    message ? h("div", { className: "test-message" }, "Creating...") : null,
-    h(VirtualFileRows<FileEntry>, { entries: list, rowHeight: pitch, resetKey,
-      children: (e) => h("button", { "data-row": e.path }, e.name),
-    }))));
+  act(() =>
+    root.render(
+      h(
+        "div",
+        { className: "test-scroll" },
+        message ? h("div", { className: "test-message" }, "Creating...") : null,
+        h(VirtualFileRows<FileEntry>, {
+          entries: list,
+          rowHeight: pitch,
+          resetKey,
+          children: (e) => h("button", { "data-row": e.path }, e.name),
+        }),
+      ),
+    ),
+  );
 }
 /** The same render, awaited so MutationObserver records are delivered. */
-const renderRowsAsync = async (
-  list = entries, resetKey = "same", pitch = 29, message = false,
-) => { await act(async () => { renderRows(list, resetKey, pitch, message); }); };
+const renderRowsAsync = async (list = entries, resetKey = "same", pitch = 29, message = false) => {
+  await act(async () => {
+    renderRows(list, resetKey, pitch, message);
+  });
+};
 
 /** The dual-pane browser the FTP tests drive, with the props they share. */
 const browser = (overrides: Partial<FileBrowserProps> = {}): FileBrowserProps => ({
-  title: "Remote", subtitle: "SFTP", path: "/test", draft: "/test", entries,
+  title: "Remote",
+  subtitle: "SFTP",
+  path: "/test",
+  draft: "/test",
+  entries,
   selection: EMPTY_SELECTION,
-  loading: false, error: null, side: "remote",
-  draggingPath: null, dropHover: null,
-  onItemPointerDown: vi.fn(), onItemPointerMove: vi.fn(), onItemPointerUp: vi.fn(),
-  onDragCancel: vi.fn(), onDraftChange: vi.fn(), onOpenPath: vi.fn(), onHome: vi.fn(),
-  onParent: vi.fn(), onRefresh: vi.fn(), onSelectionChange: vi.fn(),
+  loading: false,
+  error: null,
+  side: "remote",
+  draggingPath: null,
+  dropHover: null,
+  onItemPointerDown: vi.fn(),
+  onItemPointerMove: vi.fn(),
+  onItemPointerUp: vi.fn(),
+  onDragCancel: vi.fn(),
+  onDraftChange: vi.fn(),
+  onOpenPath: vi.fn(),
+  onHome: vi.fn(),
+  onParent: vi.fn(),
+  onRefresh: vi.fn(),
+  onSelectionChange: vi.fn(),
   onActivate: vi.fn(),
   ...overrides,
 });
@@ -119,10 +191,13 @@ describe("virtual file rows", () => {
   });
 
   it("resets on navigation/sort and measures hidden panels, prefixes and font changes", () => {
-    height = 0; renderRows();
+    height = 0;
+    renderRows();
     const scroller = host.firstElementChild as HTMLElement;
-    height = 580; prefix = 60;
-    act(() => observers.forEach((fn) => fn())); advance();
+    height = 580;
+    prefix = 60;
+    act(() => observers.forEach((fn) => fn()));
+    advance();
     expect(host.querySelectorAll("[data-row]").length).toBeGreaterThan(20);
     scroll(scroller, 6000);
     renderRows(entries, "same", 40);
@@ -165,20 +240,23 @@ describe("virtual file rows", () => {
     expect(firstRow()).toBe("/test/file94");
   });
 
-  it.each([8, 16, 40, 80])("coalesces scrolling at %i ms without losing the final range", (interval) => {
-    renderRows();
-    const scroller = host.firstElementChild as HTMLElement;
-    act(() => {
-      for (let i = 0; i < 100; i++) {
-        scroller.scrollTop = i * 290;
-        scroller.dispatchEvent(new Event("scroll"));
-        vi.advanceTimersByTime(interval);
-      }
-      vi.advanceTimersByTime(16);
-    });
-    expect(host.textContent).toContain("file990");
-    expect(host.querySelectorAll("[data-row]").length).toBeLessThanOrEqual(22);
-  });
+  it.each([8, 16, 40, 80])(
+    "coalesces scrolling at %i ms without losing the final range",
+    (interval) => {
+      renderRows();
+      const scroller = host.firstElementChild as HTMLElement;
+      act(() => {
+        for (let i = 0; i < 100; i++) {
+          scroller.scrollTop = i * 290;
+          scroller.dispatchEvent(new Event("scroll"));
+          vi.advanceTimersByTime(interval);
+        }
+        vi.advanceTimersByTime(16);
+      });
+      expect(host.textContent).toContain("file990");
+      expect(host.querySelectorAll("[data-row]").length).toBeLessThanOrEqual(22);
+    },
+  );
 
   it("does not leave a blank interval after a large listing shrinks", () => {
     expect(fileRowRange(250, 1e6, 290, 29)).toEqual({ start: 234, end: 250 });
@@ -186,24 +264,38 @@ describe("virtual file rows", () => {
   });
 
   it("preserves real FTP selection, activation, sorting, row positions and drop metadata", () => {
-    const select = vi.fn(); const activate = vi.fn(); const press = vi.fn();
-    act(() => root.render(h(FileBrowser, browser({
-      selection: { paths: ["/test/file0"], anchor: "/test/file0" },
-      onItemPointerDown: press, onSelectionChange: select, onActivate: activate,
-    }))));
+    const select = vi.fn();
+    const activate = vi.fn();
+    const press = vi.fn();
+    act(() =>
+      root.render(
+        h(
+          FileBrowser,
+          browser({
+            selection: { paths: ["/test/file0"], anchor: "/test/file0" },
+            onItemPointerDown: press,
+            onSelectionChange: select,
+            onActivate: activate,
+          }),
+        ),
+      ),
+    );
     const row = host.querySelector<HTMLElement>("[role=option]")!;
     expect(row.getAttribute("aria-selected")).toBe("true");
     expect(row.getAttribute("aria-setsize")).toBe("10000");
     expect(row.getAttribute("data-drop-dir")).toBe("/test/file0");
     act(() => {
-      row.click(); row.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+      row.click();
+      row.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
       row.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
     });
     expect(select).toHaveBeenCalledWith({ paths: ["/test/file0"], anchor: "/test/file0" });
     expect(activate).toHaveBeenCalledWith(entries[0]);
     expect(press.mock.calls[0].slice(0, 2)).toEqual(["remote", entries[0]]);
     scroll(host.querySelector<HTMLElement>(".ftp-browser-list")!, 145000);
-    expect(Number(host.querySelector("[role=option]")!.getAttribute("aria-posinset"))).toBeGreaterThan(4000);
+    expect(
+      Number(host.querySelector("[role=option]")!.getAttribute("aria-posinset")),
+    ).toBeGreaterThan(4000);
     // By `data-sort-key`, not the caption's accessible name: an `aria-label`
     // there would replace the visible column name ("Name") with an instruction
     // ("Sort by name") for a screen reader, which is why the captions carry
@@ -218,17 +310,25 @@ describe("virtual file rows", () => {
     // The previous test leaves the shared sort flipped; name the rows from
     // where they actually are rather than assuming a direction.
     act(() => root.render(h(FileBrowser, browser())));
-    const rowFor = (name: string) => [...host.querySelectorAll<HTMLElement>("[role=option]")]
-      .find((element) => element.querySelector(".ftp-file-name > span:last-child")?.textContent === name)!;
+    const rowFor = (name: string) =>
+      [...host.querySelectorAll<HTMLElement>("[role=option]")].find(
+        (element) =>
+          element.querySelector(".ftp-file-name > span:last-child")?.textContent === name,
+      )!;
     const rowName = (element: Element) =>
       element.querySelector(".ftp-file-name > span:last-child")!.textContent!;
-    const [first, second, third] = [...host.querySelectorAll<HTMLElement>('[role="option"]')]
-      .map(rowName);
-    act(() => root.render(h(StatefulBrowser, {
-      initial: { paths: [`/test/${first}`], anchor: `/test/${first}` },
-    })));
-    const chosen = () => [...host.querySelectorAll<HTMLElement>('[role="option"][aria-selected="true"]')]
-      .map(rowName);
+    const [first, second, third] = [...host.querySelectorAll<HTMLElement>('[role="option"]')].map(
+      rowName,
+    );
+    act(() =>
+      root.render(
+        h(StatefulBrowser, {
+          initial: { paths: [`/test/${first}`], anchor: `/test/${first}` },
+        }),
+      ),
+    );
+    const chosen = () =>
+      [...host.querySelectorAll<HTMLElement>('[role="option"][aria-selected="true"]')].map(rowName);
     expect(chosen()).toEqual([first]);
 
     // Ctrl adds without dropping what was picked.
@@ -252,8 +352,9 @@ describe("virtual file rows", () => {
     expect(chosen()).toEqual([second, third]);
     // The press moved the keyboard cursor too, so the arrow keys and
     // type-to-select carry on from the row that was clicked.
-    expect(host.querySelector('[role="listbox"]')!.getAttribute("aria-activedescendant"))
-      .toContain(encodeURIComponent(third));
+    expect(host.querySelector('[role="listbox"]')!.getAttribute("aria-activedescendant")).toContain(
+      encodeURIComponent(third),
+    );
   });
 
   it("preserves Filer selection, context menus, native drag and inline creation at depth", async () => {
@@ -282,10 +383,15 @@ describe("virtual file rows", () => {
     act(() => host.querySelector<HTMLButtonElement>("[aria-label='New file']")!.click());
     const input = host.querySelector<HTMLInputElement>(".filer-new-entry input")!;
     act(() => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "created.txt");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
+        input,
+        "created.txt",
+      );
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    await act(async () =>
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })),
+    );
     expect(api.localCreateFile).toHaveBeenCalledWith("/test/created.txt");
     expect(host.querySelector(".filer-new-entry")).toBeNull();
     expect(host.querySelectorAll(".filer-entry").length).toBeLessThan(30);

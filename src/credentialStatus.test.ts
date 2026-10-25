@@ -5,10 +5,7 @@ vi.mock("./bindings", () => ({
 }));
 
 import { commands } from "./bindings";
-import {
-  credentialStoreHint,
-  fetchCredentialStoreStatus,
-} from "./credentialStatus";
+import { credentialStoreHint, fetchCredentialStoreStatus } from "./credentialStatus";
 
 describe("credential store status", () => {
   beforeEach(() => {
@@ -21,9 +18,10 @@ describe("credential store status", () => {
   });
 
   it("names portable mode and an unavailable credential store separately", () => {
-    expect(
-      credentialStoreHint({ persistent: false, reason: "portable" }),
-    ).toEqual({ key: "session.secretsRunOnlyPortable", warning: false });
+    expect(credentialStoreHint({ persistent: false, reason: "portable" })).toEqual({
+      key: "session.secretsRunOnlyPortable",
+      warning: false,
+    });
     expect(
       credentialStoreHint({
         persistent: false,
@@ -50,9 +48,7 @@ describe("credential store status", () => {
 
   it("keeps working when the query fails", async () => {
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
-    vi.mocked(commands.credentialStoreStatus).mockRejectedValue(
-      new Error("no ipc"),
-    );
+    vi.mocked(commands.credentialStoreStatus).mockRejectedValue(new Error("no ipc"));
     await expect(fetchCredentialStoreStatus()).resolves.toBeNull();
     expect(logged).toHaveBeenCalled();
   });

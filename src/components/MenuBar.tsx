@@ -9,36 +9,19 @@ import {
 } from "react";
 import { errorText } from "../errorInfo";
 import { GUIDE_URL } from "../distribution";
-import {
-  getCurrentWindow,
-  type Window as TauriWindow,
-} from "@tauri-apps/api/window";
+import { getCurrentWindow, type Window as TauriWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 import appIcon from "../../src-tauri/icons/32x32.png";
-import {
-  revealCwdInFiler,
-  splitSession,
-  toggleSessionConnection,
-} from "../actions";
+import { revealCwdInFiler, splitSession, toggleSessionConnection } from "../actions";
 import { windowControl } from "../api";
-import {
-  exportAppData,
-  importAppData,
-  importSshConfig,
-} from "../dataTransfer";
+import { exportAppData, importAppData, importSshConfig } from "../dataTransfer";
 import { exportDiagnostics, openLogDirectory } from "../diagnostics";
 import { commandHistory } from "../history";
 import { LANGUAGES, LANGUAGE_LABELS, type Language } from "../i18n";
 import { ask } from "../nativeDialog";
 import { programClipboardLabels, type ProgramClipboardMode } from "../osc52";
-import {
-  DOCK_NAMES,
-  dockLabels,
-  dockOf,
-  panelLabels,
-  PANEL_NAMES,
-} from "../panelDock";
+import { DOCK_NAMES, dockLabels, dockOf, panelLabels, PANEL_NAMES } from "../panelDock";
 import { HAS_TRAY, IS_MAC } from "../platform";
 import { chordLabel, type ShortcutCommand } from "../shortcuts";
 import { tabTitle, useActiveTab, useStore } from "../store";
@@ -67,10 +50,7 @@ import { submenuKey, useSubmenuHover } from "./submenuHover";
 // shape) is also pushed to the OS so the taskbar / overview shows the same.
 
 /** Track a boolean window property, re-reading it whenever the window resizes. */
-function useWindowFlag(
-  enabled: boolean,
-  read: (win: TauriWindow) => Promise<boolean>,
-): boolean {
+function useWindowFlag(enabled: boolean, read: (win: TauriWindow) => Promise<boolean>): boolean {
   const [value, setValue] = useState(false);
   useEffect(() => {
     if (!enabled) return;
@@ -202,9 +182,7 @@ function WindowControls({ maximized }: { maximized: boolean }) {
           // Keep keyboard focus in the terminal on pointer press only: Tab
           // must still reach the caption buttons for keyboard users.
           onMouseDown={(event) => event.preventDefault()}
-          onClick={() =>
-            void control.action(getCurrentWindow()).catch(() => {})
-          }
+          onClick={() => void control.action(getCurrentWindow()).catch(() => {})}
         >
           <svg viewBox="0 0 10 10" aria-hidden="true">
             {control.icon}
@@ -227,8 +205,7 @@ type MenuClose =
   | "none";
 
 /** All entry roles: one menu level is made of these, separators excluded. */
-const MENU_ITEM_SELECTOR =
-  '[role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]';
+const MENU_ITEM_SELECTOR = '[role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]';
 
 /**
  * The entries of one menu level in DOM order. Nested submenu entries live in
@@ -237,9 +214,9 @@ const MENU_ITEM_SELECTOR =
  */
 function levelItems(level: HTMLElement | null): HTMLElement[] {
   if (!level) return [];
-  return Array.from(
-    level.querySelectorAll<HTMLElement>(MENU_ITEM_SELECTOR),
-  ).filter((item) => item.closest(".menu-dropdown") === level);
+  return Array.from(level.querySelectorAll<HTMLElement>(MENU_ITEM_SELECTOR)).filter(
+    (item) => item.closest(".menu-dropdown") === level,
+  );
 }
 
 interface Entry {
@@ -396,15 +373,17 @@ export function MenuBar(props: Props) {
   const panelLayoutEntries = (): (Entry | "separator")[] => [
     ...PANEL_NAMES.flatMap((panel, index): (Entry | "separator")[] => [
       ...(index > 0 ? ["separator" as const] : []),
-      ...DOCK_NAMES.map((dock): Entry => ({
-        label: t("menu.panelOnDock", {
-          panel: panelNames[panel],
-          dock: docks[dock],
+      ...DOCK_NAMES.map(
+        (dock): Entry => ({
+          label: t("menu.panelOnDock", {
+            panel: panelNames[panel],
+            dock: docks[dock],
+          }),
+          checked: dockOf(panelDocks, panel) === dock,
+          mark: "radio",
+          action: () => movePanel(panel, dock),
         }),
-        checked: dockOf(panelDocks, panel) === dock,
-        mark: "radio",
-        action: () => movePanel(panel, dock),
-      })),
+      ),
     ]),
     "separator",
     { label: t("menu.resetPanelLayout"), action: resetPanelLayout },
@@ -582,9 +561,7 @@ export function MenuBar(props: Props) {
                   // With Copy on Select the selection is copied already,
                   // so this mode only pastes (see TerminalPane).
                   rightClickEntry(
-                    copyOnSelect
-                      ? t("menu.rightClickPaste")
-                      : t("menu.rightClickCopyOrPaste"),
+                    copyOnSelect ? t("menu.rightClickPaste") : t("menu.rightClickCopyOrPaste"),
                     "copyPaste",
                   ),
                 ],
@@ -634,9 +611,7 @@ export function MenuBar(props: Props) {
                 await commandHistory.clear();
                 setStatus(t("status.commandHistoryCleared"));
               } catch (error) {
-                setStatus(
-                  t("status.commandHistoryClearFailed", { error: errorText(error) }),
-                );
+                setStatus(t("status.commandHistoryClearFailed", { error: errorText(error) }));
               }
             })();
           },
@@ -845,10 +820,7 @@ export function MenuBar(props: Props) {
   };
 
   /** Keys on the title itself: move along the bar, or open the dropdown. */
-  const onTitleKeyDown = (
-    index: number,
-    event: ReactKeyboardEvent<HTMLButtonElement>,
-  ) => {
+  const onTitleKeyDown = (index: number, event: ReactKeyboardEvent<HTMLButtonElement>) => {
     const menu = menus[index];
     const last = menus.length - 1;
     switch (event.key) {
@@ -880,9 +852,7 @@ export function MenuBar(props: Props) {
           // The title of an open menu was reached again (arrow stepping):
           // step into the panel it already shows.
           const panel =
-            event.currentTarget.parentElement?.querySelector<HTMLElement>(
-              ".menu-dropdown",
-            ) ?? null;
+            event.currentTarget.parentElement?.querySelector<HTMLElement>(".menu-dropdown") ?? null;
           const items = levelItems(panel);
           (edge === "first" ? items[0] : items[items.length - 1])?.focus();
           return;
@@ -974,12 +944,7 @@ export function MenuBar(props: Props) {
         altChord = false;
         return;
       }
-      const plain =
-        altDown &&
-        !altChord &&
-        !event.ctrlKey &&
-        !event.shiftKey &&
-        !event.metaKey;
+      const plain = altDown && !altChord && !event.ctrlKey && !event.shiftKey && !event.metaKey;
       altDown = false;
       altChord = false;
       if (!plain) return;
@@ -1186,9 +1151,7 @@ function MenuDropdown({
   const submenu = useSubmenuHover();
   // Which submenu the keyboard owns: a key, null after the keyboard closed
   // one, or undefined while the pointer model (submenuHover.ts) decides.
-  const [keyboardOpen, setKeyboardOpen] = useState<string | null | undefined>(
-    undefined,
-  );
+  const [keyboardOpen, setKeyboardOpen] = useState<string | null | undefined>(undefined);
   // When a dropdown has checkable entries, every entry in it (submenu
   // parents included) renders the check column so labels share one left
   // edge. Dropdowns without any stay compact.
@@ -1199,9 +1162,8 @@ function MenuDropdown({
 
   /** The submenu panel under the entry with this key. */
   const submenuOf = (key: string) =>
-    rootRef.current?.querySelector<HTMLElement>(
-      `[data-submenu-key="${key}"] > .menu-submenu`,
-    ) ?? null;
+    rootRef.current?.querySelector<HTMLElement>(`[data-submenu-key="${key}"] > .menu-submenu`) ??
+    null;
 
   /** Open a submenu from the keyboard and put focus at its first / last item. */
   const focusInto = (key: string, edge: "first" | "last") => {
@@ -1335,11 +1297,7 @@ function MenuDropdown({
                   <Icon name="chevron-right" />
                 </span>
               </button>
-              <div
-                className="menu-dropdown menu-submenu"
-                role="menu"
-                aria-label={entry.label}
-              >
+              <div className="menu-dropdown menu-submenu" role="menu" aria-label={entry.label}>
                 {children.map((child, childIndex) =>
                   child === "separator" ? (
                     <div key={childIndex} className="menu-separator" />
@@ -1349,9 +1307,7 @@ function MenuDropdown({
                       type="button"
                       className={`menu-entry${child.checked ? " is-checked" : ""}`}
                       role={menuRole(child)}
-                      aria-checked={
-                        child.checked !== undefined ? child.checked : undefined
-                      }
+                      aria-checked={child.checked !== undefined ? child.checked : undefined}
                       tabIndex={-1}
                       title={child.label}
                       onClick={() => {
@@ -1374,9 +1330,7 @@ function MenuDropdown({
             type="button"
             className={`menu-entry${entry.checked ? " is-checked" : ""}`}
             role={menuRole(entry)}
-            aria-checked={
-              entry.checked !== undefined ? entry.checked : undefined
-            }
+            aria-checked={entry.checked !== undefined ? entry.checked : undefined}
             tabIndex={-1}
             title={entry.shortcut ? `${entry.label} (${entry.shortcut})` : entry.label}
             onClick={() => {
@@ -1386,9 +1340,7 @@ function MenuDropdown({
           >
             {showLeading && <MenuLeading entry={entry} />}
             <span className="menu-entry-label">{entry.label}</span>
-            {entry.shortcut && (
-              <span className="menu-shortcut">{entry.shortcut}</span>
-            )}
+            {entry.shortcut && <span className="menu-shortcut">{entry.shortcut}</span>}
           </button>
         );
       })}

@@ -109,6 +109,9 @@ All except the tab numbers, the find box's own keys and Enter can be changed in 
 
 ## Development and review
 
+See [code style and debugging](docs/code-style.zh-CN.md) (Chinese) for formatting commands,
+editor setup, and debugging entry points.
+
 Read the [engineering standards](docs/engineering-standards.zh-CN.md), [test plan](docs/test-plan.zh-CN.md), and [commit audit](docs/audit-2026-10-14.zh-CN.md) before changing the code. The audit distinguishes verified behavior, fixture measurements and outstanding real-environment checks.
 
 ## License

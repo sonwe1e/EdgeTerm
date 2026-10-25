@@ -18,9 +18,7 @@ const LISTED_SESSIONS = 4;
 export function QuitConfirmDialog({ onConfirm, onCancel }: Props) {
   const tabs = useStore((s) => s.tabs);
   const t = useT();
-  const live = tabs.filter(
-    (tab) => tab.state === "connecting" || tab.state === "connected",
-  );
+  const live = tabs.filter((tab) => tab.state === "connecting" || tab.state === "connected");
 
   const shown = live.slice(0, LISTED_SESSIONS);
   const extra = live.length - shown.length;
@@ -52,9 +50,7 @@ export function QuitConfirmDialog({ onConfirm, onCancel }: Props) {
           </span>
         ))}
         {extra > 0 && (
-          <span className="confirm-dialog-target">
-            {t("quit.andMore", { count: extra })}
-          </span>
+          <span className="confirm-dialog-target">{t("quit.andMore", { count: extra })}</span>
         )}
         <span className="confirm-dialog-hint">{t("quit.hint")}</span>
       </div>
@@ -65,11 +61,7 @@ export function QuitConfirmDialog({ onConfirm, onCancel }: Props) {
         <button type="button" className="btn" onClick={onCancel}>
           {t("common.cancel")}
         </button>
-        <button
-          type="button"
-          className="btn is-danger"
-          onClick={onConfirm}
-        >
+        <button type="button" className="btn is-danger" onClick={onConfirm}>
           {t("common.quit")}
         </button>
       </div>

@@ -1,17 +1,8 @@
 import type { Translate } from "./i18n";
 import { SENDER_SAVE_LEVEL_KEY } from "./persistKeys";
-import {
-  effectiveGroupId,
-  effectiveParentId,
-  groupPath,
-  kindLabels,
-} from "./sessionGroups";
+import { effectiveGroupId, effectiveParentId, groupPath, kindLabels } from "./sessionGroups";
 import type { Tab } from "./store";
-import type {
-  CommandScope,
-  SessionGroup,
-  SessionProfile,
-} from "./types";
+import type { CommandScope, SessionGroup, SessionProfile } from "./types";
 
 // Saved Sender commands live in one library but each carries a scope; the
 // Sender lists the union of the scopes that apply to the active tab. This
@@ -32,19 +23,13 @@ export function scopeKey(scope: CommandScope): string {
   }
 }
 
-export const sameScope = (a: CommandScope, b: CommandScope) =>
-  scopeKey(a) === scopeKey(b);
+export const sameScope = (a: CommandScope, b: CommandScope) => scopeKey(a) === scopeKey(b);
 
 export type ScopeLevel = CommandScope["type"];
 
 const SAVE_LEVEL_KEY = SENDER_SAVE_LEVEL_KEY;
 /** Broadest first, so a missing level falls through to the next one up. */
-const LEVELS_NARROW_TO_BROAD: readonly ScopeLevel[] = [
-  "profile",
-  "group",
-  "kind",
-  "global",
-];
+const LEVELS_NARROW_TO_BROAD: readonly ScopeLevel[] = ["profile", "group", "kind", "global"];
 
 /**
  * The scopes whose commands a tab sees, broadest first: global, its session
@@ -60,10 +45,7 @@ export function scopeChain(
   groups: readonly SessionGroup[],
 ): CommandScope[] {
   if (!tab) return [{ type: "global" }];
-  const chain: CommandScope[] = [
-    { type: "global" },
-    { type: "kind", kind: tab.info.kind },
-  ];
+  const chain: CommandScope[] = [{ type: "global" }, { type: "kind", kind: tab.info.kind }];
 
   // The saved copy, not the tab's snapshot: the profile may have been moved
   // to another group since the tab was opened.
@@ -110,9 +92,7 @@ export function scopeLabel(
     }
     case "profile": {
       const profile = profiles.find((candidate) => candidate.id === scope.id);
-      return profile
-        ? t("sender.sessionNamed", { name: profile.name })
-        : t("sender.session");
+      return profile ? t("sender.sessionNamed", { name: profile.name }) : t("sender.session");
     }
   }
 }
@@ -140,10 +120,7 @@ export function describeScope(scope: CommandScope, t: Translate): string {
  * the tab has no such level (a quick-connect tab has no profile or group).
  * "group" means the innermost group, the one holding the profile.
  */
-export function scopeForLevel(
-  chain: readonly CommandScope[],
-  level: ScopeLevel,
-): CommandScope {
+export function scopeForLevel(chain: readonly CommandScope[], level: ScopeLevel): CommandScope {
   const start = LEVELS_NARROW_TO_BROAD.indexOf(level);
   for (const candidate of LEVELS_NARROW_TO_BROAD.slice(start)) {
     const matches = chain.filter((scope) => scope.type === candidate);
@@ -161,12 +138,7 @@ export function scopeForLevel(
 export function loadSaveLevel(): ScopeLevel {
   try {
     const stored = localStorage.getItem(SAVE_LEVEL_KEY);
-    if (
-      stored === "profile" ||
-      stored === "group" ||
-      stored === "kind" ||
-      stored === "global"
-    ) {
+    if (stored === "profile" || stored === "group" || stored === "kind" || stored === "global") {
       return stored;
     }
   } catch {

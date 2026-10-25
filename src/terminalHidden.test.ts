@@ -37,9 +37,7 @@ const IP_COLOR = "#5fd7c0";
 function fg(controller: TerminalController, row: number, col: number) {
   const cell = controller.term.buffer.active.getLine(row)?.getCell(col);
   if (!cell) throw new Error(`no cell at ${row}:${col}`);
-  return cell.isFgRGB()
-    ? `#${cell.getFgColor().toString(16).padStart(6, "0")}`
-    : null;
+  return cell.isFgRGB() ? `#${cell.getFgColor().toString(16).padStart(6, "0")}` : null;
 }
 
 describe("a terminal that is not on screen", () => {

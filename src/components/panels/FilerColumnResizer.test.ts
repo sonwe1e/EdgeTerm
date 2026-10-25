@@ -28,9 +28,13 @@ beforeEach(() => {
   // owning cell's width at pointerdown and jsdom lays nothing out, so the
   // cell reports 0 — the reported pair is (0, total), which is exactly the
   // contract the panel consumes.
-  handle.setPointerCapture = vi.fn((id: number) => { captured.add(id); });
+  handle.setPointerCapture = vi.fn((id: number) => {
+    captured.add(id);
+  });
   handle.hasPointerCapture = vi.fn((id: number) => captured.has(id));
-  handle.releasePointerCapture = vi.fn((id: number) => { captured.delete(id); });
+  handle.releasePointerCapture = vi.fn((id: number) => {
+    captured.delete(id);
+  });
 });
 
 afterEach(() => {
@@ -43,17 +47,27 @@ afterEach(() => {
 
 function render(onResize = resize, onStart = start) {
   act(() =>
-    root.render(
-      h("div", null, h(FilerColumnResizer, { label: "test", onStart, onResize })),
-    ),
+    root.render(h("div", null, h(FilerColumnResizer, { label: "test", onStart, onResize }))),
   );
   handle = host.querySelector(".filer-col-resize") as HTMLDivElement;
 }
 
-function pointer(type: string, props: Partial<PointerEventInit> = {}, target: EventTarget = handle) {
+function pointer(
+  type: string,
+  props: Partial<PointerEventInit> = {},
+  target: EventTarget = handle,
+) {
   const event = new MouseEvent(type, { bubbles: true, cancelable: true });
-  const fields = { pointerId: 1, pointerType: "mouse", isPrimary: true,
-    button: 0, buttons: 1, clientX: 100, clientY: 100, ...props };
+  const fields = {
+    pointerId: 1,
+    pointerType: "mouse",
+    isPrimary: true,
+    button: 0,
+    buttons: 1,
+    clientX: 100,
+    clientY: 100,
+    ...props,
+  };
   for (const [key, value] of Object.entries(fields)) {
     Object.defineProperty(event, key, { value });
   }
@@ -123,7 +137,12 @@ describe("FilerColumnResizer drag lifecycle", () => {
     expect(resize.mock.calls).toEqual([[0, 8]]);
     act(() =>
       handle.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "ArrowLeft", shiftKey: true, bubbles: true, cancelable: true }),
+        new KeyboardEvent("keydown", {
+          key: "ArrowLeft",
+          shiftKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
       ),
     );
     expect(resize).toHaveBeenLastCalledWith(0, -32);

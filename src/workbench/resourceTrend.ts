@@ -123,7 +123,10 @@ export function trendPointFrom(metrics: TrendSource | null | undefined, at: numb
 }
 
 /** Picks the series a sparkline plots, preserving null gaps. */
-export function series(history: readonly TrendPoint[], field: keyof Omit<TrendPoint, "at">): (number | null)[] {
+export function series(
+  history: readonly TrendPoint[],
+  field: keyof Omit<TrendPoint, "at">,
+): (number | null)[] {
   return history.map((point) => point[field]);
 }
 

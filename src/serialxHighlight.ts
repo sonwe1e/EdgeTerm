@@ -286,12 +286,7 @@ function levelRole(word: string): Role {
  * Gives the unclaimed characters of `segment`, which begins at index `start`
  * of the line, the roles this fill hands out.
  */
-function applyFill(
-  fill: Fill,
-  segment: string,
-  start: number,
-  owner: (Role | null)[],
-) {
+function applyFill(fill: Fill, segment: string, start: number, owner: (Role | null)[]) {
   const level = fill.kind === "level" ? levelRole(segment) : null;
   let inValue = false;
   for (let offset = 0; offset < segment.length; offset += 1) {
@@ -302,11 +297,7 @@ function applyFill(
         role = fill.role;
         break;
       case "split":
-        role = /[0-9]/.test(ch)
-          ? fill.digit
-          : /[A-Za-z]/.test(ch)
-            ? fill.letter
-            : fill.other;
+        role = /[0-9]/.test(ch) ? fill.digit : /[A-Za-z]/.test(ch) ? fill.letter : fill.other;
         break;
       case "delimited":
         role = fill.delimiters.includes(ch) ? fill.delimiter : fill.text;
@@ -376,17 +367,12 @@ const whole = (source: string, fill: Fill, flags = ""): Pattern =>
   pattern(source, [[null, fill]], flags);
 
 /** Each named group in its own fill; what lies between them is left alone. */
-const parts = (
-  source: string,
-  fills: readonly (readonly [string, Fill])[],
-  flags = "",
-): Pattern => pattern(source, fills, flags);
+const parts = (source: string, fills: readonly (readonly [string, Fill])[], flags = ""): Pattern =>
+  pattern(source, fills, flags);
 
 const TIME_FILL = delimited("time", "timeSeparator", ":.,");
-const dateFill = (delimiters: string) =>
-  delimited("date", "timeSeparator", delimiters);
-const pathFill = (delimiters: string) =>
-  delimited("pathSegment", "pathSeparator", delimiters);
+const dateFill = (delimiters: string) => delimited("date", "timeSeparator", delimiters);
+const pathFill = (delimiters: string) => delimited("pathSegment", "pathSeparator", delimiters);
 const IP_FILL = split("ipDigit", "ipLetter", "ipSeparator");
 
 // The columns of `ls -l` after the mode: link count, owner, group, size (or a
@@ -416,11 +402,7 @@ const listing = (
   mode: string,
   name: string,
   fills: readonly (readonly [string, Fill])[],
-): Pattern =>
-  parts(`^(?<perm>${mode}[.+@]?)${LS_COLUMNS}${name}$`, [
-    ...LS_FILLS,
-    ...fills,
-  ]);
+): Pattern => parts(`^(?<perm>${mode}[.+@]?)${LS_COLUMNS}${name}$`, [...LS_FILLS, ...fills]);
 
 const PROMPT_FILLS: readonly (readonly [string, Fill])[] = [
   ["user", solid("user")],
@@ -448,16 +430,10 @@ const PATTERNS: readonly Pattern[] = [
     ["target", pathFill("/")],
   ]),
   listing("d[-rwxsStT]{9}", "(?<name>.+)", [["name", solid("directory")]]),
-  listing("-[-rw]{2}[xs][-rwxsStT]{6}", "(?<name>.+)", [
-    ["name", solid("executable")],
-  ]),
-  listing("[-dlbcps][-rwxsStT]{9}", "(?<name>.+)", [
-    ["name", solid("fileName")],
-  ]),
+  listing("-[-rw]{2}[xs][-rwxsStT]{6}", "(?<name>.+)", [["name", solid("executable")]]),
+  listing("[-dlbcps][-rwxsStT]{9}", "(?<name>.+)", [["name", solid("fileName")]]),
   // A mode string on its own, from `find -ls`, `stat` or `tar tv`.
-  parts("(?:^|\\s)(?<perm>[-dlbcps][-rwxsStT]{9}[.+@]?)(?:\\s|$)", [
-    ["perm", PERMISSIONS],
-  ]),
+  parts("(?:^|\\s)(?<perm>[-dlbcps][-rwxsStT]{9}[.+@]?)(?:\\s|$)", [["perm", PERMISSIONS]]),
   // The prompt a shell waits with: `user@host:~/dir$` or `[user@host dir]#`.
   parts(
     "^(?<user>[\\w.-]+)(?<at>@)(?<host>[\\w.-]+)(?<colon>:)(?<path>[~/][^\\s$#]*)?\\s?(?<sigil>[$#])(?:\\s|$)",
@@ -493,15 +469,11 @@ const PATTERNS: readonly Pattern[] = [
       ["line", solid("lineNumber")],
     ],
   ),
-  whole(
-    "\\b[A-Za-z]:\\\\(?:[^\\\\\\s\"'<>|*?]+\\\\)*[^\\\\\\s\"'<>|*?]*",
-    pathFill(":\\"),
-  ),
+  whole("\\b[A-Za-z]:\\\\(?:[^\\\\\\s\"'<>|*?]+\\\\)*[^\\\\\\s\"'<>|*?]*", pathFill(":\\")),
   // A Unix path has to start a word: `ERROR/WARN` is not one.
-  parts(
-    "(?:^|[\\s\"'`(\\[<=,;:])(?<path>(?:~|\\.{1,2})?(?:/[\\w.@+~%-]+)+/?)",
-    [["path", pathFill("/")]],
-  ),
+  parts("(?:^|[\\s\"'`(\\[<=,;:])(?<path>(?:~|\\.{1,2})?(?:/[\\w.@+~%-]+)+/?)", [
+    ["path", pathFill("/")],
+  ]),
   // ---- The device's own words ---------------------------------------------
   whole("\\bAT(?:[+#$&%][A-Za-z0-9_]*|[A-Z][A-Z0-9]{0,4})?\\b", solid("command")),
   whole("^\\+[A-Z][A-Z0-9_]*:?", solid("command")),
@@ -610,9 +582,7 @@ const PATTERNS: readonly Pattern[] = [
       ["zone", solid("zone")],
     ],
   ),
-  parts("\\b(?<date>\\d{1,2}[/.-]\\d{1,2}[/.-]\\d{4})\\b", [
-    ["date", dateFill("/.-")],
-  ]),
+  parts("\\b(?<date>\\d{1,2}[/.-]\\d{1,2}[/.-]\\d{4})\\b", [["date", dateFill("/.-")]]),
   whole(
     "\\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* {1,2}\\d{1,2}(?:,? \\d{4})?\\b",
     solid("date"),

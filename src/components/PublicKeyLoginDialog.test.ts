@@ -44,19 +44,14 @@ const refused: KeySetup = {
 };
 
 function button(host: HTMLElement, label: string): HTMLButtonElement {
-  const found = [...host.querySelectorAll("button")].find(
-    (b) => b.textContent === label,
-  );
+  const found = [...host.querySelectorAll("button")].find((b) => b.textContent === label);
   if (!found) throw new Error(`no button labeled ${label}`);
   return found;
 }
 
 /** Writes into a React-controlled input the way a user would. */
 function setInput(input: HTMLInputElement, value: string) {
-  const setter = Object.getOwnPropertyDescriptor(
-    HTMLInputElement.prototype,
-    "value",
-  )!.set!;
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
   setter.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
@@ -95,9 +90,7 @@ describe("PublicKeyLoginDialog", () => {
     const { host, root, mount, onConfigured } = render();
     try {
       await mount();
-      await act(async () =>
-        setInput(host.querySelector("input")!, "/home/ops/.ssh/id_ed25519"),
-      );
+      await act(async () => setInput(host.querySelector("input")!, "/home/ops/.ssh/id_ed25519"));
       await act(async () => button(host, "Install and Verify").click());
 
       expect(api.configurePublicKeyLogin).toHaveBeenCalledWith(
@@ -145,9 +138,7 @@ describe("PublicKeyLoginDialog", () => {
         privateKeyPath: "/home/ops/.ssh/id_ed25519",
         passphrase: "hunter2",
       });
-      expect(host.textContent).toContain(
-        "The key alone logs in; this session now uses it.",
-      );
+      expect(host.textContent).toContain("The key alone logs in; this session now uses it.");
       expect(host.textContent).toContain(AUTHORIZED_KEYS);
     } finally {
       act(() => root.unmount());
@@ -164,9 +155,7 @@ describe("PublicKeyLoginDialog", () => {
     const { host, root, mount, onConfigured, onClose } = render();
     try {
       await mount();
-      await act(async () =>
-        setInput(host.querySelector("input")!, "/home/ops/.ssh/id_ed25519"),
-      );
+      await act(async () => setInput(host.querySelector("input")!, "/home/ops/.ssh/id_ed25519"));
       await act(async () => button(host, "Install and Verify").click());
       await act(async () => button(host, "Cancel").click());
 

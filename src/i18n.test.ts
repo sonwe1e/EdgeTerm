@@ -37,15 +37,13 @@ describe("interface localisation", () => {
   });
 
   it("fills {name} placeholders and leaves unknown ones as written", () => {
-    expect(
-      translate("en", "menu.panelOnDock", { panel: "Filer", dock: "Right" }),
-    ).toBe("Filer on Right");
-    expect(
-      translate("zh-CN", "menu.panelOnDock", { panel: "文件", dock: "右侧" }),
-    ).toBe("文件停靠到右侧");
-    expect(translate("en", "menu.panelOnDock", { panel: "Filer" })).toBe(
-      "Filer on {dock}",
+    expect(translate("en", "menu.panelOnDock", { panel: "Filer", dock: "Right" })).toBe(
+      "Filer on Right",
     );
+    expect(translate("zh-CN", "menu.panelOnDock", { panel: "文件", dock: "右侧" })).toBe(
+      "文件停靠到右侧",
+    );
+    expect(translate("en", "menu.panelOnDock", { panel: "Filer" })).toBe("Filer on {dock}");
   });
 
   it("takes the interface language from the machine's, else English", () => {

@@ -17,9 +17,11 @@ export function useUpdater() {
 
   useEffect(() => {
     let disposed = false;
-    void getVersion().then((version) => {
-      if (!disposed) setAppVersion(version);
-    }).catch(console.error);
+    void getVersion()
+      .then((version) => {
+        if (!disposed) setAppVersion(version);
+      })
+      .catch(console.error);
     return () => {
       disposed = true;
       requestId.current += 1;

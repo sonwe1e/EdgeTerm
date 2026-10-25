@@ -26,8 +26,28 @@ vi.mock("../api", async (importOriginal) => {
   const listing = (path: string, side: "local" | "remote") => ({
     path,
     entries: [
-      { name: "folder", path: `${path}/folder`, isDir: true, isSymlink: false, size: 0, modified: 1_700_000_000, permissions: null, owner: null, group: null },
-      { name: side === "local" ? "file-local.txt" : "file-remote.txt", path: `${path}/${side === "local" ? "file-local.txt" : "file-remote.txt"}`, isDir: false, isSymlink: false, size: 42, modified: 1_700_000_000, permissions: null, owner: null, group: null },
+      {
+        name: "folder",
+        path: `${path}/folder`,
+        isDir: true,
+        isSymlink: false,
+        size: 0,
+        modified: 1_700_000_000,
+        permissions: null,
+        owner: null,
+        group: null,
+      },
+      {
+        name: side === "local" ? "file-local.txt" : "file-remote.txt",
+        path: `${path}/${side === "local" ? "file-local.txt" : "file-remote.txt"}`,
+        isDir: false,
+        isSymlink: false,
+        size: 42,
+        modified: 1_700_000_000,
+        permissions: null,
+        owner: null,
+        group: null,
+      },
     ],
   });
   return {
@@ -113,8 +133,9 @@ describe("the dual-pane browser across the 800px breakpoint", () => {
     sftpPane();
     await twoFrames();
 
-    const panes = Array.from(document.querySelectorAll<HTMLElement>(".ftp-file-browser"))
-      .map((pane) => pane.getBoundingClientRect());
+    const panes = Array.from(document.querySelectorAll<HTMLElement>(".ftp-file-browser")).map(
+      (pane) => pane.getBoundingClientRect(),
+    );
     expect(panes.length).toBe(2);
     // Two browsers plus the transfer rail tile the width without overlap.
     const rail = document.querySelector<HTMLElement>(".ftp-transfer-rail")!;
@@ -139,13 +160,21 @@ describe("the dual-pane browser across the 800px breakpoint", () => {
     expect(getComputedStyle(rowCells[1]).textAlign).toBe("right");
     expect(getComputedStyle(rowCells[2]).textAlign).toBe("right");
     // The header column and its row column share real edges (same grid).
-    for (const [head, cell] of [[headerCells[0], rowCells[0]], [headerCells[1], rowCells[1]], [headerCells[2], rowCells[2]]] as const) {
+    for (const [head, cell] of [
+      [headerCells[0], rowCells[0]],
+      [headerCells[1], rowCells[1]],
+      [headerCells[2], rowCells[2]],
+    ] as const) {
       const headRect = head.getBoundingClientRect();
       const cellRect = cell.getBoundingClientRect();
-      expect(Math.abs(headRect.left - cellRect.left),
-        `column ${head.textContent} left edges`).toBeLessThan(1.5);
-      expect(Math.abs(headRect.right - cellRect.right),
-        `column ${head.textContent} right edges`).toBeLessThan(1.5);
+      expect(
+        Math.abs(headRect.left - cellRect.left),
+        `column ${head.textContent} left edges`,
+      ).toBeLessThan(1.5);
+      expect(
+        Math.abs(headRect.right - cellRect.right),
+        `column ${head.textContent} right edges`,
+      ).toBeLessThan(1.5);
     }
     await page.screenshot({
       path: "../../.tmp/records/implementation-03/responsive-1100.png",
@@ -172,7 +201,10 @@ describe("the dual-pane browser across the 800px breakpoint", () => {
     expect(["left", "start"]).toContain(getComputedStyle(rowCells[0]).textAlign);
     expect(getComputedStyle(rowCells[1]).textAlign).toBe("right");
     // The visible columns still share real edges.
-    for (const [head, cell] of [[headerCells[0], rowCells[0]], [headerCells[1], rowCells[1]]] as const) {
+    for (const [head, cell] of [
+      [headerCells[0], rowCells[0]],
+      [headerCells[1], rowCells[1]],
+    ] as const) {
       const headRect = head.getBoundingClientRect();
       const cellRect = cell.getBoundingClientRect();
       expect(Math.abs(headRect.left - cellRect.left)).toBeLessThan(1.5);
@@ -188,9 +220,13 @@ describe("the dual-pane browser across the 800px breakpoint", () => {
     sftpPane();
     await twoFrames();
 
-    const localFile = document.querySelector<HTMLElement>('[data-file-path="/local/file-local.txt"]')!;
+    const localFile = document.querySelector<HTMLElement>(
+      '[data-file-path="/local/file-local.txt"]',
+    )!;
     const localFolder = document.querySelector<HTMLElement>('[data-file-path="/local/folder"]')!;
-    const remoteFile = document.querySelector<HTMLElement>('[data-file-path="/remote/file-remote.txt"]')!;
+    const remoteFile = document.querySelector<HTMLElement>(
+      '[data-file-path="/remote/file-remote.txt"]',
+    )!;
     const remoteList = document.querySelectorAll<HTMLElement>(".ftp-browser-list")[0]!;
     const localList = document.querySelectorAll<HTMLElement>(".ftp-browser-list")[1]!;
 
@@ -231,20 +267,26 @@ describe("the dual-pane browser across the 800px breakpoint", () => {
     sftpPane();
     await twoFrames();
 
-    const localFile = document.querySelector<HTMLElement>('[data-file-path="/local/file-local.txt"]')!;
+    const localFile = document.querySelector<HTMLElement>(
+      '[data-file-path="/local/file-local.txt"]',
+    )!;
     const remoteList = document.querySelectorAll<HTMLElement>(".ftp-browser-list")[0]!;
     const from = pagePoint(localFile);
     const to = pagePoint(remoteList);
     await mouse.press(from.x, from.y);
     await mouse.moveTo(from.x + 30, from.y + 10);
     await twoFrames();
-    expect(document.querySelector(".ftp-dual-pane.is-dragging"),
-      "the drag started (threshold passed)").not.toBeNull();
+    expect(
+      document.querySelector(".ftp-dual-pane.is-dragging"),
+      "the drag started (threshold passed)",
+    ).not.toBeNull();
 
     await userEvent.keyboard("{Escape}");
     await twoFrames();
-    expect(document.querySelector(".ftp-dual-pane.is-dragging"),
-      "Escape ended the drag").toBeNull();
+    expect(
+      document.querySelector(".ftp-dual-pane.is-dragging"),
+      "Escape ended the drag",
+    ).toBeNull();
     await mouse.moveTo(to.x, to.y);
     await mouse.release(to.x, to.y);
     await wait(150);
@@ -256,7 +298,9 @@ describe("the dual-pane browser across the 800px breakpoint", () => {
     const mountedPane = sftpPane(true);
     await twoFrames();
 
-    const localFile = document.querySelector<HTMLElement>('[data-file-path="/local/file-local.txt"]')!;
+    const localFile = document.querySelector<HTMLElement>(
+      '[data-file-path="/local/file-local.txt"]',
+    )!;
     const remoteList = document.querySelectorAll<HTMLElement>(".ftp-browser-list")[0]!;
     const from = pagePoint(localFile);
     await mouse.press(from.x, from.y);
@@ -265,10 +309,14 @@ describe("the dual-pane browser across the 800px breakpoint", () => {
     expect(document.querySelector(".ftp-dual-pane.is-dragging")).not.toBeNull();
 
     // The tab switching away is the production hide: same pane, active=false.
-    mountedPane.render(createElement(FtpPane, { tab: tabFor("responsive-sftp", "sftp"), active: false }));
+    mountedPane.render(
+      createElement(FtpPane, { tab: tabFor("responsive-sftp", "sftp"), active: false }),
+    );
     await twoFrames();
-    expect(document.querySelector(".ftp-dual-pane.is-dragging"),
-      "the hide ended the drag").toBeNull();
+    expect(
+      document.querySelector(".ftp-dual-pane.is-dragging"),
+      "the hide ended the drag",
+    ).toBeNull();
     const to = pagePoint(remoteList);
     await mouse.moveTo(to.x, to.y);
     await mouse.release(to.x, to.y);

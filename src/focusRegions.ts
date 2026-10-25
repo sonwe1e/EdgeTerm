@@ -15,10 +15,7 @@
 const REGION_SELECTOR = "[data-focus-region]";
 
 function isVisible(element: HTMLElement): boolean {
-  return (
-    element.getClientRects().length > 0 &&
-    getComputedStyle(element).visibility !== "hidden"
-  );
+  return element.getClientRects().length > 0 && getComputedStyle(element).visibility !== "hidden";
 }
 
 /** What inside a region should actually take focus. */
@@ -36,14 +33,11 @@ function focusTarget(region: HTMLElement): HTMLElement {
  * for instance), so the caller can leave the key alone.
  */
 export function focusNextRegion(step: 1 | -1): boolean {
-  const regions = Array.from(
-    document.querySelectorAll<HTMLElement>(REGION_SELECTOR),
-  ).filter(isVisible);
+  const regions = Array.from(document.querySelectorAll<HTMLElement>(REGION_SELECTOR)).filter(
+    isVisible,
+  );
   if (regions.length === 0) return false;
-  const active =
-    document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : null;
+  const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const owner = active?.closest<HTMLElement>(REGION_SELECTOR) ?? null;
   const start = owner ? regions.indexOf(owner) : -1;
   const next = regions[(start + step + regions.length) % regions.length];

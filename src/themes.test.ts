@@ -64,13 +64,9 @@ describe("every theme", () => {
   it("declares the color-scheme its canvas needs", () => {
     for (const mode of MODES) {
       if (mode === "dark") continue;
-      const block = STYLES.slice(
-        STYLES.indexOf(`:root[data-theme="${mode}"] {`),
-      );
+      const block = STYLES.slice(STYLES.indexOf(`:root[data-theme="${mode}"] {`));
       const scheme = isLightTheme(mode) ? "light" : "dark";
-      expect(block.slice(0, block.indexOf("}")), mode).toContain(
-        `color-scheme: ${scheme};`,
-      );
+      expect(block.slice(0, block.indexOf("}")), mode).toContain(`color-scheme: ${scheme};`);
     }
   });
 
@@ -78,9 +74,7 @@ describe("every theme", () => {
     // A token missing from a theme block falls back to the dark :root shade.
     for (const mode of MODES) {
       for (const color of SENDER_COLORS) {
-        expect(token(mode, `--tag-${color}`), `${mode} ${color}`).toMatch(
-          /^#[0-9a-f]{6}$/,
-        );
+        expect(token(mode, `--tag-${color}`), `${mode} ${color}`).toMatch(/^#[0-9a-f]{6}$/);
       }
     }
   });
@@ -110,8 +104,10 @@ describe("every theme", () => {
       const block = mode === "dark" ? ":root" : `:root[data-theme="${mode}"]`;
       const selected = mode === "dark" ? "#04395e" : token(mode, "--bg-active");
       const panel = mode === "dark" ? "#181818" : token(mode, "--bg-panel");
-      expect(contrast(selected, panel), `${block} --bg-active on --bg-panel`)
-        .toBeGreaterThanOrEqual(1.25);
+      expect(
+        contrast(selected, panel),
+        `${block} --bg-active on --bg-panel`,
+      ).toBeGreaterThanOrEqual(1.25);
     }
   });
 

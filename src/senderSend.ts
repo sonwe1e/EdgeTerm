@@ -74,20 +74,20 @@ export async function sendUnits(
   stop: StopSignal,
   onProgress?: (sent: number, total: number) => void,
 ): Promise<SendOutcome> {
-  const sent = ids.filter(
-    (id) => !busy.has(id) && !getController(id)?.isTransferActive(),
-  );
+  const sent = ids.filter((id) => !busy.has(id) && !getController(id)?.isTransferActive());
   const skipped = ids.filter((id) => !sent.includes(id));
   for (const id of sent) busy.add(id);
   let reached = 0;
-  await Promise.all(sent.map((id) =>
-    // Promise.all rejects on the first failure while other sessions can
-    // still be writing. Keep their reservations until their own send ends.
-    sendSequence(id, units, ending, stop, (index) => {
-      reached = Math.max(reached, index + 1);
-      onProgress?.(reached, units.length);
-    }).finally(() => busy.delete(id)),
-  ));
+  await Promise.all(
+    sent.map((id) =>
+      // Promise.all rejects on the first failure while other sessions can
+      // still be writing. Keep their reservations until their own send ends.
+      sendSequence(id, units, ending, stop, (index) => {
+        reached = Math.max(reached, index + 1);
+        onProgress?.(reached, units.length);
+      }).finally(() => busy.delete(id)),
+    ),
+  );
   return { sent, skipped };
 }
 
@@ -105,9 +105,7 @@ async function sendSequence(
     // Told before the write so the prompt on screen becomes the completion
     // signature; false when the terminal cannot track this line.
     const tracked =
-      ending !== "none" &&
-      controller !== undefined &&
-      controller.noteCommandSent(unit);
+      ending !== "none" && controller !== undefined && controller.noteCommandSent(unit);
     try {
       await api.writeSession(id, unit);
     } catch (error) {
@@ -123,5 +121,4 @@ async function sendSequence(
   }
 }
 
-const delay = (ms: number) =>
-  new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+const delay = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));

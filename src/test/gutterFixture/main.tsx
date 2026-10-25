@@ -69,8 +69,7 @@ const write = (id: string, text: string): Promise<void> => {
 const lines = (n: number): string =>
   Array.from({ length: n }, (_, index) => `line ${index}`).join("\r\n");
 
-const frame = (): Promise<void> =>
-  new Promise((resolve) => requestAnimationFrame(() => resolve()));
+const frame = (): Promise<void> => new Promise((resolve) => requestAnimationFrame(() => resolve()));
 
 const session = (): NonNullable<ReturnType<typeof getController>> => {
   const controller = getController(sessionId);
@@ -81,7 +80,11 @@ const session = (): NonNullable<ReturnType<typeof getController>> => {
 declare global {
   interface Window {
     __gutterCheck: {
-      createDirect(width: number, height: number, outputLines: number): Promise<{ id: string; cols: number; rows: number }>;
+      createDirect(
+        width: number,
+        height: number,
+        outputLines: number,
+      ): Promise<{ id: string; cols: number; rows: number }>;
       sessionCreate(): Promise<string>;
       sessionMount(visible: boolean, width: number, height: number): void;
       writeLines(count: number): Promise<number>;
@@ -156,8 +159,7 @@ window.__gutterCheck = {
     session().scheduleFit();
   },
   resizePane(width: number, height: number): void {
-    const pane = (document.querySelector<HTMLElement>(".pane-slot")
-      ?? directHost)!;
+    const pane = (document.querySelector<HTMLElement>(".pane-slot") ?? directHost)!;
     if (!pane) throw new Error("no pane to resize");
     pane.style.width = `${width}px`;
     pane.style.height = `${height}px`;
@@ -174,9 +176,11 @@ window.__gutterCheck = {
     const offsets: number[] = [];
     const count = Math.min(gutters.length, texts.length);
     for (let index = 0; index < count; index += 1) {
-      offsets.push(Math.abs(
-        gutters[index].getBoundingClientRect().top - texts[index].getBoundingClientRect().top,
-      ));
+      offsets.push(
+        Math.abs(
+          gutters[index].getBoundingClientRect().top - texts[index].getBoundingClientRect().top,
+        ),
+      );
     }
     const controller = getController(sessionId);
     // The element fit actually measures: xterm's own parent (.term-host),
@@ -186,12 +190,14 @@ window.__gutterCheck = {
       bufferLength: controller?.term.buffer.normal.length ?? 0,
       gutterRows: gutters.length,
       textRows: texts.length,
-      gutterPitch: gutters.length > 1
-        ? gutters[1].getBoundingClientRect().top - gutters[0].getBoundingClientRect().top
-        : null,
-      textPitch: texts.length > 1
-        ? texts[1].getBoundingClientRect().top - texts[0].getBoundingClientRect().top
-        : null,
+      gutterPitch:
+        gutters.length > 1
+          ? gutters[1].getBoundingClientRect().top - gutters[0].getBoundingClientRect().top
+          : null,
+      textPitch:
+        texts.length > 1
+          ? texts[1].getBoundingClientRect().top - texts[0].getBoundingClientRect().top
+          : null,
       maxRowOffset: offsets.length ? Math.max(...offsets) : null,
       rows: controller?.term.rows ?? null,
       cols: controller?.term.cols ?? null,

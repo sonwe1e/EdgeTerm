@@ -78,9 +78,7 @@ export function GroupNameDialog({
         </div>
         <div className="dialog-body confirm-dialog-body">
           <label className="session-field is-wide">
-            <span className="session-field-label">
-              {label ?? t("groupName.nameLabel")}
-            </span>
+            <span className="session-field-label">{label ?? t("groupName.nameLabel")}</span>
             <input
               ref={inputRef}
               autoFocus
@@ -92,15 +90,12 @@ export function GroupNameDialog({
               onChange={(event) => setName(event.target.value)}
             />
           </label>
-          <span className="confirm-dialog-hint">
-            {hint ?? t("groupName.in", { location })}
-          </span>
+          <span className="confirm-dialog-hint">{hint ?? t("groupName.in", { location })}</span>
           {error && <div className="dialog-error">{error}</div>}
         </div>
         <div className="dialog-footer confirm-dialog-footer">
           <span className="confirm-dialog-keys">
-            <kbd>Enter</kbd> {submitLabel.toLowerCase()} · <kbd>Esc</kbd>{" "}
-            {t("keys.cancel")}
+            <kbd>Enter</kbd> {submitLabel.toLowerCase()} · <kbd>Esc</kbd> {t("keys.cancel")}
           </span>
           <button type="button" className="btn" onClick={onCancel}>
             {t("common.cancel")}

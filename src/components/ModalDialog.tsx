@@ -145,14 +145,19 @@ export function ModalDialog({
     dialogRef.current = element;
   }, []);
   const { dialogRef: dragTargetRef, handleProps } = useDialogDrag<HTMLDivElement>();
-  const attachContentBox = useCallback((element: HTMLDivElement | null) => {
-    contentRef.current = element;
-    dragTargetRef.current = element;
-  }, [dragTargetRef]);
+  const attachContentBox = useCallback(
+    (element: HTMLDivElement | null) => {
+      contentRef.current = element;
+      dragTargetRef.current = element;
+    },
+    [dragTargetRef],
+  );
 
-  const supportsNativeModal = useStableCallback(() =>
-    typeof dialogRef.current?.showModal === "function" &&
-    typeof dialogRef.current?.close === "function");
+  const supportsNativeModal = useStableCallback(
+    () =>
+      typeof dialogRef.current?.showModal === "function" &&
+      typeof dialogRef.current?.close === "function",
+  );
 
   const focusContent = useStableCallback(() => {
     // The show-modal focus algorithm honours autofocus; the fallback starts
@@ -184,7 +189,8 @@ export function ModalDialog({
   const restoreFocusAfterClose = useStableCallback(() => {
     const beneath = fallbackStack[fallbackStack.length - 1];
     const opener = openerRef.current;
-    if (opener?.isConnected && (!beneath || beneath.contains(opener))) opener.focus({ preventScroll: true });
+    if (opener?.isConnected && (!beneath || beneath.contains(opener)))
+      opener.focus({ preventScroll: true });
     else beneath?.focus({ preventScroll: true });
   });
 
@@ -280,7 +286,12 @@ export function ModalDialog({
     // because without the top layer the key event may not even pass
     // through this dialog.
     event.stopPropagation();
-    if (event.key === "Escape" && !event.defaultPrevented && !event.nativeEvent.defaultPrevented && !event.nativeEvent.isComposing) {
+    if (
+      event.key === "Escape" &&
+      !event.defaultPrevented &&
+      !event.nativeEvent.defaultPrevented &&
+      !event.nativeEvent.isComposing
+    ) {
       // The default is suppressed either way: letting the platform handle
       // Escape would fire `cancel` and close a dialog that opted out.
       event.preventDefault();
@@ -296,9 +307,14 @@ export function ModalDialog({
       dialog.querySelectorAll<HTMLElement>(
         "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])",
       ),
-    ).filter((element) => element.tabIndex >= 0 && !element.matches(":disabled") &&
-      !element.closest("[inert]") && element.getClientRects().length > 0 &&
-      getComputedStyle(element).visibility !== "hidden");
+    ).filter(
+      (element) =>
+        element.tabIndex >= 0 &&
+        !element.matches(":disabled") &&
+        !element.closest("[inert]") &&
+        element.getClientRects().length > 0 &&
+        getComputedStyle(element).visibility !== "hidden",
+    );
     if (focusables.length === 0) {
       event.preventDefault();
       return;
@@ -309,7 +325,10 @@ export function ModalDialog({
     if (event.shiftKey && (active === first || !focusables.includes(active as HTMLElement))) {
       event.preventDefault();
       last.focus();
-    } else if (!event.shiftKey && (active === last || !focusables.includes(active as HTMLElement))) {
+    } else if (
+      !event.shiftKey &&
+      (active === last || !focusables.includes(active as HTMLElement))
+    ) {
       event.preventDefault();
       first.focus();
     }
@@ -347,9 +366,12 @@ export function ModalDialog({
   const onBackdropPointerDown = (event: ReactPointerEvent<HTMLDialogElement>) => {
     if (event.target !== event.currentTarget) return;
     const rect = contentRef.current?.getBoundingClientRect();
-    const inside = rect &&
-      event.clientX >= rect.left && event.clientX <= rect.right &&
-      event.clientY >= rect.top && event.clientY <= rect.bottom;
+    const inside =
+      rect &&
+      event.clientX >= rect.left &&
+      event.clientX <= rect.right &&
+      event.clientY >= rect.top &&
+      event.clientY <= rect.bottom;
     if (inside) {
       outsidePress.current = null;
       return;
@@ -362,9 +384,12 @@ export function ModalDialog({
     outsidePress.current = null;
     if (!started || event.target !== event.currentTarget) return;
     const rect = contentRef.current?.getBoundingClientRect();
-    const inside = rect &&
-      event.clientX >= rect.left && event.clientX <= rect.right &&
-      event.clientY >= rect.top && event.clientY <= rect.bottom;
+    const inside =
+      rect &&
+      event.clientX >= rect.left &&
+      event.clientX <= rect.right &&
+      event.clientY >= rect.top &&
+      event.clientY <= rect.bottom;
     if (inside) return; // pressed outside, released inside: not a dismissal
     if (dismissableRef.current) {
       onCloseRef.current();
@@ -397,7 +422,9 @@ export function ModalDialog({
     >
       <div
         ref={attachContentBox}
-        className={bare ? contentClassName : `dialog${contentClassName ? ` ${contentClassName}` : ""}`}
+        className={
+          bare ? contentClassName : `dialog${contentClassName ? ` ${contentClassName}` : ""}`
+        }
         tabIndex={-1}
         onMouseDown={onContentMouseDown}
         onAnimationEnd={onContentAnimationEnd}

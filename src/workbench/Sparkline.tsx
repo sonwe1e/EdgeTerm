@@ -58,9 +58,7 @@ export const Sparkline = memo(function Sparkline({
       aria-hidden="true"
       focusable="false"
     >
-      {baseline && (
-        <line className="spark-base" x1={0} y1={height} x2={width} y2={height} />
-      )}
+      {baseline && <line className="spark-base" x1={0} y1={height} x2={width} y2={height} />}
       {area && fill && <path className="spark-area" d={fill} />}
       <path className="spark-line" d={line} vectorEffect="non-scaling-stroke" />
     </svg>

@@ -78,9 +78,7 @@ document.documentElement.dataset.theme =
 
 const start = performance.now();
 const root = createRoot(document.getElementById("root")!);
-root.render(
-  h(FileBrowser, { ...browserProps, entries: listing as never }),
-);
+root.render(h(FileBrowser, { ...browserProps, entries: listing as never }));
 
 // Done when EVERY rendered row's icon <img> exists AND has finished loading,
 // then two more frames have passed (the paint boundary). The listing is

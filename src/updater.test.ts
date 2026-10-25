@@ -43,14 +43,18 @@ afterEach(async () => {
 });
 
 it("does not contact a signed-update service on startup", async () => {
-  await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2_000);
+  });
   expect(mocks.check).not.toHaveBeenCalled();
   expect(mocks.openUrl).not.toHaveBeenCalled();
   expect(updater.state.phase).toBe("idle");
 });
 
 it("shows manual download guidance without claiming the installed build is latest", async () => {
-  await act(async () => { await updater.checkForUpdates(); });
+  await act(async () => {
+    await updater.checkForUpdates();
+  });
   expect(updater.appVersion).toBe("1.2.8");
   expect(updater.state.phase).toBe("manual");
   expect(mocks.check).not.toHaveBeenCalled();
@@ -59,8 +63,12 @@ it("shows manual download guidance without claiming the installed build is lates
 
 it("opens this fork's releases only after the download action", async () => {
   await act(async () => updater.checkForUpdates());
-  await act(async () => { await updater.openDownloads(); });
-  expect(mocks.openUrl).toHaveBeenCalledExactlyOnceWith("https://github.com/sonwe1e/EdgeTerm/releases/latest");
+  await act(async () => {
+    await updater.openDownloads();
+  });
+  expect(mocks.openUrl).toHaveBeenCalledExactlyOnceWith(
+    "https://github.com/sonwe1e/EdgeTerm/releases/latest",
+  );
   expect(updater.state.phase).toBe("idle");
   expect(mocks.check).not.toHaveBeenCalled();
 });
@@ -68,19 +76,30 @@ it("opens this fork's releases only after the download action", async () => {
 it("reports an external-browser failure and lets the user retry", async () => {
   mocks.openUrl.mockRejectedValueOnce(new Error("Browser unavailable"));
   await act(async () => updater.checkForUpdates());
-  await act(async () => { await updater.openDownloads(); });
+  await act(async () => {
+    await updater.openDownloads();
+  });
   expect(updater.state).toEqual({ phase: "error", message: "Browser unavailable" });
-  await act(async () => { await updater.openDownloads(); });
+  await act(async () => {
+    await updater.openDownloads();
+  });
   expect(updater.state.phase).toBe("idle");
   expect(mocks.openUrl).toHaveBeenCalledTimes(2);
 });
 
 it("does not reopen a dismissed dialog when opening the browser fails late", async () => {
   let rejectOpen!: (reason: Error) => void;
-  mocks.openUrl.mockImplementationOnce(() => new Promise<void>((_, reject) => { rejectOpen = reject; }));
+  mocks.openUrl.mockImplementationOnce(
+    () =>
+      new Promise<void>((_, reject) => {
+        rejectOpen = reject;
+      }),
+  );
   await act(async () => updater.checkForUpdates());
   let opening!: Promise<void>;
-  await act(async () => { opening = updater.openDownloads(); });
+  await act(async () => {
+    opening = updater.openDownloads();
+  });
   await act(async () => updater.dismiss());
   await act(async () => {
     rejectOpen(new Error("Late failure"));

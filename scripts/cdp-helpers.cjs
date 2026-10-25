@@ -5,10 +5,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function findPageWs() {
   const targetId = process.env.EDGETERM_CDP_TARGET_ID;
-  if (!targetId) throw new Error("Set EDGETERM_CDP_TARGET_ID to a disposable EdgeTerm page's id from /json/list; automatic page selection is disabled");
+  if (!targetId)
+    throw new Error(
+      "Set EDGETERM_CDP_TARGET_ID to a disposable EdgeTerm page's id from /json/list; automatic page selection is disabled",
+    );
   const res = await fetch(`http://127.0.0.1:${WS_PORT}/json/list`);
   const targets = await res.json();
-  const page = targets.find(t => t.type === "page" && t.id === targetId && /EdgeTerm/i.test(t.title));
+  const page = targets.find(
+    (t) => t.type === "page" && t.id === targetId && /EdgeTerm/i.test(t.title),
+  );
   if (!page) throw new Error("no page target");
   return page.webSocketDebuggerUrl;
 }
@@ -29,7 +34,13 @@ function connect(wsUrl) {
               pending.delete(msgId);
               rej2(new Error("EVAL_TIMEOUT"));
             }, 5000);
-            ws.send(JSON.stringify({ id: msgId, method: "Runtime.evaluate", params: { expression, returnByValue: true, awaitPromise: true } }));
+            ws.send(
+              JSON.stringify({
+                id: msgId,
+                method: "Runtime.evaluate",
+                params: { expression, returnByValue: true, awaitPromise: true },
+              }),
+            );
           });
           return result.finally(() => clearTimeout(timer));
         },

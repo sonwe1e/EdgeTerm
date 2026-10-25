@@ -34,9 +34,7 @@ export const DEFAULT_FIND_OPTIONS: Readonly<FindOptions> = {
  * malformed regular expression.
  */
 export function compileQuery(query: string, options: FindOptions): RegExp {
-  const source = options.regex
-    ? query
-    : query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const source = options.regex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(source, options.caseSensitive ? "g" : "gi");
 }
 
@@ -53,8 +51,7 @@ export function queryError(query: string, options: FindOptions): string | null {
 
 /** VS Code's default `editor.wordSeparators`; whitespace separates as well. */
 const WORD_SEPARATORS = "`~!@#$%^&*()-=+[{]}\\|;:'\",.<>/?";
-const isSeparator = (char: string) =>
-  WORD_SEPARATORS.includes(char) || /\s/.test(char);
+const isSeparator = (char: string) => WORD_SEPARATORS.includes(char) || /\s/.test(char);
 
 /**
  * Whether `text[start, end)` stands on its own as a word. As in VS Code, an
@@ -62,10 +59,8 @@ const isSeparator = (char: string) =>
  * `-v` is a whole word in `ls -v` and `x=` in `x=1`.
  */
 function isWholeWord(text: string, start: number, end: number): boolean {
-  const left =
-    start === 0 || isSeparator(text[start - 1]) || isSeparator(text[start]);
-  const right =
-    end === text.length || isSeparator(text[end]) || isSeparator(text[end - 1]);
+  const left = start === 0 || isSeparator(text[start - 1]) || isSeparator(text[start]);
+  const right = end === text.length || isSeparator(text[end]) || isSeparator(text[end - 1]);
   return left && right;
 }
 
@@ -76,11 +71,7 @@ function isWholeWord(text: string, start: number, end: number): boolean {
  * inside a longer word is passed over without hiding a later one: `foo`
  * still finds the second word of `foobar foo`.
  */
-export function findInText(
-  text: string,
-  pattern: RegExp,
-  wholeWord: boolean,
-): [number, number][] {
+export function findInText(text: string, pattern: RegExp, wholeWord: boolean): [number, number][] {
   const found: [number, number][] = [];
   pattern.lastIndex = 0;
   for (let match = pattern.exec(text); match; match = pattern.exec(text)) {

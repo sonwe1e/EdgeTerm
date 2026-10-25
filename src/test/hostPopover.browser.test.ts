@@ -9,24 +9,48 @@ import "../styles.css";
 
 vi.mock("../workbench/hostSampling", () => ({
   useHostSampling: () => {},
-  useHostSamples: Object.assign((selector: (state: { samples: object }) => unknown) => selector({ samples: {} }),
-    { getState: () => ({ samples: {} }) }),
+  useHostSamples: Object.assign(
+    (selector: (state: { samples: object }) => unknown) => selector({ samples: {} }),
+    { getState: () => ({ samples: {} }) },
+  ),
 }));
 const initial = useWorkbench.getState();
 beforeEach(async () => {
   await page.viewport(1100, 720);
   useStore.setState({ language: "en" });
-  useWorkbench.setState({ data: { experiments: [], runs: [], workspaces: ["one", "two"].map((id) => ({
-    id, name: id, server: { profileId: id, name: id, host: id, port: 22, username: "dev" },
-    root: "/fixture", env: "", commands: [], runRoot: "/fixture", baselineExperimentId: null,
-    createdAt: 0, updatedAt: 0,
-  })) } });
+  useWorkbench.setState({
+    data: {
+      experiments: [],
+      runs: [],
+      workspaces: ["one", "two"].map((id) => ({
+        id,
+        name: id,
+        server: { profileId: id, name: id, host: id, port: 22, username: "dev" },
+        root: "/fixture",
+        env: "",
+        commands: [],
+        runRoot: "/fixture",
+        baselineExperimentId: null,
+        createdAt: 0,
+        updatedAt: 0,
+      })),
+    },
+  });
 });
-afterEach(async () => { await browserAfterEach(); useWorkbench.setState(initial); });
+afterEach(async () => {
+  await browserAfterEach();
+  useWorkbench.setState(initial);
+});
 
 function fixture() {
-  mount(h("div", { className: "app" }, h(HostStrip),
-    h("button", { id: "outside", style: { position: "absolute", top: 500 } }, "Outside")));
+  mount(
+    h(
+      "div",
+      { className: "app" },
+      h(HostStrip),
+      h("button", { id: "outside", style: { position: "absolute", top: 500 } }, "Outside"),
+    ),
+  );
   return [...document.querySelectorAll<HTMLButtonElement>(".wb-host-chip")];
 }
 

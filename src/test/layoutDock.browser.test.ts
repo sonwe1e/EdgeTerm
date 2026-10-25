@@ -21,14 +21,35 @@ import { Workbench } from "../workbench/Workbench";
 import "../styles.css";
 import { page, userEvent } from "vitest/browser";
 
-afterEach(async () => { await browserAfterEach(); vi.restoreAllMocks(); });
+afterEach(async () => {
+  await browserAfterEach();
+  vi.restoreAllMocks();
+});
 
 // The same IPC boundary scripts/check-review-ui.mjs and the review harness
 // use: the real App, store and stylesheet over synthetic listings.
 const seed = {
   profiles: [
-    { id: "p-web", name: "web-prod-01", kind: "ssh" as const, host: "10.0.1.11", port: 22, username: "deploy", color: "#4fc1ff", groupId: null },
-    { id: "p-sftp", name: "backup@fileserver", kind: "sftp" as const, host: "fileserver.example.com", port: 22, username: "backup", color: "#a5d6a7", groupId: null },
+    {
+      id: "p-web",
+      name: "web-prod-01",
+      kind: "ssh" as const,
+      host: "10.0.1.11",
+      port: 22,
+      username: "deploy",
+      color: "#4fc1ff",
+      groupId: null,
+    },
+    {
+      id: "p-sftp",
+      name: "backup@fileserver",
+      kind: "sftp" as const,
+      host: "fileserver.example.com",
+      port: 22,
+      username: "backup",
+      color: "#a5d6a7",
+      groupId: null,
+    },
   ],
   groups: [],
   commands: [],
@@ -44,42 +65,88 @@ const callbacks: Record<number, (message: unknown) => void> = {};
     callbacks[id] = callback;
     return id;
   },
-  unregisterCallback: (id: number) => { delete callbacks[id]; },
+  unregisterCallback: (id: number) => {
+    delete callbacks[id];
+  },
   invoke: async (cmd: string, args: Record<string, unknown> = {}) => {
     const S = (window as unknown as { __seed: typeof seed }).__seed;
     const entry = (name: string, p: string, isDir: boolean) => ({
-      name, path: p, isDir, isSymlink: false, size: 10, modified: 1700000000,
-      permissions: null, owner: null, group: null,
+      name,
+      path: p,
+      isDir,
+      isSymlink: false,
+      size: 10,
+      modified: 1700000000,
+      permissions: null,
+      owner: null,
+      group: null,
     });
     switch (cmd) {
-      case "list_profiles": return S.profiles;
-      case "list_session_groups": return S.groups;
-      case "list_sender_commands": return S.commands;
-      case "list_workspace_data": return {
-        workspaces: [{
-          id: "w1", name: "proj", root: "/srv/proj",
-          server: { profileId: "p-web", name: "web-prod-01", host: "10.0.1.11", port: 22, username: "deploy" },
-        }],
-        // The explorer column only exists beside an experiment; a project
-        // without one is the state the onboarding warns about.
-        experiments: [{ id: "e1", workspaceId: "w1", name: "baseline", kind: "baseline", createdAt: 0, updatedAt: 0 }],
-        runs: [],
-      };
-      case "sftp_home": return "/home/backup";
-      case "local_home": return "C:/Users/dev";
-      case "sftp_list": case "local_list": {
+      case "list_profiles":
+        return S.profiles;
+      case "list_session_groups":
+        return S.groups;
+      case "list_sender_commands":
+        return S.commands;
+      case "list_workspace_data":
+        return {
+          workspaces: [
+            {
+              id: "w1",
+              name: "proj",
+              root: "/srv/proj",
+              server: {
+                profileId: "p-web",
+                name: "web-prod-01",
+                host: "10.0.1.11",
+                port: 22,
+                username: "deploy",
+              },
+            },
+          ],
+          // The explorer column only exists beside an experiment; a project
+          // without one is the state the onboarding warns about.
+          experiments: [
+            {
+              id: "e1",
+              workspaceId: "w1",
+              name: "baseline",
+              kind: "baseline",
+              createdAt: 0,
+              updatedAt: 0,
+            },
+          ],
+          runs: [],
+        };
+      case "sftp_home":
+        return "/home/backup";
+      case "local_home":
+        return "C:/Users/dev";
+      case "sftp_list":
+      case "local_list": {
         const base = (args.path as string) || "/home/backup";
         return { path: base, entries: [entry("project", `${base}/project`, true)] };
       }
-      case "list_system_fonts": return [];
-      case "system_monospace_family": return null;
-      case "portable_mode": return false;
-      case "plugin:app|version": return "1.2.6";
-      case "plugin:event|listen": return ++serial;
-      case "plugin:event|unlisten": return undefined;
-      case "show_main_window": case "finish_main_window": case "hide_main_window":
-      case "set_startup_theme": case "resize_session": case "write_session":
-      case "close_session": case "window_control":
+      case "list_system_fonts":
+        return [];
+      case "system_monospace_family":
+        return null;
+      case "portable_mode":
+        return false;
+      case "plugin:app|version":
+        return "1.2.6";
+      case "plugin:event|listen":
+        return ++serial;
+      case "plugin:event|unlisten":
+        return undefined;
+      case "show_main_window":
+      case "finish_main_window":
+      case "hide_main_window":
+      case "set_startup_theme":
+      case "resize_session":
+      case "write_session":
+      case "close_session":
+      case "window_control":
         return undefined;
       default:
         if (cmd.startsWith("list_")) return [];
@@ -98,16 +165,32 @@ const fileSessionTab = () => {
     ...initialState,
     language: "en",
     profiles: seed.profiles,
-    tabs: [{
-      info: {
-        id, profileId: profile.id, name: profile.name, kind: "sftp" as const, protocol: "sftp",
-        address: "fileserver.example.com:22", color: null, supportsRemoteFiles: true,
-        recording: null, legacyAlgorithms: [], sharedConnection: false,
+    tabs: [
+      {
+        info: {
+          id,
+          profileId: profile.id,
+          name: profile.name,
+          kind: "sftp" as const,
+          protocol: "sftp",
+          address: "fileserver.example.com:22",
+          color: null,
+          supportsRemoteFiles: true,
+          recording: null,
+          legacyAlgorithms: [],
+          sharedConnection: false,
+        },
+        profile,
+        number: 1,
+        ordinal: 0,
+        state: "connected" as const,
+        commandActivity: "idle" as const,
+        activityKind: "command" as const,
+        cols: 80,
+        rows: 24,
+        paneId: initialState.activePaneId,
       },
-      profile, number: 1, ordinal: 0, state: "connected" as const,
-      commandActivity: "idle" as const, activityKind: "command" as const,
-      cols: 80, rows: 24, paneId: initialState.activePaneId,
-    }],
+    ],
     activeId: id,
     panes: [{ id: initialState.activePaneId, activeTabId: id }],
     panels: { sessions: true, filer: true, sender: true },
@@ -115,8 +198,9 @@ const fileSessionTab = () => {
 };
 
 const filerDock = (root: ParentNode) =>
-  [...root.querySelectorAll<HTMLElement>(".dock-slot")]
-    .find((dock) => dock.querySelector(".panel-title.is-filer"));
+  [...root.querySelectorAll<HTMLElement>(".dock-slot")].find((dock) =>
+    dock.querySelector(".panel-title.is-filer"),
+  );
 
 describe("layout regressions (Wave B)", () => {
   it("keeps workbench controls and host chips within the dock-reduced width at both font sizes", async () => {
@@ -132,11 +216,19 @@ describe("layout regressions (Wave B)", () => {
           mounted.container.style.width = `${available}px`;
           await twoFrames();
           const top = document.querySelector(".wb-top")!.getBoundingClientRect();
-          for (const element of document.querySelectorAll<HTMLElement>(".wb-top button, .wb-host-chip")) {
+          for (const element of document.querySelectorAll<HTMLElement>(
+            ".wb-top button, .wb-host-chip",
+          )) {
             const rect = element.getBoundingClientRect();
             if (!rect.width || !rect.height) continue;
-            expect(rect.left, `${language}/${font}/${available}: ${element.textContent} left`).toBeGreaterThanOrEqual(top.left);
-            expect(rect.right, `${language}/${font}/${available}: ${element.textContent} right`).toBeLessThanOrEqual(top.right + 1);
+            expect(
+              rect.left,
+              `${language}/${font}/${available}: ${element.textContent} left`,
+            ).toBeGreaterThanOrEqual(top.left);
+            expect(
+              rect.right,
+              `${language}/${font}/${available}: ${element.textContent} right`,
+            ).toBeLessThanOrEqual(top.right + 1);
             if (!element.closest(".wb-top")) continue;
             const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
             let text: Node | null;
@@ -165,8 +257,9 @@ describe("layout regressions (Wave B)", () => {
     await userEvent.click(document.querySelector(".wb-more")!);
     const menu = document.querySelector(".context-menu")!;
     expect(menu.getBoundingClientRect().right).toBeLessThanOrEqual(window.innerWidth);
-    const newProject = [...menu.querySelectorAll<HTMLButtonElement>("button")]
-      .find((button) => button.textContent?.includes("New project"))!;
+    const newProject = [...menu.querySelectorAll<HTMLButtonElement>("button")].find((button) =>
+      button.textContent?.includes("New project"),
+    )!;
     await userEvent.click(newProject);
     await twoFrames();
     expect(document.querySelector("dialog[open]")).not.toBeNull();

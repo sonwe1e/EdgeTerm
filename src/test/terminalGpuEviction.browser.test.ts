@@ -30,10 +30,20 @@ it("does not paint an evicted terminal while hidden and preserves it on return",
     host.className = "term-pane";
     slot.append(host);
     document.body.append(slot);
-    const controller = new TerminalController(`gpu-eviction-${live.length}`, {
-      onData() {}, onResize() {}, onStatus() {}, onCommand() {},
-      onCommandState() {}, suggest: () => [], forgetSuggestion() {},
-    }, 14, 10000);
+    const controller = new TerminalController(
+      `gpu-eviction-${live.length}`,
+      {
+        onData() {},
+        onResize() {},
+        onStatus() {},
+        onCommand() {},
+        onCommandState() {},
+        suggest: () => [],
+        forgetSuggestion() {},
+      },
+      14,
+      10000,
+    );
     live.push({ controller, slot });
     controller.attach(host);
     controller.setVisible(true);
@@ -41,10 +51,15 @@ it("does not paint an evicted terminal while hidden and preserves it on return",
     return { controller, slot };
   };
   const first = make();
-  await new Promise<void>((resolve) => first.controller.term.write(
-    Array.from({ length: 1000 }, (_, index) =>
-      `eviction-${index} 0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ`).join("\r\n"), resolve,
-  ));
+  await new Promise<void>((resolve) =>
+    first.controller.term.write(
+      Array.from(
+        { length: 1000 },
+        (_, index) => `eviction-${index} 0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ`,
+      ).join("\r\n"),
+      resolve,
+    ),
+  );
   first.controller.term.select(0, 999, 12);
   const selection = first.controller.term.getSelection();
   await twoFrames();
@@ -67,8 +82,9 @@ it("does not paint an evicted terminal while hidden and preserves it on return",
   expect(fallback).not.toBeNull();
   expect(fallback!.textContent, "hidden DOM fallback must not paint buffer rows").toBe("");
   expect(first.controller.term.getSelection()).toBe(selection);
-  expect(first.controller.term.buffer.active.getLine(999)?.translateToString(true))
-    .toContain("eviction-999");
+  expect(first.controller.term.buffer.active.getLine(999)?.translateToString(true)).toContain(
+    "eviction-999",
+  );
 
   // Showing an evicted tab restores GPU rendering without losing its data.
   first.slot.classList.remove("is-hidden");

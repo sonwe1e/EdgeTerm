@@ -36,18 +36,15 @@ if (typeof window.ResizeObserver !== "function") {
     unobserve() {}
     disconnect() {}
   }
-  (window as unknown as { ResizeObserver: unknown }).ResizeObserver =
-    ResizeObserverStub;
+  (window as unknown as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverStub;
 }
 
 if (typeof window.requestAnimationFrame !== "function") {
-  window.requestAnimationFrame = (cb) =>
-    window.setTimeout(() => cb(performance.now()), 16);
+  window.requestAnimationFrame = (cb) => window.setTimeout(() => cb(performance.now()), 16);
   window.cancelAnimationFrame = (id) => window.clearTimeout(id);
 }
 
 // jsdom's canvas has no 2D context; xterm measures cells with DOM elements
 // when it gets none. Answering null directly avoids jsdom's "not
 // implemented" error in every test's output.
-HTMLCanvasElement.prototype.getContext = (() =>
-  null) as HTMLCanvasElement["getContext"];
+HTMLCanvasElement.prototype.getContext = (() => null) as HTMLCanvasElement["getContext"];

@@ -31,11 +31,7 @@ import { t as translate } from "./i18n";
 import { patchImeInput } from "./imePatch";
 import { parseOsc52, type ProgramClipboardMode } from "./osc52";
 import { setSemanticColorTheme } from "./semanticColors";
-import {
-  DEFAULT_FIND_OPTIONS,
-  type FindOptions,
-  type SearchResults,
-} from "./terminalSearch";
+import { DEFAULT_FIND_OPTIONS, type FindOptions, type SearchResults } from "./terminalSearch";
 import { type TransferNoticeKind } from "./terminalTransfer";
 import type { BackspaceKey, ThemeMode } from "./types";
 import { ZmodemController } from "./zmodem";

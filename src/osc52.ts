@@ -10,17 +10,13 @@ import type { Translate } from "./i18n";
 export type ProgramClipboardMode = "ask" | "allow" | "deny";
 
 /** Display names for the Edit → Programs Can Set Clipboard submenu. */
-export const programClipboardLabels = (
-  t: Translate,
-): Record<ProgramClipboardMode, string> => ({
+export const programClipboardLabels = (t: Translate): Record<ProgramClipboardMode, string> => ({
   ask: t("clipboard.ask"),
   allow: t("clipboard.allow"),
   deny: t("clipboard.deny"),
 });
 
-export const parseProgramClipboardMode = (
-  value: unknown,
-): ProgramClipboardMode | null =>
+export const parseProgramClipboardMode = (value: unknown): ProgramClipboardMode | null =>
   value === "ask" || value === "allow" || value === "deny" ? value : null;
 
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;

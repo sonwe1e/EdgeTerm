@@ -43,7 +43,10 @@ export function HostStrip() {
         const metrics = sample?.metrics;
         const gpu = metrics?.gpuStatus === "ok" ? metrics.gpus[0] : undefined;
         const stale = sample?.at ? Date.now() - sample.at > 20_000 : false;
-        const memPercent = metrics?.memory && metrics.memory.totalBytes > 0 ? (metrics.memory.usedBytes / metrics.memory.totalBytes) * 100 : null;
+        const memPercent =
+          metrics?.memory && metrics.memory.totalBytes > 0
+            ? (metrics.memory.usedBytes / metrics.memory.totalBytes) * 100
+            : null;
         const cpuTone = pressureOf(metrics?.cpuPercent ?? null, "cpu");
         const memTone = pressureOf(memPercent, "memory");
         return (
@@ -58,9 +61,10 @@ export function HostStrip() {
               <span className="wb-host-name">{host.server.name || host.server.host}</span>
               <span className="wb-host-user">{host.key}</span>
               <span className="wb-host-metrics">
-                CPU <span className={`metric-${cpuTone}`}>{percent(metrics?.cpuPercent)}</span> · RAM{" "}
-                <span className={`metric-${memTone}`}>{percent(memPercent)}</span>{" "}
-                · GPU {gpu ? percent(gpu.utilization) : metrics ? metrics.gpuStatus : "—"}
+                CPU <span className={`metric-${cpuTone}`}>{percent(metrics?.cpuPercent)}</span>
+                {" · RAM"} <span className={`metric-${memTone}`}>{percent(memPercent)}</span>{" "}
+                {"· GPU "}
+                {gpu ? percent(gpu.utilization) : metrics ? metrics.gpuStatus : "—"}
               </span>
               {host.workspaceIds.length > 1 && (
                 <span className="wb-host-shared">{host.workspaceIds.length}</span>
@@ -98,8 +102,14 @@ function HostDetail({
   const t = useT();
   const metrics = sample?.metrics;
   const cpuSeries = useMemo(() => series(sample?.history ?? NO_HISTORY, "cpu"), [sample?.history]);
-  const memSeries = useMemo(() => series(sample?.history ?? NO_HISTORY, "memory"), [sample?.history]);
-  const memPercent = metrics?.memory && metrics.memory.totalBytes > 0 ? (metrics.memory.usedBytes / metrics.memory.totalBytes) * 100 : null;
+  const memSeries = useMemo(
+    () => series(sample?.history ?? NO_HISTORY, "memory"),
+    [sample?.history],
+  );
+  const memPercent =
+    metrics?.memory && metrics.memory.totalBytes > 0
+      ? (metrics.memory.usedBytes / metrics.memory.totalBytes) * 100
+      : null;
   const cpuTone = pressureOf(metrics?.cpuPercent ?? null, "cpu");
   const memTone = pressureOf(memPercent, "memory");
   return (
@@ -110,7 +120,9 @@ function HostDetail({
       <dl>
         <dt>{t("wb.cpu")}</dt>
         <dd>
-          <span className={`metric-${cpuTone}`}>{percent(metrics?.cpuPercent)}</span> · {metrics?.cpuStatus ?? "—"}
+          <span className={`metric-${cpuTone}`}>{percent(metrics?.cpuPercent)}</span>
+          {" · "}
+          {metrics?.cpuStatus ?? "—"}
           <Sparkline values={cpuSeries} tone={cpuTone} />
         </dd>
         <dt>{t("wb.memory")}</dt>
@@ -133,8 +145,9 @@ function HostDetail({
         </dd>
         <dt>{t("wb.network")}</dt>
         <dd>
-          ↓{metrics?.networkReceiveBps ? transferBytes(Math.round(metrics.networkReceiveBps)) : "—"}/s ·
-          ↑{metrics?.networkSendBps ? transferBytes(Math.round(metrics.networkSendBps)) : "—"}/s
+          ↓{metrics?.networkReceiveBps ? transferBytes(Math.round(metrics.networkReceiveBps)) : "—"}
+          /s · ↑{metrics?.networkSendBps ? transferBytes(Math.round(metrics.networkSendBps)) : "—"}
+          /s
         </dd>
         <dt>{t("wb.gpu")}</dt>
         <dd>
@@ -149,13 +162,15 @@ function HostDetail({
                     }`,
                 )
                 .join(" · ")
-            : metrics?.gpuStatus ?? "—"}
+            : (metrics?.gpuStatus ?? "—")}
         </dd>
       </dl>
       <span className="wb-host-time">
         {sample?.at ? t("wb.sampleStale", { time: formatClock(sample.at) }) : t("wb.notChecked")}
       </span>
-      {sample?.error && <span className="wb-host-error">{t("wb.sampleFailed", { error: sample.error })}</span>}
+      {sample?.error && (
+        <span className="wb-host-error">{t("wb.sampleFailed", { error: sample.error })}</span>
+      )}
     </div>
   );
 }

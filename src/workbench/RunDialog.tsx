@@ -37,9 +37,7 @@ export function RunDialog({
   const probe = useWorkbench((state) => state.probes[workspace.id]);
   const docs = useWorkbench((state) => state.docs);
   const saved = defaultCommand(workspace);
-  const [experimentId, setExperimentId] = useState(
-    initialExperimentId ?? experiments[0]?.id ?? "",
-  );
+  const [experimentId, setExperimentId] = useState(initialExperimentId ?? experiments[0]?.id ?? "");
   const [command, setCommand] = useState(prefill?.command ?? saved?.command ?? "");
   const [env, setEnv] = useState(prefill?.env ?? workspace.env);
   const [gpu, setGpu] = useState(prefill?.gpu ?? "");
@@ -108,7 +106,12 @@ export function RunDialog({
   };
 
   return (
-    <ModalDialog open onClose={onClose} ariaLabel={t("wb.newRun")} contentClassName="wb-form-dialog">
+    <ModalDialog
+      open
+      onClose={onClose}
+      ariaLabel={t("wb.newRun")}
+      contentClassName="wb-form-dialog"
+    >
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -117,7 +120,12 @@ export function RunDialog({
       >
         <div className="wb-dialog-header">
           <strong>{t("wb.newRun")}</strong>
-          <button type="button" className="wb-icon-button" aria-label={t("common.close")} onClick={onClose}>
+          <button
+            type="button"
+            className="wb-icon-button"
+            aria-label={t("common.close")}
+            onClick={onClose}
+          >
             ×
           </button>
         </div>
@@ -131,7 +139,8 @@ export function RunDialog({
             <select value={experimentId} onChange={(event) => setExperimentId(event.target.value)}>
               {experiments.map((experiment) => (
                 <option key={experiment.id} value={experiment.id}>
-                  {experiment.name} ({experiment.kind === "baseline" ? t("wb.baseline") : t("wb.variant")})
+                  {experiment.name} (
+                  {experiment.kind === "baseline" ? t("wb.baseline") : t("wb.variant")})
                 </option>
               ))}
             </select>
@@ -251,9 +260,7 @@ export function RunDialog({
           {unsynced.length > 0 && (
             <div className="wb-banner is-warning" role="alert">
               <div>
-                <strong>
-                  {t("wb.runUnsynced", { count: String(unsynced.length) })}
-                </strong>
+                <strong>{t("wb.runUnsynced", { count: String(unsynced.length) })}</strong>
                 <span>
                   {unsynced.slice(0, 5).join(" · ")}
                   {unsynced.length > 5 ? " …" : ""}
@@ -280,7 +287,11 @@ export function RunDialog({
             <p className="wb-dialog-note">{t("wb.schedulerDetected", { name: probe.scheduler })}</p>
           )}
         </div>
-        {error && <p className="wb-dialog-error" role="alert">{error}</p>}
+        {error && (
+          <p className="wb-dialog-error" role="alert">
+            {error}
+          </p>
+        )}
         <div className="wb-dialog-actions">
           <button type="button" className="btn" onClick={onClose}>
             {t("common.cancel")}

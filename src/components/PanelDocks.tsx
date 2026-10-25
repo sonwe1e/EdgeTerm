@@ -10,13 +10,7 @@ import {
 } from "react";
 import { create } from "zustand";
 
-import {
-  DOCK_NAMES,
-  dockLabels,
-  dockOf,
-  panelLabels,
-  type PanelDock,
-} from "../panelDock";
+import { DOCK_NAMES, dockLabels, dockOf, panelLabels, type PanelDock } from "../panelDock";
 import { type PanelName, useStore } from "../store";
 import { useT } from "../useT";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
@@ -88,9 +82,9 @@ function targetInDock(
   const box = dockElement.getBoundingClientRect();
   // The dragged panel's own slot is skipped, so hovering over it lands in
   // front of the next one: the panel stays where it is.
-  const slots = [
-    ...dockElement.querySelectorAll<HTMLElement>(":scope > .dock-slot"),
-  ].filter((slot) => slot.dataset.panel !== panel);
+  const slots = [...dockElement.querySelectorAll<HTMLElement>(":scope > .dock-slot")].filter(
+    (slot) => slot.dataset.panel !== panel,
+  );
   let before: PanelName | null = null;
   let edge = side ? box.bottom : box.right;
   for (const slot of slots) {
@@ -111,11 +105,7 @@ function targetInDock(
   return { dock, before, area: toRect(box), line };
 }
 
-function dropTargetAt(
-  panel: PanelName,
-  x: number,
-  y: number,
-): DropTarget | null {
+function dropTargetAt(panel: PanelName, x: number, y: number): DropTarget | null {
   const body = document.querySelector<HTMLElement>(".app-body");
   const main = body?.querySelector<HTMLElement>(".main");
   if (!body || !main) return null;
@@ -215,9 +205,7 @@ export function PanelDropOverlay() {
   return (
     <>
       <div className="panel-drop-area" style={box(target.area)} />
-      {target.line && (
-        <div className="panel-drop-line" style={box(target.line)} />
-      )}
+      {target.line && <div className="panel-drop-line" style={box(target.line)} />}
     </>
   );
 }
@@ -257,9 +245,7 @@ export function DockArea({ dock, panels, size, render }: DockAreaProps) {
 
   // Splitters between panels share the dock out by weight (flex-grow), so
   // the split survives the dock being resized.
-  const [weights, setWeights] = useState<Partial<Record<PanelName, number>>>(
-    {},
-  );
+  const [weights, setWeights] = useState<Partial<Record<PanelName, number>>>({});
   const resize = (a: PanelName, b: PanelName, delta: number) => {
     const element = ref.current;
     if (!element) return;
@@ -306,16 +292,10 @@ export function DockArea({ dock, panels, size, render }: DockAreaProps) {
   // Only the header grabs a panel, and not through its own controls.
   const fromHeader = (event: ReactPointerEvent | ReactMouseEvent) => {
     const target = event.target as Element;
-    return (
-      target.closest(".panel-header") !== null &&
-      target.closest(INTERACTIVE) === null
-    );
+    return target.closest(".panel-header") !== null && target.closest(INTERACTIVE) === null;
   };
 
-  const onPointerDown = (
-    panel: PanelName,
-    event: ReactPointerEvent<HTMLDivElement>,
-  ) => {
+  const onPointerDown = (panel: PanelName, event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || !fromHeader(event)) return;
     event.preventDefault();
     drag.current = {
@@ -332,10 +312,7 @@ export function DockArea({ dock, panels, size, render }: DockAreaProps) {
     const state = drag.current;
     if (!state || state.pointerId !== event.pointerId) return;
     if (!state.active) {
-      const travelled = Math.hypot(
-        event.clientX - state.startX,
-        event.clientY - state.startY,
-      );
+      const travelled = Math.hypot(event.clientX - state.startX, event.clientY - state.startY);
       if (travelled < DRAG_THRESHOLD) return;
       state.active = true;
     }
@@ -367,10 +344,7 @@ export function DockArea({ dock, panels, size, render }: DockAreaProps) {
     panel: PanelName;
   } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
-  const onContextMenu = (
-    panel: PanelName,
-    event: ReactMouseEvent<HTMLDivElement>,
-  ) => {
+  const onContextMenu = (panel: PanelName, event: ReactMouseEvent<HTMLDivElement>) => {
     if (!fromHeader(event)) return;
     event.preventDefault();
     setMenu({ x: event.clientX, y: event.clientY, panel });
@@ -404,7 +378,10 @@ export function DockArea({ dock, panels, size, render }: DockAreaProps) {
       data-dock={dock}
       style={
         side
-          ? { width: `var(--dock-${dock}-w, ${size}px)`, flex: `0 0 var(--dock-${dock}-w, ${size}px)` }
+          ? {
+              width: `var(--dock-${dock}-w, ${size}px)`,
+              flex: `0 0 var(--dock-${dock}-w, ${size}px)`,
+            }
           : { height: size }
       }
     >
@@ -433,12 +410,7 @@ export function DockArea({ dock, panels, size, render }: DockAreaProps) {
         </Fragment>
       ))}
       {menu && (
-        <ContextMenu
-          x={menu.x}
-          y={menu.y}
-          items={menuItems(menu.panel)}
-          onClose={closeMenu}
-        />
+        <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu.panel)} onClose={closeMenu} />
       )}
     </div>
   );

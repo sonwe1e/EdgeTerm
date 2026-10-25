@@ -12,8 +12,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../platform", () => ({ HAS_TRAY: true, IS_MAC: false, IS_WINDOWS: true }));
 vi.mock("../nativeDialog", () => ({ ask: vi.fn(async () => true), open: vi.fn(), save: vi.fn() }));
 vi.mock("../api", async (original) => ({
-  ...await original<typeof import("../api")>(),
-  importSshConfig: vi.fn(async () => ({ added: 2, updated: 0, jumpHosts: 0, jumpsIgnored: 0, warnings: [] })),
+  ...(await original<typeof import("../api")>()),
+  importSshConfig: vi.fn(async () => ({
+    added: 2,
+    updated: 0,
+    jumpHosts: 0,
+    jumpsIgnored: 0,
+    warnings: [],
+  })),
   listSenderCommands: vi.fn(async () => []),
   listSerialPorts: vi.fn(async () => []),
   defaultRecordingDir: vi.fn(async () => "C:/recordings"),
@@ -32,19 +38,49 @@ let host: HTMLDivElement;
 let root: Root;
 
 const forwards: PortForwardSpec[] = [
-  { direction: "local", listenHost: "127.0.0.1", listenPort: 8080, targetHost: "db.internal", targetPort: 5432 },
-  { direction: "remote", listenHost: "127.0.0.1", listenPort: 9090, targetHost: "web.internal", targetPort: 80 },
+  {
+    direction: "local",
+    listenHost: "127.0.0.1",
+    listenPort: 8080,
+    targetHost: "db.internal",
+    targetPort: 5432,
+  },
+  {
+    direction: "remote",
+    listenHost: "127.0.0.1",
+    listenPort: 9090,
+    targetHost: "web.internal",
+    targetPort: 80,
+  },
 ];
 
 const preview = {
   path: "C:/Users/dev/.ssh/config",
   entries: [
-    { alias: "web", host: "10.0.1.11", port: 22, username: "deploy", auth: "password" as const, jumps: [] as string[], forwards },
-    { alias: "ftp", host: "logs.example.com", port: 22, username: "anonymous", auth: "password" as const, jumps: [] as string[] },
+    {
+      alias: "web",
+      host: "10.0.1.11",
+      port: 22,
+      username: "deploy",
+      auth: "password" as const,
+      jumps: [] as string[],
+      forwards,
+    },
+    {
+      alias: "ftp",
+      host: "logs.example.com",
+      port: 22,
+      username: "anonymous",
+      auth: "password" as const,
+      jumps: [] as string[],
+    },
   ],
 };
 
-const mount = (node: ReturnType<typeof h>) => act(() => { root.render(node); });
+const mount = (node: ReturnType<typeof h>) =>
+  act(() => {
+    root.render(node);
+  });
 
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -65,7 +101,9 @@ describe("OpenSSH import dialog — the forwards column (PD-04)", () => {
   it("names every forward the selection will start, and dashes the rest", () => {
     mount(h(SshConfigImportDialog, { preview, onClose: vi.fn() }));
     // The column header is a cell too; the entry rows are the ones that count.
-    const cells = [...host.querySelectorAll<HTMLElement>(".ssh-import-row:not(.is-head) .ssh-import-forwards")];
+    const cells = [
+      ...host.querySelectorAll<HTMLElement>(".ssh-import-row:not(.is-head) .ssh-import-forwards"),
+    ];
     expect(cells).toHaveLength(2);
     expect(cells[0].textContent).toContain("L 127.0.0.1:8080 → db.internal:5432");
     expect(cells[0].textContent).toContain("R 127.0.0.1:9090 → web.internal:80");
@@ -74,14 +112,19 @@ describe("OpenSSH import dialog — the forwards column (PD-04)", () => {
 
   it("warns that the selected forwards start on connect, and drops the warning with them", () => {
     mount(h(SshConfigImportDialog, { preview, onClose: vi.fn() }));
-    const hints = () => [...host.querySelectorAll<HTMLElement>(".confirm-dialog-hint")]
-      .map((element) => element.textContent ?? "");
+    const hints = () =>
+      [...host.querySelectorAll<HTMLElement>(".confirm-dialog-hint")].map(
+        (element) => element.textContent ?? "",
+      );
     expect(hints().some((text) => /start automatically/i.test(text))).toBe(true);
 
     // Unchecking the host that carries them takes the warning with it.
-    const webRow = [...host.querySelectorAll<HTMLElement>(".ssh-import-row")]
-      .find((row) => row.textContent?.includes("web"))!;
-    act(() => { webRow.querySelector<HTMLInputElement>("input[type='checkbox']")!.click(); });
+    const webRow = [...host.querySelectorAll<HTMLElement>(".ssh-import-row")].find((row) =>
+      row.textContent?.includes("web"),
+    )!;
+    act(() => {
+      webRow.querySelector<HTMLInputElement>("input[type='checkbox']")!.click();
+    });
     expect(hints().some((text) => /start automatically/i.test(text))).toBe(false);
   });
 
@@ -98,8 +141,14 @@ describe("OpenSSH import dialog — the forwards column (PD-04)", () => {
 
 describe("Session dialog — port forward management (PD-04)", () => {
   const profile: SessionProfile = {
-    id: "p1", name: "web-prod-01", kind: "ssh", host: "10.0.1.11", port: 22,
-    username: "deploy", auth: "password", forwards,
+    id: "p1",
+    name: "web-prod-01",
+    kind: "ssh",
+    host: "10.0.1.11",
+    port: 22,
+    username: "deploy",
+    auth: "password",
+    forwards,
   };
 
   it("lists the saved rules with their routes", () => {
@@ -107,8 +156,9 @@ describe("Session dialog — port forward management (PD-04)", () => {
     const rows = [...host.querySelectorAll<HTMLElement>(".session-forward-row")];
     expect(rows).toHaveLength(2);
     expect(rows[0].querySelector(".session-forward-badge")?.textContent).toBe("L");
-    expect(rows[0].querySelector(".session-forward-route")?.textContent)
-      .toContain("127.0.0.1:8080 → db.internal:5432");
+    expect(rows[0].querySelector(".session-forward-route")?.textContent).toContain(
+      "127.0.0.1:8080 → db.internal:5432",
+    );
     expect(rows[1].querySelector(".session-forward-badge")?.textContent).toBe("R");
   });
 
@@ -125,31 +175,46 @@ describe("Session dialog — port forward management (PD-04)", () => {
   it("adds a rule through the tunnel popover's own validation", async () => {
     mount(h(SessionDialog, { initial: profile, onClose: vi.fn() }));
     const form = host.querySelector<HTMLFormElement>(".session-forwards-form")!;
-    const type = (input: HTMLInputElement, value: string) => act(() => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    });
+    const type = (input: HTMLInputElement, value: string) =>
+      act(() => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
+          input,
+          value,
+        );
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
     type(form.querySelector<HTMLInputElement>('[aria-label="Tunnel listener host"]')!, "0.0.0.0");
     type(form.querySelector<HTMLInputElement>('[aria-label="Tunnel listener port"]')!, "1080");
-    type(form.querySelector<HTMLInputElement>('[aria-label="Tunnel target host"]')!, "proxy.internal");
+    type(
+      form.querySelector<HTMLInputElement>('[aria-label="Tunnel target host"]')!,
+      "proxy.internal",
+    );
     type(form.querySelector<HTMLInputElement>('[aria-label="Tunnel target port"]')!, "3128");
-    await act(async () => { form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
+    await act(async () => {
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
     expect(host.querySelectorAll(".session-forward-row")).toHaveLength(3);
   });
 
   it("refuses a rule with no target, the way the tunnel popover does", async () => {
     mount(h(SessionDialog, { initial: profile, onClose: vi.fn() }));
     const form = host.querySelector<HTMLFormElement>(".session-forwards-form")!;
-    const type = (input: HTMLInputElement, value: string) => act(() => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    });
+    const type = (input: HTMLInputElement, value: string) =>
+      act(() => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
+          input,
+          value,
+        );
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
     type(form.querySelector<HTMLInputElement>('[aria-label="Tunnel listener host"]')!, "0.0.0.0");
     type(form.querySelector<HTMLInputElement>('[aria-label="Tunnel listener port"]')!, "1080");
     // The row starts with a loopback target prefilled; emptying it is the case
     // the popover's rule rejects, so the dialog must reject it too.
     type(form.querySelector<HTMLInputElement>('[aria-label="Tunnel target host"]')!, "");
-    await act(async () => { form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
+    await act(async () => {
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
     expect(host.querySelectorAll(".session-forward-row")).toHaveLength(2);
   });
 });

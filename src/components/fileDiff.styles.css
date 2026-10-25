@@ -10,7 +10,8 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
 }
-.file-diff-heading, .file-diff-toolbar {
+.file-diff-heading,
+.file-diff-toolbar {
   display: flex;
   align-items: center;
   gap: var(--sp-12);
@@ -30,12 +31,13 @@
 }
 .file-diff-dialog button:disabled,
 .file-diff-view button:disabled {
-  opacity: .45;
+  opacity: 0.45;
   cursor: default;
 }
-.file-diff-paths, .file-diff-metadata {
+.file-diff-paths,
+.file-diff-metadata {
   display: grid;
-  grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: var(--sp-12);
   font-size: 12px;
 }
@@ -46,9 +48,10 @@
 }
 .file-diff-metadata small {
   display: block;
-  opacity: .7;
+  opacity: 0.7;
 }
-.file-diff-notice, .file-diff-dialog p {
+.file-diff-notice,
+.file-diff-dialog p {
   margin: 0;
   font-size: 12px;
 }
@@ -118,9 +121,9 @@
   position: absolute;
   width: 100%;
   display: grid;
-  grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   min-height: 28px;
-  font: 12px/20px var(--font-mono, monospace);
+  font: 12px / 20px var(--font-mono, monospace);
 }
 .file-diff-cell {
   display: flex;
@@ -132,7 +135,7 @@
 .file-diff-number {
   flex: 0 0 44px;
   text-align: right;
-  opacity: .55;
+  opacity: 0.55;
   user-select: none;
 }
 .file-diff-code {
@@ -147,7 +150,7 @@
   overflow-wrap: anywhere;
 }
 .file-diff-ending {
-  opacity: .5;
+  opacity: 0.5;
   flex: 0 0 30px;
   font-size: var(--fs-xs);
   user-select: none;
@@ -209,15 +212,16 @@
 }
 .file-diff-empty {
   overflow: auto;
-  font: 12px/1.6 var(--font-mono, monospace);
+  font: 12px / 1.6 var(--font-mono, monospace);
   overflow-wrap: anywhere;
 }
 @media (max-width: 700px) {
   .file-diff-dialog {
     padding: var(--sp-10);
   }
-  .file-diff-paths, .file-diff-metadata {
-    grid-template-columns: minmax(0,1fr);
+  .file-diff-paths,
+  .file-diff-metadata {
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--sp-4);
   }
 }

@@ -183,7 +183,12 @@ const FilerSize = memo(function FilerSize({ bytes }: { bytes: number }) {
           it exists to line up drifted apart by exactly the difference. It is
           real text at all because the row is read aloud and copied as one
           string, and `1023.9KB` is not how a size is said. */}
-      {unit ? <>{" "}<span className="filer-size-unit">{unit}</span></> : null}
+      {unit ? (
+        <>
+          {" "}
+          <span className="filer-size-unit">{unit}</span>
+        </>
+      ) : null}
     </>
   );
 });
@@ -352,10 +357,7 @@ export function entryTitle(entry: FileEntry, t: Translate = translateMsg): strin
     : `${entry.path}\n${attributes.join(" · ")}`;
 }
 
-export function formatEntrySummary(
-  entries: FileEntry[],
-  t: Translate = translateMsg,
-): string {
+export function formatEntrySummary(entries: FileEntry[], t: Translate = translateMsg): string {
   let folders = 0;
   let files = 0;
   let links = 0;
@@ -432,8 +434,7 @@ function dayOffset(now: Date, offset: number): number {
 const pad2 = (value: number): string => String(value).padStart(2, "0");
 
 /** `10-20`: the day on its own, which is all a date needs inside its year. */
-const isoDay = (date: Date): string =>
-  `${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+const isoDay = (date: Date): string => `${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 
 /** `2025-10-20`: once the year is not the one on screen, it has to be named. */
 const isoDate = (date: Date): string => `${date.getFullYear()}-${isoDay(date)}`;

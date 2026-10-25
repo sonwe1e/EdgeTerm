@@ -14,11 +14,7 @@ function loadIconTheme(): Promise<void> {
   }));
 }
 
-function useIconSource(
-  name: string,
-  isDir: boolean,
-  mode: ThemeMode,
-): string | null {
+function useIconSource(name: string, isDir: boolean, mode: ThemeMode): string | null {
   const [, rerender] = useReducer((count: number) => count + 1, 0);
   const source = theme?.fileIconSource(name, isDir, mode) ?? null;
 
@@ -48,11 +44,7 @@ interface Props {
  * every file list renders one, all props are primitives, and skipping the
  * ones that did not change is what keeps a large list cheap to re-render.
  */
-export const FileIcon = memo(function FileIcon({
-  name,
-  isDir,
-  theme: mode,
-}: Props) {
+export const FileIcon = memo(function FileIcon({ name, isDir, theme: mode }: Props) {
   const source = useIconSource(name, isDir, mode);
   if (!source) return null;
   return <img src={source} alt="" draggable={false} />;

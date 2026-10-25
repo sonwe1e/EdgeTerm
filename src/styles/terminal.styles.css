@@ -123,8 +123,7 @@
 /* An unfocused pane still shows which tab it has, but quieter. */
 .pane:not(.is-focused) .tab.is-active {
   color: var(--fg-dim);
-  box-shadow: inset 0 2px 0
-    color-mix(in srgb, var(--session-color, var(--accent)) 40%, transparent);
+  box-shadow: inset 0 2px 0 color-mix(in srgb, var(--session-color, var(--accent)) 40%, transparent);
 }
 
 .pane-slot {
@@ -240,4 +239,3 @@
   text-overflow: ellipsis;
   opacity: 0.92;
 }
-

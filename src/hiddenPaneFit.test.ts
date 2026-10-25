@@ -48,10 +48,17 @@ let observers: (() => void)[];
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   observers = [];
-  vi.stubGlobal("ResizeObserver", class {
-    constructor(callback: () => void) { observers.push(callback); }
-    observe() {} unobserve() {} disconnect() {}
-  });
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      constructor(callback: () => void) {
+        observers.push(callback);
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
   host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);

@@ -1,9 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./platform", () => ({ HAS_TRAY: true,
-  IS_MAC: true,
-  IS_WINDOWS: false,
-}));
+vi.mock("./platform", () => ({ HAS_TRAY: true, IS_MAC: true, IS_WINDOWS: false }));
 
 import { TerminalController } from "./terminal";
 
@@ -32,9 +29,7 @@ function createController(events: string[]) {
 
 /** Writes and lets xterm's write buffer drain under the fake clock. */
 async function write(controller: TerminalController, text: string) {
-  const parsed = new Promise<void>((resolve) =>
-    controller.term.write(text, resolve),
-  );
+  const parsed = new Promise<void>((resolve) => controller.term.write(text, resolve));
   await vi.advanceTimersByTimeAsync(0);
   await parsed;
 }
@@ -130,12 +125,7 @@ describe("agentic CLI sessions", () => {
     // without an Enter of its own.
     controller.term.input("y", true);
     await vi.advanceTimersByTimeAsync(2500);
-    expect(events).toEqual([
-      "running:ai",
-      "complete:ai",
-      "running:ai",
-      "complete:ai",
-    ]);
+    expect(events).toEqual(["running:ai", "complete:ai", "running:ai", "complete:ai"]);
   });
 
   it("returns to command tracking once the tool exits", async () => {
@@ -150,12 +140,7 @@ describe("agentic CLI sessions", () => {
 
     await submit(controller, "ls -la");
     await write(controller, `file-a  file-b\r\n${PROMPT}`);
-    expect(events).toEqual([
-      "idle:ai",
-      "complete:ai",
-      "running:command",
-      "complete:command",
-    ]);
+    expect(events).toEqual(["idle:ai", "complete:ai", "running:command", "complete:command"]);
   });
 
   it("tracks an ordinary command the usual way", async () => {

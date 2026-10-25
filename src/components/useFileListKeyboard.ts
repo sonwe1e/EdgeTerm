@@ -187,10 +187,7 @@ export function useFileListKeyboard({
     // pane's own context menu (when it has one) is what answers it. The
     // browser default is left alone on purpose: until such a menu exists,
     // the native menu answers the key, the same one a right-click opens.
-    if (
-      event.key === "ContextMenu" ||
-      (event.shiftKey && event.key === "F10")
-    ) {
+    if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
       event.stopPropagation();
       const path = activePathRef.current;
       const target = path === null ? undefined : document.getElementById(optionId(path));
@@ -231,8 +228,7 @@ export function useFileListKeyboard({
       }
     }
     const path = activePathRef.current;
-    const active =
-      path === null ? -1 : entries.findIndex((entry) => entry.path === path);
+    const active = path === null ? -1 : entries.findIndex((entry) => entry.path === path);
     // Shift+arrow extends the range from the selection anchor, the way the
     // Filer panel's keyboard does; a plain arrow replaces it.
     const move = event.shiftKey ? "range" : "replace";
@@ -257,8 +253,7 @@ export function useFileListKeyboard({
         event.preventDefault();
         // The row the cursor is on, through the very path a double-click
         // takes: a folder is entered, a file is handed to its opener.
-        const entry =
-          path === null ? undefined : entries.find((item) => item.path === path);
+        const entry = path === null ? undefined : entries.find((item) => item.path === path);
         if (entry) onActivate(entry);
         return;
       }

@@ -599,15 +599,12 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
               danger: true,
               disabled: libraryBusy,
               action: () =>
-                void ask(
-                  t("sender.deleteConfirm", { name: command.name }),
-                  {
-                    title: t("sender.deleteConfirmTitle"),
-                    kind: "warning",
-                    okLabel: t("common.delete"),
-                    cancelLabel: t("common.cancel"),
-                  },
-                ).then((confirmed) => {
+                void ask(t("sender.deleteConfirm", { name: command.name }), {
+                  title: t("sender.deleteConfirmTitle"),
+                  kind: "warning",
+                  okLabel: t("common.delete"),
+                  cancelLabel: t("common.cancel"),
+                }).then((confirmed) => {
                   if (confirmed) void removeCommand(command.id);
                 }),
             },

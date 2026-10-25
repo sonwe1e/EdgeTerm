@@ -221,15 +221,15 @@ export function FtpPane({ tab, active }: Props) {
         label: menuLabel(uploadSide ? t("ftp.upload") : t("ftp.download"), count),
         icon: uploadSide ? "cloud-upload" : "cloud-download",
         disabled: transferring,
-        action: () =>
-          uploadSide ? uploadEntries(targets) : downloadEntries(targets),
+        action: () => (uploadSide ? uploadEntries(targets) : downloadEntries(targets)),
       },
       ...(count === 1 && entry.isDir
         ? [
             {
               label: t("filer.open"),
               icon: "folder-opened" as const,
-              action: () => void (side === "remote" ? loadRemote(entry.path) : loadLocal(entry.path)),
+              action: () =>
+                void (side === "remote" ? loadRemote(entry.path) : loadLocal(entry.path)),
             },
           ]
         : []),
@@ -275,11 +275,7 @@ export function FtpPane({ tab, active }: Props) {
           </strong>
           <span>{tab.message ?? tab.info.address}</span>
           {(tab.state === "closed" || tab.state === "error") && (
-            <button
-              type="button"
-              className="btn"
-              onClick={() => void reconnectSession(sessionId)}
-            >
+            <button type="button" className="btn" onClick={() => void reconnectSession(sessionId)}>
               {t("common.reconnect")}
             </button>
           )}
@@ -526,15 +522,11 @@ export function FtpPane({ tab, active }: Props) {
         <DeleteEntryDialog
           entry={pendingDelete.entries[0]}
           entries={pendingDelete.entries}
-          location={
-            pendingDelete.side === "remote" ? tab.info.address : t("ftp.localComputer")
-          }
+          location={pendingDelete.side === "remote" ? tab.info.address : t("ftp.localComputer")}
           onConfirm={() => {
             const { side, entries } = pendingDelete;
             setPendingDelete(null);
-            void (side === "remote"
-              ? removeRemoteEntries(entries)
-              : removeLocalEntries(entries));
+            void (side === "remote" ? removeRemoteEntries(entries) : removeLocalEntries(entries));
           }}
           onCancel={() => setPendingDelete(null)}
         />

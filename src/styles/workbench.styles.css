@@ -169,18 +169,39 @@
 /* Use the dock-reduced width and font-relative thresholds: at 18px the
    labels need more room even when the window itself has not changed. */
 @container workbench (max-width: 70em) {
-  .wb-top .wb-secondary { display: none; }
-  .wb-more { display: inline-flex; }
-  .wb-top-context .wb-server-chip { display: none; }
+  .wb-top .wb-secondary {
+    display: none;
+  }
+  .wb-more {
+    display: inline-flex;
+  }
+  .wb-top-context .wb-server-chip {
+    display: none;
+  }
 }
 
 @container workbench (max-width: 36em) {
-  .wb-top { flex-wrap: wrap; gap: var(--sp-6); }
-  .wb-top-title { flex: 1 0 100%; }
-  .wb-top-actions { margin-left: 0; }
-  .wb-top-context { order: 3; flex: 1 0 100%; }
-  .wb-top-context .wb-project-name { flex: 1; }
-  .wb-top-context select { min-width: 0; max-width: 65%; }
+  .wb-top {
+    flex-wrap: wrap;
+    gap: var(--sp-6);
+  }
+  .wb-top-title {
+    flex: 1 0 100%;
+  }
+  .wb-top-actions {
+    margin-left: 0;
+  }
+  .wb-top-context {
+    order: 3;
+    flex: 1 0 100%;
+  }
+  .wb-top-context .wb-project-name {
+    flex: 1;
+  }
+  .wb-top-context select {
+    min-width: 0;
+    max-width: 65%;
+  }
 }
 
 .wb-mini.is-danger {
@@ -290,8 +311,12 @@
   text-overflow: ellipsis;
 }
 
-.wb-host-name { max-width: 30%; }
-.wb-host-user { max-width: 40%; }
+.wb-host-name {
+  max-width: 30%;
+}
+.wb-host-user {
+  max-width: 40%;
+}
 
 .wb-host-user {
   font-family: var(--font-mono);

@@ -10,9 +10,13 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../platform", () => ({ HAS_TRAY: true, IS_MAC: false, IS_WINDOWS: true }));
-vi.mock("../../nativeDialog", () => ({ ask: vi.fn(async () => true), open: vi.fn(), save: vi.fn() }));
+vi.mock("../../nativeDialog", () => ({
+  ask: vi.fn(async () => true),
+  open: vi.fn(),
+  save: vi.fn(),
+}));
 vi.mock("../../api", async (original) => ({
-  ...await original<typeof import("../../api")>(),
+  ...(await original<typeof import("../../api")>()),
   closeSession: vi.fn(async () => {}),
   listSenderCommands: vi.fn(async () => []),
 }));
@@ -27,28 +31,52 @@ let root: Root;
 
 const tab = (id: string, state: Tab["state"]): Tab => ({
   info: {
-    id, profileId: "p1", name: "web-prod-01", kind: "ssh", protocol: "ssh",
-    address: "10.0.1.11:22", color: null, supportsRemoteFiles: true, recording: null,
-    legacyAlgorithms: [], sharedConnection: false,
+    id,
+    profileId: "p1",
+    name: "web-prod-01",
+    kind: "ssh",
+    protocol: "ssh",
+    address: "10.0.1.11:22",
+    color: null,
+    supportsRemoteFiles: true,
+    recording: null,
+    legacyAlgorithms: [],
+    sharedConnection: false,
   },
-  profile: { id: "p1", name: "web-prod-01", kind: "ssh", host: "10.0.1.11", port: 22, username: "deploy" },
-  number: 1, ordinal: 0, state,
-  commandActivity: "idle", activityKind: "command", cols: 80, rows: 24,
+  profile: {
+    id: "p1",
+    name: "web-prod-01",
+    kind: "ssh",
+    host: "10.0.1.11",
+    port: 22,
+    username: "deploy",
+  },
+  number: 1,
+  ordinal: 0,
+  state,
+  commandActivity: "idle",
+  activityKind: "command",
+  cols: 80,
+  rows: 24,
   paneId: initialState.activePaneId,
 });
 
 const power = () => host.querySelector<HTMLButtonButton>(".panel-power");
 type HTMLButtonButton = HTMLButtonElement;
 
-const mount = () => act(() => {
-  root.render(h(SessionPanel, { onEditProfile: vi.fn(), onNewSession: vi.fn() }));
-});
+const mount = () =>
+  act(() => {
+    root.render(h(SessionPanel, { onEditProfile: vi.fn(), onNewSession: vi.fn() }));
+  });
 
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.clearAllMocks();
   localStorage.clear();
-  useStore.setState({ ...initialState, language: "en", tabs: [], activeId: null, profiles: [], groups: [] }, true);
+  useStore.setState(
+    { ...initialState, language: "en", tabs: [], activeId: null, profiles: [], groups: [] },
+    true,
+  );
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);

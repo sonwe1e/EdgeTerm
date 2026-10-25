@@ -23,9 +23,13 @@ beforeEach(() => {
   render();
   // jsdom has no native pointer capture. Only that browser boundary is mocked;
   // events still exercise the mounted component and its real frame batch.
-  splitter.setPointerCapture = vi.fn((id: number) => { captured.add(id); });
+  splitter.setPointerCapture = vi.fn((id: number) => {
+    captured.add(id);
+  });
   splitter.hasPointerCapture = vi.fn((id: number) => captured.has(id));
-  splitter.releasePointerCapture = vi.fn((id: number) => { captured.delete(id); });
+  splitter.releasePointerCapture = vi.fn((id: number) => {
+    captured.delete(id);
+  });
 });
 
 afterEach(() => {
@@ -45,11 +49,23 @@ function render(
   splitter = host.firstElementChild as HTMLDivElement;
 }
 
-function pointer(type: string, props: Partial<PointerEventInit> = {}, target: EventTarget = splitter) {
+function pointer(
+  type: string,
+  props: Partial<PointerEventInit> = {},
+  target: EventTarget = splitter,
+) {
   // Explicit fields also work on jsdom versions without a PointerEvent class.
   const event = new MouseEvent(type, { bubbles: true, cancelable: true });
-  const fields = { pointerId: 1, pointerType: "mouse", isPrimary: true,
-    button: 0, buttons: 1, clientX: 100, clientY: 100, ...props };
+  const fields = {
+    pointerId: 1,
+    pointerType: "mouse",
+    isPrimary: true,
+    button: 0,
+    buttons: 1,
+    clientX: 100,
+    clientY: 100,
+    ...props,
+  };
   for (const [key, value] of Object.entries(fields)) {
     Object.defineProperty(event, key, { value });
   }
@@ -77,39 +93,45 @@ function expectStopped() {
 }
 
 describe("Splitter drag lifecycle", () => {
-  it.each(["vertical", "horizontal"] as const)("batches %s movement and flushes the final delta once", (orientation) => {
-    render(orientation);
-    pointer("pointerdown");
-    pointer("pointermove", { clientX: 110, clientY: 120 });
-    pointer("pointermove", { clientX: 115, clientY: 130 });
-    expect(resize).not.toHaveBeenCalled();
-    act(() => vi.advanceTimersByTime(16));
-    expect(resize.mock.calls).toEqual([[orientation === "vertical" ? 15 : 30]]);
-    pointer("pointermove", { clientX: 118, clientY: 134 });
-    pointer("pointerup", { buttons: 0 });
-    pointer("lostpointercapture");
-    act(() => vi.advanceTimersByTime(32));
-    expect(resize.mock.calls).toEqual(orientation === "vertical" ? [[15], [3]] : [[30], [4]]);
-    expect(splitter.classList.contains("is-dragging")).toBe(false);
-    expect(captured.size).toBe(0);
-  });
+  it.each(["vertical", "horizontal"] as const)(
+    "batches %s movement and flushes the final delta once",
+    (orientation) => {
+      render(orientation);
+      pointer("pointerdown");
+      pointer("pointermove", { clientX: 110, clientY: 120 });
+      pointer("pointermove", { clientX: 115, clientY: 130 });
+      expect(resize).not.toHaveBeenCalled();
+      act(() => vi.advanceTimersByTime(16));
+      expect(resize.mock.calls).toEqual([[orientation === "vertical" ? 15 : 30]]);
+      pointer("pointermove", { clientX: 118, clientY: 134 });
+      pointer("pointerup", { buttons: 0 });
+      pointer("lostpointercapture");
+      act(() => vi.advanceTimersByTime(32));
+      expect(resize.mock.calls).toEqual(orientation === "vertical" ? [[15], [3]] : [[30], [4]]);
+      expect(splitter.classList.contains("is-dragging")).toBe(false);
+      expect(captured.size).toBe(0);
+    },
+  );
 
-  it.each(["pointercancel", "lostpointercapture", "blur", "Escape", "hidden"])("cancels queued work on %s and permits a new drag", (reason) => {
-    pendingDrag();
-    if (reason === "blur") {
-      act(() => window.dispatchEvent(new Event("blur")));
-    } else if (reason === "Escape") {
-      act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
-    } else if (reason === "hidden") {
-      vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
-      act(() => document.dispatchEvent(new Event("visibilitychange")));
-      vi.restoreAllMocks();
-    } else {
-      if (reason === "lostpointercapture") captured.clear();
-      pointer(reason);
-    }
-    expectStopped();
-  });
+  it.each(["pointercancel", "lostpointercapture", "blur", "Escape", "hidden"])(
+    "cancels queued work on %s and permits a new drag",
+    (reason) => {
+      pendingDrag();
+      if (reason === "blur") {
+        act(() => window.dispatchEvent(new Event("blur")));
+      } else if (reason === "Escape") {
+        act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+      } else if (reason === "hidden") {
+        vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+        act(() => document.dispatchEvent(new Event("visibilitychange")));
+        vi.restoreAllMocks();
+      } else {
+        if (reason === "lostpointercapture") captured.clear();
+        pointer(reason);
+      }
+      expectStopped();
+    },
+  );
 
   it("ends a drag when mouse moves with the primary button already released", () => {
     pendingDrag();
@@ -133,17 +155,17 @@ describe("Splitter drag lifecycle", () => {
     expectStopped();
   });
 
-  it.each([
-    { button: 2, buttons: 2 },
-    { isPrimary: false },
-  ])("does not start a drag for non-primary input %j", (props) => {
-    pointer("pointerdown", props);
-    pointer("pointermove", { clientX: 130 });
-    act(() => vi.advanceTimersByTime(32));
-    expect(resize).not.toHaveBeenCalled();
-    expect(splitter.classList.contains("is-dragging")).toBe(false);
-    expect(captured.size).toBe(0);
-  });
+  it.each([{ button: 2, buttons: 2 }, { isPrimary: false }])(
+    "does not start a drag for non-primary input %j",
+    (props) => {
+      pointer("pointerdown", props);
+      pointer("pointermove", { clientX: 130 });
+      act(() => vi.advanceTimersByTime(32));
+      expect(resize).not.toHaveBeenCalled();
+      expect(splitter.classList.contains("is-dragging")).toBe(false);
+      expect(captured.size).toBe(0);
+    },
+  );
 
   it("ignores another pointer's moves, termination and new press", () => {
     pointer("pointerdown");
@@ -204,9 +226,16 @@ describe("Splitter drag lifecycle", () => {
     const documentRemove = vi.spyOn(document, "removeEventListener");
     pendingDrag();
     pointer("pointerup", { buttons: 0 });
-    for (const [name, capture] of [["pointerup", true], ["pointercancel", true],
-      ["blur", undefined], ["keydown", true]] as const) {
-      const args = capture === undefined ? [name, expect.any(Function)] : [name, expect.any(Function), capture];
+    for (const [name, capture] of [
+      ["pointerup", true],
+      ["pointercancel", true],
+      ["blur", undefined],
+      ["keydown", true],
+    ] as const) {
+      const args =
+        capture === undefined
+          ? [name, expect.any(Function)]
+          : [name, expect.any(Function), capture];
       expect(windowRemove).toHaveBeenCalledWith(...args);
     }
     expect(documentRemove).toHaveBeenCalledWith("visibilitychange", expect.any(Function));
@@ -237,9 +266,7 @@ describe("Splitter drag lifecycle", () => {
     expect(began).toHaveBeenCalledTimes(1);
     expect(ended).toHaveBeenCalledTimes(1);
     expect(ended).toHaveBeenCalledWith(true);
-    expect(ended.mock.invocationCallOrder[0]).toBeGreaterThan(
-      resize.mock.invocationCallOrder[0],
-    );
+    expect(ended.mock.invocationCallOrder[0]).toBeGreaterThan(resize.mock.invocationCallOrder[0]);
     expect(resize.mock.calls).toEqual([[30]]);
   });
 

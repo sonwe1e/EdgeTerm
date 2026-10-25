@@ -30,25 +30,17 @@ export function WorkspaceDialog({
   const t = useT();
   // A project needs a shell for its terminal and runs; SFTP-only logins are
   // still available to the Filer, but not as a project server.
-  const profiles = useStore((state) => state.profiles).filter(
-    (profile) => profile.kind === "ssh",
-  );
+  const profiles = useStore((state) => state.profiles).filter((profile) => profile.kind === "ssh");
   const [name, setName] = useState(workspace?.name ?? "");
-  const [profileId, setProfileId] = useState(
-    workspace?.server.profileId ?? profiles[0]?.id ?? "",
-  );
+  const [profileId, setProfileId] = useState(workspace?.server.profileId ?? profiles[0]?.id ?? "");
   const [root, setRoot] = useState(workspace?.root ?? "");
   const [env, setEnv] = useState(workspace?.env ?? "");
   const [runRoot, setRunRoot] = useState(workspace?.runRoot ?? "");
-  const [commands, setCommands] = useState<WorkspaceCommand[]>(
-    workspace?.commands ?? [],
-  );
+  const [commands, setCommands] = useState<WorkspaceCommand[]>(workspace?.commands ?? []);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const profile: SessionProfile | undefined = profiles.find(
-    (item) => item.id === profileId,
-  );
+  const profile: SessionProfile | undefined = profiles.find((item) => item.id === profileId);
   const missingProfile =
     Boolean(workspace) && !profiles.some((item) => item.id === workspace?.server.profileId);
 
@@ -105,7 +97,12 @@ export function WorkspaceDialog({
   };
 
   return (
-    <ModalDialog open onClose={onClose} ariaLabel={t("wb.newProject")} contentClassName="wb-form-dialog">
+    <ModalDialog
+      open
+      onClose={onClose}
+      ariaLabel={t("wb.newProject")}
+      contentClassName="wb-form-dialog"
+    >
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -114,7 +111,12 @@ export function WorkspaceDialog({
       >
         <div className="wb-dialog-header">
           <strong>{workspace ? t("wb.edit") : t("wb.newProject")}</strong>
-          <button type="button" className="wb-icon-button" aria-label={t("common.close")} onClick={onClose}>
+          <button
+            type="button"
+            className="wb-icon-button"
+            aria-label={t("common.close")}
+            onClick={onClose}
+          >
             ×
           </button>
         </div>
@@ -215,9 +217,7 @@ export function WorkspaceDialog({
                   type="button"
                   className="wb-icon-button"
                   aria-label={t("common.delete")}
-                  onClick={() =>
-                    setCommands((current) => current.filter((_, at) => at !== index))
-                  }
+                  onClick={() => setCommands((current) => current.filter((_, at) => at !== index))}
                 >
                   <Icon name="trash" />
                 </button>
@@ -242,7 +242,11 @@ export function WorkspaceDialog({
             </button>
           </div>
         </div>
-        {error && <p className="wb-dialog-error" role="alert">{error}</p>}
+        {error && (
+          <p className="wb-dialog-error" role="alert">
+            {error}
+          </p>
+        )}
         <div className="wb-dialog-actions">
           <button type="button" className="btn" onClick={onClose}>
             {t("common.cancel")}

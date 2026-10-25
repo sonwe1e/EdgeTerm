@@ -56,7 +56,12 @@ export function GitDiffDialog({
       <div className="wb-dialog-header">
         <strong>{t("wb.diff")}</strong>
         <code>{path}</code>
-        <button type="button" className="wb-icon-button" aria-label={t("wb.close")} onClick={onClose}>
+        <button
+          type="button"
+          className="wb-icon-button"
+          aria-label={t("wb.close")}
+          onClick={onClose}
+        >
           ×
         </button>
       </div>

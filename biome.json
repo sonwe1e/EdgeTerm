@@ -6,6 +6,10 @@
       "scripts/**",
       "*.ts",
       "*.mjs",
+      "biome.json",
+      "package.json",
+      "tsconfig*.json",
+      ".vscode/*.json",
       "!!.tmp",
       "!!artifacts",
       "!!src-tauri/target"
@@ -13,7 +17,21 @@
     "ignoreUnknown": true
   },
   "formatter": {
-    "enabled": false
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineEnding": "lf",
+    "lineWidth": 100,
+    "includes": ["**", "!src/bindings.ts"]
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "jsxQuoteStyle": "double",
+      "semicolons": "always",
+      "trailingCommas": "all",
+      "arrowParentheses": "always"
+    }
   },
   "assist": {
     "enabled": false

@@ -14,9 +14,7 @@ interface Props {
 
 /** The file under /etc/ssh whose fingerprint the user can compare against. */
 function serverKeyFile(keyType: string): string {
-  const family = ["ed25519", "ecdsa", "rsa"].find((name) =>
-    keyType.includes(name),
-  );
+  const family = ["ed25519", "ecdsa", "rsa"].find((name) => keyType.includes(name));
   return `/etc/ssh/ssh_host_${family ?? "<type>"}_key.pub`;
 }
 
@@ -52,7 +50,9 @@ export function HostKeyDialog({ prompt, onAccept, onCancel }: Props) {
       role="alertdialog"
       labelledBy="host-key-title"
       contentClassName="confirm-dialog host-key-dialog"
-      onClose={() => { if (!busy) onCancel(); }}
+      onClose={() => {
+        if (!busy) onCancel();
+      }}
       dismissable={!busy}
     >
       <div className="dialog-header" id="host-key-title">
@@ -89,13 +89,7 @@ export function HostKeyDialog({ prompt, onAccept, onCancel }: Props) {
         <span className="confirm-dialog-keys">
           <kbd>Esc</kbd> {t("keys.cancel")}
         </span>
-        <button
-          autoFocus
-          type="button"
-          className="btn"
-          onClick={onCancel}
-          disabled={busy}
-        >
+        <button autoFocus type="button" className="btn" onClick={onCancel} disabled={busy}>
           {t("common.cancel")}
         </button>
         <button

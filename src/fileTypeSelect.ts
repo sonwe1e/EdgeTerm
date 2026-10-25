@@ -76,11 +76,7 @@ export function typeToSelect(
 }
 
 /** The first entry from `start` on, wrapping around, whose name starts with `prefix`. */
-export function findByPrefix(
-  entries: readonly FileEntry[],
-  prefix: string,
-  start: number,
-): number {
+export function findByPrefix(entries: readonly FileEntry[], prefix: string, start: number): number {
   const wanted = foldName(prefix);
   const from = Math.max(start, 0);
   for (let offset = 0; offset < entries.length; offset++) {

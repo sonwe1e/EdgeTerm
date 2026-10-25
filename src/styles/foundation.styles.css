@@ -103,9 +103,7 @@
   --notice-error-bg: rgba(45, 25, 25, 0.96);
   --notice-error-fg: #f88070;
 
-  --shadow-menu:
-    0 14px 36px -8px rgba(0, 0, 0, 0.65),
-    0 3px 10px rgba(0, 0, 0, 0.35);
+  --shadow-menu: 0 14px 36px -8px rgba(0, 0, 0, 0.65), 0 3px 10px rgba(0, 0, 0, 0.35);
   --shadow-pop: 0 6px 18px rgba(0, 0, 0, 0.36);
   --shadow-notice: 0 5px 18px rgba(0, 0, 0, 0.36);
   --shadow-dialog: 0 20px 60px rgba(0, 0, 0, 0.5);
@@ -148,9 +146,8 @@
      — the platform's VS Code defaults, behind whatever family the user chose
      in Display Settings — before React mounts. */
   --font-ui:
-    -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", "PingFang SC",
-    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC",
-    "Source Han Sans SC", Roboto, sans-serif;
+    -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", "Noto Sans SC", "Source Han Sans SC", Roboto, sans-serif;
   --font-mono: Consolas, Menlo, Monaco, "Courier New", monospace;
 }
 
@@ -248,9 +245,7 @@
   --notice-error-bg: rgba(255, 235, 233, 0.96);
   --notice-error-fg: #a1260d;
 
-  --shadow-menu:
-    0 14px 36px -8px rgba(0, 0, 0, 0.22),
-    0 3px 10px rgba(0, 0, 0, 0.08);
+  --shadow-menu: 0 14px 36px -8px rgba(0, 0, 0, 0.22), 0 3px 10px rgba(0, 0, 0, 0.08);
   --shadow-pop: 0 6px 18px rgba(0, 0, 0, 0.14);
   --shadow-notice: 0 5px 18px rgba(0, 0, 0, 0.14);
   --shadow-dialog: 0 20px 60px rgba(0, 0, 0, 0.22);
@@ -443,9 +438,7 @@
   --notice-error-bg: rgba(253, 236, 234, 0.96);
   --notice-error-fg: #b03a30;
 
-  --shadow-menu:
-    0 14px 36px -8px rgba(0, 0, 0, 0.22),
-    0 3px 10px rgba(0, 0, 0, 0.08);
+  --shadow-menu: 0 14px 36px -8px rgba(0, 0, 0, 0.22), 0 3px 10px rgba(0, 0, 0, 0.08);
   --shadow-pop: 0 6px 18px rgba(0, 0, 0, 0.14);
   --shadow-notice: 0 5px 18px rgba(0, 0, 0, 0.14);
   --shadow-dialog: 0 20px 60px rgba(0, 0, 0, 0.22);
@@ -517,16 +510,16 @@ button {
    colours are not an option here: a control that draws its own ring (menu
    rows, tabs) still overrides this rule. */
 :where(
-    button,
-    a[href],
-    [role="tab"],
-    [role="treeitem"],
-    [role="option"],
-    [role="menuitem"],
-    [role="menuitemradio"],
-    [role="separator"],
-    [tabindex]:not([tabindex="-1"])
-  ):focus-visible {
+  button,
+  a[href],
+  [role="tab"],
+  [role="treeitem"],
+  [role="option"],
+  [role="menuitem"],
+  [role="menuitemradio"],
+  [role="separator"],
+  [tabindex]:not([tabindex="-1"])
+):focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
@@ -587,4 +580,3 @@ textarea:focus-visible {
   background: var(--scrollbar-thumb-hover);
   background-clip: content-box;
 }
-

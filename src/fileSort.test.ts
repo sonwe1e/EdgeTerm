@@ -46,12 +46,7 @@ describe("sortFileEntries", () => {
   });
 
   it("sorts by name case-insensitively and in natural numeric order once asked", () => {
-    const entries = [
-      entry("readme10.txt"),
-      entry("Beta"),
-      entry("alpha"),
-      entry("file2"),
-    ];
+    const entries = [entry("readme10.txt"), entry("Beta"), entry("alpha"), entry("file2")];
     // The collator orders digit runs numerically in both directions.
     expect(names(sortFileEntries(entries, { key: "name", direction: "desc" }))).toEqual([
       "readme10.txt",
@@ -147,7 +142,10 @@ describe("parseFileSort", () => {
       key: "modified",
       direction: "desc",
     });
-    expect(parseFileSort({ key: "name", direction: "asc" })).toEqual({ key: "name", direction: "asc" });
+    expect(parseFileSort({ key: "name", direction: "asc" })).toEqual({
+      key: "name",
+      direction: "asc",
+    });
     expect(parseFileSort({ key: "bogus", direction: "asc" })).toBeNull();
     expect(parseFileSort({ key: "name", direction: "sideways" })).toBeNull();
     expect(parseFileSort("name")).toBeNull();

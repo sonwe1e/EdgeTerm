@@ -23,9 +23,7 @@ import { ContextMenu, type MenuItem } from "./ContextMenu";
 
 // The dual-pane file workspace only exists for FTP and SFTP tabs, so it loads
 // with the first one instead of with the window.
-const FtpPane = lazy(() =>
-  import("./FtpPane").then((module) => ({ default: module.FtpPane })),
-);
+const FtpPane = lazy(() => import("./FtpPane").then((module) => ({ default: module.FtpPane })));
 
 interface Props {
   tab: Tab;
@@ -44,12 +42,7 @@ export const useAccelerator = (command: ShortcutCommand): string =>
 // Memoized: a tab switch or another tab's command state changes the tab list,
 // and every pane used to re-render with it. Only a pane whose own tab,
 // visibility, focus or box changed has anything new to show.
-export const SessionPane = memo(function SessionPane({
-  tab,
-  visible,
-  focused,
-  style,
-}: Props) {
+export const SessionPane = memo(function SessionPane({ tab, visible, focused, style }: Props) {
   const setActive = useStore((s) => s.setActive);
   const id = tab.info.id;
 
@@ -99,15 +92,7 @@ interface TerminalMenu {
  * treats as "bypass the program" (macOS has no such key: Option is Meta
  * there).
  */
-function TerminalHost({
-  tab,
-  visible,
-  focused,
-}: {
-  tab: Tab;
-  visible: boolean;
-  focused: boolean;
-}) {
+function TerminalHost({ tab, visible, focused }: { tab: Tab; visible: boolean; focused: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const t = useT();
   const gutterMode = useStore((s) => s.gutterMode);
@@ -274,12 +259,7 @@ function TerminalHost({
 
   useEffect(() => {
     terminal?.setFontFamily(
-      fontStack(
-        "mono",
-        bufferFontFamily,
-        symbolFontFamilies,
-        systemMonoFamily,
-      ),
+      fontStack("mono", bufferFontFamily, symbolFontFamilies, systemMonoFamily),
     );
   }, [bufferFontFamily, symbolFontFamilies, systemMonoFamily, terminal]);
 
@@ -340,9 +320,7 @@ function TerminalHost({
         onMouseUp={onMiddleButton}
         onAuxClick={onMiddleButton}
       />
-      {menu && (
-        <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={closeMenu} />
-      )}
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={closeMenu} />}
     </>
   );
 }

@@ -63,15 +63,12 @@ export function useFilerUpload({
       entries.some((entry) => entry.name === localFileName(localPath)),
     );
     if (clashes.length > 0) {
-      const confirmed = await ask(
-        t("filer.replaceConfirm", { count: clashes.length }),
-        {
-          title: t("filer.replaceTitle"),
-          kind: "warning",
-          okLabel: t("filer.replace"),
-          cancelLabel: t("common.cancel"),
-        },
-      );
+      const confirmed = await ask(t("filer.replaceConfirm", { count: clashes.length }), {
+        title: t("filer.replaceTitle"),
+        kind: "warning",
+        okLabel: t("filer.replace"),
+        cancelLabel: t("common.cancel"),
+      });
       if (!confirmed) return;
     }
     busyRef.current = true;

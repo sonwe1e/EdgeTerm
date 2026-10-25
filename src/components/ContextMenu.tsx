@@ -69,8 +69,9 @@ const EDGE_MARGIN = 6;
 
 const MENU_ITEMS = '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]';
 const levelItems = (level: HTMLElement | null) =>
-  [...(level?.querySelectorAll<HTMLElement>(MENU_ITEMS) ?? [])]
-    .filter((item) => item.closest(".menu-dropdown") === level && !item.matches(":disabled"));
+  [...(level?.querySelectorAll<HTMLElement>(MENU_ITEMS) ?? [])].filter(
+    (item) => item.closest(".menu-dropdown") === level && !item.matches(":disabled"),
+  );
 
 function isAction(item: MenuItem): item is MenuAction {
   return typeof item !== "string" && "label" in item;
@@ -108,21 +109,12 @@ export function hasLeading(items: readonly unknown[]): boolean {
  * commands get a same-width blank so every label shares one left edge.
  * Shared with the menubar's dropdowns.
  */
-export function MenuCheck({
-  checked,
-  mark = "check",
-}: {
-  checked?: boolean;
-  mark?: MenuMark;
-}) {
+export function MenuCheck({ checked, mark = "check" }: { checked?: boolean; mark?: MenuMark }) {
   if (checked === undefined) {
     return <span className="menu-check" aria-hidden="true" />;
   }
   return (
-    <span
-      className={`menu-check is-${mark}${checked ? " is-checked" : ""}`}
-      aria-hidden="true"
-    >
+    <span className={`menu-check is-${mark}${checked ? " is-checked" : ""}`} aria-hidden="true">
       {mark === "check" && checked && <Icon name="check" />}
     </span>
   );
@@ -161,14 +153,7 @@ export function MenuLeading({
  * outside, Escape, scrolling, resizing or the window losing focus — the same
  * moments a native menu would go away.
  */
-export function ContextMenu({
-  x,
-  y,
-  items,
-  onClose,
-  align = "left",
-  className,
-}: Props) {
+export function ContextMenu({ x, y, items, onClose, align = "left", className }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [placement, setPlacement] = useState<{
     left: number;
@@ -178,9 +163,10 @@ export function ContextMenu({
   const submenu = useSubmenuHover();
   const [keyboardOpen, setKeyboardOpen] = useState<string | null | undefined>(undefined);
   const focusFrame = useRef(0);
-  const shown = (path: string) => keyboardOpen === undefined
-    ? submenu.isOpen(path)
-    : keyboardOpen === path || keyboardOpen?.startsWith(`${path}.`) === true;
+  const shown = (path: string) =>
+    keyboardOpen === undefined
+      ? submenu.isOpen(path)
+      : keyboardOpen === path || keyboardOpen?.startsWith(`${path}.`) === true;
 
   // Right-clicking a tab does not blur xterm. Own focus before the next key
   // can reach the terminal; only return it if no other control took focus.
@@ -190,8 +176,10 @@ export function ContextMenu({
     (levelItems(element)[0] ?? element)?.focus({ preventScroll: true });
     return () => {
       cancelAnimationFrame(focusFrame.current);
-      if (opener?.isConnected &&
-          (element?.contains(document.activeElement) || document.activeElement === document.body)) {
+      if (
+        opener?.isConnected &&
+        (element?.contains(document.activeElement) || document.activeElement === document.body)
+      ) {
         opener.focus({ preventScroll: true });
       }
     };
@@ -201,9 +189,9 @@ export function ContextMenu({
     setKeyboardOpen(path);
     cancelAnimationFrame(focusFrame.current);
     focusFrame.current = requestAnimationFrame(() => {
-      const level = ref.current?.querySelector<HTMLElement>(
-        `[data-submenu-key="${path}"] > .menu-submenu`,
-      ) ?? null;
+      const level =
+        ref.current?.querySelector<HTMLElement>(`[data-submenu-key="${path}"] > .menu-submenu`) ??
+        null;
       levelItems(level)[0]?.focus({ preventScroll: true });
     });
   };
@@ -227,10 +215,14 @@ export function ContextMenu({
       next.focus({ preventScroll: true });
     };
     switch (event.key) {
-      case "ArrowDown": return focus(entries[(index + 1) % entries.length]);
-      case "ArrowUp": return focus(entries[(index - 1 + entries.length) % entries.length]);
-      case "Home": return focus(entries[0]);
-      case "End": return focus(entries[entries.length - 1]);
+      case "ArrowDown":
+        return focus(entries[(index + 1) % entries.length]);
+      case "ArrowUp":
+        return focus(entries[(index - 1 + entries.length) % entries.length]);
+      case "Home":
+        return focus(entries[0]);
+      case "End":
+        return focus(entries[entries.length - 1]);
       case "ArrowRight": {
         event.preventDefault();
         const path = item?.parentElement?.dataset.submenuKey;
@@ -299,11 +291,7 @@ export function ContextMenu({
       }
       if (!isAction(item)) {
         return (
-          <div
-            key={`heading-${index}`}
-            className="menu-heading"
-            role="presentation"
-          >
+          <div key={`heading-${index}`} className="menu-heading" role="presentation">
             {item.heading}
           </div>
         );
@@ -325,9 +313,16 @@ export function ContextMenu({
               hover.onMouseEnter();
             }}
           >
-            <button type="button" className="menu-entry" role="menuitem"
-              aria-haspopup="menu" aria-expanded={isOpen} tabIndex={-1}
-              disabled={item.disabled} onClick={() => focusInto(path)}>
+            <button
+              type="button"
+              className="menu-entry"
+              role="menuitem"
+              aria-haspopup="menu"
+              aria-expanded={isOpen}
+              tabIndex={-1}
+              disabled={item.disabled}
+              onClick={() => focusInto(path)}
+            >
               {showLeading && <MenuLeading entry={item} />}
               <span className="menu-entry-label">{item.label}</span>
               <span className="menu-submenu-arrow" aria-hidden="true">
@@ -355,11 +350,7 @@ export function ContextMenu({
             .filter(Boolean)
             .join(" ")}
           disabled={item.disabled}
-          style={
-            item.indent
-              ? ({ paddingLeft: 8 + item.indent * 14 } as CSSProperties)
-              : undefined
-          }
+          style={item.indent ? ({ paddingLeft: 8 + item.indent * 14 } as CSSProperties) : undefined}
           onClick={() => {
             onClose();
             item.action?.();
@@ -374,9 +365,7 @@ export function ContextMenu({
             />
           )}
           <span className="menu-entry-label">{item.label}</span>
-          {item.shortcut && (
-            <span className="menu-shortcut">{item.shortcut}</span>
-          )}
+          {item.shortcut && <span className="menu-shortcut">{item.shortcut}</span>}
         </button>
       );
     });

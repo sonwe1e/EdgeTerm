@@ -31,9 +31,7 @@ export function comboMatches(
 ): string[] {
   if (!filtered) return [...options];
   const prefix = text.toLowerCase();
-  const matches = options.filter((option) =>
-    option.toLowerCase().startsWith(prefix),
-  );
+  const matches = options.filter((option) => option.toLowerCase().startsWith(prefix));
   return matches.length === 1 && matches[0] === text ? [] : matches;
 }
 
@@ -165,10 +163,7 @@ export function ComboBox({
     if (!list || !row) return;
     if (row.offsetTop < list.scrollTop) {
       list.scrollTop = row.offsetTop - 6;
-    } else if (
-      row.offsetTop + row.offsetHeight >
-      list.scrollTop + list.clientHeight
-    ) {
+    } else if (row.offsetTop + row.offsetHeight > list.scrollTop + list.clientHeight) {
       list.scrollTop = row.offsetTop + row.offsetHeight - list.clientHeight + 6;
     }
   }, [active, placement]);
@@ -228,8 +223,7 @@ export function ComboBox({
   // Inside the modal <dialog> primitive the list belongs to the dialog's top
   // layer; anywhere else <body> is the host. Resolved when the list opens, so
   // the field has already mounted and settled its ancestors.
-  const portalHost =
-    (inputEl.current?.closest("dialog") as HTMLElement | null) ?? document.body;
+  const portalHost = (inputEl.current?.closest("dialog") as HTMLElement | null) ?? document.body;
 
   return (
     <div className="input-with-suffix combo-field" ref={fieldRef}>
@@ -241,9 +235,7 @@ export function ComboBox({
         aria-autocomplete="list"
         aria-expanded={shown}
         aria-controls={listId}
-        aria-activedescendant={
-          shown && active >= 0 ? `${listId}-${active}` : undefined
-        }
+        aria-activedescendant={shown && active >= 0 ? `${listId}-${active}` : undefined}
         autoComplete="off"
         spellCheck={false}
         inputMode={inputMode}
@@ -330,9 +322,7 @@ export function ComboBox({
                   {option === value && <Icon name="check" />}
                 </span>
                 <span className="combo-option-label">
-                  {typed > 0 && (
-                    <span className="combo-match">{option.slice(0, typed)}</span>
-                  )}
+                  {typed > 0 && <span className="combo-match">{option.slice(0, typed)}</span>}
                   {option.slice(typed)}
                 </span>
               </div>

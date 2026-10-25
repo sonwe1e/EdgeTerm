@@ -167,7 +167,12 @@ it does not validate remote transfer engines or other desktop platforms.
 
 ### Static checks
 
-`npm run lint` runs Biome 2.5.15 without formatting. Unused variables/imports and
+`npm run format` applies Biome 2.5.15 formatting; `npm run format:check` checks
+without writing. Both use the managed task runner, accept optional file paths,
+and skip generated `src/bindings.ts`. See [code style and debugging](../docs/code-style.zh-CN.md)
+for scope, editor settings, and the separate rustfmt command.
+
+`npm run lint` runs Biome's lint rules independently of formatting. Unused variables/imports and
 missing React dependencies are errors; explicit `any` is a warning. Extra effect
 dependencies are allowed because retry/revision/layout tokens intentionally trigger
 work. `useStableCallback` is registered as returning a stable event callback;

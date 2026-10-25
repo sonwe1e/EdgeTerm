@@ -58,9 +58,7 @@ export function ClipboardWriteDialog({ session, text, onAllow, onDeny }: Props) 
         <pre className="paste-warning-preview">
           {shown.map((line, index) => (
             <span key={index}>
-              {line.length > PREVIEW_COLUMNS
-                ? `${line.slice(0, PREVIEW_COLUMNS)}…`
-                : line}
+              {line.length > PREVIEW_COLUMNS ? `${line.slice(0, PREVIEW_COLUMNS)}…` : line}
               {"\n"}
             </span>
           ))}
@@ -88,11 +86,7 @@ export function ClipboardWriteDialog({ session, text, onAllow, onDeny }: Props) 
         <button type="button" className="btn" onClick={onDeny}>
           {t("clipboard.deny")}
         </button>
-        <button
-          type="button"
-          className="btn is-primary"
-          onClick={() => onAllow(always)}
-        >
+        <button type="button" className="btn is-primary" onClick={() => onAllow(always)}>
           {t("clipboard.allow")}
         </button>
       </div>

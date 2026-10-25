@@ -67,9 +67,9 @@ class CommandHistory {
 
   record(command: string, host: string) {
     const lastUsed = Date.now();
-    const count = (this.entries.find(
-      (entry) => entry.command === command && entry.host === host,
-    )?.count ?? 0) + 1;
+    const count =
+      (this.entries.find((entry) => entry.command === command && entry.host === host)?.count ?? 0) +
+      1;
     this.change(() => {
       const existing = this.entries.find(
         (entry) => entry.command === command && entry.host === host,
@@ -99,10 +99,7 @@ class CommandHistory {
     if (input.trim().length < MIN_INPUT) return [];
     // The same command may be remembered for several hosts; keep only the
     // best-scoring occurrence of each command text.
-    const byCommand = new Map<
-      string,
-      { score: number; matchStart: number }
-    >();
+    const byCommand = new Map<string, { score: number; matchStart: number }>();
     for (const entry of this.entries) {
       if (entry.command.length < input.length + MIN_GAIN) continue;
       const matchStart = entry.command.indexOf(input);

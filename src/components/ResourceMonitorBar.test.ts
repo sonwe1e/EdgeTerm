@@ -46,8 +46,10 @@ const metrics: ResourceMetrics = {
   ],
   npuStatus: "ok",
 };
-const tab = (id = "ssh"): Tab => ({ info: { id, kind: "ssh", address: id }, state: "connected" }) as Tab;
-const vitals = (host: HTMLElement) => Array.from(host.querySelectorAll(".vital")).map((node) => node.textContent);
+const tab = (id = "ssh"): Tab =>
+  ({ info: { id, kind: "ssh", address: id }, state: "connected" }) as Tab;
+const vitals = (host: HTMLElement) =>
+  Array.from(host.querySelectorAll(".vital")).map((node) => node.textContent);
 const values = (host: HTMLElement, selector: string) =>
   Array.from(host.querySelectorAll(selector)).map((node) => node.textContent);
 
@@ -67,11 +69,13 @@ it("monitors only SSH and turns one sample into a vitals cluster plus a real pop
   const host = document.createElement("div");
   const root = createRoot(host);
   try {
-    await act(async () => root.render(h(ResourceMonitorBar, { tab: { ...tab(), info: { ...tab().info, kind: "local" } } })));
-    expect(api.sampleResources).not.toHaveBeenCalled();
     await act(async () =>
-      root.render(h(ResourceMonitorBar, { tab: tab("ssh") })),
+      root.render(
+        h(ResourceMonitorBar, { tab: { ...tab(), info: { ...tab().info, kind: "local" } } }),
+      ),
     );
+    expect(api.sampleResources).not.toHaveBeenCalled();
+    await act(async () => root.render(h(ResourceMonitorBar, { tab: tab("ssh") })));
     expect(api.sampleResources).toHaveBeenCalledTimes(1);
     // One line, one reading per gauge: CPU, RAM and both detected accelerators.
     expect(vitals(host)).toEqual(["CPU12.4%", "RAM25.0%", "GPU40.0%", "NPU12.0%"]);
@@ -102,22 +106,34 @@ it("monitors only SSH and turns one sample into a vitals cluster plus a real pop
     // The engineering note is gone; only data and controls remain.
     expect(host.textContent).not.toContain("Rates need two samples");
 
-    const interval = () => host.querySelector<HTMLInputElement>('[aria-label="Resource sample interval in seconds"]')!;
+    const interval = () =>
+      host.querySelector<HTMLInputElement>('[aria-label="Resource sample interval in seconds"]')!;
     await act(async () =>
-      useStore.getState().applySettings({ preferences: { "edgeterm.resource-monitor": { enabled: false, intervalSeconds: 7 } } }),
+      useStore.getState().applySettings({
+        preferences: { "edgeterm.resource-monitor": { enabled: false, intervalSeconds: 7 } },
+      }),
     );
     expect(interval().value).toBe("7");
-    expect(host.querySelector<HTMLInputElement>('[aria-label="Monitor current SSH host"]')!.checked).toBe(false);
+    expect(
+      host.querySelector<HTMLInputElement>('[aria-label="Monitor current SSH host"]')!.checked,
+    ).toBe(false);
     await act(async () => useStore.getState().resetSettings());
     expect(interval().value).toBe("2");
-    expect(host.querySelector<HTMLInputElement>('[aria-label="Monitor current SSH host"]')!.checked).toBe(true);
+    expect(
+      host.querySelector<HTMLInputElement>('[aria-label="Monitor current SSH host"]')!.checked,
+    ).toBe(true);
   } finally {
     act(() => root.unmount());
   }
 });
 
 it("keeps the first delta sample unknown instead of drawing a fake zero", async () => {
-  api.sampleResources.mockResolvedValue({ ...metrics, cpuPercent: null, gpus: [], gpuStatus: "unsupported" });
+  api.sampleResources.mockResolvedValue({
+    ...metrics,
+    cpuPercent: null,
+    gpus: [],
+    gpuStatus: "unsupported",
+  });
   const host = document.createElement("div");
   const root = createRoot(host);
   try {
@@ -129,7 +145,13 @@ it("keeps the first delta sample unknown instead of drawing a fake zero", async 
 });
 
 it("keeps an unavailable accelerator visible as a state, never as a reading", async () => {
-  api.sampleResources.mockResolvedValue({ ...metrics, npus: [], npuStatus: "denied", gpus: [], gpuStatus: "unsupported" });
+  api.sampleResources.mockResolvedValue({
+    ...metrics,
+    npus: [],
+    npuStatus: "denied",
+    gpus: [],
+    gpuStatus: "unsupported",
+  });
   const host = document.createElement("div");
   const root = createRoot(host);
   try {
@@ -162,7 +184,11 @@ it("reports an unsupported host as a state rather than an empty cluster", async 
 it("keeps one in-flight sample and cancels switched or hidden hosts without stale repaint", async () => {
   vi.useFakeTimers();
   let old!: (value: ResourceMetrics) => void;
-  api.sampleResources.mockReturnValueOnce(new Promise((resolve) => { old = resolve; }));
+  api.sampleResources.mockReturnValueOnce(
+    new Promise((resolve) => {
+      old = resolve;
+    }),
+  );
   const host = document.createElement("div");
   const root = createRoot(host);
   try {

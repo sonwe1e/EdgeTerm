@@ -35,7 +35,9 @@ function arg(name, fallback) {
 
 const variant = arg("--variant");
 if (variant !== "candidate" && variant !== "baseline") {
-  console.error("usage: node scripts/measure-file-icons.mjs --variant candidate|baseline [--samples N] [--out file]");
+  console.error(
+    "usage: node scripts/measure-file-icons.mjs --variant candidate|baseline [--samples N] [--out file]",
+  );
   process.exit(2);
 }
 const samples = Number(arg("--samples", "5"));
@@ -64,10 +66,7 @@ if (variantProbe === "baseline") {
     cwd: root,
     encoding: "utf8",
   });
-  const rebased = original.replace(
-    'from "./types"',
-    'from "../../../src/types"',
-  );
+  const rebased = original.replace('from "./types"', 'from "../../../src/types"');
   const baselineDir = join(root, ".tmp", "icon-probe", "baseline-src");
   await mkdir(baselineDir, { recursive: true });
   baselinePath = join(baselineDir, "fileIcons.ts");
@@ -145,9 +144,7 @@ const MIME = {
 const servedHtml = join(work, "dist", ".tmp", "icon-probe", variant, "probe.html");
 const server = createServer((req, res) => {
   const url = (req.url ?? "/").split("?")[0];
-  const path = url === "/"
-    ? servedHtml
-    : join(work, "dist", decodeURIComponent(url.slice(1)));
+  const path = url === "/" ? servedHtml : join(work, "dist", decodeURIComponent(url.slice(1)));
   readFile(path)
     .then((body) => {
       res.setHeader(
@@ -170,9 +167,7 @@ let browser;
 const samplesOut = [];
 const pageErrors = [];
 try {
-  browser = await chromium.launch(
-    channel ? { channel, headless: true } : { headless: true },
-  );
+  browser = await chromium.launch(channel ? { channel, headless: true } : { headless: true });
   for (let i = 0; i < samples; i += 1) {
     const context = await browser.newContext({
       viewport: { width: 1100, height: 720 },
@@ -185,13 +180,18 @@ try {
         timeout: 30000,
         polling: 50,
       })
-      .then(() => true, () => false);
+      .then(
+        () => true,
+        () => false,
+      );
     if (!settled) {
-      const state = await page.evaluate(() => ({
-        rows: document.querySelectorAll(".ftp-file-row").length,
-        imgs: document.querySelectorAll(".ftp-file-row img").length,
-        rootChildren: document.getElementById("root")?.children.length ?? -1,
-      })).catch(() => null);
+      const state = await page
+        .evaluate(() => ({
+          rows: document.querySelectorAll(".ftp-file-row").length,
+          imgs: document.querySelectorAll(".ftp-file-row img").length,
+          rootChildren: document.getElementById("root")?.children.length ?? -1,
+        }))
+        .catch(() => null);
       throw new Error(
         `sample ${i + 1}: the probe never finished within 30s; pageErrors=${JSON.stringify(pageErrors)} dom=${JSON.stringify(state)}`,
       );

@@ -25,12 +25,7 @@ export function isSshTransport(kind: SessionKind): boolean {
  * styles.css plus an entry in the xterm, search and semantic palettes; the
  * serialX pair is ported from that project's own workbench design system.
  */
-export const THEME_MODES = [
-  "dark",
-  "light",
-  "serialx-dark",
-  "serialx-light",
-] as const;
+export const THEME_MODES = ["dark", "light", "serialx-dark", "serialx-light"] as const;
 
 export type ThemeMode = (typeof THEME_MODES)[number];
 
@@ -83,8 +78,9 @@ export type HostKeyChange = Wire.HostKeyChange;
 export type AuthPrompt = Wire.AuthPrompt;
 
 /** What open_session produced: a live session, or a decision for the user. */
-export type OpenSessionOutcome = Exclude<Wire.OpenSessionOutcome, { status: "connected" }> |
-  (Extract<Wire.OpenSessionOutcome, { status: "connected" }> & { info: SessionInfo });
+export type OpenSessionOutcome =
+  | Exclude<Wire.OpenSessionOutcome, { status: "connected" }>
+  | (Extract<Wire.OpenSessionOutcome, { status: "connected" }> & { info: SessionInfo });
 
 export type FileEntry = Wire.FileEntry;
 

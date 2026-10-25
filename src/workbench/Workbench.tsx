@@ -62,8 +62,7 @@ export function Workbench() {
   const refreshFiles = useWorkbench((state) => state.refreshFiles);
   void connectionSignature;
 
-  const workspace =
-    data.workspaces.find((item) => item.id === activeWorkspaceId) ?? null;
+  const workspace = data.workspaces.find((item) => item.id === activeWorkspaceId) ?? null;
   const experiments = workspace ? experimentsOf(data, workspace.id) : [];
   const experiment =
     experiments.find((item) => item.id === activeExperimentId) ?? experiments[0] ?? null;
@@ -75,14 +74,18 @@ export function Workbench() {
   const run = data.runs.find((item) => item.id === activeRunId) ?? runs[0] ?? null;
 
   const [projectDialog, setProjectDialog] = useState<{ workspace: Workspace | null } | null>(null);
-  const [experimentDialog, setExperimentDialog] = useState<{ experiment: Experiment | null } | null>(null);
+  const [experimentDialog, setExperimentDialog] = useState<{
+    experiment: Experiment | null;
+  } | null>(null);
   const [runDialog, setRunDialog] = useState<{
     prefill: { command: string; env: string; gpu: string; resumedFrom: string } | null;
   } | null>(null);
   const [comparePath, setComparePath] = useState<string | null>(null);
   const [diffPath, setDiffPath] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<
-    { kind: "workspace"; workspace: Workspace } | { kind: "experiment"; experiment: Experiment } | null
+    | { kind: "workspace"; workspace: Workspace }
+    | { kind: "experiment"; experiment: Experiment }
+    | null
   >(null);
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -104,9 +107,7 @@ export function Workbench() {
       if (key === "p" && !event.shiftKey) {
         event.preventDefault();
         const state = useWorkbench.getState();
-        const current = state.data.workspaces.find(
-          (item) => item.id === state.activeWorkspaceId,
-        );
+        const current = state.data.workspaces.find((item) => item.id === state.activeWorkspaceId);
         if (current) void state.refreshFiles(current.id);
         setQuickOpenOpen(true);
       } else if (key === "f" && event.shiftKey) {
@@ -168,9 +169,7 @@ export function Workbench() {
   }, [notice, setNotice]);
 
   const quickFiles = listing;
-  const quickError = workspace
-    ? (filesErrors[`${workspace.id}:${root}`] ?? null)
-    : null;
+  const quickError = workspace ? (filesErrors[`${workspace.id}:${root}`] ?? null) : null;
 
   const openQuickOpen = () => {
     if (!workspace) {
@@ -200,7 +199,8 @@ export function Workbench() {
       const tab = useStore
         .getState()
         .tabs.find((item) => item.workspaceId === target.workspaceId && item.state === "connected");
-      if (tab) getController(tab.info.id)?.writeText(`tmux attach -t ${shellQuote(target.taskName)}\n`);
+      if (tab)
+        getController(tab.info.id)?.writeText(`tmux attach -t ${shellQuote(target.taskName)}\n`);
       setView("terminals");
       setNotice(t("wb.terminalOpened", { root: target.root }));
     } catch (error) {
@@ -224,9 +224,7 @@ export function Workbench() {
       resumedFrom: runDialog?.prefill?.resumedFrom ?? null,
     });
     setRunDialog(null);
-    setNotice(
-      created.status === "unknown" ? t("wb.runUncertain") : t("wb.runStarted"),
-    );
+    setNotice(created.status === "unknown" ? t("wb.runUncertain") : t("wb.runStarted"));
     setActiveRun(created.id);
     setTimeout(() => void refreshRun(created.id), 1200);
   };
@@ -282,7 +280,11 @@ export function Workbench() {
           <Icon name="server" />
           <h2>{t("wb.noProjects")}</h2>
           <p>{t("wb.noProjectsHint")}</p>
-          <button type="button" className="btn is-primary" onClick={() => setProjectDialog({ workspace: null })}>
+          <button
+            type="button"
+            className="btn is-primary"
+            onClick={() => setProjectDialog({ workspace: null })}
+          >
             {t("wb.createFirst")}
           </button>
         </div>
@@ -303,7 +305,9 @@ export function Workbench() {
               onActivateExperiment={activateExperiment}
               onNewExperiment={() => setExperimentDialog({ experiment: null })}
               onEditExperiment={(item) => setExperimentDialog({ experiment: item })}
-              onDeleteExperiment={(item) => setPendingDelete({ kind: "experiment", experiment: item })}
+              onDeleteExperiment={(item) =>
+                setPendingDelete({ kind: "experiment", experiment: item })
+              }
               onSelectRun={(item) => setActiveRun(item.id)}
               onNewRun={() => {
                 if (!workspace) return;
@@ -323,7 +327,11 @@ export function Workbench() {
               {workspace && !connected && (
                 <div className="wb-banner is-warning">
                   <span>{t("wb.connectHint")}</span>
-                  <button type="button" className="btn is-primary" onClick={() => void connect(workspace.id)}>
+                  <button
+                    type="button"
+                    className="btn is-primary"
+                    onClick={() => void connect(workspace.id)}
+                  >
                     {t("wb.connect")}
                   </button>
                 </div>
@@ -370,7 +378,12 @@ export function Workbench() {
       {notice && (
         <div className="wb-notice" role="status">
           <span>{notice}</span>
-          <button type="button" className="wb-icon-button" aria-label={t("common.close")} onClick={() => setNotice(null)}>
+          <button
+            type="button"
+            className="wb-icon-button"
+            aria-label={t("common.close")}
+            onClick={() => setNotice(null)}
+          >
             ×
           </button>
         </div>
@@ -461,7 +474,9 @@ export function Workbench() {
           onClose={() => setPendingDelete(null)}
         >
           <div className="dialog-header">
-            {pendingDelete.kind === "workspace" ? t("wb.deleteProjectTitle") : t("wb.deleteExperimentTitle")}
+            {pendingDelete.kind === "workspace"
+              ? t("wb.deleteProjectTitle")
+              : t("wb.deleteExperimentTitle")}
           </div>
           <div className="dialog-body confirm-dialog-body">
             <p>
@@ -496,7 +511,6 @@ export function Workbench() {
           </div>
         </ModalDialog>
       )}
-
     </div>
   );
 }
@@ -560,19 +574,45 @@ function Header({
         </div>
       )}
       <div className="wb-top-actions">
-        <button type="button" className={`btn wb-mini${workspace ? " wb-secondary" : ""}`} onClick={onNewProject}>
+        <button
+          type="button"
+          className={`btn wb-mini${workspace ? " wb-secondary" : ""}`}
+          onClick={onNewProject}
+        >
           <Icon name="add" /> {t("wb.newProject")}
         </button>
-        <button type="button" className={`btn wb-mini${workspace ? "" : " wb-secondary"}`} disabled={!workspace} onClick={onNewRun}>
+        <button
+          type="button"
+          className={`btn wb-mini${workspace ? "" : " wb-secondary"}`}
+          disabled={!workspace}
+          onClick={onNewRun}
+        >
           <Icon name="play" /> {t("wb.newRun")}
         </button>
-        <button type="button" className="wb-icon-button wb-secondary" title={t("wb.quickOpen")} disabled={!workspace} onClick={onQuickOpen}>
+        <button
+          type="button"
+          className="wb-icon-button wb-secondary"
+          title={t("wb.quickOpen")}
+          disabled={!workspace}
+          onClick={onQuickOpen}
+        >
           <Icon name="search" />
         </button>
-        <button type="button" className="wb-icon-button wb-secondary" title={t("wb.search")} disabled={!workspace} onClick={onSearch}>
+        <button
+          type="button"
+          className="wb-icon-button wb-secondary"
+          title={t("wb.search")}
+          disabled={!workspace}
+          onClick={onSearch}
+        >
           <Icon name="find-in-files" />
         </button>
-        <button type="button" className="btn wb-mini wb-secondary" disabled={!workspace} onClick={onOpenTerminal}>
+        <button
+          type="button"
+          className="btn wb-mini wb-secondary"
+          disabled={!workspace}
+          onClick={onOpenTerminal}
+        >
           <Icon name="terminal" /> {t("wb.openTerminal")}
         </button>
         <button
@@ -587,23 +627,48 @@ function Header({
         <button type="button" className="btn wb-mini" onClick={onTerminals}>
           {t("wb.backToTerminals")}
         </button>
-        <button type="button" className={`wb-icon-button wb-more${draftCount > 0 ? " is-attention" : ""}`}
-          aria-label={t("wb.moreActions")} title={t("wb.moreActions")}
-          aria-haspopup="menu" aria-expanded={more !== null}
+        <button
+          type="button"
+          className={`wb-icon-button wb-more${draftCount > 0 ? " is-attention" : ""}`}
+          aria-label={t("wb.moreActions")}
+          title={t("wb.moreActions")}
+          aria-haspopup="menu"
+          aria-expanded={more !== null}
           onClick={(event) => {
             const rect = event.currentTarget.getBoundingClientRect();
             setMore(more ? null : { x: rect.right, y: rect.bottom });
-          }}>
+          }}
+        >
           <Icon name="ellipsis" />
         </button>
       </div>
-      {more && <ContextMenu {...more} align="right" onClose={() => setMore(null)} items={[
-        { label: t("wb.newProject"), icon: "add", action: onNewProject },
-        { label: t("wb.quickOpen"), icon: "search", disabled: !workspace, action: onQuickOpen },
-        { label: t("wb.search"), icon: "find-in-files", disabled: !workspace, action: onSearch },
-        { label: t("wb.openTerminal"), icon: "terminal", disabled: !workspace, action: onOpenTerminal },
-        { label: `${t("wb.drafts")}${draftCount > 0 ? ` (${draftCount})` : ""}`, action: onDrafts },
-      ]} />}
+      {more && (
+        <ContextMenu
+          {...more}
+          align="right"
+          onClose={() => setMore(null)}
+          items={[
+            { label: t("wb.newProject"), icon: "add", action: onNewProject },
+            { label: t("wb.quickOpen"), icon: "search", disabled: !workspace, action: onQuickOpen },
+            {
+              label: t("wb.search"),
+              icon: "find-in-files",
+              disabled: !workspace,
+              action: onSearch,
+            },
+            {
+              label: t("wb.openTerminal"),
+              icon: "terminal",
+              disabled: !workspace,
+              action: onOpenTerminal,
+            },
+            {
+              label: `${t("wb.drafts")}${draftCount > 0 ? ` (${draftCount})` : ""}`,
+              action: onDrafts,
+            },
+          ]}
+        />
+      )}
     </header>
   );
 }

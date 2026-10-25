@@ -24,17 +24,13 @@ import { showPointer } from "./api";
 const pointer = () => showPointer().catch(() => undefined);
 
 /** Picks files or a directory; see `plugin-dialog`'s `open`. */
-export async function open<T extends OpenDialogOptions>(
-  options?: T,
-): Promise<OpenDialogReturn<T>> {
+export async function open<T extends OpenDialogOptions>(options?: T): Promise<OpenDialogReturn<T>> {
   await pointer();
   return openNative(options);
 }
 
 /** Picks where to write a file; see `plugin-dialog`'s `save`. */
-export async function save(
-  options?: SaveDialogOptions,
-): Promise<string | null> {
+export async function save(options?: SaveDialogOptions): Promise<string | null> {
   await pointer();
   return saveNative(options);
 }

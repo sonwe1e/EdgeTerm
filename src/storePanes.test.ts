@@ -2,10 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The store reaches platform.ts through the shortcut table, and IS_MAC is a
 // build-time constant vitest does not define.
-vi.mock("./platform", () => ({ HAS_TRAY: true,
-  IS_MAC: true,
-  IS_WINDOWS: false,
-}));
+vi.mock("./platform", () => ({ HAS_TRAY: true, IS_MAC: true, IS_WINDOWS: false }));
 
 import { paneIds } from "./layout";
 import { useStore, type Tab } from "./store";

@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./platform", () => ({ HAS_TRAY: true,
-  IS_MAC: true,
-  IS_WINDOWS: false,
-}));
+vi.mock("./platform", () => ({ HAS_TRAY: true, IS_MAC: true, IS_WINDOWS: false }));
 
 import type { CommandSuggestion } from "./history";
 import { TerminalController } from "./terminal";
@@ -38,11 +35,19 @@ function createController() {
     keyboard: Pick<PopupState, "filterKey">;
   };
   const popup: PopupState = {
-    get candidates() { return commands.candidates; },
-    set candidates(value) { commands.candidates = value; },
-    get popupIndex() { return commands.popupIndex; },
-    set popupIndex(value) { commands.popupIndex = value; },
-    filterKey: event => keyboard.filterKey(event),
+    get candidates() {
+      return commands.candidates;
+    },
+    set candidates(value) {
+      commands.candidates = value;
+    },
+    get popupIndex() {
+      return commands.popupIndex;
+    },
+    set popupIndex(value) {
+      commands.popupIndex = value;
+    },
+    filterKey: (event) => keyboard.filterKey(event),
   };
   popup.candidates = [
     { command: "git status", matchStart: 0 },

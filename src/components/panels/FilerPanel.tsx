@@ -65,8 +65,7 @@ import { VirtualFileRows } from "../VirtualFileRows";
  * Stable id of a rendered option. A path may hold spaces or slashes, which are
  * not allowed in an id, so it is percent-encoded.
  */
-const filerOptionId = (path: string): string =>
-  `filer-option-${encodeURIComponent(path)}`;
+const filerOptionId = (path: string): string => `filer-option-${encodeURIComponent(path)}`;
 
 /**
  * How the keyboard cursor scrolls a row into view. Smooth is the default
@@ -236,8 +235,7 @@ function FilerPanelBase() {
     const columns = columnsRef.current;
     if (!list || !columns) return;
     const sync = () => {
-      columns.style.transform =
-        list.scrollLeft > 0 ? `translateX(${-list.scrollLeft}px)` : "";
+      columns.style.transform = list.scrollLeft > 0 ? `translateX(${-list.scrollLeft}px)` : "";
     };
     list.addEventListener("scroll", sync, { passive: true });
     sync();
@@ -592,8 +590,7 @@ function FilerPanelBase() {
   };
 
   const onListKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if ((event.target as HTMLElement).closest("input, textarea, [contenteditable=true]"))
-      return;
+    if ((event.target as HTMLElement).closest("input, textarea, [contenteditable=true]")) return;
     // Escape answers even while the panel is busy: a listing, delete or upload
     // in flight must not leave the user holding a selection they cannot take
     // back. Everything else waits — the rows it would act on are not settled.
@@ -629,9 +626,7 @@ function FilerPanelBase() {
         activePathRef.current ?? (selected.size === 1 ? selectedEntries[0]?.path : null);
       const entry =
         focused === null ? undefined : sortedEntries.find((item) => item.path === focused);
-      const target = entry
-        ? document.getElementById(filerOptionId(entry.path))
-        : listRef.current;
+      const target = entry ? document.getElementById(filerOptionId(entry.path)) : listRef.current;
       const rect = target?.getBoundingClientRect();
       // A real contextmenu on the row (or the list) so the one handler that
       // owns the menu answers it, anchored where the cursor already is. A
@@ -701,14 +696,8 @@ function FilerPanelBase() {
       case "PageUp":
       case "PageDown": {
         event.preventDefault();
-        const page = Math.max(
-          1,
-          Math.floor((listRef.current?.clientHeight ?? 0) / rowHeight),
-        );
-        moveActive(
-          (active < 0 ? 0 : active) + (event.key === "PageDown" ? page : -page),
-          mode,
-        );
+        const page = Math.max(1, Math.floor((listRef.current?.clientHeight ?? 0) / rowHeight));
+        moveActive((active < 0 ? 0 : active) + (event.key === "PageDown" ? page : -page), mode);
         return;
       }
       case "F2": {
@@ -740,7 +729,7 @@ function FilerPanelBase() {
           active >= 0
             ? activePathRef.current
             : selected.size === 1
-              ? selectedEntries[0]?.path ?? null
+              ? (selectedEntries[0]?.path ?? null)
               : null;
         const entry =
           focused === null ? undefined : sortedEntries.find((item) => item.path === focused);
@@ -785,14 +774,8 @@ function FilerPanelBase() {
               footer's progress bar is small and easy to miss, and this is the
               one place the user is already looking. */}
           {transfer && (
-            <span
-              className="panel-badge is-transfer"
-              role="status"
-              title={transferLabel}
-            >
-              {transferPercent !== null
-                ? `${transferPercent}%`
-                : t("filer.transferring")}
+            <span className="panel-badge is-transfer" role="status" title={transferLabel}>
+              {transferPercent !== null ? `${transferPercent}%` : t("filer.transferring")}
             </span>
           )}
         </div>
@@ -1000,96 +983,104 @@ function FilerPanelBase() {
             wider than the panel, and a translated border would leave the
             panel's right edge unruled. */}
         <div className="filer-columns" ref={columnsRef}>
-        <div className="filer-col-cell is-name">
-          <button
-            type="button"
-            className={`filer-col-name${sort.key === "name" ? " is-sorted" : ""}`}
-            data-sort-key="name"
-            onClick={() => sortBy("name")}
-            aria-sort={
-              sort.key === "name" ? (sort.direction === "asc" ? "ascending" : "descending") : "none"
-            }
-          >
-            {t("session.name")}
-            <SortIndicator sort={sort} column="name" />
-            <span className="sr-only">{t("filer.sortByName")}</span>
-          </button>
-          <FilerColumnResizer
-            label={t("filer.resizeNameColumn")}
-            onStart={(startWidth) => {
-              // The name track follows the layout until someone drags it;
-              // pin it at the width it currently renders at, so the first
-              // frame of the drag moves the boundary instead of being
-              // absorbed by the flexible track.
-              setColumns((current) =>
-                current.name === null
-                  ? { ...current, name: clampColumnWidth(startWidth, NAME_MAX_PX) }
-                  : current,
-              );
-            }}
-            onResize={(start, widenBy) =>
-              setColumns((current) => ({
-                ...current,
-                name: clampColumnWidth(start + widenBy, NAME_MAX_PX),
-              }))
-            }
-            onFit={() => fitColumn("name")}
-          />
-        </div>
-        <div className="filer-col-cell is-size">
-          <FilerColumnResizer
-            label={t("filer.resizeSizeColumn")}
-            onResize={(start, widenBy) =>
-              setColumns((current) => ({
-                ...current,
-                size: clampColumnWidth(start + widenBy),
-              }))
-            }
-            onFit={() => fitColumn("size")}
-          />
-          <button
-            type="button"
-            className={`filer-col-size${sort.key === "size" ? " is-sorted" : ""}`}
-            data-sort-key="size"
-            onClick={() => sortBy("size")}
-            aria-sort={
-              sort.key === "size" ? (sort.direction === "asc" ? "ascending" : "descending") : "none"
-            }
-          >
-            {t("filer.size")}
-            <SortIndicator sort={sort} column="size" />
-            <span className="sr-only">{t("filer.sortBySize")}</span>
-          </button>
-        </div>
-        <div className="filer-col-cell is-date">
-          <FilerColumnResizer
-            label={t("filer.resizeDateColumn")}
-            onResize={(start, widenBy) =>
-              setColumns((current) => ({
-                ...current,
-                date: clampColumnWidth(start + widenBy),
-              }))
-            }
-            onFit={() => fitColumn("date")}
-          />
-          <button
-            type="button"
-            className={`filer-col-date${sort.key === "modified" ? " is-sorted" : ""}`}
-            data-sort-key="modified"
-            onClick={() => sortBy("modified")}
-            aria-sort={
-              sort.key === "modified"
-                ? sort.direction === "asc"
-                  ? "ascending"
-                  : "descending"
-                : "none"
-            }
-          >
-            {t("filer.modified")}
-            <SortIndicator sort={sort} column="modified" />
-            <span className="sr-only">{t("filer.sortByModified")}</span>
-          </button>
-        </div>
+          <div className="filer-col-cell is-name">
+            <button
+              type="button"
+              className={`filer-col-name${sort.key === "name" ? " is-sorted" : ""}`}
+              data-sort-key="name"
+              onClick={() => sortBy("name")}
+              aria-sort={
+                sort.key === "name"
+                  ? sort.direction === "asc"
+                    ? "ascending"
+                    : "descending"
+                  : "none"
+              }
+            >
+              {t("session.name")}
+              <SortIndicator sort={sort} column="name" />
+              <span className="sr-only">{t("filer.sortByName")}</span>
+            </button>
+            <FilerColumnResizer
+              label={t("filer.resizeNameColumn")}
+              onStart={(startWidth) => {
+                // The name track follows the layout until someone drags it;
+                // pin it at the width it currently renders at, so the first
+                // frame of the drag moves the boundary instead of being
+                // absorbed by the flexible track.
+                setColumns((current) =>
+                  current.name === null
+                    ? { ...current, name: clampColumnWidth(startWidth, NAME_MAX_PX) }
+                    : current,
+                );
+              }}
+              onResize={(start, widenBy) =>
+                setColumns((current) => ({
+                  ...current,
+                  name: clampColumnWidth(start + widenBy, NAME_MAX_PX),
+                }))
+              }
+              onFit={() => fitColumn("name")}
+            />
+          </div>
+          <div className="filer-col-cell is-size">
+            <FilerColumnResizer
+              label={t("filer.resizeSizeColumn")}
+              onResize={(start, widenBy) =>
+                setColumns((current) => ({
+                  ...current,
+                  size: clampColumnWidth(start + widenBy),
+                }))
+              }
+              onFit={() => fitColumn("size")}
+            />
+            <button
+              type="button"
+              className={`filer-col-size${sort.key === "size" ? " is-sorted" : ""}`}
+              data-sort-key="size"
+              onClick={() => sortBy("size")}
+              aria-sort={
+                sort.key === "size"
+                  ? sort.direction === "asc"
+                    ? "ascending"
+                    : "descending"
+                  : "none"
+              }
+            >
+              {t("filer.size")}
+              <SortIndicator sort={sort} column="size" />
+              <span className="sr-only">{t("filer.sortBySize")}</span>
+            </button>
+          </div>
+          <div className="filer-col-cell is-date">
+            <FilerColumnResizer
+              label={t("filer.resizeDateColumn")}
+              onResize={(start, widenBy) =>
+                setColumns((current) => ({
+                  ...current,
+                  date: clampColumnWidth(start + widenBy),
+                }))
+              }
+              onFit={() => fitColumn("date")}
+            />
+            <button
+              type="button"
+              className={`filer-col-date${sort.key === "modified" ? " is-sorted" : ""}`}
+              data-sort-key="modified"
+              onClick={() => sortBy("modified")}
+              aria-sort={
+                sort.key === "modified"
+                  ? sort.direction === "asc"
+                    ? "ascending"
+                    : "descending"
+                  : "none"
+              }
+            >
+              {t("filer.modified")}
+              <SortIndicator sort={sort} column="modified" />
+              <span className="sr-only">{t("filer.sortByModified")}</span>
+            </button>
+          </div>
         </div>
       </div>
 

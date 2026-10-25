@@ -23,9 +23,7 @@ interface Props {
 export function AuthPromptDialog({ prompt, onDone }: Props) {
   const firstField = useRef<HTMLInputElement>(null);
   const t = useT();
-  const [answers, setAnswers] = useState<string[]>(() =>
-    prompt.prompts.map(() => ""),
-  );
+  const [answers, setAnswers] = useState<string[]>(() => prompt.prompts.map(() => ""));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,9 +60,7 @@ export function AuthPromptDialog({ prompt, onDone }: Props) {
       onClose={cancel}
       dismissable={false}
     >
-      <form
-        onSubmit={(event) => void submit(event)}
-      >
+      <form onSubmit={(event) => void submit(event)}>
         <div className="dialog-header" id="auth-prompt-title">
           {title}
         </div>
@@ -94,9 +90,7 @@ export function AuthPromptDialog({ prompt, onDone }: Props) {
                 disabled={busy}
                 onChange={(event) =>
                   setAnswers((previous) =>
-                    previous.map((answer, at) =>
-                      at === index ? event.target.value : answer,
-                    ),
+                    previous.map((answer, at) => (at === index ? event.target.value : answer)),
                   )
                 }
               />
@@ -109,12 +103,7 @@ export function AuthPromptDialog({ prompt, onDone }: Props) {
           <span className="confirm-dialog-keys">
             <kbd>Esc</kbd> {t("keys.cancel")}
           </span>
-          <button
-            type="button"
-            className="btn"
-            onClick={cancel}
-            disabled={busy}
-          >
+          <button type="button" className="btn" onClick={cancel} disabled={busy}>
             {t("common.cancel")}
           </button>
           <button type="submit" className="btn is-primary" disabled={busy}>
@@ -125,4 +114,3 @@ export function AuthPromptDialog({ prompt, onDone }: Props) {
     </ModalDialog>
   );
 }
-

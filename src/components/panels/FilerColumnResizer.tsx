@@ -210,22 +210,19 @@ export function FilerColumnResizer({
   // Keyboard resizing reads the live width rather than a drag's start value,
   // so repeated presses compound from wherever the column currently sits:
   // ArrowRight widens the column, the same direction the pointer drags it.
-  const handleKeyDown = useCallback(
-    (event: ReactKeyboardEvent<HTMLDivElement>) => {
-      if (drag.current) return;
-      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-      event.preventDefault();
-      const cell = event.currentTarget.parentElement;
-      if (!cell) return;
-      const step = event.shiftKey ? KEY_STEP_LARGE : KEY_STEP;
-      const width = cell.getBoundingClientRect().width;
-      // A keypress is its own adjustment, so the panel gets the same chance
-      // to pin a following column that a pointer drag gives it.
-      start.current?.(width);
-      latest.current(width, event.key === "ArrowRight" ? step : -step);
-    },
-    [],
-  );
+  const handleKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (drag.current) return;
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const cell = event.currentTarget.parentElement;
+    if (!cell) return;
+    const step = event.shiftKey ? KEY_STEP_LARGE : KEY_STEP;
+    const width = cell.getBoundingClientRect().width;
+    // A keypress is its own adjustment, so the panel gets the same chance
+    // to pin a following column that a pointer drag gives it.
+    start.current?.(width);
+    latest.current(width, event.key === "ArrowRight" ? step : -step);
+  }, []);
 
   const handleDoubleClick = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {

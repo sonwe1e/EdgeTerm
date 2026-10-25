@@ -18,13 +18,7 @@ interface Props {
  * (Cancel) holds initial focus, so Enter on an untouched dialog cancels; the
  * danger button still answers Enter once it is focused itself.
  */
-export function DeleteEntryDialog({
-  entry,
-  entries,
-  location,
-  onConfirm,
-  onCancel,
-}: Props) {
+export function DeleteEntryDialog({ entry, entries, location, onConfirm, onCancel }: Props) {
   const t = useT();
   const language = useStore((s) => s.language);
   const multiple = entries && entries.length > 1;
@@ -46,9 +40,7 @@ export function DeleteEntryDialog({
         ? t("deleteEntry.hintLink")
         : t("deleteEntry.hintFile");
   const dangerLabel =
-    !multiple && kind === "folder"
-      ? t("deleteEntry.deleteFolder")
-      : t("common.delete");
+    !multiple && kind === "folder" ? t("deleteEntry.deleteFolder") : t("common.delete");
   const kindWord =
     kind === "folder"
       ? t("deleteEntry.kindFolder")
@@ -70,14 +62,18 @@ export function DeleteEntryDialog({
       </div>
       <div className="dialog-body confirm-dialog-body">
         <span>
-          {multiple ? t("deleteEntry.confirmMany", { count: entries.length }) : <>
-            {/* Chinese joins the verb straight to the kind word; English
+          {multiple ? (
+            t("deleteEntry.confirmMany", { count: entries.length })
+          ) : (
+            <>
+              {/* Chinese joins the verb straight to the kind word; English
                 keeps the space it has always had. */}
-            {t("deleteEntry.delete")}
-            {language === "zh-CN" ? "" : " "}
-            {kindWord} <strong>{entry.name}</strong>
-            {t("common.question")}
-          </>}
+              {t("deleteEntry.delete")}
+              {language === "zh-CN" ? "" : " "}
+              {kindWord} <strong>{entry.name}</strong>
+              {t("common.question")}
+            </>
+          )}
         </span>
         <span className={`confirm-dialog-target${multiple ? " is-multiple" : ""}`}>
           {location} · {multiple ? entries.map((item) => item.path).join("\n") : entry.path}
@@ -91,11 +87,7 @@ export function DeleteEntryDialog({
         <button type="button" className="btn" onClick={onCancel}>
           {t("common.cancel")}
         </button>
-        <button
-          type="button"
-          className="btn is-danger"
-          onClick={onConfirm}
-        >
+        <button type="button" className="btn is-danger" onClick={onConfirm}>
           {dangerLabel}
         </button>
       </div>

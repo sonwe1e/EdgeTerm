@@ -17,9 +17,11 @@ beforeEach(() => {
 
 async function pendingHistory() {
   let finish!: (entries: CommandHistoryEntry[]) => void;
-  vi.mocked(api.listCommandHistory).mockReturnValueOnce(new Promise((resolve) => {
-    finish = resolve;
-  }));
+  vi.mocked(api.listCommandHistory).mockReturnValueOnce(
+    new Promise((resolve) => {
+      finish = resolve;
+    }),
+  );
   const { commandHistory } = await import("./history");
   commandHistory.load();
   return { history: commandHistory, finish };
@@ -36,8 +38,11 @@ it("keeps newly recorded commands when a delayed history snapshot arrives", asyn
   history.record("git log --oneline", "ssh:first");
   finish(structuredClone(oldEntries));
   await Promise.resolve();
-  expect(history.suggest("git", "ssh:first").map((entry) => entry.command))
-    .toEqual(["git log --oneline", "git diff", "git status"]);
+  expect(history.suggest("git", "ssh:first").map((entry) => entry.command)).toEqual([
+    "git log --oneline",
+    "git diff",
+    "git status",
+  ]);
   expect(api.recordCommand).toHaveBeenCalledTimes(1);
 });
 
@@ -46,8 +51,7 @@ it("does not restore a forgotten command from any host after a delayed snapshot"
   history.remove("git status");
   finish(structuredClone(oldEntries));
   await Promise.resolve();
-  expect(history.suggest("git", "ssh:first"))
-    .toEqual([{ command: "git diff", matchStart: 0 }]);
+  expect(history.suggest("git", "ssh:first")).toEqual([{ command: "git diff", matchStart: 0 }]);
   expect(api.deleteCommandHistory).toHaveBeenCalledTimes(1);
 });
 
@@ -58,8 +62,9 @@ it("keeps clear and subsequent recording in order when the initial snapshot arri
   history.record("git log --oneline", "ssh:first");
   finish(structuredClone(oldEntries));
   await Promise.resolve();
-  expect(history.suggest("git", "ssh:first"))
-    .toEqual([{ command: "git log --oneline", matchStart: 0 }]);
+  expect(history.suggest("git", "ssh:first")).toEqual([
+    { command: "git log --oneline", matchStart: 0 },
+  ]);
   expect(api.clearCommandHistory).toHaveBeenCalledTimes(1);
   expect(api.recordCommand).toHaveBeenCalledTimes(2);
 });
@@ -75,8 +80,10 @@ it("keeps a newer snapshot timestamp when the snapshot already contains local re
       { command: "git diff", host: "ssh:first", count: 1, lastUsed: 150 },
     ]);
     await Promise.resolve();
-    expect(history.suggest("git", "ssh:first").map((entry) => entry.command))
-      .toEqual(["git status", "git diff"]);
+    expect(history.suggest("git", "ssh:first").map((entry) => entry.command)).toEqual([
+      "git status",
+      "git diff",
+    ]);
     expect(api.recordCommand).toHaveBeenCalledTimes(2);
   } finally {
     clock.mockRestore();
@@ -93,7 +100,9 @@ it("retries a failed load and accepts the backend snapshot after a failed clear"
   vi.mocked(api.listCommandHistory).mockResolvedValueOnce(structuredClone(oldEntries));
   history.load();
   await Promise.resolve();
-  expect(history.suggest("git", "ssh:first").map((entry) => entry.command))
-    .toEqual(["git diff", "git status"]);
+  expect(history.suggest("git", "ssh:first").map((entry) => entry.command)).toEqual([
+    "git diff",
+    "git status",
+  ]);
   expect(api.listCommandHistory).toHaveBeenCalledTimes(2);
 });

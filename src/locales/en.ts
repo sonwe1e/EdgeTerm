@@ -18,8 +18,10 @@ export const en = {
 
   "menu.newSession": "New Session…",
   "empty.newSession": "New Session",
-  "empty.hint": "Press {key} for a new session, or double-click “{localShell}” in the Session panel — no setup needed.",
-  "empty.hintNoKey": "Open a new session, or double-click “{localShell}” in the Session panel — no setup needed.",
+  "empty.hint":
+    "Press {key} for a new session, or double-click “{localShell}” in the Session panel — no setup needed.",
+  "empty.hintNoKey":
+    "Open a new session, or double-click “{localShell}” in the Session panel — no setup needed.",
   "menu.previousSession": "Previous Session",
   "menu.nextSession": "Next Session",
   "menu.previousPane": "Previous Pane",
@@ -123,7 +125,8 @@ export const en = {
   "status.ready": "Ready",
   "status.dismissError": "Dismiss error",
   "status.connectionCancelled": "Connection cancelled",
-  "status.recordingStopped": "Recording stopped: {error} ({path})",  "status.connecting": "Connecting to {name}…",
+  "status.recordingStopped": "Recording stopped: {error} ({path})",
+  "status.connecting": "Connecting to {name}…",
   "status.connected": "Connected to {name}",
   "status.connectedShared": "Connected to {name} on the same connection",
   "status.disconnected": "Disconnected from {name}",
@@ -136,8 +139,7 @@ export const en = {
   "status.logDirectoryOpenFailed": "Failed to open the log directory: {error}",
   "status.diagnosticsExported": "Diagnostics exported to {file}",
   "status.diagnosticsExportFailed": "Failed to export diagnostics: {error}",
-  "status.filerOnlyShellSsh":
-    "Filer: only shell and SSH sessions have a working directory",
+  "status.filerOnlyShellSsh": "Filer: only shell and SSH sessions have a working directory",
   "status.filerNotConnected": "Filer: the session is not connected",
   "status.filerPath": "Filer: {path}",
   "status.filerError": "Filer: {error}",
@@ -146,12 +148,10 @@ export const en = {
   "terminal.sessionClosed": "[session closed — press Enter to reconnect]",
   "terminal.connectionFailed": "[connection failed: {message}",
   "terminal.pressEnterToReconnect": " — press Enter to reconnect]",
-  "terminal.acceptedHostKey":
-    "[accepted new host key {fingerprint}; reconnecting]",
+  "terminal.acceptedHostKey": "[accepted new host key {fingerprint}; reconnecting]",
 
   // --- confirmations raised from the menu bar ------------------------------
-  "confirm.clearCommandHistory":
-    "Delete the recorded command history used for inline suggestions?",
+  "confirm.clearCommandHistory": "Delete the recorded command history used for inline suggestions?",
   "confirm.clearCommandHistoryTitle": "Clear Command History",
   "confirm.clear": "Clear",
   "confirm.restoreDefaults":
@@ -183,10 +183,8 @@ export const en = {
     "Connected sessions will be disconnected and their terminal output discarded; connection attempts will be cancelled.",
   "close.hintConnectingOne": "The connection attempt will be cancelled.",
   "close.hintConnectingMany": "The connection attempts will be cancelled.",
-  "close.hintOne":
-    "The session will be disconnected and its terminal output discarded.",
-  "close.hintMany":
-    "The sessions will be disconnected and their terminal output discarded.",
+  "close.hintOne": "The session will be disconnected and its terminal output discarded.",
+  "close.hintMany": "The sessions will be disconnected and their terminal output discarded.",
 
   // QuitConfirmDialog
   "quit.title": "Quit EdgeTerm",
@@ -194,8 +192,7 @@ export const en = {
   "quit.sessionOne": " active session",
   "quit.sessionMany": " active sessions",
   "quit.andMore": "…and {count} more",
-  "quit.hint":
-    "All connections will be disconnected and their terminal output discarded.",
+  "quit.hint": "All connections will be disconnected and their terminal output discarded.",
 
   // CloseChoiceDialog — what the window ✕ does while the setting is "ask".
   "closeChoice.title": "Close EdgeTerm",
@@ -211,8 +208,7 @@ export const en = {
   "pasteWarning.holds": "The clipboard holds ",
   "pasteWarning.linesCount": "{count} lines",
   "pasteWarning.charsParen": " ({count} characters). ",
-  "pasteWarning.everyLine":
-    "Every line after the first runs as its own command.",
+  "pasteWarning.everyLine": "Every line after the first runs as its own command.",
   "pasteWarning.onOneLine": " on one line.",
   "pasteWarning.andMoreLines": "… and {count} more lines",
   "pasteWarning.dontWarn": "Don’t warn me again",
@@ -223,8 +219,7 @@ export const en = {
   "clipboardWrite.wantsToCopy": " wants to copy ",
   "clipboardWrite.toClipboard":
     " to the clipboard. Allowing it lets this session set the clipboard until it closes.",
-  "clipboardWrite.alwaysAllow":
-    "Always allow programs to set the clipboard",
+  "clipboardWrite.alwaysAllow": "Always allow programs to set the clipboard",
 
   // Shared: the delete verb and its key hint.
   "keys.delete": "delete",
@@ -235,7 +230,8 @@ export const en = {
   "deleteEntry.titleFile": "Delete File",
   "deleteEntry.titleMany": "Delete {count} items",
   "deleteEntry.confirmMany": "Delete these {count} selected items?",
-  "deleteEntry.hintMany": "Files and links will be removed, and folders with everything inside them. Link targets are kept. This cannot be undone.",
+  "deleteEntry.hintMany":
+    "Files and links will be removed, and folders with everything inside them. Link targets are kept. This cannot be undone.",
   "deleteEntry.kindFile": "file",
   "deleteEntry.kindFolder": "folder",
   "deleteEntry.kindLink": "link",
@@ -266,8 +262,7 @@ export const en = {
   "auth.as": " as ",
   "auth.period": ".",
   "auth.response": "Response",
-  "auth.hint":
-    "Answers are sent to the server for this login only; EdgeTerm never stores them.",
+  "auth.hint": "Answers are sent to the server for this login only; EdgeTerm never stores them.",
   "auth.sending": "Sending…",
   "auth.continue": "Continue",
 
@@ -303,15 +298,13 @@ export const en = {
 
   // HostKeyDialog
   "hostKey.title": "Host Key Changed",
-  "hostKey.presented":
-    " presented a key that does not match the one recorded for it.",
+  "hostKey.presented": " presented a key that does not match the one recorded for it.",
   "hostKey.newKey": "New key",
   "hostKey.recordedIn": "Recorded in",
   "hostKey.recordedInValue": "{file}, line {line}",
   "hostKey.hintStart":
     "Accept only if you expect this — the server was reinstalled, or the address now belongs to a different machine. A changed key can also mean the connection is being intercepted; when in doubt, cancel and compare the fingerprint with ",
-  "hostKey.hintEnd":
-    " on the server. Accepting replaces every key recorded for this host.",
+  "hostKey.hintEnd": " on the server. Accepting replaces every key recorded for this host.",
   "hostKey.accepting": "Accepting…",
   "hostKey.accept": "Accept New Key",
 
@@ -328,8 +321,10 @@ export const en = {
   // UpdateDialog
   "update.titleDefault": "Downloads and Updates",
   "update.installed": "Installed: {version}",
-  "update.manualHint": "You are using the sonwe1e/EdgeTerm distribution. Visit this fork's GitHub releases to review new versions and download updates manually. The app does not check for or install updates automatically.",
-  "update.packageHint": "Windows x64 installers and portable archives are currently available. Keep the data folder when replacing a portable copy; see the release page for other platforms.",
+  "update.manualHint":
+    "You are using the sonwe1e/EdgeTerm distribution. Visit this fork's GitHub releases to review new versions and download updates manually. The app does not check for or install updates automatically.",
+  "update.packageHint":
+    "Windows x64 installers and portable archives are currently available. Keep the data folder when replacing a portable copy; see the release page for other platforms.",
   "update.openDownload": "Open This Fork's Releases",
 
   // SessionDialog — protocol picker
@@ -357,12 +352,9 @@ export const en = {
   "session.useColor": "Use session color {color}",
   "session.group": "Group",
   "session.noGroup": "{section} (no group)",
-  "session.groupHint":
-    "Right-click a heading in the Session panel to create groups.",
-  "session.localeError":
-    "Locale must be a locale name such as en_US.UTF-8 or C.UTF-8.",
-  "session.baudError":
-    "Baud rate must be a positive whole number up to 4294967295.",
+  "session.groupHint": "Right-click a heading in the Session panel to create groups.",
+  "session.localeError": "Locale must be a locale name such as en_US.UTF-8 or C.UTF-8.",
+  "session.baudError": "Baud rate must be a positive whole number up to 4294967295.",
   "session.hostRequired": "Enter a host to connect to.",
   "session.portError": "The port must be a whole number from 1 to 65535.",
 
@@ -370,8 +362,7 @@ export const en = {
   "session.sshConnection": "SSH connection",
   "session.telnetConnection": "Telnet connection",
   "session.serverAndAuth": "Server and authentication",
-  "session.telnetSubtitle":
-    "Telnet · login typed at the server's prompt · unencrypted",
+  "session.telnetSubtitle": "Telnet · login typed at the server's prompt · unencrypted",
   "session.host": "Host",
   "session.port": "Port",
   "session.username": "Username",
@@ -445,8 +436,7 @@ export const en = {
   "session.portHintNone": "No serial ports detected. Refresh to scan again.",
   "session.baudRate": "Baud rate",
   "session.baudUnit": "baud",
-  "session.baudHint":
-    "Select a common value or enter any custom positive integer.",
+  "session.baudHint": "Select a common value or enter any custom positive integer.",
   "session.dataBits": "Data bits",
   "session.bitsCount": "{count} bits",
   "session.stopBits": "Stop bits",
@@ -528,10 +518,9 @@ export const en = {
   "panel.groupEmpty": "It contains no sessions.",
   "panel.groupDeleteConsequence":
     "Its subgroups, {contents} will be deleted with it. This cannot be undone.",
-  "panel.deleteGroupPrompt":
-    "Delete the group \"{name}\" and everything in it? {consequence}",
+  "panel.deleteGroupPrompt": 'Delete the group "{name}" and everything in it? {consequence}',
   "panel.deleteGroupTitle": "Delete Group",
-  "panel.groupDeleted": "Group \"{name}\" deleted",
+  "panel.groupDeleted": 'Group "{name}" deleted',
   "panel.failedDeleteGroup": "Failed to delete group",
   "panel.failedMoveSession": "Failed to move session",
   "panel.failedDuplicateSession": "Failed to duplicate session",
@@ -570,7 +559,7 @@ export const en = {
   "sender.repeatingTimer": "A command is repeating on a timer",
   "sender.tagName": "Tag name (optional)",
   "sender.savedCommandTagName": "Saved command tag name",
-  "sender.updateTitle": "Update \"{name}\" — asks where to list it",
+  "sender.updateTitle": 'Update "{name}" — asks where to list it',
   "sender.update": "Update",
   "sender.save": "Save",
   "sender.saveTitle": "Save the command — asks where to list it",
@@ -629,8 +618,7 @@ export const en = {
   "sender.deleteConfirmTitle": "Delete Saved Command",
   "sender.deleted": "Sender: deleted “{name}”",
   "sender.noSession": "Sender: no session selected",
-  "sender.blocked":
-    "Sender: blocked while a file transfer or another send is running",
+  "sender.blocked": "Sender: blocked while a file transfer or another send is running",
   "sender.stopped": "Sender: stopped",
   "sender.sentLines": "sent {count} lines",
   "sender.sentCommand": "sent command",
@@ -684,20 +672,24 @@ export const en = {
   "ftp.resume": "Resume",
   "ftp.pause": "Pause",
   "ftp.filesProgress": "{done} of {total} files",
-  "ftp.selectToTransfer": "Select a local file or folder to upload, or a {protocol} file or folder to download.",
+  "ftp.selectToTransfer":
+    "Select a local file or folder to upload, or a {protocol} file or folder to download.",
   "ftp.pathAria": "{title} path",
   "ftp.filesAria": "{title} file list",
   "ftp.sideLocal": "local",
   "ftp.sideRemote": "remote",
   "ftp.fileExists": "A {side} file named “{name}” already exists.",
   "ftp.folderExists": "A {side} folder named “{name}” already exists.",
-  "ftp.mergeFolder": "Merge into {side} folder “{name}”? Existing files with the same names will be replaced.",
+  "ftp.mergeFolder":
+    "Merge into {side} folder “{name}”? Existing files with the same names will be replaced.",
   "ftp.replaceFile": "Replace {side} file “{name}”?",
   "ftp.refuseSymlink": "Refusing to replace local symlink “{name}”.",
-  "ftp.legacyListing": "The FTP server returned a legacy or non-UTF-8 directory listing. Reconnect after updating EdgeTerm and try again.",
+  "ftp.legacyListing":
+    "The FTP server returned a legacy or non-UTF-8 directory listing. Reconnect after updating EdgeTerm and try again.",
   "filer.emptyFolder": "This folder is empty.",
   "filer.downloadReplaceTitle": "Replace Existing Items",
-  "filer.downloadReplaceConfirm": "{count} item(s) already exist in the destination folder. Downloading will overwrite them.",
+  "filer.downloadReplaceConfirm":
+    "{count} item(s) already exist in the destination folder. Downloading will overwrite them.",
   "filer.downloadReplace": "Overwrite",
   "filer.replaceTitle": "Replace Existing Items",
   "filer.replaceConfirm": "{count} item(s) already exist in this folder. Replace them?",
@@ -710,8 +702,7 @@ export const en = {
   "filer.someAlready": "{skipped} of {total} items were already in this folder",
   "filer.couldNotDrag": "Could not drag {name}: {error}",
   "filer.downloadCancelled": "{name}: download cancelled",
-  "filer.dragEnded":
-    "{name} finished copying after the drag ended; drag it again to drop it",
+  "filer.dragEnded": "{name} finished copying after the drag ended; drag it again to drop it",
   "filer.localCopyKept": "local copy kept",
   "filer.syncFailed": "failed",
   "filer.remoteEditKept": "{name}: {message}",
@@ -741,8 +732,8 @@ export const en = {
   "filer.folder": "folder",
   "filer.file": "file",
   "filer.transferring": "transferring",
-  "filer.invalidName": "\"{name}\" is not a valid {kind} name",
-  "filer.alreadyExists": "\"{name}\" already exists in this folder",
+  "filer.invalidName": '"{name}" is not a valid {kind} name',
+  "filer.alreadyExists": '"{name}" already exists in this folder',
   "filer.sshOnly": " (connected SSH sessions only)",
   "filer.local": "local",
   "filer.remote": "remote",
@@ -873,10 +864,8 @@ export const en = {
   "sc.notice": "Press the combination, or Esc to keep the current one.",
   "sc.resetDefaults": "Reset Defaults",
   "sc.taken": "{chord} was taken from {label}.",
-  "sc.problemMac":
-    "Hold ⌘, ⌥ or ⌃ as well, or the key would be typed into the terminal.",
-  "sc.problemOther":
-    "Hold Ctrl or Alt as well, or the key would be typed into the terminal.",
+  "sc.problemMac": "Hold ⌘, ⌥ or ⌃ as well, or the key would be typed into the terminal.",
+  "sc.problemOther": "Hold Ctrl or Alt as well, or the key would be typed into the terminal.",
   "sc.reserved": "{chord} is already {owner}.",
   "sc.switchesToTab": "{chord} switches to tab {number}.",
   "sc.ownerCut": "Cut",
@@ -892,11 +881,9 @@ export const en = {
   "sc.nextTab.label": "Next Session",
   "sc.nextTab.hint": "Select the tab on the right",
   "sc.splitRight.label": "Split Right",
-  "sc.splitRight.hint":
-    "Open the current session's profile again in a pane to the right",
+  "sc.splitRight.hint": "Open the current session's profile again in a pane to the right",
   "sc.splitDown.label": "Split Down",
-  "sc.splitDown.hint":
-    "Open the current session's profile again in a pane below",
+  "sc.splitDown.hint": "Open the current session's profile again in a pane below",
   "sc.prevPane.label": "Previous Pane",
   "sc.prevPane.hint": "Focus the pane before this one",
   "sc.nextPane.label": "Next Pane",
@@ -933,7 +920,8 @@ export const en = {
   "data.notDataFile": "Import failed: “{file}” is not an EdgeTerm data file (expected .{ext})",
   "data.importConfirm": "Import {summary}{andSettings} from “{file}”?",
   "data.importAndSettings": " and settings",
-  "data.importDetail": "Entries with the same id replace the local ones; nothing else is removed. Data files never contain session passwords, so imported sessions will ask for theirs again.",
+  "data.importDetail":
+    "Entries with the same id replace the local ones; nothing else is removed. Data files never contain session passwords, so imported sessions will ask for theirs again.",
   "data.importOk": "Import",
   "data.imported": "Imported {summary}{andSettings}",
   "data.importSkippedOne": "; skipped 1 Sender command (library full)",
@@ -963,8 +951,7 @@ export const en = {
   "transfer.durableLabel": "Durable writes (fsync)",
   "transfer.durableHint": "Server-confirmed writes; uploads fail where unsupported.",
   "transfer.tarLabel": "Tar folder upload",
-  "transfer.tarHint":
-    "Needs remote tar and a POSIX shell; empty target only, no resume.",
+  "transfer.tarHint": "Needs remote tar and a POSIX shell; empty target only, no resume.",
   "transfer.interrupted": "Interrupted",
   "transfer.recoveryNote":
     "Resume needs a session to the same server; clearing removes the local record only.",
@@ -1022,10 +1009,8 @@ export const en = {
   "forward.listenerPortAria": "Tunnel listener port",
   "forward.targetHostAria": "Tunnel target host",
   "forward.targetPortAria": "Tunnel target port",
-  "forward.listenerWarning":
-    "Listening beyond loopback exposes this port to other machines.",
-  "forward.gatewayNote":
-    "The SSH server decides the final bind address (GatewayPorts).",
+  "forward.listenerWarning": "Listening beyond loopback exposes this port to other machines.",
+  "forward.gatewayNote": "The SSH server decides the final bind address (GatewayPorts).",
   "forward.dynamicNote": "TCP CONNECT only. Point apps at this address.",
   "forward.socksProxy": "SOCKS5 proxy",
   "forward.createTunnel": "Create tunnel",
@@ -1033,8 +1018,7 @@ export const en = {
   "forward.remotePortsToggle": "Choose a remote port",
   "forward.refreshPorts": "Refresh",
   "forward.readingListeners": "Reading ports…",
-  "forward.discoveryUnsupported":
-    "Port discovery needs Linux with ss or netstat.",
+  "forward.discoveryUnsupported": "Port discovery needs Linux with ss or netstat.",
   "forward.truncated": "Result limit reached.",
   "forward.noListeners": "No listening ports.",
   "forward.processUnavailable": "Process unavailable",
@@ -1185,12 +1169,14 @@ export const en = {
   "wb.project": "Project",
   "wb.projects": "Projects",
   "wb.noProjects": "No projects yet",
-  "wb.noProjectsHint": "Bind a saved SSH login to a code directory. Projects, experiments and runs are recorded separately from terminal tabs.",
+  "wb.noProjectsHint":
+    "Bind a saved SSH login to a code directory. Projects, experiments and runs are recorded separately from terminal tabs.",
   "wb.createFirst": "Create the first project",
   "wb.server": "Server",
   "wb.codeDir": "Code directory",
   "wb.env": "Environment",
-  "wb.envHint": "Shell lines run before commands and in a project terminal, e.g. conda activate vfi",
+  "wb.envHint":
+    "Shell lines run before commands and in a project terminal, e.g. conda activate vfi",
   "wb.runRoot": "Run directory",
   "wb.runRootHint": "Empty uses <root>/.edgeterm/runs",
   "wb.commands": "Saved commands",
@@ -1229,9 +1215,11 @@ export const en = {
   "wb.runCommand": "Command",
   "wb.runEnv": "Environment override",
   "wb.runGpu": "GPU selection",
-  "wb.runGpuHint": "Digits and commas are exported as CUDA_VISIBLE_DEVICES; anything else is only recorded.",
+  "wb.runGpuHint":
+    "Digits and commas are exported as CUDA_VISIBLE_DEVICES; anything else is only recorded.",
   "wb.runSnapshot": "Snapshot the code at launch",
-  "wb.runSnapshotHint": "Copies code files into the run directory. Data, weights and outputs are excluded.",
+  "wb.runSnapshotHint":
+    "Copies code files into the run directory. Data, weights and outputs are excluded.",
   "wb.runExcludes": "Extra exclusions",
   "wb.runExcludesHint": "Comma-separated directory or file names",
   "wb.start": "Start",
@@ -1266,13 +1254,16 @@ export const en = {
   "wb.checkedAt": "Checked {time}",
   "wb.notChecked": "Not checked yet",
   "wb.staleStatus": "This status is from {time} and may be stale.",
-  "wb.runSessionGone": "The server session is closed; open the run's log or reconnect to check it. Nothing will be restarted automatically.",
+  "wb.runSessionGone":
+    "The server session is closed; open the run's log or reconnect to check it. Nothing will be restarted automatically.",
   "wb.stoppedByUser": "Stopped from the workbench.",
   "wb.connect": "Connect",
-  "wb.connectHint": "This project's server is not connected. Files, diffs and runs stay unavailable until you connect.",
+  "wb.connectHint":
+    "This project's server is not connected. Files, diffs and runs stay unavailable until you connect.",
   "wb.connected": "Connected",
   "wb.environment": "Server environment",
-  "wb.tmuxMissing": "tmux is not installed: runs are detached, observable through their log, and cannot be attached.",
+  "wb.tmuxMissing":
+    "tmux is not installed: runs are detached, observable through their log, and cannot be attached.",
   "wb.schedulerDetected": "Scheduler: {name}",
   "wb.files": "Files",
   "wb.filter": "Filter files",
@@ -1309,7 +1300,8 @@ export const en = {
   "wb.loading": "Loading…",
   "wb.loadFailed": "Could not open: {error}",
   "wb.remoteChanged": "Server copy changed",
-  "wb.remoteChangedHint": "Your draft is still here. Reload the server copy, or overwrite it with the draft.",
+  "wb.remoteChangedHint":
+    "Your draft is still here. Reload the server copy, or overwrite it with the draft.",
   "wb.reload": "Reload server copy",
   "wb.overwrite": "Overwrite server",
   "wb.keepEditing": "Keep editing",
@@ -1329,9 +1321,11 @@ export const en = {
   "wb.sessionFailed": "The session could not be opened.",
   "wb.sessionTimeout": "The session did not connect in time.",
   "wb.deleteProjectTitle": "Delete project",
-  "wb.deleteProjectBody": "Delete {name} with its experiments and run records? Files and running processes on the server are not touched or stopped.",
+  "wb.deleteProjectBody":
+    "Delete {name} with its experiments and run records? Files and running processes on the server are not touched or stopped.",
   "wb.deleteExperimentTitle": "Delete experiment",
-  "wb.deleteExperimentBody": "Delete experiment {name} and its run records? Running processes are not stopped.",
+  "wb.deleteExperimentBody":
+    "Delete experiment {name} and its run records? Running processes are not stopped.",
   "wb.projectSaved": "Project saved.",
   "wb.projectDeleted": "Project deleted.",
   "wb.experimentSaved": "Experiment saved.",
@@ -1365,17 +1359,20 @@ export const en = {
   "wb.logClosed": "The log is not available.",
   "wb.attachDetached": "Detached runs have no terminal to attach; read their log instead.",
   "wb.attachTmuxMissing": "This run did not use tmux, so it cannot be attached.",
-  "wb.resumeHint": "Starts a new run with the same command; it links to {id} but does not claim to reproduce it.",
+  "wb.resumeHint":
+    "Starts a new run with the same command; it links to {id} but does not claim to reproduce it.",
   "wb.projectContext": "Project",
   "wb.selectProject": "Select a project",
   "wb.errorTitle": "The workbench could not load its records",
   "wb.runNoExperiment": "Create an experiment before starting a run.",
   "wb.commandRequired": "Enter a command.",
-  "wb.profileDrift": "The saved login now points at another host, port or user. Edit the project to refresh its server identity.",
+  "wb.profileDrift":
+    "The saved login now points at another host, port or user. Edit the project to refresh its server identity.",
   "wb.noDiff": "No diff for this file; it may be untracked or unchanged.",
   "wb.draftNotStored": "Unsaved edit is not stored",
   "wb.draftStored": "Unsaved edit is kept on disk",
-  "wb.draftFailedHint": "Writing the local draft failed: {error}. Closing this tab would lose the edit.",
+  "wb.draftFailedHint":
+    "Writing the local draft failed: {error}. Closing this tab would lose the edit.",
   "wb.draftFailedGeneric": "Writing the local draft failed. Closing this tab would lose the edit.",
   "wb.draftCloseBlocked": "The tab stays open: its unsaved edit could not be stored.",
   "wb.draftWriteFailed": "The unsaved edit could not be stored.",
@@ -1383,10 +1380,12 @@ export const en = {
   "wb.retry": "Retry",
   "wb.copyContent": "Copy content",
   "wb.discardAndClose": "Discard and close",
-  "wb.draftForeign": "An unsaved draft from {server} exists for this path. It was not applied and is listed under Drafts.",
+  "wb.draftForeign":
+    "An unsaved draft from {server} exists for this path. It was not applied and is listed under Drafts.",
   "wb.drafts": "Drafts",
   "wb.draftsTitle": "Unsaved edits kept on disk",
-  "wb.draftsHint": "These buffers never reached a server. Opening one restores it while the file is reachable.",
+  "wb.draftsHint":
+    "These buffers never reached a server. Opening one restores it while the file is reachable.",
   "wb.draftsEmpty": "No stored drafts.",
   "wb.draftsError": "Drafts could not be read: {error}",
   "wb.draftsLocation": "Stored in {dir}",
@@ -1399,11 +1398,14 @@ export const en = {
   "wb.draftUpdated": "Edited {time}",
   "wb.runExecution": "Execution",
   "wb.runExecutionWorkspace": "Run in the project directory",
-  "wb.runExecutionWorkspaceHint": "The code copy is recorded beside the run, but the command sees the directory you are still editing.",
+  "wb.runExecutionWorkspaceHint":
+    "The code copy is recorded beside the run, but the command sees the directory you are still editing.",
   "wb.runExecutionIsolated": "Run in this run's code copy",
-  "wb.runExecutionIsolatedHint": "The command runs in the verified copy. Absolute paths still point at the project; data directories are linked explicitly; compiled artifacts are not copied.",
+  "wb.runExecutionIsolatedHint":
+    "The command runs in the verified copy. Absolute paths still point at the project; data directories are linked explicitly; compiled artifacts are not copied.",
   "wb.runLinks": "Linked data directories",
-  "wb.runLinksHint": "One project-relative path per line (for example datasets/kitti). Each is linked into the copy.",
+  "wb.runLinksHint":
+    "One project-relative path per line (for example datasets/kitti). Each is linked into the copy.",
   "wb.runUnsynced": "{count} unsaved file(s) are not part of this run",
   "wb.runUnsyncedHint": "The server copies are what runs. Save them first, or confirm below.",
   "wb.runAllowUnsynced": "Start anyway, using the server copies",
@@ -1413,11 +1415,13 @@ export const en = {
   "wb.runWorkspace": "Project directory",
   "wb.runSnapshotVerified": "verified",
   "wb.runSnapshotUnverified": "not verified",
-  "wb.runUncertain": "The launch result could not be read; the run is recorded as unknown. Refresh it before starting another.",
+  "wb.runUncertain":
+    "The launch result could not be read; the run is recorded as unknown. Refresh it before starting another.",
   "wb.runLinksNone": "none",
   "wb.unsynced": "Unsynced at launch",
   "wb.isolatedNeedsSnapshot": "An isolated run needs a code snapshot.",
-  "wb.runUnsyncedBlocked": "{count} file(s) still have unsaved edits. Save them, or confirm using the server copies.",
+  "wb.runUnsyncedBlocked":
+    "{count} file(s) still have unsaved edits. Save them, or confirm using the server copies.",
 
   // fix: PD-02 — the public-key setup dialog can generate a new key
   "keySetup.generate": "Generate New Key…",
@@ -1473,7 +1477,8 @@ export const en = {
   "sshImport.forwardsImportedOne": "1 port forward (starts on connect)",
   "sshImport.forwardsImportedMany": "{count} port forwards (start on connect)",
   "session.forwards": "Port Forwards",
-  "session.forwardsHint": "Started when this session connects; a remote forward exposes a port on the server side.",
+  "session.forwardsHint":
+    "Started when this session connects; a remote forward exposes a port on the server side.",
   "session.forwardsEmpty": "No forward rules yet.",
   "session.addForward": "Add Forward",
   "session.deleteForwardTitle": "Delete Port Forward",
@@ -1500,5 +1505,4 @@ export const en = {
   "sender.colorBlue": "Blue",
   "sender.colorPurple": "Purple",
   "sender.colorPink": "Pink",
-
 } as const;

@@ -84,9 +84,13 @@ export function DraftsDialog({ onClose }: { onClose: () => void }) {
                     {draft.path || draft.absolutePath}
                   </div>
                   <div className="wb-drafts-meta">
-                    <span>{t("wb.draftSize", { size: draft.content.length.toLocaleString() })}</span>
+                    <span>
+                      {t("wb.draftSize", { size: draft.content.length.toLocaleString() })}
+                    </span>
                     <span>{t("wb.draftUpdated", { time: formatClock(draft.updatedAt) })}</span>
-                    {!workspace && <span className="wb-drafts-gone">{t("wb.draftProjectGone")}</span>}
+                    {!workspace && (
+                      <span className="wb-drafts-gone">{t("wb.draftProjectGone")}</span>
+                    )}
                   </div>
                   <div className="wb-drafts-actions">
                     {confirming === draft.docId ? (

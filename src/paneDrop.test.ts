@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  dropAction,
-  type DraggedEntry,
-} from "./paneDrop";
+import { dropAction, type DraggedEntry } from "./paneDrop";
 import type { FileEntry } from "./types";
 
 const entry = (name: string, overrides: Partial<FileEntry> = {}): FileEntry => ({
@@ -60,9 +57,7 @@ describe("dropAction", () => {
       entry: entry("project", { path: "/home/me/project", isDir: true }),
     };
     expect(dropAction(source, { side: "remote", dir: "/home/me/project" })).toBeNull();
-    expect(
-      dropAction(source, { side: "remote", dir: "/home/me/project/src" }),
-    ).toBeNull();
+    expect(dropAction(source, { side: "remote", dir: "/home/me/project/src" })).toBeNull();
     // Every same-side drop is refused, including unrelated folders.
     expect(dropAction(source, { side: "remote", dir: "/home/me" })).toBeNull();
     expect(dropAction(source, { side: "remote", dir: "/tmp" })).toBeNull();

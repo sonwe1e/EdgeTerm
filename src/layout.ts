@@ -60,8 +60,7 @@ export const leaf = (paneId: string): LayoutNode => ({ kind: "leaf", paneId });
 const directionOf = (side: Side): SplitDirection =>
   side === "left" || side === "right" ? "row" : "column";
 
-const sum = (values: number[]): number =>
-  values.reduce((total, value) => total + value, 0);
+const sum = (values: number[]): number => values.reduce((total, value) => total + value, 0);
 
 /** The pane ids in reading order: left to right, top to bottom. */
 export function paneIds(node: LayoutNode): string[] {
@@ -70,11 +69,7 @@ export function paneIds(node: LayoutNode): string[] {
 }
 
 /** The pane `step` places after (1) or before (-1) `paneId`, wrapping around. */
-export function adjacentPane(
-  node: LayoutNode,
-  paneId: string,
-  step: -1 | 1,
-): string | null {
+export function adjacentPane(node: LayoutNode, paneId: string, step: -1 | 1): string | null {
   const ids = paneIds(node);
   if (ids.length === 0) return null;
   const index = ids.indexOf(paneId);

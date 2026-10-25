@@ -47,11 +47,7 @@ const LABEL_KEYS: Record<SenderColor, MessageKey> = {
 export const senderColorLabelKey = (color: SenderColor): MessageKey => LABEL_KEYS[color];
 
 /** Sets `--tag-color` on a tinted tag; nothing for an untinted one. */
-export function senderColorStyle(
-  value: string | null | undefined,
-): CSSProperties | undefined {
+export function senderColorStyle(value: string | null | undefined): CSSProperties | undefined {
   const color = senderColor(value);
-  return color
-    ? ({ "--tag-color": senderColorValue(color) } as CSSProperties)
-    : undefined;
+  return color ? ({ "--tag-color": senderColorValue(color) } as CSSProperties) : undefined;
 }

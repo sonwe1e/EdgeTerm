@@ -107,20 +107,33 @@ describe("projecting a live sample", () => {
       gpu: null,
       npu: null,
     });
-    expect(trendPointFrom({ cpuPercent: null, memory: null, networkReceiveBps: null }, 1).memory).toBeNull();
     expect(
-      trendPointFrom({ cpuPercent: null, memory: { usedBytes: 0, totalBytes: 0 }, networkReceiveBps: null }, 1).memory,
+      trendPointFrom({ cpuPercent: null, memory: null, networkReceiveBps: null }, 1).memory,
     ).toBeNull();
     expect(
       trendPointFrom(
-        { cpuPercent: null, memory: null, networkReceiveBps: null, capacity: { usedBytes: 5, totalBytes: 0 } },
+        { cpuPercent: null, memory: { usedBytes: 0, totalBytes: 0 }, networkReceiveBps: null },
+        1,
+      ).memory,
+    ).toBeNull();
+    expect(
+      trendPointFrom(
+        {
+          cpuPercent: null,
+          memory: null,
+          networkReceiveBps: null,
+          capacity: { usedBytes: 5, totalBytes: 0 },
+        },
         1,
       ).disk,
     ).toBeNull();
     // A host with no accelerator reports no accelerator series, not a zero.
-    expect(trendPointFrom({ cpuPercent: null, memory: null, networkReceiveBps: null, gpus: [], npus: [] }, 1)).toMatchObject(
-      { gpu: null, npu: null },
-    );
+    expect(
+      trendPointFrom(
+        { cpuPercent: null, memory: null, networkReceiveBps: null, gpus: [], npus: [] },
+        1,
+      ),
+    ).toMatchObject({ gpu: null, npu: null });
   });
 
   it("selects one series and preserves gaps", () => {

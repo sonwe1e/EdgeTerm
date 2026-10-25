@@ -1,10 +1,4 @@
-import type {
-  IBufferCell,
-  IDecoration,
-  IDisposable,
-  IMarker,
-  Terminal,
-} from "@xterm/xterm";
+import type { IBufferCell, IDecoration, IDisposable, IMarker, Terminal } from "@xterm/xterm";
 
 import {
   compileQuery,
@@ -98,8 +92,7 @@ export class TerminalFind {
   private activeDecorations: IDecoration[] = [];
   /** Find in Selection's range. */
   private scope: TrackedSpan | null = null;
-  private scopeDecorations: { decoration: IDecoration; x: number; width: number }[] =
-    [];
+  private scopeDecorations: { decoration: IDecoration; x: number; width: number }[] = [];
   /**
    * The user's selection a search last replaced with a match. Find in
    * Selection turned on after typing a query takes this rather than the
@@ -150,12 +143,7 @@ export class TerminalFind {
    * `incremental` keeps the current match while the query is being typed,
    * when it still matches, instead of moving past it.
    */
-  find(
-    query: string,
-    options: FindOptions,
-    forward: boolean,
-    incremental: boolean,
-  ) {
+  find(query: string, options: FindOptions, forward: boolean, incremental: boolean) {
     let pattern: RegExp | null = null;
     try {
       if (query) pattern = compileQuery(query, options);
@@ -184,8 +172,7 @@ export class TerminalFind {
         const from = incremental ? selection?.start : selection?.end;
         target = this.matchFrom(from ?? null);
       } else {
-        const here =
-          incremental && selection ? this.matchAt(selection.start) : null;
+        const here = incremental && selection ? this.matchAt(selection.start) : null;
         target = here ?? this.matchBefore(selection?.start ?? null);
       }
     }
@@ -208,9 +195,7 @@ export class TerminalFind {
     this.untrack(this.scope);
     this.scope = null;
     if (on) {
-      const range = this.selectionMoved
-        ? this.selection()
-        : this.spanOf(this.replaced);
+      const range = this.selectionMoved ? this.selection() : this.spanOf(this.replaced);
       if (range && compare(range.start, range.end) < 0) {
         this.scope = this.track(range);
       }
@@ -235,10 +220,7 @@ export class TerminalFind {
     this.lines.clear();
     if (!this.pattern) return;
     this.cancelRefresh();
-    this.refreshTimer = window.setTimeout(
-      () => this.refresh(),
-      REFRESH_DELAY_MS,
-    );
+    this.refreshTimer = window.setTimeout(() => this.refresh(), REFRESH_DELAY_MS);
   }
 
   /** Drop the highlights and the range. The selection, the last match, stays. */
@@ -344,10 +326,7 @@ export class TerminalFind {
   }
 
   private within(span: Span, bounds: Span) {
-    return (
-      compare(span.start, bounds.start) >= 0 &&
-      compare(span.end, bounds.end) <= 0
-    );
+    return compare(span.start, bounds.start) >= 0 && compare(span.end, bounds.end) <= 0;
   }
 
   /** The matches of one logical line that lie within `bounds`. */
@@ -385,9 +364,7 @@ export class TerminalFind {
     if (from && compare(from, bounds.start) > 0) {
       for (let row = this.lineStart(from.row); row <= bounds.end.row; ) {
         const line = this.readLine(row);
-        const found = this.matchesIn(line, bounds).find(
-          (span) => compare(span.start, from) >= 0,
-        );
+        const found = this.matchesIn(line, bounds).find((span) => compare(span.start, from) >= 0);
         if (found) return found;
         row += line.starts.length;
       }
@@ -412,10 +389,7 @@ export class TerminalFind {
         row = this.lineStart(row - 1);
       }
     };
-    return (
-      scan(limit) ??
-      (before ? scan({ row: bounds.end.row + 1, col: 0 }) : null)
-    );
+    return scan(limit) ?? (before ? scan({ row: bounds.end.row + 1, col: 0 }) : null);
   }
 
   /** The match starting at `at`, if there is one. */
@@ -423,11 +397,7 @@ export class TerminalFind {
     const bounds = this.bounds();
     if (!bounds || at.row >= this.term.buffer.active.length) return null;
     const line = this.readLine(this.lineStart(at.row));
-    return (
-      this.matchesIn(line, bounds).find(
-        (span) => compare(span.start, at) === 0,
-      ) ?? null
-    );
+    return this.matchesIn(line, bounds).find((span) => compare(span.start, at) === 0) ?? null;
   }
 
   /** Recompute after output, keeping the current match while it still matches. */
@@ -474,9 +444,7 @@ export class TerminalFind {
         this.term.clearSelection();
       } else {
         const size =
-          (span.end.row - span.start.row) * this.term.cols +
-          span.end.col -
-          span.start.col;
+          (span.end.row - span.start.row) * this.term.cols + span.end.col - span.start.col;
         this.term.select(span.start.col, span.start.row, size);
       }
     } finally {
@@ -487,9 +455,7 @@ export class TerminalFind {
     const buffer = this.term.buffer.active;
     const { row } = span.start;
     if (row < buffer.viewportY || row >= buffer.viewportY + this.term.rows) {
-      this.term.scrollLines(
-        row - buffer.viewportY - Math.floor(this.term.rows / 2),
-      );
+      this.term.scrollLines(row - buffer.viewportY - Math.floor(this.term.rows / 2));
     }
   }
 
@@ -567,23 +533,17 @@ export class TerminalFind {
   private setActive(span: Span | null) {
     this.untrack(this.active);
     this.active = span ? this.track(span) : null;
-    this.activeIndex = span
-      ? this.matches.findIndex((match) => sameSpan(match, span))
-      : -1;
+    this.activeIndex = span ? this.matches.findIndex((match) => sameSpan(match, span)) : -1;
   }
 
   private redraw() {
     for (const decorations of this.highlights) disposeAll(decorations);
     disposeAll(this.activeDecorations);
     this.highlights = this.matches.map((match, index) =>
-      index === this.activeIndex
-        ? []
-        : this.decorate(match, this.colors.match, "top"),
+      index === this.activeIndex ? [] : this.decorate(match, this.colors.match, "top"),
     );
     const active = this.spanOf(this.active);
-    this.activeDecorations = active
-      ? this.decorate(active, this.colors.activeMatch, "top")
-      : [];
+    this.activeDecorations = active ? this.decorate(active, this.colors.activeMatch, "top") : [];
   }
 
   /** Step to another match of the same search: only two matches repaint. */
@@ -601,9 +561,7 @@ export class TerminalFind {
       disposeAll(this.highlights[this.activeIndex]);
       this.highlights[this.activeIndex] = [];
     }
-    this.activeDecorations = span
-      ? this.decorate(span, this.colors.activeMatch, "top")
-      : [];
+    this.activeDecorations = span ? this.decorate(span, this.colors.activeMatch, "top") : [];
   }
 
   private queueScopeSync() {
@@ -634,12 +592,7 @@ export class TerminalFind {
       const { decoration } = entry;
       const row = decoration.marker.line;
       const want = wanted.get(row);
-      if (
-        !decoration.isDisposed &&
-        want &&
-        want.x === entry.x &&
-        want.width === entry.width
-      ) {
+      if (!decoration.isDisposed && want && want.x === entry.x && want.width === entry.width) {
         wanted.delete(row);
         return true;
       }

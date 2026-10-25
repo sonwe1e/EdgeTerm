@@ -13,7 +13,10 @@ export function useDiffViewport(rows: readonly DiffRow[], wrap: boolean) {
   const offsets = useMemo(() => {
     const positions = [0];
     for (let index = 0; index < rows.length; index++) {
-      positions.push(positions[index] + (measured.get(index) ?? estimateDiffHeight(rows[index], viewport.width, wrap)));
+      positions.push(
+        positions[index] +
+          (measured.get(index) ?? estimateDiffHeight(rows[index], viewport.width, wrap)),
+      );
     }
     return positions;
   }, [rows, wrap, viewport.width, measured, revision]);
@@ -28,8 +31,14 @@ export function useDiffViewport(rows: readonly DiffRow[], wrap: boolean) {
   const readViewport = useStableCallback(() => {
     const element = scroller.current;
     if (!element) return;
-    const next = { top: element.scrollTop, height: element.clientHeight, width: element.clientWidth };
-    setViewport((old) => old.top === next.top && old.height === next.height && old.width === next.width ? old : next);
+    const next = {
+      top: element.scrollTop,
+      height: element.clientHeight,
+      width: element.clientWidth,
+    };
+    setViewport((old) =>
+      old.top === next.top && old.height === next.height && old.width === next.width ? old : next,
+    );
   });
   const measureRows = useStableCallback(() => {
     const element = scroller.current;
@@ -55,7 +64,10 @@ export function useDiffViewport(rows: readonly DiffRow[], wrap: boolean) {
     let frame: number | null = null;
     const schedule = () => {
       if (frame !== null) return;
-      frame = requestAnimationFrame(() => { frame = null; readViewport(); });
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        readViewport();
+      });
     };
     const resize = new ResizeObserver(schedule);
     resize.observe(element);
@@ -80,7 +92,8 @@ export function useDiffViewport(rows: readonly DiffRow[], wrap: boolean) {
     if (restore.current) {
       const { index, within } = restore.current;
       const target = Math.min(index, rows.length - 1);
-      element.scrollTop = offsets[target] + Math.min(within, offsets[target + 1] - offsets[target] - 1);
+      element.scrollTop =
+        offsets[target] + Math.min(within, offsets[target + 1] - offsets[target] - 1);
       restore.current = null;
       readViewport();
     }

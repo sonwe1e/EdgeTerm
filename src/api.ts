@@ -28,20 +28,40 @@ export type TransferProgress = Wire.TransferProgress;
 export type TransferItem = Wire.TransferItem;
 export type TransferOptions = Required<Wire.TransferOptions>;
 export type FileTransfer = Omit<Wire.FileTransfer, "status" | "options"> & {
-  status: "queued" | "running" | "pausing" | "paused" | "retrying" | "cancelling" | "cancelled" | "complete" | "error";
+  status:
+    | "queued"
+    | "running"
+    | "pausing"
+    | "paused"
+    | "retrying"
+    | "cancelling"
+    | "cancelled"
+    | "complete"
+    | "error";
   options: TransferOptions;
 };
 export const transferFiles = (
-  id: string, items: TransferItem[], onProgress: (progress: TransferProgress) => void,
-  transfer = newTransferId(), options?: TransferOptions,
+  id: string,
+  items: TransferItem[],
+  onProgress: (progress: TransferProgress) => void,
+  transfer = newTransferId(),
+  options?: TransferOptions,
 ) => {
   const channel = new Channel<TransferProgress>();
   channel.onmessage = onProgress;
-  return invoke<void>("transfer_files", { id, items, transfer, options: options ?? readTransferOptions(), onProgress: channel });
+  return invoke<void>("transfer_files", {
+    id,
+    items,
+    transfer,
+    options: options ?? readTransferOptions(),
+    onProgress: channel,
+  });
 };
 export const listFileTransfers = () => invoke<FileTransfer[]>("list_file_transfers");
-export const controlFileTransfer = (transfer: string, action: "pause" | "resume" | "retry" | "cancel" | "dismiss") =>
-  invoke<void>("control_file_transfer", { transfer, action });
+export const controlFileTransfer = (
+  transfer: string,
+  action: "pause" | "resume" | "retry" | "cancel" | "dismiss",
+) => invoke<void>("control_file_transfer", { transfer, action });
 export const onFileTransfer = (callback: (job: FileTransfer) => void) =>
   listen<FileTransfer>("transfer:changed", ({ payload }) => callback(payload));
 export const onFileTransferRemoved = (callback: (id: string) => void) =>
@@ -58,21 +78,44 @@ export const cancelFileDiff = (requestId: string) => commands.cancelFileDiff(req
 
 export interface ResourceMetrics {
   status: "ok" | "unsupported";
-  cpuPercent: number | null; cpuStatus: string;
-  memory: {usedBytes:number;totalBytes:number} | null; memoryStatus: string;
-  capacity: {usedBytes:number;totalBytes:number;mount:string} | null; capacityStatus: string;
-  diskReadBps:number | null; diskWriteBps:number | null; diskStatus:string;
-  networkReceiveBps:number | null; networkSendBps:number | null; networkStatus:string;
-  gpus: {index:number;name:string;utilization:number | null;usedBytes:number | null;totalBytes:number | null;temperature:number | null}[];
+  cpuPercent: number | null;
+  cpuStatus: string;
+  memory: { usedBytes: number; totalBytes: number } | null;
+  memoryStatus: string;
+  capacity: { usedBytes: number; totalBytes: number; mount: string } | null;
+  capacityStatus: string;
+  diskReadBps: number | null;
+  diskWriteBps: number | null;
+  diskStatus: string;
+  networkReceiveBps: number | null;
+  networkSendBps: number | null;
+  networkStatus: string;
+  gpus: {
+    index: number;
+    name: string;
+    utilization: number | null;
+    usedBytes: number | null;
+    totalBytes: number | null;
+    temperature: number | null;
+  }[];
   gpuStatus: string;
   /** Accelerators (Ascend, Intel XPU, Rockchip NPU, or a generic /sys/class/accel
    *  device). A field is null when its source did not report it — never a
    *  fabricated zero — and npuStatus stays distinct from gpuStatus. */
-  npus: {index:number;name:string;utilization:number | null;usedBytes:number | null;totalBytes:number | null;temperature:number | null}[];
+  npus: {
+    index: number;
+    name: string;
+    utilization: number | null;
+    usedBytes: number | null;
+    totalBytes: number | null;
+    temperature: number | null;
+  }[];
   npuStatus: string;
 }
-export const sampleResources = (id:string,requestId:string) => invoke<ResourceMetrics>("sample_resources",{id,requestId});
-export const cancelResourceSample = (requestId:string) => invoke<void>("cancel_resource_sample",{requestId});
+export const sampleResources = (id: string, requestId: string) =>
+  invoke<ResourceMetrics>("sample_resources", { id, requestId });
+export const cancelResourceSample = (requestId: string) =>
+  invoke<void>("cancel_resource_sample", { requestId });
 
 /** One journal found on disk after a restart. */
 export interface RecoverableTransfer {
@@ -99,7 +142,8 @@ export const listRecoverableTransfers = () =>
  * SFTP reuses authenticated SSH; FTP dials its own transfer connections.
  */
 export const recoverTransfer = (
-  transfer: string, onProgress: (progress: TransferProgress) => void,
+  transfer: string,
+  onProgress: (progress: TransferProgress) => void,
 ) => {
   const channel = new Channel<TransferProgress>();
   channel.onmessage = onProgress;
@@ -120,17 +164,14 @@ export const saveProfile = (profile: SessionProfile) =>
   invoke<SessionProfile>("save_profile", { profile });
 
 /** Saves a copy of a profile, stored credentials included. */
-export const duplicateProfile = (id: string) =>
-  invoke<SessionProfile>("duplicate_profile", { id });
+export const duplicateProfile = (id: string) => invoke<SessionProfile>("duplicate_profile", { id });
 
 /** Deletes a profile with its credentials and the Sender commands scoped to it. */
-export const deleteProfile = (id: string) =>
-  invoke<void>("delete_profile", { id });
+export const deleteProfile = (id: string) => invoke<void>("delete_profile", { id });
 
 // --- session groups ---------------------------------------------------------
 
-export const listSessionGroups = () =>
-  invoke<SessionGroup[]>("list_session_groups");
+export const listSessionGroups = () => invoke<SessionGroup[]>("list_session_groups");
 
 export const saveSessionGroup = (group: SessionGroup) =>
   invoke<SessionGroup>("save_session_group", { group });
@@ -139,53 +180,41 @@ export const saveSessionGroup = (group: SessionGroup) =>
  * Deletes a group and its subgroups; profiles inside move to the deleted
  * group's parent, so callers must reload profiles afterwards.
  */
-export const deleteSessionGroup = (id: string) =>
-  invoke<void>("delete_session_group", { id });
+export const deleteSessionGroup = (id: string) => invoke<void>("delete_session_group", { id });
 
 // --- sender commands -------------------------------------------------------
 
-export const listSenderCommands = () =>
-  invoke<SavedCommand[]>("list_sender_commands");
+export const listSenderCommands = () => invoke<SavedCommand[]>("list_sender_commands");
 
 export const saveSenderCommand = (command: SavedCommand) =>
   invoke<SavedCommand>("save_sender_command", { command });
 
-export const deleteSenderCommand = (id: string) =>
-  invoke<void>("delete_sender_command", { id });
+export const deleteSenderCommand = (id: string) => invoke<void>("delete_sender_command", { id });
 
 // --- data export / import ---------------------------------------------------
 
 /** Writes sessions, groups, Sender tags and `settings` to `path` (no secrets). */
-export const exportAppData = (
-  path: string,
-  settings: unknown,
-  exportedAt: string,
-) => invoke<DataSummary>("export_app_data", { path, settings, exportedAt });
+export const exportAppData = (path: string, settings: unknown, exportedAt: string) =>
+  invoke<DataSummary>("export_app_data", { path, settings, exportedAt });
 
 /** Parses a data file for preview; credentials in it are dropped by the backend. */
-export const readAppData = (path: string) =>
-  invoke<AppData>("read_app_data", { path });
+export const readAppData = (path: string) => invoke<AppData>("read_app_data", { path });
 
 /** Merges a file from `readAppData` into the saved data (same id replaces). */
-export const importAppData = (data: AppData) =>
-  invoke<DataSummary>("import_app_data", { data });
+export const importAppData = (data: AppData) => invoke<DataSummary>("import_app_data", { data });
 
 // --- OpenSSH config import --------------------------------------------------
 
 /** `~/.ssh/config`, whether or not it exists; the open dialog starts there. */
-export const defaultSshConfigPath = () =>
-  invoke<string>("default_ssh_config_path");
+export const defaultSshConfigPath = () => invoke<string>("default_ssh_config_path");
 
 /** Parses an OpenSSH client config and marks the aliases already saved. */
 export const readSshConfig = (path: string) =>
   invoke<SshConfigPreview>("read_ssh_config", { path });
 
 /** Saves the chosen aliases as SSH sessions under `groupId` (null: top level). */
-export const importSshConfig = (
-  path: string,
-  aliases: string[],
-  groupId: string | null,
-) => invoke<SshImportSummary>("import_ssh_config", { path, aliases, groupId });
+export const importSshConfig = (path: string, aliases: string[], groupId: string | null) =>
+  invoke<SshImportSummary>("import_ssh_config", { path, aliases, groupId });
 
 // --- public-key login setup --------------------------------------------------
 
@@ -243,16 +272,13 @@ export const configurePublicKeyLogin = (
  * Stops the check running under `requestId`; the setup command ends with a
  * cancelled check and leaves the saved session alone.
  */
-export const cancelKeyCheck = (requestId: string) =>
-  commands.cancelKeyCheck(requestId);
-
+export const cancelKeyCheck = (requestId: string) => commands.cancelKeyCheck(requestId);
 
 // --- command history ---------------------------------------------------------
 
 export type CommandHistoryEntry = Wire.CommandHistoryEntry;
 
-export const listCommandHistory = () =>
-  invoke<CommandHistoryEntry[]>("list_command_history");
+export const listCommandHistory = () => invoke<CommandHistoryEntry[]>("list_command_history");
 
 export const recordCommand = (command: string, host: string) =>
   invoke<void>("record_command", { command, host });
@@ -260,8 +286,7 @@ export const recordCommand = (command: string, host: string) =>
 export const deleteCommandHistory = (command: string) =>
   invoke<void>("delete_command_history", { command });
 
-export const clearCommandHistory = () =>
-  invoke<void>("clear_command_history");
+export const clearCommandHistory = () => invoke<void>("clear_command_history");
 
 // --- sessions ---------------------------------------------------------------
 
@@ -305,13 +330,16 @@ export const openSession = (
     outputToken,
     reuseSessionId: reuseSessionId ?? null,
     autoReuse,
-  }).then((outcome) => {
-    if (outcome.status !== "connected") retireOutput(sessionId, outputToken);
-    return outcome;
-  }, (error: unknown) => {
-    retireOutput(sessionId, outputToken);
-    throw error;
-  });
+  }).then(
+    (outcome) => {
+      if (outcome.status !== "connected") retireOutput(sessionId, outputToken);
+      return outcome;
+    },
+    (error: unknown) => {
+      retireOutput(sessionId, outputToken);
+      throw error;
+    },
+  );
 };
 
 function retireOutput(id: string, token?: string) {
@@ -347,8 +375,7 @@ export const closeSession = (id: string) => {
 };
 
 /** Where a profile's recordings go when it names no folder of its own. */
-export const defaultRecordingDir = () =>
-  invoke<string>("default_recording_dir");
+export const defaultRecordingDir = () => invoke<string>("default_recording_dir");
 
 /** One installed font family, as `list_system_fonts` reports it. */
 export type FontFamily = Wire.FontFamily;
@@ -357,8 +384,7 @@ export type FontFamily = Wire.FontFamily;
 export const listSystemFonts = () => invoke<FontFamily[]>("list_system_fonts");
 
 /** The face fontconfig gives for `monospace`; null off Linux. */
-export const systemMonospaceFamily = () =>
-  invoke<string | null>("system_monospace_family");
+export const systemMonospaceFamily = () => invoke<string | null>("system_monospace_family");
 
 export const writeSession = (id: string, data: string) =>
   invoke<void>("write_session", { id, data });
@@ -389,14 +415,9 @@ export const zmodemFileInfo = (path: string) =>
 export const zmodemReadBytes = async (path: string, offset: number, length: number) =>
   new Uint8Array(await invoke<ArrayBuffer>("zmodem_read_bytes", { path, offset, length }));
 
-export const zmodemCreateFile = (path: string) =>
-  invoke<void>("zmodem_create_file", { path });
+export const zmodemCreateFile = (path: string) => invoke<void>("zmodem_create_file", { path });
 
-export const zmodemWriteBytes = (
-  path: string,
-  offset: number,
-  bytes: Uint8Array,
-) =>
+export const zmodemWriteBytes = (path: string, offset: number, bytes: Uint8Array) =>
   invoke<void>("zmodem_write_bytes", bytes, binaryOptions({ path, offset }));
 
 export const zmodemFinishFile = (path: string, size: number) =>
@@ -406,11 +427,9 @@ export const zmodemFinishFile = (path: string, size: number) =>
 
 export const sftpHome = (id: string) => invoke<string>("sftp_home", { id });
 
-export const sftpList = (id: string, path: string) =>
-  invoke<DirListing>("sftp_list", { id, path });
+export const sftpList = (id: string, path: string) => invoke<DirListing>("sftp_list", { id, path });
 
-export const sftpMkdir = (id: string, path: string) =>
-  invoke<void>("sftp_mkdir", { id, path });
+export const sftpMkdir = (id: string, path: string) => invoke<void>("sftp_mkdir", { id, path });
 
 export const sftpCreateFile = (id: string, path: string) =>
   invoke<void>("sftp_create_file", { id, path });
@@ -420,12 +439,8 @@ export const sftpCreateFile = (id: string, path: string) =>
  * confirmed that a folder's contents go with it; without it the server still
  * refuses a folder that is not empty.
  */
-export const sftpRemove = (
-  id: string,
-  path: string,
-  isDir: boolean,
-  recursive: boolean,
-) => invoke<void>("sftp_remove", { id, path, isDir, recursive });
+export const sftpRemove = (id: string, path: string, isDir: boolean, recursive: boolean) =>
+  invoke<void>("sftp_remove", { id, path, isDir, recursive });
 
 export const sftpRename = (id: string, from: string, to: string) =>
   invoke<void>("sftp_rename", { id, from, to });
@@ -479,8 +494,7 @@ export const newTransferId = (): string =>
  * transfer's promise rejects. Only for a transfer whose promise is still
  * pending; a cancel after it settled would linger in the backend's list.
  */
-export const cancelTransfer = (transfer: string) =>
-  invoke<void>("cancel_transfer", { transfer });
+export const cancelTransfer = (transfer: string) => invoke<void>("cancel_transfer", { transfer });
 
 // --- local filesystem -------------------------------------------------------
 
@@ -490,8 +504,7 @@ export const localHome = () => invoke<string>("local_home");
  * Where a shell or SSH session's foreground job is right now: the OS is
  * asked for a local shell, the server for an SSH one (see `session/cwd.rs`).
  */
-export const sessionCwd = (id: string) =>
-  invoke<string>("session_cwd", { id });
+export const sessionCwd = (id: string) => invoke<string>("session_cwd", { id });
 
 export const localHostname = () => invoke<string>("local_hostname");
 
@@ -502,20 +515,15 @@ export const localHostname = () => invoke<string>("local_hostname");
  */
 export const LOCAL_DRIVES_ROOT = "This PC";
 
-export const localList = (path: string) =>
-  invoke<DirListing>("local_list", { path });
+export const localList = (path: string) => invoke<DirListing>("local_list", { path });
 
-export const localParent = (path: string) =>
-  invoke<string>("local_parent", { path });
+export const localParent = (path: string) => invoke<string>("local_parent", { path });
 
-export const localMkdir = (path: string) =>
-  invoke<void>("local_mkdir", { path });
+export const localMkdir = (path: string) => invoke<void>("local_mkdir", { path });
 
-export const localCreateFile = (path: string) =>
-  invoke<void>("local_create_file", { path });
+export const localCreateFile = (path: string) => invoke<void>("local_create_file", { path });
 
-export const localRename = (from: string, to: string) =>
-  invoke<void>("local_rename", { from, to });
+export const localRename = (from: string, to: string) => invoke<void>("local_rename", { from, to });
 
 /** Deletes one local entry; `recursive` has the same contract as `sftpRemove`. */
 export const localRemove = (path: string, isDir: boolean, recursive: boolean) =>
@@ -549,8 +557,7 @@ export const openLocalPath = (path: string, app?: string) =>
   invoke<void>("open_local_path", { path, with: app ?? null });
 
 /** Windows only: the system "Open with" chooser for a local file. */
-export const openWithDialog = (path: string) =>
-  invoke<void>("open_with_dialog", { path });
+export const openWithDialog = (path: string) => invoke<void>("open_with_dialog", { path });
 
 // --- dragging files out of the window ---------------------------------------
 
@@ -561,8 +568,7 @@ export const openWithDialog = (path: string) =>
  * folder is cleared on the next launch, not when the drag ends, because the
  * drop target does the copy itself and may still be reading.
  */
-export const dragStagingPath = (name: string) =>
-  invoke<string>("drag_staging_path", { name });
+export const dragStagingPath = (name: string) => invoke<string>("drag_staging_path", { name });
 
 /** How a drag out of the window ended; see `startFileDrag`. */
 export type FileDragOutcome = Wire.FileDragOutcome;
@@ -576,10 +582,7 @@ export type FileDragOutcome = Wire.FileDragOutcome;
  * reports the outcome, once for every drag, and it is also where a drag that
  * never started shows up.
  */
-export const startFileDrag = (
-  paths: string[],
-  onFinished: (outcome: FileDragOutcome) => void,
-) => {
+export const startFileDrag = (paths: string[], onFinished: (outcome: FileDragOutcome) => void) => {
   const events = new Channel<FileDragOutcome>();
   events.onmessage = onFinished;
   return invoke<void>("start_file_drag", { paths, onEvent: events });
@@ -647,8 +650,7 @@ export const watchRemoteEdit = (id: string, local: string, remote: string) =>
   invoke<void>("watch_remote_edit", { id, local, remote });
 
 /** Stops watching every file opened from a session; for a tab closed for good. */
-export const stopRemoteEdits = (id: string) =>
-  invoke<void>("stop_remote_edits", { id });
+export const stopRemoteEdits = (id: string) => invoke<void>("stop_remote_edits", { id });
 
 export interface RemoteEditEvent {
   sessionId: string;
@@ -659,35 +661,26 @@ export interface RemoteEditEvent {
   message: string | null;
 }
 
-export const onRemoteEditState = (
-  handler: (event: RemoteEditEvent) => void,
-): Promise<UnlistenFn> =>
+export const onRemoteEditState = (handler: (event: RemoteEditEvent) => void): Promise<UnlistenFn> =>
   listen<RemoteEditEvent>("remote-edit:state", (e) => handler(e.payload));
 
 // --- serial -----------------------------------------------------------------
 
-export const listSerialPorts = () =>
-  invoke<SerialPortDesc[]>("list_serial_ports");
+export const listSerialPorts = () => invoke<SerialPortDesc[]>("list_serial_ports");
 
 // --- events -----------------------------------------------------------------
 
-export const onSessionState = (
-  handler: (event: StateEvent) => void,
-): Promise<UnlistenFn> =>
+export const onSessionState = (handler: (event: StateEvent) => void): Promise<UnlistenFn> =>
   events.sessionState.listen((e) => handler(e.payload));
 
 /** A session recording that can no longer be written; see session/recording.rs. */
 export type RecordingError = Wire.RecordingErrorEvent;
 
-export const onRecordingError = (
-  handler: (event: RecordingError) => void,
-): Promise<UnlistenFn> =>
+export const onRecordingError = (handler: (event: RecordingError) => void): Promise<UnlistenFn> =>
   events.sessionRecordingError.listen((e) => handler(e.payload));
 
 /** A server asking for a verification code (or another factor) mid-connect. */
-export const onAuthPrompt = (
-  handler: (prompt: AuthPrompt) => void,
-): Promise<UnlistenFn> =>
+export const onAuthPrompt = (handler: (prompt: AuthPrompt) => void): Promise<UnlistenFn> =>
   events.sessionAuthPrompt.listen((e) => handler(e.payload));
 
 /**
@@ -757,8 +750,7 @@ export const setCloseToTray = (enabled: boolean): Promise<void> =>
  * the fallback on Windows for a WebView2 profile that refuses the page's
  * read (see `read_clipboard_text`).
  */
-export const readClipboardText = (): Promise<string> =>
-  invoke("read_clipboard_text");
+export const readClipboardText = (): Promise<string> => invoke("read_clipboard_text");
 
 /**
  * Puts text on the clipboard from the process: what a program's OSC 52 write
@@ -806,13 +798,21 @@ export interface PortForward {
   sentBytes: number;
   receivedBytes: number;
 }
-export interface PortDiscovery { status: "ok" | "unsupported"; ports: { host: string; port: number; process: string | null }[]; truncated: boolean }
-export const startPortForward = (id: string, spec: PortForwardSpec): Promise<PortForward> => invoke("start_port_forward", { id, spec });
+export interface PortDiscovery {
+  status: "ok" | "unsupported";
+  ports: { host: string; port: number; process: string | null }[];
+  truncated: boolean;
+}
+export const startPortForward = (id: string, spec: PortForwardSpec): Promise<PortForward> =>
+  invoke("start_port_forward", { id, spec });
 export const listPortForwards = (): Promise<PortForward[]> => invoke("list_port_forwards");
 export const stopPortForward = (id: string): Promise<void> => invoke("stop_port_forward", { id });
-export const removePortForward = (id: string): Promise<void> => invoke("remove_port_forward", { id });
-export const discoverListeningPorts = (id: string, requestId: string): Promise<PortDiscovery> => invoke("discover_listening_ports", { id, requestId });
-export const cancelPortDiscovery = (requestId: string): Promise<void> => invoke("cancel_port_discovery", { requestId });
+export const removePortForward = (id: string): Promise<void> =>
+  invoke("remove_port_forward", { id });
+export const discoverListeningPorts = (id: string, requestId: string): Promise<PortDiscovery> =>
+  invoke("discover_listening_ports", { id, requestId });
+export const cancelPortDiscovery = (requestId: string): Promise<void> =>
+  invoke("cancel_port_discovery", { requestId });
 
 // --- encoding helpers -------------------------------------------------------
 

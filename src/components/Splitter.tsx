@@ -107,8 +107,12 @@ export function Splitter({ orientation, onResize, onDragStart, onEnd }: Props) {
         if (e.pointerId === drag.current?.pointerId) finish(e.type === "pointerup");
       };
       const cancel = () => finish(false);
-      const keydown = (e: KeyboardEvent) => { if (e.key === "Escape") cancel(); };
-      const visibility = () => { if (document.visibilityState === "hidden") cancel(); };
+      const keydown = (e: KeyboardEvent) => {
+        if (e.key === "Escape") cancel();
+      };
+      const visibility = () => {
+        if (document.visibilityState === "hidden") cancel();
+      };
       drag.current = {
         target,
         pointerId: event.pointerId,
@@ -152,9 +156,12 @@ export function Splitter({ orientation, onResize, onDragStart, onEnd }: Props) {
     [finish, orientation],
   );
 
-  const handleLostCapture = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.pointerId === drag.current?.pointerId) finish(false);
-  }, [finish]);
+  const handleLostCapture = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.pointerId === drag.current?.pointerId) finish(false);
+    },
+    [finish],
+  );
 
   // Keyboard resizing goes through the same frame batch as the pointer, so a
   // burst of auto-repeat is folded into one state update per frame. The press

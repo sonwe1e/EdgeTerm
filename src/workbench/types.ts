@@ -235,13 +235,7 @@ export interface FileStat {
 }
 
 /** The editor's per-file state, keyed by workspace and absolute remote path. */
-export type DocSync =
-  | "loading"
-  | "synced"
-  | "dirty"
-  | "saving"
-  | "conflict"
-  | "failed";
+export type DocSync = "loading" | "synced" | "dirty" | "saving" | "conflict" | "failed";
 
 /** Whether the local draft of a dirty document is safely on disk. */
 export type DraftState = "idle" | "pending" | "saved" | "failed";

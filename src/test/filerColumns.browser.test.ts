@@ -181,9 +181,7 @@ describe("the Filer's three columns", () => {
       filer.app.style.setProperty("--panel-font-size", `${font}px`);
       for (const column of ["filer-col-size", "filer-col-date"]) {
         const caption = filer.caption(column);
-        expect(filer.ink(caption).width).toBeLessThanOrEqual(
-          caption.getBoundingClientRect().width,
-        );
+        expect(filer.ink(caption).width).toBeLessThanOrEqual(caption.getBoundingClientRect().width);
       }
       filer.app.remove();
     });

@@ -14,14 +14,16 @@ export function useFileSelection(entries: readonly FileEntry[]) {
   const clear = useStableCallback(() => replace([]));
   const selectAll = useStableCallback(() => replace(entries.map((entry) => entry.path)));
   const select = useStableCallback((path: string, { toggle = false, range = false } = {}) => {
-    const from = anchor.current === null ? -1 : entries.findIndex((entry) => entry.path === anchor.current);
+    const from =
+      anchor.current === null ? -1 : entries.findIndex((entry) => entry.path === anchor.current);
     const to = entries.findIndex((entry) => entry.path === path);
     if (to < 0) return;
     if (!range || from < 0) anchor.current = path;
     setPaths((previous) => {
       if (range && from >= 0) {
         const next = toggle ? new Set(previous) : new Set<string>();
-        for (let index = Math.min(from, to); index <= Math.max(from, to); index++) next.add(entries[index].path);
+        for (let index = Math.min(from, to); index <= Math.max(from, to); index++)
+          next.add(entries[index].path);
         return next;
       }
       if (!toggle) return new Set([path]);
@@ -31,6 +33,9 @@ export function useFileSelection(entries: readonly FileEntry[]) {
       return next;
     });
   });
-  const selectedEntries = useMemo(() => entries.filter((entry) => paths.has(entry.path)), [entries, paths]);
+  const selectedEntries = useMemo(
+    () => entries.filter((entry) => paths.has(entry.path)),
+    [entries, paths],
+  );
   return { paths, selectedEntries, select, selectAll, clear, replace };
 }

@@ -9,9 +9,7 @@
  * `flush` applies whatever is pending right away — a drag's final frame
  * must land with the pointer-up, not one rAF later.
  */
-export function createFrameBatch(
-  apply: (delta: number) => void,
-): {
+export function createFrameBatch(apply: (delta: number) => void): {
   /** Accumulates `delta`; the scheduled frame applies the sum once. */
   push: (delta: number) => void;
   /** Cancels the scheduled frame and applies anything pending now. */

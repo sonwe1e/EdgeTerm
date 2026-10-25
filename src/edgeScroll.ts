@@ -67,13 +67,7 @@ export function createDragAutoScroll(
     if (!live) return;
     let near = false;
     for (const element of containers()) {
-      const step = edgeScrollStep(
-        element.getBoundingClientRect(),
-        x,
-        y,
-        edge,
-        maxStep,
-      );
+      const step = edgeScrollStep(element.getBoundingClientRect(), x, y, edge, maxStep);
       if (step !== 0) {
         const before = element.scrollTop;
         element.scrollTop += step;

@@ -76,7 +76,12 @@ export function ProjectSearch({
               if (event.key === "Enter") void run();
             }}
           />
-          <button type="button" className="btn is-primary" disabled={!sessionId || busy} onClick={() => void run()}>
+          <button
+            type="button"
+            className="btn is-primary"
+            disabled={!sessionId || busy}
+            onClick={() => void run()}
+          >
             {busy ? t("wb.searching") : t("wb.search")}
           </button>
         </div>
@@ -85,7 +90,9 @@ export function ProjectSearch({
         {result && (
           <>
             <p className="wb-search-note">
-              {result.matches.length === 0 ? t("wb.searchEmpty") : `${result.matches.length} · ${result.skipped}`}
+              {result.matches.length === 0
+                ? t("wb.searchEmpty")
+                : `${result.matches.length} · ${result.skipped}`}
               {result.truncated ? ` · ${t("wb.searchTruncated")}` : ""}
             </p>
             <div className="wb-search-results" role="listbox">

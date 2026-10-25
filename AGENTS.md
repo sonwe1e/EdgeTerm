@@ -32,6 +32,8 @@ scripts; do not bypass the runner with bare npx/cargo for heavy work.
 - `npm run tauri:dev`: launch the desktop app with Vite.
 - `npm run dev`: serve the frontend at port 1420; native IPC requires Tauri.
 - `npm run typecheck`: check TypeScript without emitting files.
+- `npm run format`: format maintained frontend, script, and tooling configuration files with Biome.
+- `npm run format:check`: check the same formatting without writing files.
 - `npm test`: run Vitest with jsdom.
 - `npm run build`: type-check and build frontend assets.
 - `npm run tauri:build`: build desktop bundles.
@@ -41,7 +43,14 @@ scripts; do not bypass the runner with bare npx/cargo for heavy work.
 
 ## Coding Style & Naming Conventions
 
-Match existing TypeScript: two-space indentation, double quotes, semicolons, camelCase helpers, and PascalCase components/types. Keep strict TypeScript checks passing. Rust uses four-space indentation, snake_case functions/modules, and rustfmt. Biome runs targeted lint rules with formatting disabled (`npm run lint`). Hook dependencies that intentionally trigger work remain valid; stable event callbacks use `useStableCallback`.
+Match existing TypeScript: two-space indentation, double quotes, semicolons, camelCase helpers,
+and PascalCase components/types. Biome owns frontend/script formatting with a 100-column target;
+`npm run format` writes and `npm run format:check` checks. Generated `src/bindings.ts` keeps the
+generator's format. Keep strict TypeScript checks passing. Rust uses four-space indentation,
+snake_case functions/modules, and rustfmt. `npm run lint` runs targeted Biome lint rules
+independently of formatting. Hook dependencies that intentionally trigger work remain valid;
+stable event callbacks use `useStableCallback`. See
+[code style and debugging](docs/code-style.zh-CN.md) for editor setup and navigation.
 
 Reuse Codicons through `src/components/icons.tsx`. Put shared preferences in the store; register external panel persistence keys in `src/persistKeys.ts`.
 

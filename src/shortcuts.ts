@@ -100,9 +100,7 @@ export const SHORTCUT_COMMANDS: {
 ];
 
 /** Display name of each command, in the current language. */
-export const shortcutLabels = (
-  t: Translate,
-): Record<ShortcutCommand, string> => ({
+export const shortcutLabels = (t: Translate): Record<ShortcutCommand, string> => ({
   newSession: t("sc.newSession.label"),
   closeSession: t("sc.closeSession.label"),
   prevTab: t("sc.prevTab.label"),
@@ -125,9 +123,7 @@ export const shortcutLabels = (
 });
 
 /** One-line description of each command, in the current language. */
-export const shortcutHints = (
-  t: Translate,
-): Record<ShortcutCommand, string> => ({
+export const shortcutHints = (t: Translate): Record<ShortcutCommand, string> => ({
   newSession: t("sc.newSession.hint"),
   closeSession: t("sc.closeSession.hint"),
   prevTab: t("sc.prevTab.hint"),
@@ -149,10 +145,7 @@ export const shortcutHints = (
   focusRegion: t("sc.focusRegion.hint"),
 });
 
-const chord = (
-  code: string,
-  mods: Partial<Omit<KeyChord, "code">>,
-): KeyChord => ({
+const chord = (code: string, mods: Partial<Omit<KeyChord, "code">>): KeyChord => ({
   ctrl: false,
   alt: false,
   shift: false,
@@ -237,9 +230,7 @@ const OTHER_DEFAULTS: ShortcutBindings = {
  * Selected once per build: IS_MAC is a compile-time constant, so only the
  * current platform's scheme ships.
  */
-export const DEFAULT_SHORTCUTS: Readonly<ShortcutBindings> = IS_MAC
-  ? MAC_DEFAULTS
-  : OTHER_DEFAULTS;
+export const DEFAULT_SHORTCUTS: Readonly<ShortcutBindings> = IS_MAC ? MAC_DEFAULTS : OTHER_DEFAULTS;
 
 /** A fresh, mutable copy of the platform defaults. */
 export const defaultShortcuts = (): ShortcutBindings => ({
@@ -269,10 +260,7 @@ function codeCharacter(code: string): string | null {
  * character accepted as well for letters and digits so that a non-QWERTY
  * layout triggers the shortcut printed on the key the user actually pressed.
  */
-export function chordMatches(
-  binding: KeyChord,
-  event: ShortcutKeyEvent,
-): boolean {
+export function chordMatches(binding: KeyChord, event: ShortcutKeyEvent): boolean {
   if (
     binding.ctrl !== event.ctrlKey ||
     binding.alt !== event.altKey ||
@@ -439,22 +427,15 @@ export function chordProblem(binding: KeyChord): string | null {
   }
   const bareShift = binding.shift && SHIFT_ONLY_KEYS.test(binding.code);
   if (!binding.ctrl && !binding.alt && !binding.meta && !bareShift) {
-    return IS_MAC
-      ? translateMsg("sc.problemMac")
-      : translateMsg("sc.problemOther");
+    return IS_MAC ? translateMsg("sc.problemMac") : translateMsg("sc.problemOther");
   }
-  const reserved = RESERVED_CHORDS.find((entry) =>
-    sameChord(entry.chord, binding),
-  );
+  const reserved = RESERVED_CHORDS.find((entry) => sameChord(entry.chord, binding));
   if (reserved)
     return translateMsg("sc.reserved", {
       chord: chordLabel(binding),
       owner: translateMsg(reserved.owner),
     });
-  if (
-    /^Digit[1-9]$/.test(binding.code) &&
-    tabDigitModifiers(toEvent(binding))
-  ) {
+  if (/^Digit[1-9]$/.test(binding.code) && tabDigitModifiers(toEvent(binding))) {
     return translateMsg("sc.switchesToTab", {
       chord: chordLabel(binding),
       number: binding.code.slice(5),
@@ -465,8 +446,7 @@ export function chordProblem(binding: KeyChord): string | null {
 
 // --- storage ----------------------------------------------------------------
 
-const isBoolean = (value: unknown): value is boolean =>
-  typeof value === "boolean";
+const isBoolean = (value: unknown): value is boolean => typeof value === "boolean";
 
 /** Validates one stored or imported chord; null for anything unknown. */
 function parseChord(value: unknown): KeyChord | null {
@@ -520,9 +500,7 @@ export function parseShortcuts(
  * difference rather than the whole table lets a later release change a
  * default the user never touched.
  */
-export function shortcutOverrides(
-  bindings: Readonly<ShortcutBindings>,
-): Partial<ShortcutBindings> {
+export function shortcutOverrides(bindings: Readonly<ShortcutBindings>): Partial<ShortcutBindings> {
   const overrides: Partial<ShortcutBindings> = {};
   for (const { id } of SHORTCUT_COMMANDS) {
     if (!sameChord(bindings[id], DEFAULT_SHORTCUTS[id])) {

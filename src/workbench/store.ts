@@ -65,7 +65,6 @@ type Status = "idle" | "loading" | "ready" | "error";
 
 const now = () => Date.now();
 
-
 function readJson<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
@@ -76,11 +75,7 @@ function readJson<T>(key: string, fallback: T): T {
   }
 }
 
-function boundedView<T>(
-  record: Record<string, T>,
-  key: string,
-  value: T,
-): Record<string, T> {
+function boundedView<T>(record: Record<string, T>, key: string, value: T): Record<string, T> {
   const next = { ...record, [key]: value };
   const keys = Object.keys(next);
   for (const stale of keys.slice(0, Math.max(0, keys.length - VIEW_CACHE_LIMIT))) {
@@ -358,9 +353,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
         status: "ready",
         activeWorkspaceId: workspace?.id ?? null,
         activeExperimentId: experiment?.id ?? null,
-        activeRunId: workspace
-          ? (runsOf(data, workspace.id, experiment?.id)[0]?.id ?? null)
-          : null,
+        activeRunId: workspace ? (runsOf(data, workspace.id, experiment?.id)[0]?.id ?? null) : null,
       });
       if (workspace) {
         if (connectedTabFor(workspace.server)) {
@@ -439,9 +432,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     // Switching projects should also put the terminal view back on the
     // terminal that belongs to this project, when one is already open.
     const app = useStore.getState();
-    const terminal = app.tabs.find(
-      (tab) => tab.workspaceId === id && tab.state === "connected",
-    );
+    const terminal = app.tabs.find((tab) => tab.workspaceId === id && tab.state === "connected");
     if (terminal) app.setActive(terminal.info.id);
     if (connectedTabFor(workspace.server)) {
       void get().ensureProbe(id);
@@ -458,7 +449,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       : null;
     if (!workspace) return;
     const experiment = id
-      ? experimentsOf(state.data, workspace.id).find((item) => item.id === id) ?? null
+      ? (experimentsOf(state.data, workspace.id).find((item) => item.id === id) ?? null)
       : null;
     set({
       activeExperimentId: experiment?.id ?? null,
@@ -527,9 +518,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     const data = await wb.deleteExperiment(id);
     set({ data });
     if (get().activeExperimentId === id) {
-      const workspace = data.workspaces.find(
-        (item) => item.id === get().activeWorkspaceId,
-      );
+      const workspace = data.workspaces.find((item) => item.id === get().activeWorkspaceId);
       const experiments = workspace ? experimentsOf(data, workspace.id) : [];
       const next = experiments[0] ?? null;
       set({ activeExperimentId: next?.id ?? null, activeRunId: null });
@@ -630,9 +619,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       set({
         activeDocId: id,
         docs: state.docs.map((doc) =>
-          doc.id === id
-            ? { ...doc, revealLine: line ?? doc.revealLine, lastActiveAt: now() }
-            : doc,
+          doc.id === id ? { ...doc, revealLine: line ?? doc.revealLine, lastActiveAt: now() } : doc,
         ),
       });
       void get().checkRemoteDoc(id);
@@ -690,8 +677,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
           draftRestored: true,
           draftState: "saved",
           draftError: null,
-          error:
-            draft.baseHash === remote.hash ? null : t("wb.draftConflict"),
+          error: draft.baseHash === remote.hash ? null : t("wb.draftConflict"),
         };
         replaceDoc(set, get, restored);
         rememberOpenFiles(get().docs);
@@ -712,9 +698,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
         bom: remote.bom,
         modifiedAt: remote.modifiedAt,
         sync: "synced",
-        error: foreign
-          ? t("wb.draftForeign", { server: draft?.serverKey ?? "" })
-          : null,
+        error: foreign ? t("wb.draftForeign", { server: draft?.serverKey ?? "" }) : null,
         draftState: "idle",
         draftError: null,
       };
@@ -738,18 +722,14 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   activateDoc(id) {
     set((state) => ({
       activeDocId: id,
-      docs: state.docs.map((doc) =>
-        doc.id === id ? { ...doc, lastActiveAt: now() } : doc,
-      ),
+      docs: state.docs.map((doc) => (doc.id === id ? { ...doc, lastActiveAt: now() } : doc)),
     }));
     void get().checkRemoteDoc(id);
   },
 
   clearReveal(id) {
     set((state) => ({
-      docs: state.docs.map((doc) =>
-        doc.id === id ? { ...doc, revealLine: null } : doc,
-      ),
+      docs: state.docs.map((doc) => (doc.id === id ? { ...doc, revealLine: null } : doc)),
     }));
   },
 
@@ -758,11 +738,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     const doc = state.docs.find((item) => item.id === id);
     if (!doc) return;
     const sync =
-      content === doc.savedContent
-        ? "synced"
-        : doc.sync === "conflict"
-          ? "conflict"
-          : "dirty";
+      content === doc.savedContent ? "synced" : doc.sync === "conflict" ? "conflict" : "dirty";
     const next: EditorDoc = { ...doc, content, sync };
     replaceDoc(set, get, next);
     if (sync === "dirty") scheduleDraft(next);
@@ -901,11 +877,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       const stored = await flushDraft(doc);
       if (!stored) {
         const current = get().docs.find((item) => item.id === id);
-        setDraftState(
-          id,
-          "failed",
-          current?.draftError ?? t("wb.draftWriteFailed"),
-        );
+        setDraftState(id, "failed", current?.draftError ?? t("wb.draftWriteFailed"));
         set({ notice: t("wb.draftCloseBlocked") });
         return false;
       }
@@ -919,9 +891,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     set({
       docs,
       activeDocId:
-        get().activeDocId === id
-          ? (docs[docs.length - 1]?.id ?? null)
-          : get().activeDocId,
+        get().activeDocId === id ? (docs[docs.length - 1]?.id ?? null) : get().activeDocId,
     });
     rememberOpenFiles(docs);
     void get().refreshDrafts();
@@ -938,9 +908,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     try {
       const stat = await wb.statFile(session, doc.absolutePath);
       const changed =
-        !stat.exists ||
-        stat.size !== doc.size ||
-        (stat.modifiedAt ?? 0) !== (doc.modifiedAt ?? 0);
+        !stat.exists || stat.size !== doc.size || (stat.modifiedAt ?? 0) !== (doc.modifiedAt ?? 0);
       if (changed && !doc.remoteHash) {
         set((state) => ({
           docs: state.docs.map((item) =>
@@ -959,13 +927,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     const experiment =
       get().data.experiments.find((item) => item.id === get().activeExperimentId) ?? null;
     const root = experimentRoot(workspace, experiment);
-    await openWorkspaceTerminal(
-      workspaceId,
-      workspace.name,
-      workspace.server,
-      root,
-      workspace.env,
-    );
+    await openWorkspaceTerminal(workspaceId, workspace.name, workspace.server, root, workspace.env);
   },
 
   async startRun(input) {
@@ -980,7 +942,8 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
         (doc) =>
           doc.workspaceId === workspace.id &&
           doc.content !== doc.savedContent &&
-          (doc.absolutePath === root || doc.absolutePath.startsWith(`${root.replace(/\/+$/, "")}/`)),
+          (doc.absolutePath === root ||
+            doc.absolutePath.startsWith(`${root.replace(/\/+$/, "")}/`)),
       )
       .map((doc) => doc.absolutePath);
     const session = await ensureSessionFor(workspace.server);
@@ -1033,8 +996,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     }
     try {
       const observation = await wb.runStatus(session, run);
-      const changed =
-        observation.status !== run.status || observation.exitCode !== run.exitCode;
+      const changed = observation.status !== run.status || observation.exitCode !== run.exitCode;
       set((current) => ({
         data: {
           ...current.data,
@@ -1044,8 +1006,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
                   ...item,
                   status: observation.status,
                   exitCode: observation.exitCode,
-                  endedAt:
-                    observation.exitCode === null ? item.endedAt : now(),
+                  endedAt: observation.exitCode === null ? item.endedAt : now(),
                   lastSeenAt: observation.checkedAt,
                 }
               : item,
@@ -1162,10 +1123,11 @@ function evictDocs(
 async function restoreOpenFiles(get: () => WorkbenchState): Promise<void> {
   const state = get();
   if (!state.activeWorkspaceId) return;
-  const remembered = openFiles().filter(
-    (entry) => entry.workspaceId === state.activeWorkspaceId,
-  );
-  if (remembered.length === 0 || state.docs.some((doc) => doc.workspaceId === state.activeWorkspaceId)) {
+  const remembered = openFiles().filter((entry) => entry.workspaceId === state.activeWorkspaceId);
+  if (
+    remembered.length === 0 ||
+    state.docs.some((doc) => doc.workspaceId === state.activeWorkspaceId)
+  ) {
     return;
   }
   for (const entry of remembered.slice(0, MAX_DOCS)) {
@@ -1179,9 +1141,7 @@ async function restoreOpenFiles(get: () => WorkbenchState): Promise<void> {
 }
 
 export function defaultRunCommand(workspaceId: string): WorkspaceCommand | null {
-  const workspace = useWorkbench
-    .getState()
-    .data.workspaces.find((item) => item.id === workspaceId);
+  const workspace = useWorkbench.getState().data.workspaces.find((item) => item.id === workspaceId);
   return workspace ? defaultCommand(workspace) : null;
 }
 

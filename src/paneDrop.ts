@@ -28,10 +28,7 @@ export type DropAction =
  * refused. Dragging only copies across panes; same-side drops never move
  * entries (upstream PR #92).
  */
-export function dropAction(
-  source: DraggedEntry,
-  target: DropTarget,
-): DropAction | null {
+export function dropAction(source: DraggedEntry, target: DropTarget): DropAction | null {
   if (source.side !== target.side) {
     return source.side === "local" ? { kind: "upload" } : { kind: "download" };
   }

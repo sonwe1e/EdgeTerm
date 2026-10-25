@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("./api", () => ({
-  zmodemWriteBytes: vi.fn(async () => {}), zmodemFinishFile: vi.fn(async () => {}),
+  zmodemWriteBytes: vi.fn(async () => {}),
+  zmodemFinishFile: vi.fn(async () => {}),
   zmodemReadBytes: vi.fn(),
 }));
 import * as api from "./api";
@@ -19,11 +20,16 @@ describe("binary file streaming", () => {
     const progress = vi.fn();
     const writer = new BufferedFileWriter("file", progress, vi.fn());
     const input = new Uint8Array(1_048_576 + 17).fill(128);
-    input[0] = 0; input[input.length - 1] = 255;
-    writer.push(input); input.fill(42);
+    input[0] = 0;
+    input[input.length - 1] = 255;
+    writer.push(input);
+    input.fill(42);
     expect(await writer.finish()).toBe(1_048_576 + 17);
     const calls = vi.mocked(api.zmodemWriteBytes).mock.calls;
-    expect(calls.map((c) => [c[1], c[2].length])).toEqual([[0, 1_048_576], [1_048_576, 17]]);
+    expect(calls.map((c) => [c[1], c[2].length])).toEqual([
+      [0, 1_048_576],
+      [1_048_576, 17],
+    ]);
     expect(calls[0][2][0]).toBe(0);
     expect(calls[1][2][16]).toBe(255);
     expect(api.zmodemFinishFile).toHaveBeenCalledWith("file", 1_048_576 + 17);

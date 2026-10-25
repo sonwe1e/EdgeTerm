@@ -7,22 +7,32 @@ import { join, resolve, sep } from "node:path";
 import { chromium } from "playwright";
 
 const [mode, dataArg, outputArg] = process.argv.slice(2);
-assert.ok(["seed", "blocked", "restored"].includes(mode) && dataArg && outputArg,
-  "Usage: node scripts/check-native-profile-recovery.mjs <seed|blocked|restored> <isolated-data-dir> <new-output-dir>");
+assert.ok(
+  ["seed", "blocked", "restored"].includes(mode) && dataArg && outputArg,
+  "Usage: node scripts/check-native-profile-recovery.mjs <seed|blocked|restored> <isolated-data-dir> <new-output-dir>",
+);
 const target = process.env.EDGETERM_CDP_TARGET_ID;
 assert.ok(target, "Explicitly select the disposable EdgeTerm page");
 const dataDir = await realpath(dataArg);
-assert.ok(dataDir.startsWith(resolve(".tmp") + sep), "Only repository .tmp data directories are allowed");
+assert.ok(
+  dataDir.startsWith(resolve(".tmp") + sep),
+  "Only repository .tmp data directories are allowed",
+);
 const output = resolve(outputArg);
 await mkdir(output);
-const browser = await chromium.connectOverCDP(process.env.EDGETERM_CDP_URL || "http://127.0.0.1:9241");
+const browser = await chromium.connectOverCDP(
+  process.env.EDGETERM_CDP_URL || "http://127.0.0.1:9241",
+);
 const result = { mode, pageErrors: [] };
 let page;
-const invoke = (cmd, args = {}) => page.evaluate(({ cmd, args }) =>
-  window.__TAURI_INTERNALS__.invoke(cmd, args), { cmd, args });
+const invoke = (cmd, args = {}) =>
+  page.evaluate(({ cmd, args }) => window.__TAURI_INTERNALS__.invoke(cmd, args), { cmd, args });
 const capture = async (operation) => {
-  try { return { ok: true, value: await operation() }; }
-  catch (error) { return { ok: false, error }; }
+  try {
+    return { ok: true, value: await operation() };
+  } catch (error) {
+    return { ok: false, error };
+  }
 };
 try {
   for (const candidate of browser.contexts().flatMap((context) => context.pages())) {
@@ -52,8 +62,10 @@ try {
     assert.equal(result.loaded.ok, false, "Corrupt profiles must report a load error");
     assert.equal(result.saved.ok, false, "Corrupt profiles must refuse a new save");
     assert.equal(result.filePreserved, true, "Original corrupt bytes must survive");
-    assert.ok(result.uiText.includes("sessions.json") && result.uiText.includes("restart"),
-      "Startup must display the recovery error instead of Ready");
+    assert.ok(
+      result.uiText.includes("sessions.json") && result.uiText.includes("restart"),
+      "Startup must display the recovery error instead of Ready",
+    );
   } else {
     assert.equal(result.loaded.ok, true);
     assert.equal(result.saved.ok, true);

@@ -19,6 +19,8 @@
     "tauri:dev": "node scripts/run-task.mjs tauri:dev",
     "tauri:build": "node scripts/run-task.mjs tauri:build",
     "lint": "node scripts/run-task.mjs lint",
+    "format": "node scripts/run-task.mjs format",
+    "format:check": "node scripts/run-task.mjs format:check",
     "bindings": "node scripts/run-task.mjs bindings",
     "check:bindings": "node scripts/run-task.mjs check:bindings",
     "experiment:compiler": "node scripts/run-task.mjs experiment:compiler",

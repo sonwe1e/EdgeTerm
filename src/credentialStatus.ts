@@ -36,9 +36,7 @@ export async function fetchCredentialStoreStatus(): Promise<CredentialStoreStatu
  * vault file is a warning: saving a password is refused so the file survives
  * for recovery.
  */
-export function credentialStoreHint(
-  status: CredentialStoreStatus | null,
-): CredentialHint | null {
+export function credentialStoreHint(status: CredentialStoreStatus | null): CredentialHint | null {
   if (!status || status.persistent) return null;
   switch (status.reason) {
     case "portable":

@@ -59,15 +59,9 @@ export function ShortcutsDialog({ bindings, onApply, onClose }: Props) {
     }
     // One chord, one command: whoever held it before gives it up, so the
     // table can never be applied with two commands on the same keys.
-    const taken = SHORTCUT_COMMANDS.find(
-      ({ id }) => id !== command && sameChord(draft[id], chord),
-    );
+    const taken = SHORTCUT_COMMANDS.find(({ id }) => id !== command && sameChord(draft[id], chord));
     setRecording(null);
-    setNotice(
-      taken
-        ? t("sc.taken", { chord: chordLabel(chord), label: labels[taken.id] })
-        : null,
-    );
+    setNotice(taken ? t("sc.taken", { chord: chordLabel(chord), label: labels[taken.id] }) : null);
     setDraft((current) => {
       const next = { ...current, [command]: chord };
       if (taken) next[taken.id] = null;
@@ -103,7 +97,9 @@ export function ShortcutsDialog({ bindings, onApply, onClose }: Props) {
           onApply(draft);
         }}
       >
-        <div className="dialog-header" id="shortcuts-title">{t("sc.title")}</div>
+        <div className="dialog-header" id="shortcuts-title">
+          {t("sc.title")}
+        </div>
         <div className="dialog-body shortcuts-dialog-body">
           <div className="shortcuts-list">
             {SHORTCUT_COMMANDS.map(({ id }) => {
@@ -126,11 +122,7 @@ export function ShortcutsDialog({ bindings, onApply, onClose }: Props) {
                       setRecording(armed ? null : id);
                     }}
                   >
-                    {armed
-                      ? t("sc.pressKeys")
-                      : chord
-                        ? chordLabel(chord)
-                        : t("sc.unassigned")}
+                    {armed ? t("sc.pressKeys") : chord ? chordLabel(chord) : t("sc.unassigned")}
                   </button>
                   <button
                     type="button"
@@ -148,10 +140,7 @@ export function ShortcutsDialog({ bindings, onApply, onClose }: Props) {
           </div>
 
           <p className="shortcuts-notice" role="status">
-            {notice ??
-              (recording
-                ? t("sc.notice")
-                : "")}
+            {notice ?? (recording ? t("sc.notice") : "")}
           </p>
 
           <div className="shortcuts-fixed">

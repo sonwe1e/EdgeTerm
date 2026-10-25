@@ -18,20 +18,13 @@ interface Props {
    * Raised once the backend saved the new login. The caller adopts it on the
    * live tab's own profile copy, so a reconnect dials with the key.
    */
-  onConfigured: (login: {
-    privateKeyPath: string;
-    passphrase: string | null;
-  }) => void;
+  onConfigured: (login: { privateKeyPath: string; passphrase: string | null }) => void;
   onClose: () => void;
 }
 
-type Outcome =
-  | { kind: "failed"; message: string }
-  | { kind: "ran"; setup: api.KeySetup };
+type Outcome = { kind: "failed"; message: string } | { kind: "ran"; setup: api.KeySetup };
 
-type Preview =
-  | { kind: "ok"; summary: api.KeySummary }
-  | { kind: "error"; message: string };
+type Preview = { kind: "ok"; summary: api.KeySummary } | { kind: "error"; message: string };
 
 /**
  * What the last run means, in the user's words. The install and the check
@@ -59,12 +52,7 @@ function resultLine(t: Translate, setup: api.KeySetup): string {
  * still reports an install that stopped there, so "installed but not
  * verified" is never mistaken for "nothing happened".
  */
-export function PublicKeyLoginDialog({
-  profile,
-  sessionId,
-  onConfigured,
-  onClose,
-}: Props) {
+export function PublicKeyLoginDialog({ profile, sessionId, onConfigured, onClose }: Props) {
   const t = useT();
   const [keyPath, setKeyPath] = useState(profile.privateKeyPath ?? "");
   const [passphrase, setPassphrase] = useState("");
@@ -276,9 +264,7 @@ export function PublicKeyLoginDialog({
                 onClick={() => void generate()}
                 disabled={generateBusy || !generating.path.trim()}
               >
-                {generateBusy
-                  ? t("keySetup.generating")
-                  : t("keySetup.generateRun")}
+                {generateBusy ? t("keySetup.generating") : t("keySetup.generateRun")}
               </button>
               <button
                 type="button"
@@ -289,9 +275,7 @@ export function PublicKeyLoginDialog({
                 {t("keySetup.cancel")}
               </button>
             </div>
-            <span className="confirm-dialog-hint">
-              {t("keySetup.generateHint")}
-            </span>
+            <span className="confirm-dialog-hint">{t("keySetup.generateHint")}</span>
           </div>
         )}
 
@@ -309,9 +293,7 @@ export function PublicKeyLoginDialog({
               }}
               onBlur={() => void inspect(keyPath.trim(), passphrase)}
             />
-            <span className="confirm-dialog-hint">
-              {t("keySetup.passphraseHint")}
-            </span>
+            <span className="confirm-dialog-hint">{t("keySetup.passphraseHint")}</span>
           </div>
         </label>
 
@@ -352,26 +334,15 @@ export function PublicKeyLoginDialog({
               {t("keySetup.entry", { path: outcome.setup.install.path })}
             </div>
             {!outcome.setup.saved && (
-              <div className="key-setup-entry is-plain">
-                {t("keySetup.notSaved")}
-              </div>
+              <div className="key-setup-entry is-plain">{t("keySetup.notSaved")}</div>
             )}
           </>
         )}
       </div>
 
       <div className="dialog-footer">
-        <button
-          type="button"
-          className="btn"
-          onClick={cancel}
-          disabled={generateBusy}
-        >
-          {busy
-            ? stopping
-              ? t("keySetup.stopping")
-              : t("keySetup.cancel")
-            : t("keySetup.close")}
+        <button type="button" className="btn" onClick={cancel} disabled={generateBusy}>
+          {busy ? (stopping ? t("keySetup.stopping") : t("keySetup.cancel")) : t("keySetup.close")}
         </button>
         <button
           type="button"

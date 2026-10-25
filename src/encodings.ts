@@ -41,9 +41,7 @@ export function encodingLabel(label: string | null | undefined): string {
  * UTF-16, which cannot carry a terminal's control bytes. The backend treats
  * exactly those labels as UTF-8 too (`session/encoding.rs`).
  */
-export function createOutputDecoder(
-  label: string | null | undefined,
-): TextDecoder | null {
+export function createOutputDecoder(label: string | null | undefined): TextDecoder | null {
   const wanted = encodingLabel(label);
   if (wanted === DEFAULT_ENCODING) return null;
   let decoder: TextDecoder;

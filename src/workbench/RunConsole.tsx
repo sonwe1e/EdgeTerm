@@ -4,13 +4,7 @@ import { useT } from "../useT";
 import { transferBytes } from "../fileTransfers";
 import { Icon } from "../components/icons";
 import * as wb from "./api";
-import {
-  formatClock,
-  formatDuration,
-  isRunLive,
-  runCodeId,
-  runStatusKey,
-} from "./model";
+import { formatClock, formatDuration, isRunLive, runCodeId, runStatusKey } from "./model";
 import { connectedTabFor } from "./session";
 import { useWorkbench } from "./store";
 import type { RunRecord, RunStatus } from "./types";
@@ -39,7 +33,7 @@ export function RunConsole({
   const offset = useRef(0);
   const pre = useRef<HTMLPreElement>(null);
   const follow = useRef(true);
-  const session = run ? connectedTabFor(run.server)?.info.id ?? null : null;
+  const session = run ? (connectedTabFor(run.server)?.info.id ?? null) : null;
   const live = run ? isRunLive(run.status) : false;
 
   useEffect(() => {
@@ -131,7 +125,12 @@ export function RunConsole({
               : t("wb.notChecked")}
         </span>
         <div className="wb-console-actions">
-          <button type="button" className="wb-icon-button" title={t("wb.openTerminal")} onClick={() => onAttach(run)}>
+          <button
+            type="button"
+            className="wb-icon-button"
+            title={t("wb.openTerminal")}
+            onClick={() => onAttach(run)}
+          >
             <Icon name="terminal" />
           </button>
           <button type="button" className="btn wb-mini" onClick={() => onResume(run)}>
@@ -145,12 +144,19 @@ export function RunConsole({
           >
             {t("wb.stop")}
           </button>
-          <button type="button" className="wb-icon-button" title={t("wb.close")} onClick={() => reveal(null)}>
+          <button
+            type="button"
+            className="wb-icon-button"
+            title={t("wb.close")}
+            onClick={() => reveal(null)}
+          >
             ×
           </button>
         </div>
       </div>
-      {stale && <p className="wb-console-warning">{t("wb.staleStatus", { time: formatClock(checked) })}</p>}
+      {stale && (
+        <p className="wb-console-warning">{t("wb.staleStatus", { time: formatClock(checked) })}</p>
+      )}
       <div className="wb-console-body">
         <div className="wb-run-detail">
           <dl>
@@ -173,7 +179,10 @@ export function RunConsole({
                     ? `${run.code.dirtyFiles.length} ${t("wb.dirty")}`
                     : t("wb.clean")}
                   {run.code.diffSha256 && (
-                    <small title={run.code.diffSha256}> · diff {run.code.diffSha256.slice(0, 8)}</small>
+                    <small title={run.code.diffSha256}>
+                      {" · diff "}
+                      {run.code.diffSha256.slice(0, 8)}
+                    </small>
                   )}
                   {run.code.diffTruncated && <small> · {t("wb.diffTruncated")}</small>}
                 </>
@@ -184,7 +193,9 @@ export function RunConsole({
             {run.code.dirtyFiles.length > 0 && (
               <dd className="wb-dirty-files">
                 <details>
-                  <summary>{t("wb.dirty")} ({run.code.dirtyFiles.length})</summary>
+                  <summary>
+                    {t("wb.dirty")} ({run.code.dirtyFiles.length})
+                  </summary>
                   <ul>
                     {run.code.dirtyFiles.slice(0, 50).map((file) => (
                       <li key={file}>{file}</li>
@@ -194,7 +205,10 @@ export function RunConsole({
               </dd>
             )}
             <dt>{t("wb.startedAt")}</dt>
-            <dd>{formatClock(run.startedAt)}{run.endedAt ? ` → ${formatClock(run.endedAt)}` : ""}</dd>
+            <dd>
+              {formatClock(run.startedAt)}
+              {run.endedAt ? ` → ${formatClock(run.endedAt)}` : ""}
+            </dd>
             <dt>{t("wb.exitCode")}</dt>
             <dd>{run.exitCode ?? "—"}</dd>
             <dt>{t("wb.snapshot")}</dt>
@@ -239,7 +253,9 @@ export function RunConsole({
             {run.binding.isolated && (
               <>
                 <dt>{t("wb.runLinks")}</dt>
-                <dd>{run.binding.links.length ? run.binding.links.join(" · ") : t("wb.runLinksNone")}</dd>
+                <dd>
+                  {run.binding.links.length ? run.binding.links.join(" · ") : t("wb.runLinksNone")}
+                </dd>
               </>
             )}
             <dt>{t("wb.runDir")}</dt>
@@ -249,7 +265,9 @@ export function RunConsole({
                 type="button"
                 className="wb-icon-button"
                 title={t("wb.copyPath")}
-                onClick={() => void navigator.clipboard.writeText(run.runDir).catch(() => undefined)}
+                onClick={() =>
+                  void navigator.clipboard.writeText(run.runDir).catch(() => undefined)
+                }
               >
                 <Icon name="copy" />
               </button>
@@ -261,7 +279,9 @@ export function RunConsole({
                 type="button"
                 className="wb-icon-button"
                 title={t("wb.copyPath")}
-                onClick={() => void navigator.clipboard.writeText(run.logPath).catch(() => undefined)}
+                onClick={() =>
+                  void navigator.clipboard.writeText(run.logPath).catch(() => undefined)
+                }
               >
                 <Icon name="copy" />
               </button>
@@ -285,8 +305,7 @@ export function RunConsole({
             className="wb-log-view"
             onScroll={(event) => {
               const element = event.currentTarget;
-              follow.current =
-                element.scrollHeight - element.scrollTop - element.clientHeight < 24;
+              follow.current = element.scrollHeight - element.scrollTop - element.clientHeight < 24;
             }}
           >
             {log || (live ? t("wb.logWaiting") : t("wb.logEmpty"))}

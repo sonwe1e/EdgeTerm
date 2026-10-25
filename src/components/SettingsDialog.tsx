@@ -8,13 +8,7 @@ import { LANGUAGES, LANGUAGE_LABELS, type Language } from "../i18n";
 import { ask } from "../nativeDialog";
 import { programClipboardLabels, type ProgramClipboardMode } from "../osc52";
 import { HAS_TRAY, IS_MAC } from "../platform";
-import {
-  DOCK_NAMES,
-  dockLabels,
-  dockOf,
-  panelLabels,
-  PANEL_NAMES,
-} from "../panelDock";
+import { DOCK_NAMES, dockLabels, dockOf, panelLabels, PANEL_NAMES } from "../panelDock";
 import { useStore } from "../store";
 import type { GutterMode, RightClickAction } from "../terminal";
 import type { CloseAction } from "../storeTypes";
@@ -194,21 +188,21 @@ export function SettingsDialog({ onClose, onDisplaySettings }: Props) {
     { value: "tray", label: t("menu.closeTray") },
     { value: "exit", label: t("menu.closeExit") },
   ];
-  const themeOptions: { value: ThemeMode; label: string }[] = THEME_MODES.map(
-    (mode) => ({ value: mode, label: themes[mode] }),
-  );
-  const languageOptions: { value: Language; label: string }[] = LANGUAGES.map(
-    (lang) => ({ value: lang, label: LANGUAGE_LABELS[lang] }),
-  );
+  const themeOptions: { value: ThemeMode; label: string }[] = THEME_MODES.map((mode) => ({
+    value: mode,
+    label: themes[mode],
+  }));
+  const languageOptions: { value: Language; label: string }[] = LANGUAGES.map((lang) => ({
+    value: lang,
+    label: LANGUAGE_LABELS[lang],
+  }));
   // With Copy on Select the selection is copied already, so this mode only
   // pastes — the same label the Edit menu shows.
   const rightClickOptions: { value: RightClickAction; label: string }[] = [
     { value: "menu", label: t("menu.rightClickShowMenu") },
     {
       value: "copyPaste",
-      label: copyOnSelect
-        ? t("menu.rightClickPaste")
-        : t("menu.rightClickCopyOrPaste"),
+      label: copyOnSelect ? t("menu.rightClickPaste") : t("menu.rightClickCopyOrPaste"),
     },
   ];
 
@@ -259,9 +253,7 @@ export function SettingsDialog({ onClose, onDisplaySettings }: Props) {
         await commandHistory.clear();
         setStatus(t("status.commandHistoryCleared"));
       } catch (error) {
-        setStatus(
-          t("status.commandHistoryClearFailed", { error: errorText(error) }),
-        );
+        setStatus(t("status.commandHistoryClearFailed", { error: errorText(error) }));
       }
     })();
   };
@@ -288,10 +280,7 @@ export function SettingsDialog({ onClose, onDisplaySettings }: Props) {
       <div className="dialog-body settings-body">
         <p className="settings-intro">{t("settings.intro")}</p>
 
-        <SettingsGroup
-          icon="symbol-color"
-          title={t("settings.groupAppearance")}
-        >
+        <SettingsGroup icon="symbol-color" title={t("settings.groupAppearance")}>
           <SettingsRow label={t("menu.theme")}>
             <SettingsChoices
               name={t("menu.theme")}
@@ -300,15 +289,8 @@ export function SettingsDialog({ onClose, onDisplaySettings }: Props) {
               onChange={setTheme}
             />
           </SettingsRow>
-          <SettingsRow
-            label={t("menu.displaySettings")}
-            hint={t("settings.displaySettingsHint")}
-          >
-            <button
-              type="button"
-              className="btn settings-go"
-              onClick={openDisplaySettings}
-            >
+          <SettingsRow label={t("menu.displaySettings")} hint={t("settings.displaySettingsHint")}>
+            <button type="button" className="btn settings-go" onClick={openDisplaySettings}>
               {t("settings.open")}
             </button>
           </SettingsRow>
@@ -382,24 +364,14 @@ export function SettingsDialog({ onClose, onDisplaySettings }: Props) {
           title={t("settings.groupTransfer")}
           hint={t("settings.transferHint")}
         >
-          <SettingsRow
-            label={t("settings.transferSettings")}
-            hint={t("settings.transferLocation")}
-          >
-            <button
-              type="button"
-              className="btn settings-go"
-              onClick={openTransferCenter}
-            >
+          <SettingsRow label={t("settings.transferSettings")} hint={t("settings.transferLocation")}>
+            <button type="button" className="btn settings-go" onClick={openTransferCenter}>
               {t("settings.open")}
             </button>
           </SettingsRow>
         </SettingsGroup>
 
-        <SettingsGroup
-          icon="multiple-windows"
-          title={t("settings.groupPanels")}
-        >
+        <SettingsGroup icon="multiple-windows" title={t("settings.groupPanels")}>
           <SettingsRow label={t("settings.panelsVisible")}>
             <span className="settings-checks">
               {PANEL_NAMES.map((panel) => (
@@ -415,10 +387,7 @@ export function SettingsDialog({ onClose, onDisplaySettings }: Props) {
             </span>
           </SettingsRow>
           {PANEL_NAMES.map((panel) => (
-            <SettingsRow
-              key={panel}
-              label={t("settings.panelDock", { panel: panelNames[panel] })}
-            >
+            <SettingsRow key={panel} label={t("settings.panelDock", { panel: panelNames[panel] })}>
               <SettingsChoices
                 name={panelNames[panel]}
                 value={dockOf(panelDocks, panel)}
@@ -431,11 +400,7 @@ export function SettingsDialog({ onClose, onDisplaySettings }: Props) {
             </SettingsRow>
           ))}
           <SettingsRow label={t("menu.resetPanelLayout")}>
-            <button
-              type="button"
-              className="btn settings-go"
-              onClick={() => resetPanelLayout()}
-            >
+            <button type="button" className="btn settings-go" onClick={() => resetPanelLayout()}>
               {t("settings.reset")}
             </button>
           </SettingsRow>
@@ -478,23 +443,12 @@ export function SettingsDialog({ onClose, onDisplaySettings }: Props) {
             />
           </SettingsRow>
           <SettingsRow label={t("menu.clearCommandHistory")}>
-            <button
-              type="button"
-              className="btn settings-go"
-              onClick={clearCommandHistory}
-            >
+            <button type="button" className="btn settings-go" onClick={clearCommandHistory}>
               {t("confirm.clear")}
             </button>
           </SettingsRow>
-          <SettingsRow
-            label={t("menu.restoreDefaultSettings")}
-            hint={t("settings.restoreNote")}
-          >
-            <button
-              type="button"
-              className="btn is-danger settings-go"
-              onClick={restoreDefaults}
-            >
+          <SettingsRow label={t("menu.restoreDefaultSettings")} hint={t("settings.restoreNote")}>
+            <button type="button" className="btn is-danger settings-go" onClick={restoreDefaults}>
               {t("confirm.restore")}
             </button>
           </SettingsRow>

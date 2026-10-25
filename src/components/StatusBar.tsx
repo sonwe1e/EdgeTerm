@@ -11,8 +11,7 @@ import { ResourceMonitorBar } from "./ResourceMonitorBar";
 import { ForwardCenter } from "./ForwardCenter";
 
 /** The folder half of a recording's path, for the Reveal click. */
-const parentDir = (path: string): string =>
-  path.replace(/[\\/][^\\/]*$/, "") || path;
+const parentDir = (path: string): string => path.replace(/[\\/][^\\/]*$/, "") || path;
 
 /** The tooltip naming each server's legacy algorithms, one server a line. */
 const legacyTitle = (servers: LegacyAlgorithms[]): string =>
@@ -120,9 +119,7 @@ function StatusBarBase({ showResources = true }: { showResources?: boolean }) {
               type="button"
               className="status-item status-recording"
               title={t("status.recordingTitle", { path: recording })}
-              onClick={() =>
-                void api.openLocalPath(parentDir(recording)).catch(() => undefined)
-              }
+              onClick={() => void api.openLocalPath(parentDir(recording)).catch(() => undefined)}
             >
               <Icon name="record" />
               {t("status.recording")}

@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  defaultPanelDocks,
-  dockOf,
-  movePanel,
-  parsePanelDocks,
-  samePanelDocks,
-} from "./panelDock";
+import { defaultPanelDocks, dockOf, movePanel, parsePanelDocks, samePanelDocks } from "./panelDock";
 
 describe("movePanel", () => {
   it("moves a panel to the end of another dock", () => {
@@ -33,12 +27,13 @@ describe("movePanel", () => {
   });
 
   it("appends when the anchor is the panel itself or elsewhere", () => {
-    expect(
-      movePanel(defaultPanelDocks(), "sessions", "left", "sessions").left,
-    ).toEqual(["sessions"]);
-    expect(
-      movePanel(defaultPanelDocks(), "sender", "left", "filer").left,
-    ).toEqual(["sessions", "sender"]);
+    expect(movePanel(defaultPanelDocks(), "sessions", "left", "sessions").left).toEqual([
+      "sessions",
+    ]);
+    expect(movePanel(defaultPanelDocks(), "sender", "left", "filer").left).toEqual([
+      "sessions",
+      "sender",
+    ]);
   });
 
   it("does not modify its input", () => {

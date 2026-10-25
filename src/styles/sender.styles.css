@@ -781,8 +781,7 @@
 
 .menu-entry:hover .menu-swatch,
 .menu-entry:focus-visible .menu-swatch {
-  box-shadow: 0 0 0 1px
-    color-mix(in srgb, var(--accent-contrast) 70%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-contrast) 70%, transparent);
 }
 
 /* A command in flight. The load button is unavailable for the whole send,
@@ -908,4 +907,3 @@
   color: var(--fg-faint);
   font-size: var(--fs-sm);
 }
-

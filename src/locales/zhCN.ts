@@ -116,7 +116,8 @@ export const zhCN: Catalog = {
   "status.ready": "就绪",
   "status.dismissError": "关闭错误提示",
   "status.connectionCancelled": "已取消连接",
-  "status.recordingStopped": "录制已停止：{error}（{path}）",  "status.connecting": "正在连接 {name}…",
+  "status.recordingStopped": "录制已停止：{error}（{path}）",
+  "status.connecting": "正在连接 {name}…",
   "status.connected": "已连接到 {name}",
   "status.connectedShared": "已通过同一连接连接到 {name}",
   "status.disconnected": "已断开 {name}",
@@ -208,7 +209,8 @@ export const zhCN: Catalog = {
   "deleteEntry.titleFile": "删除文件",
   "deleteEntry.titleMany": "删除 {count} 个项目",
   "deleteEntry.confirmMany": "删除选中的 {count} 个项目？",
-  "deleteEntry.hintMany": "将删除文件和链接，文件夹及其中的内容一并删除。链接指向的目标会保留。此操作无法撤销。",
+  "deleteEntry.hintMany":
+    "将删除文件和链接，文件夹及其中的内容一并删除。链接指向的目标会保留。此操作无法撤销。",
   "deleteEntry.kindFile": "文件",
   "deleteEntry.kindFolder": "文件夹",
   "deleteEntry.kindLink": "链接",
@@ -287,8 +289,10 @@ export const zhCN: Catalog = {
 
   "update.titleDefault": "下载与更新",
   "update.installed": "当前版本：{version}",
-  "update.manualHint": "你正在使用 sonwe1e/EdgeTerm 发行分支。请到本分支的 GitHub 发布页查看新版本并手动下载；应用不会自动检查或安装更新。",
-  "update.packageHint": "当前提供 Windows x64 安装包和便携包。便携版升级请保留 data 文件夹；其他系统请查看发布页说明。",
+  "update.manualHint":
+    "你正在使用 sonwe1e/EdgeTerm 发行分支。请到本分支的 GitHub 发布页查看新版本并手动下载；应用不会自动检查或安装更新。",
+  "update.packageHint":
+    "当前提供 Windows x64 安装包和便携包。便携版升级请保留 data 文件夹；其他系统请查看发布页说明。",
   "update.openDownload": "打开本分支发布页",
 
   "protocol.sshTelnet.label": "SSH / Telnet",
@@ -344,10 +348,8 @@ export const zhCN: Catalog = {
   "session.privateKey": "私钥",
   "session.passphrase": "口令",
   // 密码/口令不会在重启后保留时，显示在输入框旁（见 `credentialStoreHint`）。
-  "session.secretsRunOnlyPortable":
-    "便携模式下密码仅在本次运行内有效，不会写入磁盘。",
-  "session.secretsRunOnlyNoKeyStore":
-    "系统凭据库不可用：密码仅在本次运行内有效，不会写入磁盘。",
+  "session.secretsRunOnlyPortable": "便携模式下密码仅在本次运行内有效，不会写入磁盘。",
+  "session.secretsRunOnlyNoKeyStore": "系统凭据库不可用：密码仅在本次运行内有效，不会写入磁盘。",
   "session.secretsUnreadable":
     "保存的密码文件无法读取，因此保存密码会被拒绝；原文件保持不变以便恢复。",
   "session.jumpHost": "跳板机",
@@ -625,7 +627,8 @@ export const zhCN: Catalog = {
   "ftp.mergeFolder": "合并到{side}文件夹“{name}”？同名文件会被替换。",
   "ftp.replaceFile": "替换{side}文件“{name}”？",
   "ftp.refuseSymlink": "拒绝覆盖本地符号链接“{name}”。",
-  "ftp.legacyListing": "FTP 服务器返回了旧式或非 UTF-8 的目录列表。请更新 EdgeTerm 后重新连接再试。",
+  "ftp.legacyListing":
+    "FTP 服务器返回了旧式或非 UTF-8 的目录列表。请更新 EdgeTerm 后重新连接再试。",
   "filer.emptyFolder": "此文件夹为空。",
   "filer.downloadReplaceTitle": "替换已有项目",
   "filer.downloadReplaceConfirm": "目标文件夹中已有 {count} 个项目，下载会覆盖它们。",
@@ -851,7 +854,8 @@ export const zhCN: Catalog = {
   "data.notDataFile": "导入失败：“{file}”不是 EdgeTerm 数据文件（应为 .{ext}）",
   "data.importConfirm": "从“{file}”导入 {summary}{andSettings}？",
   "data.importAndSettings": " 及设置",
-  "data.importDetail": "相同 id 的条目会替换本地条目，其他内容不会被删除。数据文件从不包含会话密码，因此导入的会话会重新询问密码。",
+  "data.importDetail":
+    "相同 id 的条目会替换本地条目，其他内容不会被删除。数据文件从不包含会话密码，因此导入的会话会重新询问密码。",
   "data.importOk": "导入",
   "data.imported": "已导入 {summary}{andSettings}",
   "data.importSkippedOne": "；跳过 1 条发送命令（库已满）",
@@ -1094,7 +1098,8 @@ export const zhCN: Catalog = {
   "wb.project": "项目",
   "wb.projects": "项目",
   "wb.noProjects": "还没有项目",
-  "wb.noProjectsHint": "把一个已保存的 SSH 登录绑定到代码目录。项目、实验和运行会与终端标签分开记录。",
+  "wb.noProjectsHint":
+    "把一个已保存的 SSH 登录绑定到代码目录。项目、实验和运行会与终端标签分开记录。",
   "wb.createFirst": "创建第一个项目",
   "wb.server": "服务器",
   "wb.codeDir": "代码目录",
@@ -1238,7 +1243,8 @@ export const zhCN: Catalog = {
   "wb.sessionFailed": "无法打开会话。",
   "wb.sessionTimeout": "会话连接超时。",
   "wb.deleteProjectTitle": "删除项目",
-  "wb.deleteProjectBody": "删除 {name} 及其实验和运行记录？服务器上的文件和运行中的进程不会被改动或停止。",
+  "wb.deleteProjectBody":
+    "删除 {name} 及其实验和运行记录？服务器上的文件和运行中的进程不会被改动或停止。",
   "wb.deleteExperimentTitle": "删除实验",
   "wb.deleteExperimentBody": "删除实验 {name} 及其运行记录？运行中的进程不会被停止。",
   "wb.projectSaved": "项目已保存。",
@@ -1308,9 +1314,11 @@ export const zhCN: Catalog = {
   "wb.draftUpdated": "编辑于 {time}",
   "wb.runExecution": "执行方式",
   "wb.runExecutionWorkspace": "在项目目录中运行",
-  "wb.runExecutionWorkspaceHint": "代码副本只作为留档放在运行目录旁，命令看到的仍是你正在编辑的目录。",
+  "wb.runExecutionWorkspaceHint":
+    "代码副本只作为留档放在运行目录旁，命令看到的仍是你正在编辑的目录。",
   "wb.runExecutionIsolated": "在本次运行的代码副本中运行",
-  "wb.runExecutionIsolatedHint": "命令在已校验的副本中执行。绝对路径仍指向项目；数据目录需显式链接；编译产物不会复制。",
+  "wb.runExecutionIsolatedHint":
+    "命令在已校验的副本中执行。绝对路径仍指向项目；数据目录需显式链接；编译产物不会复制。",
   "wb.runLinks": "链接的数据目录",
   "wb.runLinksHint": "每行一个项目内相对路径（例如 datasets/kitti），会以符号链接放入副本。",
   "wb.runUnsynced": "{count} 个文件有未保存修改，不会进入本次运行",
@@ -1359,12 +1367,10 @@ export const zhCN: Catalog = {
   "settings.groupData": "数据",
   "settings.open": "打开",
   "settings.reset": "重置",
-  "settings.displaySettingsHint":
-    "面板与终端的字号、字体、回滚行数、光标样式与 GPU 渲染器。",
+  "settings.displaySettingsHint": "面板与终端的字号、字体、回滚行数、光标样式与 GPU 渲染器。",
   "settings.transferHint": "请求数、分块大小、并发文件数、限速、fsync 与 tar 打包。",
   "settings.transferSettings": "传输设置",
-  "settings.transferLocation":
-    "这些设置位于状态栏「传输」浮层内的「设置」折叠区。",
+  "settings.transferLocation": "这些设置位于状态栏「传输」浮层内的「设置」折叠区。",
   "settings.panelsVisible": "面板显隐",
   "settings.panelDock": "{panel}停靠到",
   "settings.restoreNote": "恢复后文件面板与发送器会重新隐藏，工作台状态也会重置。",
@@ -1406,5 +1412,4 @@ export const zhCN: Catalog = {
   "sender.colorBlue": "蓝色",
   "sender.colorPurple": "紫色",
   "sender.colorPink": "粉色",
-
 };

@@ -75,11 +75,7 @@ function lookupFile(maps: IconMaps, name: string): string | undefined {
   return undefined;
 }
 
-function resolveIconName(
-  name: string,
-  isDir: boolean,
-  theme: ThemeMode,
-): string {
+function resolveIconName(name: string, isDir: boolean, theme: ThemeMode): string {
   const lower = name.toLowerCase();
   if (isDir) {
     return (
@@ -96,11 +92,7 @@ function resolveIconName(
 }
 
 /** URL of the Material icon for a file or folder entry. */
-export function fileIconSource(
-  name: string,
-  isDir: boolean,
-  theme: ThemeMode,
-): string {
+export function fileIconSource(name: string, isDir: boolean, theme: ThemeMode): string {
   const icon = resolveIconName(name, isDir, theme);
   // An icon name the asset glob does not carry falls back to the theme's
   // default, exactly like the built-in maps do.

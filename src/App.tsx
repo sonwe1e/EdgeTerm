@@ -13,12 +13,7 @@ import {
 } from "react";
 import { useShallow } from "zustand/react/shallow";
 
-import {
-  acceptHostKey,
-  revealCwdInFiler,
-  sessionClosedNotice,
-  splitSession,
-} from "./actions";
+import { acceptHostKey, revealCwdInFiler, sessionClosedNotice, splitSession } from "./actions";
 import * as api from "./api";
 import { AuthPromptDialog } from "./components/AuthPromptDialog";
 import { ClipboardWriteDialog } from "./components/ClipboardWriteDialog";
@@ -31,10 +26,7 @@ import { Icon } from "./components/icons";
 import { MenuBar } from "./components/MenuBar";
 import { DockArea, PanelDropOverlay } from "./components/PanelDocks";
 import { PasteWarningDialog } from "./components/PasteWarningDialog";
-import {
-  SearchOverlay,
-  type SearchOverlayHandle,
-} from "./components/SearchOverlay";
+import { SearchOverlay, type SearchOverlayHandle } from "./components/SearchOverlay";
 import { ShortcutsDialog } from "./components/ShortcutsDialog";
 import { SshConfigImportDialog } from "./components/SshConfigImportDialog";
 import { Splitter } from "./components/Splitter";
@@ -72,9 +64,7 @@ const SessionDialog = lazy(() =>
 const EMPTY_CLOSING_TABS: Tab[] = [];
 
 const hasLiveSessions = () =>
-  useStore
-    .getState()
-    .tabs.some((tab) => tab.state === "connecting" || tab.state === "connected");
+  useStore.getState().tabs.some((tab) => tab.state === "connecting" || tab.state === "connected");
 
 /**
  * PD-01: an FTP or SFTP tab carries its own dual-pane file manager in the
@@ -168,9 +158,7 @@ export default function App() {
   const setClipboardPrompt = useStore((s) => s.setClipboardPrompt);
   const setProgramClipboard = useStore((s) => s.setProgramClipboard);
   const clipboardTab = useStore((s) =>
-    clipboardPrompt
-      ? s.tabs.find((tab) => tab.info.id === clipboardPrompt.sessionId)
-      : undefined,
+    clipboardPrompt ? s.tabs.find((tab) => tab.info.id === clipboardPrompt.sessionId) : undefined,
   );
   // Derived with a shallow selector: the tab list changes identity on
   // every resize or another tab's command state, and none of that may
@@ -178,15 +166,11 @@ export default function App() {
   const closingTabs = useStore(
     useShallow((s) => {
       const prompt = s.closePrompt;
-      return prompt
-        ? s.tabs.filter((tab) => prompt.includes(tab.info.id))
-        : EMPTY_CLOSING_TABS;
+      return prompt ? s.tabs.filter((tab) => prompt.includes(tab.info.id)) : EMPTY_CLOSING_TABS;
     }),
   );
 
-  const [dialog, setDialog] = useState<{ profile: SessionProfile | null } | null>(
-    null,
-  );
+  const [dialog, setDialog] = useState<{ profile: SessionProfile | null } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const searchRef = useRef<SearchOverlayHandle>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -309,9 +293,7 @@ export default function App() {
       void import("./terminal");
       api
         .listSystemFonts()
-        .then((fonts) =>
-          useStore.getState().setSymbolFontFamilies(symbolFallbacks(fonts)),
-        )
+        .then((fonts) => useStore.getState().setSymbolFontFamilies(symbolFallbacks(fonts)))
         .catch(() => undefined);
     }, 1000);
     return () => window.clearTimeout(timer);
@@ -333,12 +315,7 @@ export default function App() {
   // two CSS variables in step with later changes. Live terminals get theirs
   // from TerminalPane, which owns the xterm instance.
   useEffect(() => {
-    applyFonts(
-      bufferFontFamily,
-      panelFontFamily,
-      symbolFontFamilies,
-      systemMonoFamily,
-    );
+    applyFonts(bufferFontFamily, panelFontFamily, symbolFontFamilies, systemMonoFamily);
   }, [bufferFontFamily, panelFontFamily, symbolFontFamilies, systemMonoFamily]);
 
   // Terminal output no longer passes through here: each session streams its
@@ -558,9 +535,7 @@ export default function App() {
           // native editing keys, so ⌘C in a text field still copies from it.
           return;
         case "tab": {
-          const tab = useStore
-            .getState()
-            .tabs.find((item) => item.number === shortcut.number);
+          const tab = useStore.getState().tabs.find((item) => item.number === shortcut.number);
           if (tab) {
             event.preventDefault();
             setActive(tab.info.id);
@@ -591,12 +566,7 @@ export default function App() {
   // even if the rebindable focusRegion command is moved to another chord.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (
-        event.key !== "F6" ||
-        event.ctrlKey ||
-        event.altKey ||
-        event.metaKey
-      ) {
+      if (event.key !== "F6" || event.ctrlKey || event.altKey || event.metaKey) {
         return;
       }
       if (useWorkbench.getState().view === "workbench") return;
@@ -620,8 +590,7 @@ export default function App() {
   // its whole dock, which widened the terminal area by the dock's width
   // on every protocol switch and narrowed it again on the way back
   // (PD-01).
-  const shown = (dock: PanelDock) =>
-    panelDocks[dock].filter((panel) => panels[panel]);
+  const shown = (dock: PanelDock) => panelDocks[dock].filter((panel) => panels[panel]);
   const left = shown("left");
   const right = shown("right");
   const bottom = shown("bottom");
@@ -709,10 +678,7 @@ export default function App() {
 
   const renderPanel = (panel: PanelName) =>
     panel === "sessions" ? (
-      <SessionPanel
-        onNewSession={newSession}
-        onEditProfile={(profile) => setDialog({ profile })}
-      />
+      <SessionPanel onNewSession={newSession} onEditProfile={(profile) => setDialog({ profile })} />
     ) : panel === "filer" ? (
       fileMode ? (
         <FilerFileSessionNotice />
@@ -762,12 +728,7 @@ export default function App() {
         >
           {left.length > 0 && (
             <>
-              <DockArea
-                dock="left"
-                panels={left}
-                size={leftWidth}
-                render={renderPanel}
-              />
+              <DockArea dock="left" panels={left} size={leftWidth} render={renderPanel} />
               <Splitter
                 orientation="vertical"
                 onDragStart={() => beginSideDrag("left")}
@@ -778,16 +739,9 @@ export default function App() {
           )}
 
           <div className="center">
-            {workbenchView ? (
-              <Workbench />
-            ) : (
-              <Workspace onNewSession={newSession} />
-            )}
+            {workbenchView ? <Workbench /> : <Workspace onNewSession={newSession} />}
             {searchOpen && !workbenchView && (
-              <SearchOverlay
-                ref={searchRef}
-                onClose={() => setSearchOpen(false)}
-              />
+              <SearchOverlay ref={searchRef} onClose={() => setSearchOpen(false)} />
             )}
           </div>
 
@@ -799,12 +753,7 @@ export default function App() {
                 onResize={(delta) => applySideFrame("right", delta)}
                 onEnd={() => endSideDrag()}
               />
-              <DockArea
-                dock="right"
-                panels={right}
-                size={rightWidth}
-                render={renderPanel}
-              />
+              <DockArea dock="right" panels={right} size={rightWidth} render={renderPanel} />
             </>
           )}
         </div>
@@ -846,10 +795,7 @@ export default function App() {
 
       {dialog && (
         <Suspense fallback={null}>
-          <SessionDialog
-            initial={dialog.profile}
-            onClose={() => setDialog(null)}
-          />
+          <SessionDialog initial={dialog.profile} onClose={() => setDialog(null)} />
         </Suspense>
       )}
 
@@ -999,41 +945,50 @@ export default function App() {
       )}
 
       {aboutOpen && (
-        <ModalDialog open onClose={() => setAboutOpen(false)} title={t("about.title")}
-          labelledBy="about-title" contentClassName="about-dialog">
-            <div className="dialog-body" style={{ lineHeight: 1.7 }}>
-              <strong>
-                EdgeTerm{updater.appVersion ? ` ${updater.appVersion}` : ""}
-              </strong>
-              <span>{t("about.tagline")}</span>
-              <span style={{ color: "var(--fg-faint)" }}>
-                {t("about.madeBy")}{" "}
-                <a
-                  className="about-link"
-                  href={UPSTREAM_REPOSITORY_URL}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    void openUrl(UPSTREAM_REPOSITORY_URL).catch((error) => {
-                      console.error("Failed to open repository:", error);
-                    });
-                  }}
-                >
-                  github.com/miskin-lee/EdgeTerm
-                </a>
-              </span>
-              <span>
-                {t("about.distribution")}{" "}
-                <a className="about-link" href={REPOSITORY_URL} onClick={(event) => {
+        <ModalDialog
+          open
+          onClose={() => setAboutOpen(false)}
+          title={t("about.title")}
+          labelledBy="about-title"
+          contentClassName="about-dialog"
+        >
+          <div className="dialog-body" style={{ lineHeight: 1.7 }}>
+            <strong>EdgeTerm{updater.appVersion ? ` ${updater.appVersion}` : ""}</strong>
+            <span>{t("about.tagline")}</span>
+            <span style={{ color: "var(--fg-faint)" }}>
+              {t("about.madeBy")}{" "}
+              <a
+                className="about-link"
+                href={UPSTREAM_REPOSITORY_URL}
+                onClick={(event) => {
+                  event.preventDefault();
+                  void openUrl(UPSTREAM_REPOSITORY_URL).catch((error) => {
+                    console.error("Failed to open repository:", error);
+                  });
+                }}
+              >
+                github.com/miskin-lee/EdgeTerm
+              </a>
+            </span>
+            <span>
+              {t("about.distribution")}{" "}
+              <a
+                className="about-link"
+                href={REPOSITORY_URL}
+                onClick={(event) => {
                   event.preventDefault();
                   void openUrl(REPOSITORY_URL).catch(console.error);
-                }}>github.com/sonwe1e/EdgeTerm</a>
-              </span>
-            </div>
-            <div className="dialog-footer">
-              <button className="btn" onClick={() => setAboutOpen(false)}>
-                {t("common.close")}
-              </button>
-            </div>
+                }}
+              >
+                github.com/sonwe1e/EdgeTerm
+              </a>
+            </span>
+          </div>
+          <div className="dialog-footer">
+            <button className="btn" onClick={() => setAboutOpen(false)}>
+              {t("common.close")}
+            </button>
+          </div>
         </ModalDialog>
       )}
     </div>

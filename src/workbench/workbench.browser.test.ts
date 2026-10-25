@@ -122,7 +122,12 @@ const DATA: WorkspaceData = {
       root: "/data/vfi/baseline",
       env: "conda activate vfi",
       commands: [
-        { id: "c1", label: "train baseline", command: "python train.py -c configs/base.yaml", kind: "train" },
+        {
+          id: "c1",
+          label: "train baseline",
+          command: "python train.py -c configs/base.yaml",
+          kind: "train",
+        },
       ],
       runRoot: "",
       baselineExperimentId: "e1",

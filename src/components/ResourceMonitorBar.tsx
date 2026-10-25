@@ -22,9 +22,15 @@ import {
 
 const percent = (value: number | null | undefined): string =>
   value === null || value === undefined || !Number.isFinite(value) ? "—" : `${value.toFixed(1)}%`;
-const rate = (value: number | null): string => (value === null ? "—" : `${transferBytes(Math.round(value))}/s`);
-const usedOf = (used: number | null | undefined, total: number | null | undefined): number | null =>
-  used === null || used === undefined || total === null || total === undefined || total <= 0 ? null : (used / total) * 100;
+const rate = (value: number | null): string =>
+  value === null ? "—" : `${transferBytes(Math.round(value))}/s`;
+const usedOf = (
+  used: number | null | undefined,
+  total: number | null | undefined,
+): number | null =>
+  used === null || used === undefined || total === null || total === undefined || total <= 0
+    ? null
+    : (used / total) * 100;
 
 /** The reader-facing name of a sensor state. "ok" states carry no word: the
  *  reading beside it is the answer. */
@@ -97,7 +103,15 @@ interface Device {
 
 /** One accelerator: identity, its utilization as a bar, the reading, then the
  *  memory and temperature that only a detected device can have. */
-function DeviceRow({ kind, device, numbered }: { kind: string; device: Device; numbered: boolean }) {
+function DeviceRow({
+  kind,
+  device,
+  numbered,
+}: {
+  kind: string;
+  device: Device;
+  numbered: boolean;
+}) {
   const tone = pressureOf(device.utilization, "accelerator");
   const memory =
     device.usedBytes !== null && device.totalBytes !== null
@@ -105,8 +119,11 @@ function DeviceRow({ kind, device, numbered }: { kind: string; device: Device; n
       : device.usedBytes !== null
         ? transferBytes(device.usedBytes)
         : null;
-  const meta = [memory, device.temperature !== null ? `${device.temperature}°C` : null].filter(Boolean).join(" · ");
-  const filled = device.utilization === null ? null : Math.max(0, Math.min(100, device.utilization));
+  const meta = [memory, device.temperature !== null ? `${device.temperature}°C` : null]
+    .filter(Boolean)
+    .join(" · ");
+  const filled =
+    device.utilization === null ? null : Math.max(0, Math.min(100, device.utilization));
   return (
     <div className="monitor-device" title={meta || undefined}>
       <span className="monitor-device-kind">{kind}</span>
@@ -115,7 +132,9 @@ function DeviceRow({ kind, device, numbered }: { kind: string; device: Device; n
         {device.name}
       </span>
       <span className={`monitor-device-track is-${tone}`} aria-hidden="true">
-        {filled !== null && <span className="monitor-device-fill" style={{ width: `${filled}%` }} />}
+        {filled !== null && (
+          <span className="monitor-device-fill" style={{ width: `${filled}%` }} />
+        )}
       </span>
       <span className={`monitor-device-value metric-${tone}`}>{percent(device.utilization)}</span>
       <span className="monitor-device-meta">{meta}</span>
@@ -143,12 +162,16 @@ function detailTitle(
         "monitor.diskIo",
       )} ${t("monitor.read")} ${rate(sample.diskReadBps)} ${t("monitor.write")} ${rate(sample.diskWriteBps)}`,
     );
-    lines.push(`${t("monitor.network")} ↓${rate(sample.networkReceiveBps)} ↑${rate(sample.networkSendBps)}`);
+    lines.push(
+      `${t("monitor.network")} ↓${rate(sample.networkReceiveBps)} ↑${rate(sample.networkSendBps)}`,
+    );
     if (sample.gpuStatus === "ok") {
-      for (const gpu of sample.gpus) lines.push(`${t("monitor.gpu")} #${gpu.index} ${gpu.name} ${percent(gpu.utilization)}`);
+      for (const gpu of sample.gpus)
+        lines.push(`${t("monitor.gpu")} #${gpu.index} ${gpu.name} ${percent(gpu.utilization)}`);
     }
     if (sample.npuStatus === "ok") {
-      for (const npu of sample.npus) lines.push(`${t("monitor.npu")} #${npu.index} ${npu.name} ${percent(npu.utilization)}`);
+      for (const npu of sample.npus)
+        lines.push(`${t("monitor.npu")} #${npu.index} ${npu.name} ${percent(npu.utilization)}`);
     }
   } else if (sample?.status === "unsupported") {
     lines.push(t("monitor.resourcesUnsupported"));
@@ -163,7 +186,11 @@ function detailTitle(
  * plus a quiet instrument panel in the popover. Every number comes from a live
  * sample; a sensor that cannot be read says so instead of showing a zero.
  */
-export const ResourceMonitorBar = memo(function ResourceMonitorBar({ tab }: { tab: Tab | undefined }) {
+export const ResourceMonitorBar = memo(function ResourceMonitorBar({
+  tab,
+}: {
+  tab: Tab | undefined;
+}) {
   const t = useT();
   const revision = useStore((state) => state.panelPreferencesRevision);
   const [settings, setSettings] = useState(readMonitorSettings);
@@ -179,7 +206,8 @@ export const ResourceMonitorBar = memo(function ResourceMonitorBar({ tab }: { ta
   const [attempt, setAttempt] = useState(0);
   const pending = useRef<string | null>(null);
   const id = tab?.info.id;
-  const eligible = tab?.state === "connected" && (tab.info.kind === "ssh" || tab.info.kind === "sftp");
+  const eligible =
+    tab?.state === "connected" && (tab.info.kind === "ssh" || tab.info.kind === "sftp");
   useEffect(() => setSettings(readMonitorSettings()), [revision]);
   useEffect(() => {
     const update = () => setVisible(!document.hidden);
@@ -212,7 +240,10 @@ export const ResourceMonitorBar = memo(function ResourceMonitorBar({ tab }: { ta
       } finally {
         if (pending.current === requestId) pending.current = null;
         if (!stopped && !unsupported)
-          timer = setTimeout(poll, Math.max(100, settings.intervalSeconds * 1000 - (performance.now() - started)));
+          timer = setTimeout(
+            poll,
+            Math.max(100, settings.intervalSeconds * 1000 - (performance.now() - started)),
+          );
       }
     };
     void poll();
@@ -256,9 +287,10 @@ export const ResourceMonitorBar = memo(function ResourceMonitorBar({ tab }: { ta
   // missing from the panel. An older backend sends no accelerator fields at
   // all — that is absence, not an error, so it stays quiet too.
   const acceleratorNotes: string[] = sample
-    ? [acceleratorNote(t, t("monitor.gpu"), sample.gpuStatus), acceleratorNote(t, t("monitor.npu"), sample.npuStatus)].filter(
-        (note): note is string => note !== null,
-      )
+    ? [
+        acceleratorNote(t, t("monitor.gpu"), sample.gpuStatus),
+        acceleratorNote(t, t("monitor.npu"), sample.npuStatus),
+      ].filter((note): note is string => note !== null)
     : [];
   // The network sparkline is scaled to its own recent peak (a floor of 1 B/s so
   // an idle link is a flat line, not a divide-by-zero); it has no "too full"
@@ -267,13 +299,41 @@ export const ResourceMonitorBar = memo(function ResourceMonitorBar({ tab }: { ta
   const vitals =
     sample?.status === "ok"
       ? [
-          { key: "cpu", label: t("monitor.cpu"), value: percent(sample.cpuPercent), tone: cpuTone, values: cpuSeries },
-          { key: "ram", label: t("monitor.ram"), value: percent(memPercent), tone: memTone, values: memSeries },
+          {
+            key: "cpu",
+            label: t("monitor.cpu"),
+            value: percent(sample.cpuPercent),
+            tone: cpuTone,
+            values: cpuSeries,
+          },
+          {
+            key: "ram",
+            label: t("monitor.ram"),
+            value: percent(memPercent),
+            tone: memTone,
+            values: memSeries,
+          },
           ...(gpus.length > 0
-            ? [{ key: "gpu", label: t("monitor.gpu"), value: percent(gpuPeak), tone: gpuTone, values: gpuSeries }]
+            ? [
+                {
+                  key: "gpu",
+                  label: t("monitor.gpu"),
+                  value: percent(gpuPeak),
+                  tone: gpuTone,
+                  values: gpuSeries,
+                },
+              ]
             : []),
           ...(npus.length > 0
-            ? [{ key: "npu", label: t("monitor.npu"), value: percent(npuPeak), tone: npuTone, values: npuSeries }]
+            ? [
+                {
+                  key: "npu",
+                  label: t("monitor.npu"),
+                  value: percent(npuPeak),
+                  tone: npuTone,
+                  values: npuSeries,
+                },
+              ]
             : []),
         ]
       : [];
@@ -361,7 +421,9 @@ export const ResourceMonitorBar = memo(function ResourceMonitorBar({ tab }: { ta
               {t("monitor.staleUnavailable", { error })}
             </p>
           )}
-          {sample?.status === "unsupported" && <p className="status-popover-note">{t("monitor.samplingLinux")}</p>}
+          {sample?.status === "unsupported" && (
+            <p className="status-popover-note">{t("monitor.samplingLinux")}</p>
+          )}
           {sample?.status === "ok" && (
             <>
               <div className="monitor-grid">
@@ -384,7 +446,11 @@ export const ResourceMonitorBar = memo(function ResourceMonitorBar({ tab }: { ta
                   }
                 />
                 <Tile
-                  label={capacity?.mount ? `${t("monitor.diskCapacity")} ${capacity.mount}` : t("monitor.diskCapacity")}
+                  label={
+                    capacity?.mount
+                      ? `${t("monitor.diskCapacity")} ${capacity.mount}`
+                      : t("monitor.diskCapacity")
+                  }
                   value={percent(diskPercent)}
                   tone={diskTone}
                   values={diskSeries}
@@ -396,7 +462,9 @@ export const ResourceMonitorBar = memo(function ResourceMonitorBar({ tab }: { ta
                 />
                 <Tile
                   label={t("monitor.network")}
-                  value={sample.networkReceiveBps === null ? "—" : `↓${rate(sample.networkReceiveBps)}`}
+                  value={
+                    sample.networkReceiveBps === null ? "—" : `↓${rate(sample.networkReceiveBps)}`
+                  }
                   tone="ok"
                   values={netSeries}
                   max={netMax}
@@ -415,14 +483,26 @@ export const ResourceMonitorBar = memo(function ResourceMonitorBar({ tab }: { ta
                   ? stateLabel(t, sample.diskStatus) || "—"
                   : `${t("monitor.read")} ${rate(sample.diskReadBps)} · ${t("monitor.write")} ${rate(sample.diskWriteBps)}`}
               </div>
-              {acceleratorNotes.length > 0 && <div className="monitor-io">{acceleratorNotes.join(" · ")}</div>}
+              {acceleratorNotes.length > 0 && (
+                <div className="monitor-io">{acceleratorNotes.join(" · ")}</div>
+              )}
               {(gpus.length > 0 || npus.length > 0) && (
                 <div className="monitor-devices" role="group" aria-label={t("monitor.devices")}>
                   {gpus.map((gpu) => (
-                    <DeviceRow key={`gpu-${gpu.index}`} kind={t("monitor.gpu")} device={gpu} numbered={gpus.length > 1} />
+                    <DeviceRow
+                      key={`gpu-${gpu.index}`}
+                      kind={t("monitor.gpu")}
+                      device={gpu}
+                      numbered={gpus.length > 1}
+                    />
                   ))}
                   {npus.map((npu) => (
-                    <DeviceRow key={`npu-${npu.index}`} kind={t("monitor.npu")} device={npu} numbered={npus.length > 1} />
+                    <DeviceRow
+                      key={`npu-${npu.index}`}
+                      kind={t("monitor.npu")}
+                      device={npu}
+                      numbered={npus.length > 1}
+                    />
                   ))}
                 </div>
               )}
@@ -448,7 +528,8 @@ export const ResourceMonitorBar = memo(function ResourceMonitorBar({ tab }: { ta
                 value={settings.intervalSeconds}
                 onChange={(event) => {
                   const value = Number(event.target.value);
-                  if (Number.isInteger(value) && value >= 1 && value <= 30) update({ ...settings, intervalSeconds: value });
+                  if (Number.isInteger(value) && value >= 1 && value <= 30)
+                    update({ ...settings, intervalSeconds: value });
                 }}
               />
               s

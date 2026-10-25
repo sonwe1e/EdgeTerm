@@ -1,4 +1,3 @@
-
 import * as api from "./api";
 import { errorText } from "./errorInfo";
 import { t } from "./i18n";
@@ -14,12 +13,9 @@ import type { AppData } from "./types";
 
 /** Mirrors `APP_DATA_EXTENSION` in model.rs; the backend enforces it too. */
 export const DATA_FILE_EXTENSION = "edgeterm";
-const fileFilters = () => [
-  { name: t("data.fileFilter"), extensions: [DATA_FILE_EXTENSION] },
-];
+const fileFilters = () => [{ name: t("data.fileFilter"), extensions: [DATA_FILE_EXTENSION] }];
 
-const hasDataExtension = (path: string) =>
-  path.toLowerCase().endsWith(`.${DATA_FILE_EXTENSION}`);
+const hasDataExtension = (path: string) => path.toLowerCase().endsWith(`.${DATA_FILE_EXTENSION}`);
 
 /**
  * Not every platform's save dialog appends the filter's extension to a typed
@@ -28,11 +24,7 @@ const hasDataExtension = (path: string) =>
 const withDataExtension = (path: string) =>
   hasDataExtension(path) ? path : `${path}.${DATA_FILE_EXTENSION}`;
 
-const describe = (counts: {
-  profiles: number;
-  groups: number;
-  senderCommands: number;
-}) =>
+const describe = (counts: { profiles: number; groups: number; senderCommands: number }) =>
   [
     t(counts.profiles === 1 ? "data.sessionOne" : "data.sessionMany", {
       count: counts.profiles,
@@ -40,10 +32,9 @@ const describe = (counts: {
     t(counts.groups === 1 ? "data.groupOne" : "data.groupMany", {
       count: counts.groups,
     }),
-    t(
-      counts.senderCommands === 1 ? "data.commandOne" : "data.commandMany",
-      { count: counts.senderCommands },
-    ),
+    t(counts.senderCommands === 1 ? "data.commandOne" : "data.commandMany", {
+      count: counts.senderCommands,
+    }),
   ].join(", ");
 
 const basename = (path: string) => path.split(/[\\/]/).pop() || path;
@@ -66,11 +57,7 @@ export async function exportAppData(): Promise<void> {
     });
     if (!picked) return;
     const path = withDataExtension(picked);
-    const summary = await api.exportAppData(
-      path,
-      exportSettings(),
-      now.toISOString(),
-    );
+    const summary = await api.exportAppData(path, exportSettings(), now.toISOString());
     setStatus(
       t("data.exportDone", {
         summary: describe(summary),
@@ -168,9 +155,7 @@ export async function importSshConfig(): Promise<void> {
     if (!path) return;
     const preview = await api.readSshConfig(path);
     if (preview.entries.length === 0) {
-      store.setStatus(
-        t("data.noHostEntries", { file: basename(path) }),
-      );
+      store.setStatus(t("data.noHostEntries", { file: basename(path) }));
       return;
     }
     store.setSshConfigImport(preview);

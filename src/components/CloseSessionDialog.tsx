@@ -24,15 +24,16 @@ export function CloseSessionDialog({ tabs, onConfirm, onCancel }: Props) {
   const single = tabs.length === 1 ? tabs[0] : null;
   const connecting = tabs.some((tab) => tab.state === "connecting");
   const connected = tabs.some((tab) => tab.state === "connected");
-  const hint = connecting && connected
-    ? t("close.hintMixed")
-    : connecting
-      ? tabs.length === 1
-        ? t("close.hintConnectingOne")
-        : t("close.hintConnectingMany")
-      : tabs.length === 1
-        ? t("close.hintOne")
-        : t("close.hintMany");
+  const hint =
+    connecting && connected
+      ? t("close.hintMixed")
+      : connecting
+        ? tabs.length === 1
+          ? t("close.hintConnectingOne")
+          : t("close.hintConnectingMany")
+        : tabs.length === 1
+          ? t("close.hintOne")
+          : t("close.hintMany");
   // A long list is summarised rather than scrolled: the names are a
   // reminder, the decision is the count.
   const listed = tabs.slice(0, LISTED_TABS);
@@ -47,9 +48,7 @@ export function CloseSessionDialog({ tabs, onConfirm, onCancel }: Props) {
       initialFocus=".btn:not(.is-danger)"
     >
       <div className="dialog-header" id="close-session-title">
-        {single
-          ? t("close.titleOne")
-          : t("close.titleMany", { count: tabs.length })}
+        {single ? t("close.titleOne") : t("close.titleMany", { count: tabs.length })}
       </div>
       <div className="dialog-body confirm-dialog-body">
         {single ? (
@@ -65,8 +64,7 @@ export function CloseSessionDialog({ tabs, onConfirm, onCancel }: Props) {
         ) : (
           <>
             <span>
-              {t("close.close")}{" "}
-              <strong>{t("close.sessionsCount", { count: tabs.length })}</strong>
+              {t("close.close")} <strong>{t("close.sessionsCount", { count: tabs.length })}</strong>
               {t("common.question")}
             </span>
             {listed.map((tab) => (
@@ -90,11 +88,7 @@ export function CloseSessionDialog({ tabs, onConfirm, onCancel }: Props) {
         <button type="button" className="btn" onClick={onCancel}>
           {t("common.cancel")}
         </button>
-        <button
-          type="button"
-          className="btn is-danger"
-          onClick={onConfirm}
-        >
+        <button type="button" className="btn is-danger" onClick={onConfirm}>
           {t("common.close")}
         </button>
       </div>

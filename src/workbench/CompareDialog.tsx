@@ -54,8 +54,7 @@ export function CompareDialog({
       experimentId: string,
     ): { root: string; session: string | null; server: string } | null => {
       if (!workspace) return null;
-      const experiment =
-        data.experiments.find((item) => item.id === experimentId) ?? null;
+      const experiment = data.experiments.find((item) => item.id === experimentId) ?? null;
       return {
         root: experimentRoot(workspace, experiment),
         session: connectedTabFor(workspace.server)?.info.id ?? null,
@@ -101,7 +100,12 @@ export function CompareDialog({
     >
       <div className="wb-dialog-header">
         <strong>{t("wb.compareTitle")}</strong>
-        <button type="button" className="wb-icon-button" aria-label={t("wb.close")} onClick={onClose}>
+        <button
+          type="button"
+          className="wb-icon-button"
+          aria-label={t("wb.close")}
+          onClick={onClose}
+        >
           ×
         </button>
       </div>
@@ -144,7 +148,9 @@ export function CompareDialog({
           />
         </label>
         <label className="wb-field">
-          <span>{t("wb.right")} · {t("wb.file")}</span>
+          <span>
+            {t("wb.right")} · {t("wb.file")}
+          </span>
           <input
             value={rightPath}
             placeholder={path || "src/model.py"}
@@ -157,7 +163,12 @@ export function CompareDialog({
         <span className="wb-compare-context">
           {sides.left && `${sides.left.server}: ${joinRemote(sides.left.root, path || "…")}`}
         </span>
-        <button type="button" className="btn is-primary" disabled={busy || !path.trim()} onClick={() => void run()}>
+        <button
+          type="button"
+          className="btn is-primary"
+          disabled={busy || !path.trim()}
+          onClick={() => void run()}
+        >
           {busy ? t("wb.loading") : t("wb.compare")}
         </button>
       </div>
@@ -165,11 +176,18 @@ export function CompareDialog({
       {comparison && (
         <div className="wb-compare-result">
           <div className="wb-compare-paths">
-            <span>{comparison.left.kind} · {comparison.left.size} B</span>
-            <span>{comparison.right.kind} · {comparison.right.size} B</span>
+            <span>
+              {comparison.left.kind} · {comparison.left.size} B
+            </span>
+            <span>
+              {comparison.right.kind} · {comparison.right.size} B
+            </span>
           </div>
           {comparison.reason && <p className="wb-dialog-note">{comparison.reason}</p>}
-          <FileDiffView key={`${path}:${rightPath}:${comparison.left.sha256 ?? ""}`} rows={comparison.rows} />
+          <FileDiffView
+            key={`${path}:${rightPath}:${comparison.left.sha256 ?? ""}`}
+            rows={comparison.rows}
+          />
         </div>
       )}
     </ModalDialog>

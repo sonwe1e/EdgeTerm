@@ -111,10 +111,20 @@ export function EditorArea({
           );
         })}
         <div className="wb-editor-tab-actions">
-          <button type="button" className="wb-icon-button" title={t("wb.quickOpen")} onClick={onQuickOpen}>
+          <button
+            type="button"
+            className="wb-icon-button"
+            title={t("wb.quickOpen")}
+            onClick={onQuickOpen}
+          >
             <Icon name="search" />
           </button>
-          <button type="button" className="wb-icon-button" title={t("wb.search")} onClick={onSearch}>
+          <button
+            type="button"
+            className="wb-icon-button"
+            title={t("wb.search")}
+            onClick={onSearch}
+          >
             <Icon name="find-in-files" />
           </button>
         </div>

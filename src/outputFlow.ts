@@ -13,7 +13,7 @@ export class OutputConsumption {
   constructor(private readonly acknowledge: (consumed: number) => Promise<void>) {}
 
   receive(bytes: number): () => void {
-    const chunk = { end: this.received += bytes, done: false };
+    const chunk = { end: (this.received += bytes), done: false };
     this.queue.push(chunk);
     return () => {
       if (chunk.done || this.stopped) return;
@@ -37,8 +37,14 @@ export class OutputConsumption {
   }
 
   private schedule() {
-    if (this.stopped || this.scheduled || this.sending || this.retry !== null ||
-        this.consumed === this.acknowledged) return;
+    if (
+      this.stopped ||
+      this.scheduled ||
+      this.sending ||
+      this.retry !== null ||
+      this.consumed === this.acknowledged
+    )
+      return;
     this.scheduled = true;
     queueMicrotask(() => {
       this.scheduled = false;

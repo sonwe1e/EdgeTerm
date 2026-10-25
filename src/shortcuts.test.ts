@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./platform", () => ({ HAS_TRAY: true,
-  IS_MAC: true,
-  IS_WINDOWS: false,
-}));
+vi.mock("./platform", () => ({ HAS_TRAY: true, IS_MAC: true, IS_WINDOWS: false }));
 
 import {
   chordFromEvent,
@@ -36,10 +33,7 @@ function press(
   };
 }
 
-const chord = (
-  code: string,
-  mods: Partial<Omit<KeyChord, "code">>,
-): KeyChord => ({
+const chord = (code: string, mods: Partial<Omit<KeyChord, "code">>): KeyChord => ({
   ctrl: false,
   alt: false,
   shift: false,
@@ -64,9 +58,10 @@ describe("default bindings", () => {
       kind: "tabStep",
       step: -1,
     });
-    expect(
-      matchAppShortcut(press("ArrowLeft", { metaKey: true, altKey: true })),
-    ).toEqual({ kind: "togglePanel", panel: "sessions" });
+    expect(matchAppShortcut(press("ArrowLeft", { metaKey: true, altKey: true }))).toEqual({
+      kind: "togglePanel",
+      panel: "sessions",
+    });
   });
 
   it("lists copy, paste and select all like any other command", () => {
@@ -86,18 +81,14 @@ describe("default bindings", () => {
       kind: "tab",
       number: 3,
     });
-    expect(
-      matchAppShortcut(press("Digit0", { metaKey: true }, "0")),
-    ).toBeNull();
+    expect(matchAppShortcut(press("Digit0", { metaKey: true }, "0"))).toBeNull();
   });
 
   it("leaves keys the terminal needs alone", () => {
     expect(matchAppShortcut(press("KeyN"))).toBeNull();
     expect(matchAppShortcut(press("KeyN", { ctrlKey: true }))).toBeNull();
     // A modifier the binding does not name is not a wildcard.
-    expect(
-      matchAppShortcut(press("KeyN", { metaKey: true, shiftKey: true })),
-    ).toBeNull();
+    expect(matchAppShortcut(press("KeyN", { metaKey: true, shiftKey: true }))).toBeNull();
   });
 
   it("matches a letter by the character a remapped layout types", () => {
@@ -114,9 +105,9 @@ describe("custom bindings", () => {
       ...defaultShortcuts(),
       clear: chord("KeyL", { ctrl: true, shift: true }),
     });
-    expect(
-      matchAppShortcut(press("KeyL", { ctrlKey: true, shiftKey: true })),
-    ).toEqual({ kind: "clear" });
+    expect(matchAppShortcut(press("KeyL", { ctrlKey: true, shiftKey: true }))).toEqual({
+      kind: "clear",
+    });
     // The default it replaced no longer runs anything.
     expect(matchAppShortcut(press("KeyK", { metaKey: true }))).toBeNull();
   });
@@ -130,11 +121,9 @@ describe("custom bindings", () => {
       find: chord("BracketLeft", { meta: true, alt: true }),
     });
     // ⌥[ types a typographic quote, so only the code identifies the key.
-    expect(
-      matchAppShortcut(
-        press("BracketLeft", { metaKey: true, altKey: true }, "“"),
-      ),
-    ).toEqual({ kind: "find" });
+    expect(matchAppShortcut(press("BracketLeft", { metaKey: true, altKey: true }, "“"))).toEqual({
+      kind: "find",
+    });
   });
 
   it("never fires a command left unassigned", () => {
@@ -146,16 +135,12 @@ describe("custom bindings", () => {
 describe("chords", () => {
   it("ignores a modifier pressed on its own", () => {
     expect(chordFromEvent(press("MetaLeft", { metaKey: true }))).toBeNull();
-    expect(chordFromEvent(press("KeyK", { metaKey: true }))).toEqual(
-      chord("KeyK", { meta: true }),
-    );
+    expect(chordFromEvent(press("KeyK", { metaKey: true }))).toEqual(chord("KeyK", { meta: true }));
   });
 
   it("writes macOS labels in Apple's modifier order", () => {
     expect(chordLabel(chord("KeyN", { meta: true }))).toBe("⌘N");
-    expect(
-      chordLabel(chord("ArrowLeft", { meta: true, alt: true, ctrl: true })),
-    ).toBe("⌃⌥⌘←");
+    expect(chordLabel(chord("ArrowLeft", { meta: true, alt: true, ctrl: true }))).toBe("⌃⌥⌘←");
     expect(chordLabel(chord("BracketRight", { meta: true }))).toBe("⌘]");
     expect(chordLabel(null)).toBe("");
   });
@@ -230,10 +215,7 @@ describe("storage", () => {
       ...defaultShortcuts(),
       nextTab: chord("Tab", { ctrl: true }),
     };
-    const parsed = parseShortcuts(
-      shortcutOverrides(bindings),
-      DEFAULT_SHORTCUTS,
-    );
+    const parsed = parseShortcuts(shortcutOverrides(bindings), DEFAULT_SHORTCUTS);
     expect(parsed).toEqual(bindings);
   });
 });

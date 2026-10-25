@@ -2,10 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The store reaches platform.ts through the shortcut table, and IS_MAC is a
 // build-time constant vitest does not define.
-vi.mock("./platform", () => ({ HAS_TRAY: true,
-  IS_MAC: true,
-  IS_WINDOWS: false,
-}));
+vi.mock("./platform", () => ({ HAS_TRAY: true, IS_MAC: true, IS_WINDOWS: false }));
 
 import { detectLanguage } from "./i18n";
 import { scrollbackMegabytes, TERMINAL_SCROLLBACK, useStore } from "./store";
@@ -91,9 +88,9 @@ describe("panel layout", () => {
       right: [],
       bottom: ["filer", "sender"],
     });
-    expect(
-      JSON.parse(localStorage.getItem("edgeterm.panelDocks") ?? "null"),
-    ).toEqual(useStore.getState().panelDocks);
+    expect(JSON.parse(localStorage.getItem("edgeterm.panelDocks") ?? "null")).toEqual(
+      useStore.getState().panelDocks,
+    );
 
     useStore.getState().resetPanelLayout();
     expect(localStorage.getItem("edgeterm.panelDocks")).toBeNull();
@@ -136,7 +133,11 @@ describe("filer sort preference", () => {
     expect(exported.filerSort).toEqual({ key: "size", direction: "desc" });
 
     useStore.getState().resetSettings();
-    expect(useStore.getState().filerSort).toEqual({ key: "name", direction: "asc", explicit: true });
+    expect(useStore.getState().filerSort).toEqual({
+      key: "name",
+      direction: "asc",
+      explicit: true,
+    });
     expect(localStorage.getItem("edgeterm.filerSort")).toBeNull();
 
     useStore.getState().applySettings(exported);

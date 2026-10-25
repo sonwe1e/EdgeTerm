@@ -85,91 +85,159 @@ const gate = (name, measured, limit) => {
 const server = await createServer({
   // Historical builds/worktrees are outside this fixture's source inputs.
   server: { port: 0, strictPort: false, host: "127.0.0.1", watch: { ignored: ["**/.tmp/**"] } },
-  plugins: [{ name: "file-perf-harness", configureServer(server) {
-    server.middlewares.use(async (req, res, next) => {
-      if (req.url !== "/__file_perf") return next();
-      res.setHeader("Content-Type", "text/html");
-      res.end(await server.transformIndexHtml(req.url, html));
-    });
-  } }],
+  plugins: [
+    {
+      name: "file-perf-harness",
+      configureServer(server) {
+        server.middlewares.use(async (req, res, next) => {
+          if (req.url !== "/__file_perf") return next();
+          res.setHeader("Content-Type", "text/html");
+          res.end(await server.transformIndexHtml(req.url, html));
+        });
+      },
+    },
+  ],
 });
 let browser;
 try {
   await server.listen();
-  browser = await chromium.launch({ channel: process.env.PERF_BROWSER || "msedge", headless: true });
+  browser = await chromium.launch({
+    channel: process.env.PERF_BROWSER || "msedge",
+    headless: true,
+  });
   const page = await browser.newPage({ viewport: { width: 1100, height: 720 } });
-  const errors = []; page.on("pageerror", (error) => { errors.push(String(error)); console.error(error); });
+  const errors = [];
+  page.on("pageerror", (error) => {
+    errors.push(String(error));
+    console.error(error);
+  });
   await page.goto(server.resolvedUrls.local[0] + "__file_perf");
   await page.waitForFunction(() => window.ready);
-  const waitFrames = () => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  const waitFrames = () =>
+    page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
   await waitFrames();
-  const layout = () => page.evaluate(() => {
-    const scroller=document.querySelector('.ftp-browser-list,.filer-list');
-    const rows=[...document.querySelectorAll('.ftp-file-row,.filer-entry')];
-    return { count:rows.length,height:scroller.clientHeight,scrollHeight:scroller.scrollHeight,
-      last:rows.at(-1)?.textContent,rowHeight:rows[0].getBoundingClientRect().height,
-      pitch:rows[1].getBoundingClientRect().top-rows[0].getBoundingClientRect().top };
-  });
-  const initial = await layout(); assert(initial.count < 50); assert.equal(initial.rowHeight, 29); assert.equal(initial.pitch, 29);
-  const source = page.locator('.ftp-file-row').first();
-  const sourcePath = await source.getAttribute('title');
+  const layout = () =>
+    page.evaluate(() => {
+      const scroller = document.querySelector(".ftp-browser-list,.filer-list");
+      const rows = [...document.querySelectorAll(".ftp-file-row,.filer-entry")];
+      return {
+        count: rows.length,
+        height: scroller.clientHeight,
+        scrollHeight: scroller.scrollHeight,
+        last: rows.at(-1)?.textContent,
+        rowHeight: rows[0].getBoundingClientRect().height,
+        pitch: rows[1].getBoundingClientRect().top - rows[0].getBoundingClientRect().top,
+      };
+    });
+  const initial = await layout();
+  assert(initial.count < 50);
+  assert.equal(initial.rowHeight, 29);
+  assert.equal(initial.pitch, 29);
+  const source = page.locator(".ftp-file-row").first();
+  const sourcePath = await source.getAttribute("title");
   const bounds = await source.boundingBox();
-  await page.mouse.move(bounds.x + 30, bounds.y + 10); await page.mouse.down();
+  await page.mouse.move(bounds.x + 30, bounds.y + 10);
+  await page.mouse.down();
   await page.mouse.move(bounds.x + 32, bounds.y + 10);
-  await page.evaluate(() => { const el=document.querySelector('.ftp-browser-list');el.scrollTop=el.scrollHeight; });
+  await page.evaluate(() => {
+    const el = document.querySelector(".ftp-browser-list");
+    el.scrollTop = el.scrollHeight;
+  });
   await waitFrames();
-  assert.equal(await page.locator('.ftp-file-row').filter({hasText:'file9999.dat'}).count(), 1);
-  assert.equal(await page.locator('.ftp-file-row').evaluateAll((rows,path)=>rows.some(r=>r.title===path), sourcePath), true);
-  await page.mouse.up(); await waitFrames();
-  const bottom = await layout(); assert(bottom.count < 50);
-  assert.equal(await page.locator('.ftp-file-row').evaluateAll((rows,path)=>rows.some(r=>r.title===path), sourcePath), false);
+  assert.equal(await page.locator(".ftp-file-row").filter({ hasText: "file9999.dat" }).count(), 1);
+  assert.equal(
+    await page
+      .locator(".ftp-file-row")
+      .evaluateAll((rows, path) => rows.some((r) => r.title === path), sourcePath),
+    true,
+  );
+  await page.mouse.up();
+  await waitFrames();
+  const bottom = await layout();
+  assert(bottom.count < 50);
+  assert.equal(
+    await page
+      .locator(".ftp-file-row")
+      .evaluateAll((rows, path) => rows.some((r) => r.title === path), sourcePath),
+    false,
+  );
   // By `data-sort-key`, not the caption's accessible name: the caption carries
   // its visible column text as that name (an `aria-label` there would replace
   // "Name" with the instruction "Sort by name" for a screen reader), so the
   // attribute is the stable handle a caller selects the caption by.
-  await page.locator('[data-sort-key="name"]').click(); await waitFrames();
-  assert.equal(await page.locator('.ftp-browser-list').evaluate(el=>el.scrollTop), 0);
-  await mkdir('artifacts/performance', {recursive:true});
-  await page.screenshot({path:'artifacts/performance/file-list.png'});
+  await page.locator('[data-sort-key="name"]').click();
+  await waitFrames();
+  assert.equal(await page.locator(".ftp-browser-list").evaluate((el) => el.scrollTop), 0);
+  await mkdir("artifacts/performance", { recursive: true });
+  await page.screenshot({ path: "artifacts/performance/file-list.png" });
   const filer = [];
   for (const font of [12, 20, 30]) {
-    await page.evaluate(font=>window.showFiler(font), font); await waitFrames();
-    const actual=await layout(); assert.equal(actual.pitch, Math.max(24,font+10)+2);
-    assert(actual.count < 50); filer.push({font,...actual});
+    await page.evaluate((font) => window.showFiler(font), font);
+    await waitFrames();
+    const actual = await layout();
+    assert.equal(actual.pitch, Math.max(24, font + 10) + 2);
+    assert(actual.count < 50);
+    filer.push({ font, ...actual });
   }
   // Gate 1: mounting a 10,000-row listing and painting it. Every sample starts
   // from an unmounted root, so each one is a first mount, not a re-render.
   const firstPaint = [];
   for (let sample = 0; sample < SAMPLES; sample++) {
-    await page.evaluate(() => window.clear()); await waitFrames();
-    firstPaint.push(await page.evaluate(count => window.measureFirstPaint(count), 10000));
+    await page.evaluate(() => window.clear());
+    await waitFrames();
+    firstPaint.push(await page.evaluate((count) => window.measureFirstPaint(count), 10000));
   }
   await waitFrames();
-  const painted = await layout(); assert(painted.count < 50);
-  gate("first paint of a 10,000-row listing (median of " + SAMPLES + ")", median(firstPaint), GATES.firstPaint10kMs);
+  const painted = await layout();
+  assert(painted.count < 50);
+  gate(
+    "first paint of a 10,000-row listing (median of " + SAMPLES + ")",
+    median(firstPaint),
+    GATES.firstPaint10kMs,
+  );
   // Gate 2: switching between two mounted 10,000-row listings through the app's
   // own .pane-slot/.is-hidden classes. Terminal tabs need real sessions, so they
   // are not covered here; see scripts/README.md.
-  await page.evaluate(() => window.mountTabs()); await waitFrames();
+  await page.evaluate(() => window.mountTabs());
+  await waitFrames();
   const switches = [];
   for (let sample = 0; sample < SAMPLES; sample++) {
     switches.push(await page.evaluate(() => window.measureTabSwitch()));
   }
   await waitFrames();
-  const shown = await page.locator('.pane-slot:not(.is-hidden) .ftp-file-row').count();
+  const shown = await page.locator(".pane-slot:not(.is-hidden) .ftp-file-row").count();
   assert(shown > 0 && shown < 50);
-  gate("tab switch between two 10,000-row listings (median of " + SAMPLES + ")", median(switches), GATES.tabSwitchMs);
+  gate(
+    "tab switch between two 10,000-row listings (median of " + SAMPLES + ")",
+    median(switches),
+    GATES.tabSwitchMs,
+  );
   const input = {};
   const cdp = await page.context().newCDPSession(page);
-  for (const rate of [1,4]) {
-    await cdp.send('Emulation.setCPUThrottlingRate',{rate});
-    input[rate+'xCPU']=await page.evaluate(()=>window.benchInput());
+  for (const rate of [1, 4]) {
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate });
+    input[rate + "xCPU"] = await page.evaluate(() => window.benchInput());
   }
   assert.deepEqual(errors, []);
   assert.deepEqual(failures, []);
-  const report={browser:await browser.version(),initial,bottom,filer,
-    gates:{firstPaint10k:{samples:firstPaint,medianMs:median(firstPaint),limitMs:GATES.firstPaint10kMs},
-      tabSwitch:{samples:switches,medianMs:median(switches),limitMs:GATES.tabSwitchMs}},input};
-  await writeFile('artifacts/performance/results.json',JSON.stringify(report,null,2));
-  console.log(JSON.stringify(report,null,2));
-} finally { if(browser)await browser.close();await server.close(); }
+  const report = {
+    browser: await browser.version(),
+    initial,
+    bottom,
+    filer,
+    gates: {
+      firstPaint10k: {
+        samples: firstPaint,
+        medianMs: median(firstPaint),
+        limitMs: GATES.firstPaint10kMs,
+      },
+      tabSwitch: { samples: switches, medianMs: median(switches), limitMs: GATES.tabSwitchMs },
+    },
+    input,
+  };
+  await writeFile("artifacts/performance/results.json", JSON.stringify(report, null, 2));
+  console.log(JSON.stringify(report, null, 2));
+} finally {
+  if (browser) await browser.close();
+  await server.close();
+}

@@ -19,20 +19,13 @@ export type InvalidSessionField = "locale" | "baudRate" | "host" | "port";
  * put the caret where the fix belongs; `validateProfile` turns the same answer
  * into the message shown to the user, so the two cannot drift.
  */
-export function invalidField(
-  profile: SessionProfile,
-): InvalidSessionField | null {
+export function invalidField(profile: SessionProfile): InvalidSessionField | null {
   if (profile.locale && !LOCALE_NAME.test(profile.locale)) {
     return "locale";
   }
   if (profile.kind === "serial") {
     const baudRate = profile.baudRate;
-    if (
-      baudRate == null ||
-      !Number.isInteger(baudRate) ||
-      baudRate <= 0 ||
-      baudRate > 0xffffffff
-    ) {
+    if (baudRate == null || !Number.isInteger(baudRate) || baudRate <= 0 || baudRate > 0xffffffff) {
       return "baudRate";
     }
     return null;
@@ -41,10 +34,7 @@ export function invalidField(
 
   if (!profile.host?.trim()) return "host";
   const port = profile.port;
-  if (
-    port != null &&
-    (!Number.isInteger(port) || port < 1 || port > 65535)
-  ) {
+  if (port != null && (!Number.isInteger(port) || port < 1 || port > 65535)) {
     return "port";
   }
   return null;

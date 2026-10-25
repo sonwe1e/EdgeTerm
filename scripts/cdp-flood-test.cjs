@@ -6,7 +6,10 @@ async function main() {
   const mode = process.argv[2] || "flood";
   const wsUrl = await findPageWs();
   const ws = new WebSocket(wsUrl);
-  await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
+  await new Promise((res, rej) => {
+    ws.onopen = res;
+    ws.onerror = rej;
+  });
   let msgId = 0;
   const pending = new Map();
   ws.onmessage = (ev) => {
@@ -17,53 +20,70 @@ async function main() {
       m.error ? rej(new Error(JSON.stringify(m.error))) : res(m.result);
     }
   };
-  const send = (method, params) => new Promise((res, rej) => {
-    const i = ++msgId;
-    pending.set(i, { res, rej });
-    ws.send(JSON.stringify({ id: i, method, params: params || {} }));
-  });
+  const send = (method, params) =>
+    new Promise((res, rej) => {
+      const i = ++msgId;
+      pending.set(i, { res, rej });
+      ws.send(JSON.stringify({ id: i, method, params: params || {} }));
+    });
   const evalJs = async (expression) => {
     const r = await Promise.race([
       send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true }),
-      sleep(5000).then(() => { throw new Error("EVAL_TIMEOUT"); }),
+      sleep(5000).then(() => {
+        throw new Error("EVAL_TIMEOUT");
+      }),
     ]);
-    if (r.exceptionDetails) throw new Error("page: " + JSON.stringify(r.exceptionDetails).slice(0, 300));
+    if (r.exceptionDetails)
+      throw new Error("page: " + JSON.stringify(r.exceptionDetails).slice(0, 300));
     return r.result && "value" in r.result ? r.result.value : undefined;
   };
-  const invoke = (cmd, args) => evalJs(`window.__TAURI_INTERNALS__.invoke(${JSON.stringify(cmd)}, ${JSON.stringify(args)})`);
-  if ((await invoke("list_sessions")).length !== 0) throw new Error("Flood diagnostics require an empty disposable app instance");
+  const invoke = (cmd, args) =>
+    evalJs(`window.__TAURI_INTERNALS__.invoke(${JSON.stringify(cmd)}, ${JSON.stringify(args)})`);
+  if ((await invoke("list_sessions")).length !== 0)
+    throw new Error("Flood diagnostics require an empty disposable app instance");
 
   // open a fresh Local shell session through the UI
   await evalJs(CLICK_JS(".menu-item", "Session"));
   await sleep(300);
   console.log("new session menu:", await evalJs(CLICK_JS(".menu-entry", "New Session")));
   await sleep(400);
-  console.log("pick Local shell:", await evalJs(`(() => {
+  console.log(
+    "pick Local shell:",
+    await evalJs(`(() => {
     const el = [...document.querySelectorAll("button.protocol-option")].find((e) => e.textContent.includes("Local shell"));
     if (!el) return "NOT_FOUND";
     el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
     el.click();
     return "OK";
-  })()`));
+  })()`),
+  );
   await sleep(300);
   console.log("connect:", await evalJs(CLICK_JS(".btn.is-primary", "Connect")));
 
   let sessions = [];
   for (let i = 0; i < 15 && !sessions.length; i++) {
     await sleep(1000);
-    sessions = await invoke("list_sessions").catch((e) => { console.log("list error:", e.message); return []; });
+    sessions = await invoke("list_sessions").catch((e) => {
+      console.log("list error:", e.message);
+      return [];
+    });
     console.log(`waiting for session... ${i}s -> ${sessions.length}`);
   }
   if (!sessions.length) throw new Error("session did not open");
-  if (sessions.length !== 1 || sessions[0].kind !== "local") throw new Error("Expected exactly one new local session");
+  if (sessions.length !== 1 || sessions[0].kind !== "local")
+    throw new Error("Expected exactly one new local session");
   const id = sessions[0].id;
   console.log(`session ${id} open (mode=${mode})`);
   let failed = false;
   try {
-    await invoke("write_session", { id, data: "for /l %i in (1,0,2) do @echo flood-line-marker\r" });
+    await invoke("write_session", {
+      id,
+      data: "for /l %i in (1,0,2) do @echo flood-line-marker\r",
+    });
     console.log("flood started");
 
-    const fire = (type, x, y) => evalJs(`(() => {
+    const fire = (type, x, y) =>
+      evalJs(`(() => {
       const s = document.querySelector(".splitter.is-vertical");
       if (!s) return 0;
       s.dispatchEvent(new PointerEvent(${JSON.stringify(type)}, {
@@ -77,7 +97,9 @@ async function main() {
     for (let tick = 1; tick <= 20; tick++) {
       if (mode === "flood+drag") {
         // one drag round per tick
-        const startX = await evalJs(`(() => { const s = document.querySelector(".splitter.is-vertical"); if (!s) return null; const r = s.getBoundingClientRect(); return Math.round(r.x); })()`);
+        const startX = await evalJs(
+          `(() => { const s = document.querySelector(".splitter.is-vertical"); if (!s) return null; const r = s.getBoundingClientRect(); return Math.round(r.x); })()`,
+        );
         if (startX != null) {
           await fire("pointerdown", startX, 400);
           const dir = tick % 2 ? 1 : -1;
@@ -104,7 +126,9 @@ async function main() {
         evalJs(`Date.now()`).then(() => false),
         sleep(2500).then(() => true),
       ]);
-      console.log(`t+${Math.round((Date.now() - t0) / 1000)}s sessions=${JSON.stringify(alive)} tabs=${tabCount} rendererEvalHangs=${wedgedPage}`);
+      console.log(
+        `t+${Math.round((Date.now() - t0) / 1000)}s sessions=${JSON.stringify(alive)} tabs=${tabCount} rendererEvalHangs=${wedgedPage}`,
+      );
       if (typeof alive !== "number" || alive !== 1 || wedgedPage) {
         console.log("=> SESSION DIED OR PIPE WEDGED at tick " + tick);
         failed = true;
@@ -119,4 +143,7 @@ async function main() {
   process.exit(failed ? 2 : 0);
 }
 
-main().catch((e) => { console.error(e.stack || e); process.exit(1); });
+main().catch((e) => {
+  console.error(e.stack || e);
+  process.exit(1);
+});

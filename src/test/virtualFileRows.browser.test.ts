@@ -32,18 +32,19 @@ const entries: Row[] = Array.from({ length: COUNT }, (_, index) => ({
 const pathOf = (index: number): string => entries[index].path;
 
 const rowElement = (entry: Row) =>
-  createElement("div", {
-    className: "ftp-file-row",
-    "data-row": entry.path,
-    onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => {
-      // The production press behaviour the capture contract builds on.
-      event.currentTarget.setPointerCapture(event.pointerId);
+  createElement(
+    "div",
+    {
+      className: "ftp-file-row",
+      "data-row": entry.path,
+      onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => {
+        // The production press behaviour the capture contract builds on.
+        event.currentTarget.setPointerCapture(event.pointerId);
+      },
     },
-  },
-  createElement("span", { className: "ftp-file-name" },
-    createElement("span", null, entry.name)),
-  createElement("span", null, "1 KB"),
-  createElement("span", null, "2026-10-15 10:00"),
+    createElement("span", { className: "ftp-file-name" }, createElement("span", null, entry.name)),
+    createElement("span", null, "1 KB"),
+    createElement("span", null, "2026-10-15 10:00"),
   );
 
 interface RowsAppProps {
@@ -53,17 +54,23 @@ interface RowsAppProps {
 }
 
 const rowsApp = ({ rowHeight, resetKey, list }: RowsAppProps) =>
-  createElement("div", {
-    className: "ftp-file-browser",
-    style: { width: "360px", height: "320px" },
-  },
-  createElement("div", { className: "ftp-browser-list", "data-list": "" },
-    createElement(VirtualFileRows<Row>, {
-      entries: list,
-      rowHeight,
-      resetKey,
-      children: (entry: Row) => rowElement(entry),
-    })));
+  createElement(
+    "div",
+    {
+      className: "ftp-file-browser",
+      style: { width: "360px", height: "320px" },
+    },
+    createElement(
+      "div",
+      { className: "ftp-browser-list", "data-list": "" },
+      createElement(VirtualFileRows<Row>, {
+        entries: list,
+        rowHeight,
+        resetKey,
+        children: (entry: Row) => rowElement(entry),
+      }),
+    ),
+  );
 
 const scroller = (): HTMLElement => {
   const element = document.querySelector<HTMLElement>("[data-list]");
@@ -108,14 +115,18 @@ const coverage = (): { ok: boolean; gapY: number | null } => {
  */
 async function pressRowHeld(row: HTMLElement): Promise<void> {
   const landed: Array<EventTarget | null> = [];
-  const onDown = (event: Event): void => { landed.push(event.target); };
+  const onDown = (event: Event): void => {
+    landed.push(event.target);
+  };
   document.addEventListener("pointerdown", onDown, { once: true, capture: true });
   const at = pagePoint(row);
   await mouse.press(at.x, at.y);
   const facts = `press on ${row.dataset.filePath}; ${frameFacts()}`;
   expect(landed.length, `pointerdown count; ${facts}`).toBe(1);
-  expect(row.contains(landed[0] as Node) || landed[0] === row,
-    `press target ${String(landed[0])}; ${facts}`).toBe(true);
+  expect(
+    row.contains(landed[0] as Node) || landed[0] === row,
+    `press target ${String(landed[0])}; ${facts}`,
+  ).toBe(true);
   await mouse.moveTo(at.x + 2, at.y + 2);
 }
 
@@ -125,10 +136,12 @@ describe("VirtualFileRows in a real scrolling container", () => {
   });
 
   it("lands real CDP input and really engages pointer capture (input wiring control)", async () => {
-    const mountedProbe = mount(createElement("div", {
-      "data-probe": "",
-      style: { width: "200px", height: "100px", background: "#334" },
-    }));
+    const mountedProbe = mount(
+      createElement("div", {
+        "data-probe": "",
+        style: { width: "200px", height: "100px", background: "#334" },
+      }),
+    );
     const mountTarget = mountedProbe.container;
     const probe = document.querySelector<HTMLElement>("[data-probe]")!;
     const seen: { trusted: boolean; pointerId: number }[] = [];
@@ -138,8 +151,12 @@ describe("VirtualFileRows in a real scrolling container", () => {
       seen.push({ trusted: event.isTrusted, pointerId: event.pointerId });
       probe.setPointerCapture(event.pointerId);
     });
-    probe.addEventListener("gotpointercapture", () => { gotCapture = true; });
-    probe.addEventListener("pointermove", () => { capturedMoves += 1; });
+    probe.addEventListener("gotpointercapture", () => {
+      gotCapture = true;
+    });
+    probe.addEventListener("pointermove", () => {
+      capturedMoves += 1;
+    });
 
     // Positive control: a real CDP press lands on the element as a trusted
     // event with an active pointer id. Per the Pointer Events spec, pending
@@ -153,8 +170,9 @@ describe("VirtualFileRows in a real scrolling container", () => {
     expect(seen[0].pointerId, `pointerId; ${frameFacts()}`).toBeGreaterThan(0);
     await mouse.moveTo(at.x + 2, at.y + 2);
     expect(gotCapture, `gotpointercapture; ${frameFacts()}`).toBe(true);
-    expect(probe.hasPointerCapture(seen[0].pointerId),
-      `hasPointerCapture; ${frameFacts()}`).toBe(true);
+    expect(probe.hasPointerCapture(seen[0].pointerId), `hasPointerCapture; ${frameFacts()}`).toBe(
+      true,
+    );
     // While captured, a move delivered anywhere still reaches the probe:
     // the pointer, not the geometry, routes the events.
     await mouse.moveTo(at.x + 300, at.y + 80);
@@ -252,8 +270,7 @@ describe("VirtualFileRows in a real scrolling container", () => {
 
     const list = scroller();
     // The spacer grew with the new pitch…
-    expect(Number(list.firstElementChild!.getBoundingClientRect().height))
-      .toBe(COUNT * 48);
+    expect(Number(list.firstElementChild!.getBoundingClientRect().height)).toBe(COUNT * 48);
     // …and a row keeps its content offset under the new pitch.
     const someRow = mountedRows()[2];
     const index = entries.findIndex((entry) => entry.path === someRow.dataset.filePath);
@@ -304,7 +321,9 @@ describe("VirtualFileRows in a real scrolling container", () => {
 
     const held = rowByPath(pathOf(6))!;
     let moves = 0;
-    held.addEventListener("pointermove", () => { moves += 1; });
+    held.addEventListener("pointermove", () => {
+      moves += 1;
+    });
     await pressRowHeld(held);
     // A real capture engages: the row is kept.
     expect(rowByPath(pathOf(6))).not.toBeNull();
@@ -321,9 +340,7 @@ describe("VirtualFileRows in a real scrolling container", () => {
     expect(scrolled).not.toBeNull();
     // The source row is now outside the visible band…
     const top = rowTop(scrolled);
-    expect(
-      top + PITCH < list.scrollTop || top > list.scrollTop + list.clientHeight,
-    ).toBe(true);
+    expect(top + PITCH < list.scrollTop || top > list.scrollTop + list.clientHeight).toBe(true);
     // …yet it still receives the pointer: the capture is real, so the drag
     // source survives its own row scrolling away.
     await mouse.moveTo(at.x + 40, at.y + 12);

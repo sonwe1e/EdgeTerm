@@ -30,12 +30,10 @@ export const LANGUAGE_LABELS: Record<Language, string> = {
   "zh-CN": "简体中文",
 };
 
-
 export type MessageKey = keyof typeof en;
 
 /** A full set of messages for one language; the compiler checks completeness. */
 export type Catalog = Record<MessageKey, string>;
-
 
 export const CATALOGS: Record<Language, Catalog> = {
   en,
@@ -57,11 +55,7 @@ function interpolate(template: string, params?: TParams): string {
 }
 
 /** The message for `key` in `language`, falling back to English, then the key. */
-export function translate(
-  language: Language,
-  key: MessageKey,
-  params?: TParams,
-): string {
+export function translate(language: Language, key: MessageKey, params?: TParams): string {
   const catalog = CATALOGS[language];
   const template = (catalog && catalog[key]) ?? en[key] ?? key;
   return interpolate(template, params);
@@ -78,12 +72,10 @@ export const parseLanguage = (value: unknown): Language | null =>
  */
 export function detectLanguage(
   languages: readonly string[] = typeof navigator !== "undefined"
-    ? navigator.languages ?? [navigator.language]
+    ? (navigator.languages ?? [navigator.language])
     : [],
 ): Language {
-  return languages.some((tag) => tag.toLowerCase().startsWith("zh"))
-    ? "zh-CN"
-    : "en";
+  return languages.some((tag) => tag.toLowerCase().startsWith("zh")) ? "zh-CN" : "en";
 }
 
 // The language imperative code translates with. The store mirrors its own
@@ -102,5 +94,4 @@ export function setCurrentLanguage(language: Language): void {
 }
 
 /** Translator for non-React code; reads the store's published language. */
-export const t: Translate = (key, params) =>
-  translate(activeLanguage, key, params);
+export const t: Translate = (key, params) => translate(activeLanguage, key, params);

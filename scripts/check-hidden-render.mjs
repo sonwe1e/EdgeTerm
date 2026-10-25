@@ -67,18 +67,26 @@ window.ready = true;
 const server = await createServer({
   // Historical builds/worktrees are outside this fixture's source inputs.
   server: { host: "127.0.0.1", port: 0, watch: { ignored: ["**/.tmp/**"] } },
-  plugins: [{ name: "hidden-render-harness", configureServer(server) {
-    server.middlewares.use(async (req, res, next) => {
-      if (req.url !== "/__hidden_render") return next();
-      res.setHeader("Content-Type", "text/html");
-      res.end(await server.transformIndexHtml(req.url, html));
-    });
-  } }],
+  plugins: [
+    {
+      name: "hidden-render-harness",
+      configureServer(server) {
+        server.middlewares.use(async (req, res, next) => {
+          if (req.url !== "/__hidden_render") return next();
+          res.setHeader("Content-Type", "text/html");
+          res.end(await server.transformIndexHtml(req.url, html));
+        });
+      },
+    },
+  ],
 });
 let browser;
 try {
   await server.listen();
-  browser = await chromium.launch({ channel: process.env.PERF_BROWSER || "msedge", headless: true });
+  browser = await chromium.launch({
+    channel: process.env.PERF_BROWSER || "msedge",
+    headless: true,
+  });
   const page = await browser.newPage({ viewport: { width: 1000, height: 600 } });
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e)));
@@ -88,7 +96,11 @@ try {
   const FRAMES = 120;
   const result = await page.evaluate(async (frames) => {
     const slot = document.querySelector(".pane-slot");
-    const shown = await window.measure(() => {}, () => {}, frames);
+    const shown = await window.measure(
+      () => {},
+      () => {},
+      frames,
+    );
     const legacy = await window.measure(window.hideLegacy, window.showLegacy, frames);
     const app = await window.measure(window.hideApp, window.showApp, frames);
     const display = getComputedStyle(slot).display;
@@ -96,10 +108,14 @@ try {
   }, FRAMES);
   console.log(JSON.stringify({ browser: browser.version(), ...result }, null, 2));
   assert.deepEqual(errors, [], "page errors: " + errors.join("; "));
-  assert.ok(result.shown > FRAMES / 4,
-    `harness check: a visible terminal should render under constant output, saw ${result.shown}/${FRAMES}`);
-  assert.ok(result.appIsHidden <= 2,
-    `a hidden .pane-slot rendered ${result.appIsHidden} frames of ${FRAMES} under constant output`);
+  assert.ok(
+    result.shown > FRAMES / 4,
+    `harness check: a visible terminal should render under constant output, saw ${result.shown}/${FRAMES}`,
+  );
+  assert.ok(
+    result.appIsHidden <= 2,
+    `a hidden .pane-slot rendered ${result.appIsHidden} frames of ${FRAMES} under constant output`,
+  );
   await mkdir("artifacts/performance", { recursive: true });
   await writeFile("artifacts/performance/hidden-render.json", JSON.stringify(result, null, 2));
   console.log("hidden terminal render gate: pass");

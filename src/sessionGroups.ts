@@ -88,8 +88,7 @@ export function effectiveParentId(
   const parentId = group.parentId ?? null;
   if (parentId === null || parentId === group.id) return null;
   return groups.some(
-    (g) =>
-      g.id === parentId && groupCategory(g.kind) === groupCategory(group.kind),
+    (g) => g.id === parentId && groupCategory(g.kind) === groupCategory(group.kind),
   )
     ? parentId
     : null;
@@ -103,8 +102,7 @@ export function effectiveGroupId(
   const groupId = profile.groupId ?? null;
   if (groupId === null) return null;
   return groups.some(
-    (g) =>
-      g.id === groupId && groupCategory(g.kind) === groupCategory(profile.kind),
+    (g) => g.id === groupId && groupCategory(g.kind) === groupCategory(profile.kind),
   )
     ? groupId
     : null;
@@ -119,17 +117,13 @@ export function childGroups(
   return groups
     .filter(
       (g) =>
-        groupCategory(g.kind) === groupCategory(kind) &&
-        effectiveParentId(groups, g) === parentId,
+        groupCategory(g.kind) === groupCategory(kind) && effectiveParentId(groups, g) === parentId,
     )
     .sort(byName);
 }
 
 /** Every group of a kind, depth-first in the order the panel draws them. */
-export function flattenGroups(
-  groups: readonly SessionGroup[],
-  kind: SessionKind,
-): GroupNode[] {
+export function flattenGroups(groups: readonly SessionGroup[], kind: SessionKind): GroupNode[] {
   const out: GroupNode[] = [];
   const seen = new Set<string>();
   const visit = (parentId: string | null, depth: number) => {
@@ -146,10 +140,7 @@ export function flattenGroups(
 }
 
 /** Names from the kind root down to the group, e.g. ["prod", "eu"]. */
-export function groupPath(
-  groups: readonly SessionGroup[],
-  id: string | null,
-): string[] {
+export function groupPath(groups: readonly SessionGroup[], id: string | null): string[] {
   const names: string[] = [];
   const seen = new Set<string>();
   let cursor = id;

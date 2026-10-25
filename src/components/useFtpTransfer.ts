@@ -70,7 +70,8 @@ export function useFtpTransfer({
     return (await api.localList(dir)).entries;
   };
 
-  const sideLabel = (side: PaneSide) => (side === "remote" ? t("ftp.sideRemote") : t("ftp.sideLocal"));
+  const sideLabel = (side: PaneSide) =>
+    side === "remote" ? t("ftp.sideRemote") : t("ftp.sideLocal");
 
   /** Why a batch cannot land at all, in the destination pane's wording. */
   const blockedMessage = (side: PaneSide, block: BatchBlock): string =>
@@ -158,10 +159,7 @@ export function useFtpTransfer({
     transferId.current = api.newTransferId();
     setTransfer({
       direction,
-      name:
-        items.length === 1
-          ? items[0].name
-          : t("filer.manyItems", { count: items.length }),
+      name: items.length === 1 ? items[0].name : t("filer.manyItems", { count: items.length }),
       transferred: 0,
       total: items.reduce((sum, item) => sum + (item.isDir ? 0 : item.size), 0),
       status: "running",

@@ -48,7 +48,5 @@ export function isInputPrompt(text: string): boolean {
   // Appending a space lets a compact bare prompt such as `$` satisfy the
   // same look-ahead rule as `$ command` in semantic coloring.
   if (isShellPrompt(`${text} `)) return true;
-  return [...CONTINUATION_PROMPTS, ...DEVICE_PROMPTS].some((prompt) =>
-    prompt.test(text),
-  );
+  return [...CONTINUATION_PROMPTS, ...DEVICE_PROMPTS].some((prompt) => prompt.test(text));
 }

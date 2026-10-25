@@ -32,13 +32,10 @@ async function waitForImg() {
 }
 
 describe("FileIcon", () => {
-  beforeAll(
-    async () => {
-      (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-      await import("../fileIcons");
-    },
-    30000,
-  );
+  beforeAll(async () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    await import("../fileIcons");
+  }, 30000);
 
   afterEach(() => {
     act(() => root.unmount());
@@ -59,9 +56,7 @@ describe("FileIcon", () => {
     const img = host.querySelector("img");
     expect(img).not.toBeNull();
     const { fileIconSource } = await import("../fileIcons");
-    expect(img?.getAttribute("src")).toBe(
-      fileIconSource("package.json", false, "dark"),
-    );
+    expect(img?.getAttribute("src")).toBe(fileIconSource("package.json", false, "dark"));
     expect(img?.getAttribute("draggable")).toBe("false");
   });
 

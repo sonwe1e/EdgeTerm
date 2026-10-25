@@ -40,8 +40,7 @@ export const DEFAULT_PANEL_SIZING: PanelSizing = {
   senderExpanded: false,
 };
 
-const clamp = (value: number, min: number, max: number) =>
-  Math.min(max, Math.max(min, value));
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 const finite = (value: unknown, fallback: number) =>
   typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -56,11 +55,7 @@ const finite = (value: unknown, fallback: number) =>
  * pointer and the keyboard go through it, so every way of asking for a width
  * meets the same boundary.
  */
-export function clampSide(
-  desired: number,
-  viewportWidth: number,
-  other: number,
-): number {
+export function clampSide(desired: number, viewportWidth: number, other: number): number {
   const fit = viewportWidth - other - MIN_CENTER_WIDTH - 2;
   return Math.round(clamp(Math.min(desired, fit), SIDE_MIN, SIDE_MAX));
 }
@@ -106,10 +101,8 @@ export function loadPanelSizing(): PanelSizing {
   } catch {
     // A corrupt or blocked entry falls through to the defaults.
   }
-  const viewportWidth =
-    typeof window === "undefined" ? 1440 : window.innerWidth;
-  const viewportHeight =
-    typeof window === "undefined" ? 900 : window.innerHeight;
+  const viewportWidth = typeof window === "undefined" ? 1440 : window.innerWidth;
+  const viewportHeight = typeof window === "undefined" ? 900 : window.innerHeight;
   const sides = fitSides(
     finite(stored.left, fallback.left),
     finite(stored.right, fallback.right),

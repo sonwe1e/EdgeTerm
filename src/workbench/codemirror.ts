@@ -10,10 +10,7 @@ import { claimEditorState, rememberEditorState } from "./editorState";
 
 export interface EditorHandle {
   view: EditorView;
-  setCallbacks: (callbacks: {
-    onChange: (content: string) => void;
-    onSave: () => void;
-  }) => void;
+  setCallbacks: (callbacks: { onChange: (content: string) => void; onSave: () => void }) => void;
   setTheme: (dark: boolean, fontSize: number) => void;
   setReadOnly: (readOnly: boolean) => void;
   /** Replace the text from outside the editor (server reload). History is dropped. */
@@ -178,8 +175,9 @@ function editorTheme(mods: Modules, dark: boolean, fontSize: number) {
         backgroundColor: "transparent",
         color: "var(--fg)",
       },
-      ".cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection":
-        { backgroundColor: "var(--bg-active)" },
+      ".cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection": {
+        backgroundColor: "var(--bg-active)",
+      },
       ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--fg)" },
       ".cm-panels": {
         backgroundColor: "var(--bg-panel-alt)",
@@ -221,7 +219,11 @@ function highlightStyle(mods: Modules, dark: boolean) {
       { tag: [t.keyword, t.modifier, t.operatorKeyword], color: colors.keyword },
       { tag: [t.string, t.special(t.string)], color: colors.string },
       { tag: [t.number, t.bool, t.null, t.atom], color: colors.number },
-      { tag: [t.lineComment, t.blockComment, t.docComment], color: colors.comment, fontStyle: "italic" },
+      {
+        tag: [t.lineComment, t.blockComment, t.docComment],
+        color: colors.comment,
+        fontStyle: "italic",
+      },
       { tag: [t.function(t.variableName), t.function(t.propertyName)], color: colors.function },
       { tag: [t.typeName, t.className, t.namespace, t.self], color: colors.type },
       { tag: [t.variableName, t.definition(t.variableName)], color: colors.variable },
@@ -263,7 +265,18 @@ function buildExtensions(
   options: { path: string; dark: boolean; fontSize: number; readOnly: boolean },
 ) {
   const { EditorState } = mods.state;
-  const { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor } = mods.view;
+  const {
+    EditorView,
+    keymap,
+    lineNumbers,
+    highlightActiveLine,
+    highlightActiveLineGutter,
+    highlightSpecialChars,
+    drawSelection,
+    dropCursor,
+    rectangularSelection,
+    crosshairCursor,
+  } = mods.view;
   const { defaultKeymap, history, historyKeymap, indentWithTab } = mods.commands;
   const { indentOnInput, indentUnit, bracketMatching, foldGutter } = mods.language;
   const { search, searchKeymap, highlightSelectionMatches } = mods.search;

@@ -26,9 +26,7 @@ const entry = (name: string): FileEntry => ({
 
 const key = (
   value: string,
-  modifiers: Partial<
-    Record<"ctrlKey" | "metaKey" | "altKey" | "isComposing", boolean>
-  > = {},
+  modifiers: Partial<Record<"ctrlKey" | "metaKey" | "altKey" | "isComposing", boolean>> = {},
 ) => ({
   key: value,
   ctrlKey: false,
@@ -68,30 +66,14 @@ describe("typeToSelect", () => {
   });
 
   it("starts over after a pause, moving on from the active entry", () => {
-    expect(typeInto(home, "dd", TYPE_SELECT_RESET_MS)).toEqual([
-      "Desktop",
-      "docs",
-    ]);
-    expect(typeInto(home, "ddd", TYPE_SELECT_RESET_MS)).toEqual([
-      "Desktop",
-      "docs",
-      "Downloads",
-    ]);
+    expect(typeInto(home, "dd", TYPE_SELECT_RESET_MS)).toEqual(["Desktop", "docs"]);
+    expect(typeInto(home, "ddd", TYPE_SELECT_RESET_MS)).toEqual(["Desktop", "docs", "Downloads"]);
   });
 
   it("steps through the names a repeated letter starts", () => {
-    expect(typeInto(["a", "s1", "s2", "s3"], "ssss")).toEqual([
-      "s1",
-      "s2",
-      "s3",
-      "s1",
-    ]);
+    expect(typeInto(["a", "s1", "s2", "s3"], "ssss")).toEqual(["s1", "s2", "s3", "s1"]);
     // Unless a name starts with the repeats themselves.
-    expect(typeInto(["s3.txt", "src", "ssh", "sudo"], "sss")).toEqual([
-      "s3.txt",
-      "ssh",
-      "sudo",
-    ]);
+    expect(typeInto(["s3.txt", "src", "ssh", "sudo"], "sss")).toEqual(["s3.txt", "ssh", "sudo"]);
   });
 
   it("keeps the selection when no name matches", () => {
@@ -126,15 +108,11 @@ describe("typeToSelect", () => {
   it("does not start a run on a space after a pause", () => {
     const entries = [entry("a"), entry("b")];
     const run: TypeRun = { text: "a", at: 0 };
-    expect(
-      typeToSelect(entries, entries[0].path, run, key(" "), TYPE_SELECT_RESET_MS),
-    ).toBeNull();
+    expect(typeToSelect(entries, entries[0].path, run, key(" "), TYPE_SELECT_RESET_MS)).toBeNull();
   });
 
   it("matches a decomposed name against a composed key", () => {
-    expect(typeInto(["etc", "E\u0301cran.png"], "\u00e9")).toEqual([
-      "E\u0301cran.png",
-    ]);
+    expect(typeInto(["etc", "E\u0301cran.png"], "\u00e9")).toEqual(["E\u0301cran.png"]);
   });
 
   it("leaves shortcuts, named keys and composition alone", () => {
@@ -157,26 +135,14 @@ describe("typeToSelect", () => {
     const entries = home.map((name) => entry(name));
     const first = typeToSelect(entries, null, null, key("d"), 0);
     expect(first).toEqual({ run: { text: "d", at: 0 }, index: 0 });
-    const second = typeToSelect(
-      entries,
-      entries[first!.index].path,
-      first!.run,
-      key("o"),
-      100,
-    );
+    const second = typeToSelect(entries, entries[first!.index].path, first!.run, key("o"), 100);
     expect(second).toEqual({ run: { text: "do", at: 100 }, index: 1 });
   });
 
   it("keeps a failed run so the next key still extends it", () => {
     const entries = home.map((name) => entry(name));
     const first = typeToSelect(entries, null, null, key("d"), 0)!;
-    const miss = typeToSelect(
-      entries,
-      entries[first.index].path,
-      first.run,
-      key("z"),
-      100,
-    );
+    const miss = typeToSelect(entries, entries[first.index].path, first.run, key("z"), 100);
     expect(miss).toEqual({ run: { text: "dz", at: 100 }, index: -1 });
   });
 });
@@ -327,9 +293,7 @@ describe("useFileListKeyboard type-to-select", () => {
     press("u");
     expect(selected()).toBe("/home/Music");
     press("Enter");
-    expect(onActivate).toHaveBeenCalledWith(
-      expect.objectContaining({ path: "/home/Music" }),
-    );
+    expect(onActivate).toHaveBeenCalledWith(expect.objectContaining({ path: "/home/Music" }));
   });
 
   it("ignores shortcuts, named keys and keys typed into an inline editor", () => {

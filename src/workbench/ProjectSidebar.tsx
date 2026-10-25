@@ -43,7 +43,9 @@ export function ProjectSidebar({
   const experiments = workspace
     ? data.experiments
         .filter((experiment) => experiment.workspaceId === workspace.id)
-        .sort((a, b) => (a.kind === b.kind ? a.createdAt - b.createdAt : a.kind === "baseline" ? -1 : 1))
+        .sort((a, b) =>
+          a.kind === b.kind ? a.createdAt - b.createdAt : a.kind === "baseline" ? -1 : 1,
+        )
     : [];
   const runs = workspace ? runsOf(data, workspace.id).slice(0, 8) : [];
   const hasBaseline = experiments.some((experiment) => experiment.kind === "baseline");
@@ -52,7 +54,12 @@ export function ProjectSidebar({
     <aside className="wb-sidebar" aria-label={t("wb.projects")}>
       <div className="wb-sidebar-heading">
         <span>{t("wb.projects")}</span>
-        <button type="button" className="wb-icon-button" title={t("wb.newProject")} onClick={onNewProject}>
+        <button
+          type="button"
+          className="wb-icon-button"
+          title={t("wb.newProject")}
+          onClick={onNewProject}
+        >
           <Icon name="add" />
         </button>
       </div>
@@ -107,7 +114,11 @@ export function ProjectSidebar({
             <button type="button" className="btn wb-mini" onClick={() => onEditProject(workspace)}>
               {t("wb.edit")}
             </button>
-            <button type="button" className="btn wb-mini" onClick={() => onDeleteProject(workspace)}>
+            <button
+              type="button"
+              className="btn wb-mini"
+              onClick={() => onDeleteProject(workspace)}
+            >
               {t("common.delete")}
             </button>
           </div>
@@ -207,11 +218,15 @@ export function ProjectSidebar({
                   onClick={() => onSelectRun(run)}
                   title={`${run.command}\n${run.runDir}`}
                 >
-                  <span className={`wb-run-dot is-${run.status}${isRunLive(run.status) ? " is-live" : ""}`} />
+                  <span
+                    className={`wb-run-dot is-${run.status}${isRunLive(run.status) ? " is-live" : ""}`}
+                  />
                   <span className="wb-run-main">
                     <span>{experiment?.name ?? t("wb.experiment")}</span>
                     <small>
-                      {t(runStatusKey(run.status))} · {runCodeId(run)} · {formatClock(run.startedAt)}
+                      {t(runStatusKey(run.status))} · {runCodeId(run)}
+                      {" · "}
+                      {formatClock(run.startedAt)}
                     </small>
                   </span>
                 </button>

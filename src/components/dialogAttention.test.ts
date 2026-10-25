@@ -8,11 +8,7 @@ import {
   requestDialogAttention,
 } from "./dialogAttention";
 
-const animationEnd = (
-  target: HTMLElement,
-  currentTarget: HTMLElement,
-  animationName: string,
-) =>
+const animationEnd = (target: HTMLElement, currentTarget: HTMLElement, animationName: string) =>
   ({ target, currentTarget, animationName }) as unknown as AnimationEvent<HTMLElement>;
 
 describe("dialog attention flash", () => {

@@ -92,8 +92,9 @@ let root: Root;
 
 /** The browser panes are [remote, local], in the order FtpPane renders them. */
 const listAt = (index: number) =>
-  host.querySelectorAll<HTMLElement>(".ftp-file-browser")[index]!
-    .querySelector<HTMLElement>('[role="listbox"]')!;
+  host
+    .querySelectorAll<HTMLElement>(".ftp-file-browser")
+    [index]!.querySelector<HTMLElement>('[role="listbox"]')!;
 const rowAt = (index: number, name: string) =>
   [...listAt(index).querySelectorAll<HTMLElement>('[role="option"]')].find(
     (row) => row.querySelector(".ftp-file-name > span:last-child")?.textContent === name,
@@ -187,9 +188,9 @@ describe("FTP/SFTP dual-pane multi-selection and batch transfers", () => {
     // One queue job, not one per entry: the transfer center counts files.
     expect(queue).toBe("queue-1");
     // The destination was reloaded after the batch landed.
-    expect(
-      vi.mocked(api.sftpList).mock.calls.filter(([, path]) => path === "/remote").length,
-    ).toBe(2);
+    expect(vi.mocked(api.sftpList).mock.calls.filter(([, path]) => path === "/remote").length).toBe(
+      2,
+    );
     expect(host.textContent).toContain("2 items");
   });
 
@@ -217,9 +218,7 @@ describe("FTP/SFTP dual-pane multi-selection and batch transfers", () => {
     vi.mocked(api.sftpList).mockImplementation(async (_id, path) => ({
       path,
       entries:
-        path === "/remote"
-          ? [file("/remote", "conf", true), file("/remote", "notes.txt")]
-          : [],
+        path === "/remote" ? [file("/remote", "conf", true), file("/remote", "notes.txt")] : [],
     }));
     vi.mocked(nativeDialog.ask).mockResolvedValue(false);
     await mount();

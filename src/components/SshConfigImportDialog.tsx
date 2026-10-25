@@ -64,12 +64,7 @@ export function SshConfigImportDialog({ preview, onClose }: Props) {
   const setStatus = useStore((s) => s.setStatus);
   const loadProfiles = useStore((s) => s.loadProfiles);
   const [selected, setSelected] = useState<Set<string>>(
-    () =>
-      new Set(
-        preview.entries
-          .filter((entry) => !entry.existingId)
-          .map((entry) => entry.alias),
-      ),
+    () => new Set(preview.entries.filter((entry) => !entry.existingId).map((entry) => entry.alias)),
   );
   const [groupId, setGroupId] = useState("");
   const [busy, setBusy] = useState(false);
@@ -96,11 +91,7 @@ export function SshConfigImportDialog({ preview, onClose }: Props) {
     });
   const allSelected = selected.size === preview.entries.length;
   const toggleAll = () =>
-    setSelected(
-      allSelected
-        ? new Set()
-        : new Set(preview.entries.map((entry) => entry.alias)),
-    );
+    setSelected(allSelected ? new Set() : new Set(preview.entries.map((entry) => entry.alias)));
   // How many forwards the current selection carries. The backend's summary
   // counts sessions and jump hosts only, so the import reports this one from
   // the selection itself; the import writes each chosen entry's forwards
@@ -120,11 +111,7 @@ export function SshConfigImportDialog({ preview, onClose }: Props) {
       const aliases = preview.entries
         .filter((entry) => selected.has(entry.alias))
         .map((entry) => entry.alias);
-      const summary = await api.importSshConfig(
-        preview.path,
-        aliases,
-        groupId || null,
-      );
+      const summary = await api.importSshConfig(preview.path, aliases, groupId || null);
       await loadProfiles();
       const parts: string[] = [];
       if (summary.added > 0) {
@@ -188,130 +175,126 @@ export function SshConfigImportDialog({ preview, onClose }: Props) {
       onClose={onClose}
       dismissable={false}
     >
-        <div className="dialog-header">
-          <span id="ssh-import-title">{t("sshImport.title")}</span>
-          <button
-            className="panel-action"
-            type="button"
-            onClick={onClose}
-            aria-label={t("common.close")}
-          >
-            <Icon name="close" />
-          </button>
-        </div>
-        <div className="dialog-body ssh-import-body">
-          <span className="confirm-dialog-target">{preview.path}</span>
-          <div className="ssh-import-list" role="group" aria-label={t("sshImport.hostsGroup")}>
-            <label className="ssh-import-row is-head has-forwards">
+      <div className="dialog-header">
+        <span id="ssh-import-title">{t("sshImport.title")}</span>
+        <button
+          className="panel-action"
+          type="button"
+          onClick={onClose}
+          aria-label={t("common.close")}
+        >
+          <Icon name="close" />
+        </button>
+      </div>
+      <div className="dialog-body ssh-import-body">
+        <span className="confirm-dialog-target">{preview.path}</span>
+        <div className="ssh-import-list" role="group" aria-label={t("sshImport.hostsGroup")}>
+          <label className="ssh-import-row is-head has-forwards">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={toggleAll}
+              aria-label={t("sshImport.selectAllHosts")}
+            />
+            <span className="ssh-import-alias">{t("sshImport.hostColumn")}</span>
+            <span className="ssh-import-target">{t("sshImport.connectsToColumn")}</span>
+            <span className="ssh-import-note">{t("sshImport.authColumn")}</span>
+            <span className="ssh-import-forwards">{t("sshImport.forwardsColumn")}</span>
+          </label>
+          {preview.entries.map((entry) => (
+            <label
+              key={entry.alias}
+              className={`ssh-import-row has-forwards${entry.existingId ? " is-existing" : ""}`}
+            >
               <input
                 type="checkbox"
-                checked={allSelected}
-                onChange={toggleAll}
-                aria-label={t("sshImport.selectAllHosts")}
+                checked={selected.has(entry.alias)}
+                onChange={() => toggle(entry.alias)}
               />
-              <span className="ssh-import-alias">{t("sshImport.hostColumn")}</span>
-              <span className="ssh-import-target">{t("sshImport.connectsToColumn")}</span>
-              <span className="ssh-import-note">{t("sshImport.authColumn")}</span>
-              <span className="ssh-import-forwards">{t("sshImport.forwardsColumn")}</span>
-            </label>
-            {preview.entries.map((entry) => (
-              <label
-                key={entry.alias}
-                className={`ssh-import-row has-forwards${entry.existingId ? " is-existing" : ""}`}
-              >
-                <input
-                  type="checkbox"
-                  checked={selected.has(entry.alias)}
-                  onChange={() => toggle(entry.alias)}
-                />
-                <span className="ssh-import-alias" title={entry.alias}>
-                  {entry.alias}
-                </span>
-                <span className="ssh-import-target" title={target(entry)}>
-                  {target(entry)}
-                  {entry.jumps.length === 1 && (
-                    <span className="ssh-import-via">{t("sshImport.viaJump", { jump: entry.jumps[0] })}</span>
-                  )}
-                  {entry.jumps.length > 1 && (
-                    <span className="ssh-import-via">
-                      {" "}
-                      {t("sshImport.viaMultiHop", { jumps: entry.jumps.join(", ") })}
-                    </span>
-                  )}
-                </span>
-                <span className="ssh-import-note">
-                  <span title={entry.privateKeyPath ?? undefined}>
-                    {authLabel(entry)}
+              <span className="ssh-import-alias" title={entry.alias}>
+                {entry.alias}
+              </span>
+              <span className="ssh-import-target" title={target(entry)}>
+                {target(entry)}
+                {entry.jumps.length === 1 && (
+                  <span className="ssh-import-via">
+                    {t("sshImport.viaJump", { jump: entry.jumps[0] })}
                   </span>
-                  {entry.existingId && (
-                    <span className="ssh-import-existing">
-                      {t("sshImport.updates", { name: entry.existingName ?? "" })}
+                )}
+                {entry.jumps.length > 1 && (
+                  <span className="ssh-import-via">
+                    {" "}
+                    {t("sshImport.viaMultiHop", { jumps: entry.jumps.join(", ") })}
+                  </span>
+                )}
+              </span>
+              <span className="ssh-import-note">
+                <span title={entry.privateKeyPath ?? undefined}>{authLabel(entry)}</span>
+                {entry.existingId && (
+                  <span className="ssh-import-existing">
+                    {t("sshImport.updates", { name: entry.existingName ?? "" })}
+                  </span>
+                )}
+              </span>
+              <span className="ssh-import-forwards">
+                {(entry.forwards ?? []).length === 0 ? (
+                  <span className="ssh-import-forward">—</span>
+                ) : (
+                  entry.forwards?.map((spec, index) => (
+                    <span
+                      key={index}
+                      className="ssh-import-forward"
+                      title={`${t(FORWARD_LETTER[spec.direction])} ${forwardRoute(spec, t("forward.autoPort"))}`}
+                    >
+                      <b>{t(FORWARD_LETTER[spec.direction])}</b>{" "}
+                      {forwardRoute(spec, t("forward.autoPort"))}
                     </span>
-                  )}
-                </span>
-                <span className="ssh-import-forwards">
-                  {(entry.forwards ?? []).length === 0 ? (
-                    <span className="ssh-import-forward">—</span>
-                  ) : (
-                    entry.forwards?.map((spec, index) => (
-                      <span
-                        key={index}
-                        className="ssh-import-forward"
-                        title={`${t(FORWARD_LETTER[spec.direction])} ${forwardRoute(spec, t("forward.autoPort"))}`}
-                      >
-                        <b>{t(FORWARD_LETTER[spec.direction])}</b>{" "}
-                        {forwardRoute(spec, t("forward.autoPort"))}
-                      </span>
-                    ))
-                  )}
-                </span>
-              </label>
-            ))}
-          </div>
-          <label className="ssh-import-group">
-            <span>{t("sshImport.addNewTo")}</span>
-            <span className="select-wrap">
-              <select
-                className="select"
-                value={groupId}
-                onChange={(event) => setGroupId(event.target.value)}
-              >
-                <option value="">{t("sshImport.noGroupOption")}</option>
-                {sshGroups.map((group) => (
-                  <option key={group.id} value={group.id}>
-                    {group.label}
-                  </option>
-                ))}
-              </select>
-              <Icon name="chevron-down" className="select-chevron" />
-            </span>
-          </label>
-          <span className="confirm-dialog-hint">
-            {t("sshImport.hint")}
-          </span>
-          {selectedForwards > 0 && (
-            <span className="confirm-dialog-hint">
-              {t("sshImport.forwardAutoStart")}
-            </span>
-          )}
-          {error && <div className="dialog-error">{error}</div>}
+                  ))
+                )}
+              </span>
+            </label>
+          ))}
         </div>
-        <div className="dialog-footer confirm-dialog-footer">
-          <span className="confirm-dialog-keys">
-            {t("sshImport.selectedCount", { selected: selected.size, total: preview.entries.length })}
+        <label className="ssh-import-group">
+          <span>{t("sshImport.addNewTo")}</span>
+          <span className="select-wrap">
+            <select
+              className="select"
+              value={groupId}
+              onChange={(event) => setGroupId(event.target.value)}
+            >
+              <option value="">{t("sshImport.noGroupOption")}</option>
+              {sshGroups.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.label}
+                </option>
+              ))}
+            </select>
+            <Icon name="chevron-down" className="select-chevron" />
           </span>
-          <button type="button" className="btn" onClick={onClose}>
-            {t("common.cancel")}
-          </button>
-          <button
-            type="button"
-            className="btn is-primary"
-            disabled={busy || selected.size === 0}
-            onClick={() => void submit()}
-          >
-            {t("sshImport.importButton")}
-          </button>
-        </div>
+        </label>
+        <span className="confirm-dialog-hint">{t("sshImport.hint")}</span>
+        {selectedForwards > 0 && (
+          <span className="confirm-dialog-hint">{t("sshImport.forwardAutoStart")}</span>
+        )}
+        {error && <div className="dialog-error">{error}</div>}
+      </div>
+      <div className="dialog-footer confirm-dialog-footer">
+        <span className="confirm-dialog-keys">
+          {t("sshImport.selectedCount", { selected: selected.size, total: preview.entries.length })}
+        </span>
+        <button type="button" className="btn" onClick={onClose}>
+          {t("common.cancel")}
+        </button>
+        <button
+          type="button"
+          className="btn is-primary"
+          disabled={busy || selected.size === 0}
+          onClick={() => void submit()}
+        >
+          {t("sshImport.importButton")}
+        </button>
+      </div>
     </ModalDialog>
   );
 }

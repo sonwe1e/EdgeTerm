@@ -303,11 +303,7 @@ export interface AppStore {
    */
   updateTabProfile: (id: string, profile: SessionProfile) => void;
   /** Associates a session with the project it was opened for (null clears it). */
-  setTabWorkspace: (
-    id: string,
-    workspaceId: string | null,
-    workspaceName?: string,
-  ) => void;
+  setTabWorkspace: (id: string, workspaceId: string | null, workspaceName?: string) => void;
   closeTab: (id: string) => Promise<void>;
   /**
    * Closes a tab, asking first while its session is still connecting or

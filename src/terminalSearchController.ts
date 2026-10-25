@@ -1,11 +1,7 @@
 import type { IDisposable, Terminal } from "@xterm/xterm";
 
 import { TerminalFind } from "./terminalFind";
-import {
-  DEFAULT_FIND_OPTIONS,
-  type FindOptions,
-  type SearchResults,
-} from "./terminalSearch";
+import { DEFAULT_FIND_OPTIONS, type FindOptions, type SearchResults } from "./terminalSearch";
 import { FIND_COLORS } from "./terminalShared";
 import type { ThemeMode } from "./types";
 
@@ -75,9 +71,6 @@ export class TerminalSearchController {
   }
 
   constructor(private readonly context: Context) {
-    this.finder = new TerminalFind(
-      context.term,
-      FIND_COLORS[context.themeMode],
-    );
+    this.finder = new TerminalFind(context.term, FIND_COLORS[context.themeMode]);
   }
 }

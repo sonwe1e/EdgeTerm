@@ -11,8 +11,7 @@ import {
   type LayoutNode,
 } from "./layout";
 
-const close = (actual: number, expected: number) =>
-  expect(actual).toBeCloseTo(expected, 6);
+const close = (actual: number, expected: number) => expect(actual).toBeCloseTo(expected, 6);
 
 describe("splitPane", () => {
   it("turns a lone pane into a pair sharing the room", () => {

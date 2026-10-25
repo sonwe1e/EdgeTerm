@@ -25,9 +25,7 @@ function arg(name, fallback) {
 const dist = arg("--dist", join(process.cwd(), "dist"));
 const assets = join(dist, "assets");
 
-const chunkFiles = (await readdir(assets)).filter((name) =>
-  /^fileIcons.*\.js$/.test(name),
-);
+const chunkFiles = (await readdir(assets)).filter((name) => /^fileIcons.*\.js$/.test(name));
 if (chunkFiles.length !== 1) {
   console.error(`expected exactly one fileIcons chunk in ${assets}, found ${chunkFiles.length}`);
   process.exit(1);
@@ -50,9 +48,7 @@ for (const [, path] of code.matchAll(
   keys.add(base.replace(/\.svg$/, "").replace(/\.clone$/, ""));
 }
 if (keys.size !== sources.length) {
-  failures.push(
-    `chunk map has ${keys.size} keys, the package has ${sources.length} non-open SVGs`,
-  );
+  failures.push(`chunk map has ${keys.size} keys, the package has ${sources.length} non-open SVGs`);
 }
 
 // 2. Every asset URL the chunk mentions is a real file in dist.

@@ -84,10 +84,7 @@ function write(controller: TerminalController, text: string): Promise<void> {
 }
 
 function setInputValue(input: HTMLInputElement, value: string) {
-  const setter = Object.getOwnPropertyDescriptor(
-    HTMLInputElement.prototype,
-    "value",
-  )?.set;
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
   setter?.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
@@ -102,8 +99,7 @@ function escapeInTerminal(controller: TerminalController): boolean {
 }
 
 beforeEach(() => {
-  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-    true;
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   useStore.setState({
     tabs: [createTestTab()],
     activeId: SESSION_ID,
@@ -121,11 +117,7 @@ describe("terminal search options", () => {
     const controller = createRegisteredController();
     await write(
       controller,
-      [
-        "Error: 404 cat catalog",
-        "error: 500 Concatenate",
-        "ERR: 200 ok",
-      ].join("\r\n"),
+      ["Error: 404 cat catalog", "error: 500 Concatenate", "ERR: 200 ok"].join("\r\n"),
     );
 
     const host = document.createElement("div");
@@ -195,10 +187,7 @@ describe("terminal search options", () => {
 
   it("searches only the selection and explains a toggle without one", async () => {
     const controller = createRegisteredController();
-    await write(
-      controller,
-      ["foo 0", "foo 1", "foo 2", "foo 3"].join("\r\n"),
-    );
+    await write(controller, ["foo 0", "foo 1", "foo 2", "foo 3"].join("\r\n"));
 
     const host = document.createElement("div");
     document.body.append(host);
@@ -272,9 +261,7 @@ describe("terminal search options", () => {
         input.focus();
       });
       await act(async () => {
-        input.dispatchEvent(
-          new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
-        );
+        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
       });
       expect(onClose).toHaveBeenCalledTimes(1);
       // Closing from the box hands focus back to the terminal.

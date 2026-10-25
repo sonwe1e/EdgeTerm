@@ -905,7 +905,12 @@
 .about-link:hover {
   color: var(--fg);
 }
-.ssh-connection-options { padding: var(--sp-6) var(--sp-12); color: var(--fg-dim); font-size: var(--fs-sm); border-bottom: 1px solid var(--border); }
+.ssh-connection-options {
+  padding: var(--sp-6) var(--sp-12);
+  color: var(--fg-dim);
+  font-size: var(--fs-sm);
+  border-bottom: 1px solid var(--border);
+}
 /* The SSH reuse disclosure wears the panel's own language: the browser's
    default triangle is replaced by a chevron that turns as the section opens,
    the same 120ms the tree carets use. */
@@ -941,11 +946,28 @@
     transition: none;
   }
 }
-.ssh-reuse-setting { padding-top: 8px; }
-.ssh-reuse-setting label { display: flex; align-items: center; gap: 6px; min-height: 24px; }
+.ssh-reuse-setting {
+  padding-top: 8px;
+}
+.ssh-reuse-setting label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+}
 /* The native box is 13px; 16px keeps the glyph but meets the desktop target
    together with its (already clickable) label row. */
-.ssh-reuse-setting input[type="checkbox"] { width: 16px; height: 16px; margin: 0; }
-.ssh-reuse-setting p { margin: 6px 0; line-height: 1.5; opacity: .7; }
+.ssh-reuse-setting input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+.ssh-reuse-setting p {
+  margin: 6px 0;
+  line-height: 1.5;
+  opacity: 0.7;
+}
 
-.about-dialog { width: 380px; }
+.about-dialog {
+  width: 380px;
+}

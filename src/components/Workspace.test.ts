@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../platform", () => ({ HAS_TRAY: true, IS_MAC: false, IS_WINDOWS: true }));
 vi.mock("../api", async (original) => ({
-  ...await original<typeof import("../api")>(),
+  ...(await original<typeof import("../api")>()),
   listSenderCommands: vi.fn(async () => []),
 }));
 
@@ -26,24 +26,40 @@ let root: Root;
 
 const entries = () => [...host.querySelectorAll<HTMLButtonElement>(".term-empty-entry")];
 const entryByLabel = (label: string) =>
-  entries().find((button) => button.querySelector(".term-empty-entry-label")?.textContent?.startsWith(label))!;
+  entries().find((button) =>
+    button.querySelector(".term-empty-entry-label")?.textContent?.startsWith(label),
+  )!;
 
-const mount = () => act(() => {
-  root.render(h(Workspace, { onNewSession: vi.fn() }));
-});
+const mount = () =>
+  act(() => {
+    root.render(h(Workspace, { onNewSession: vi.fn() }));
+  });
 
 const chord = (over: Partial<KeyChord>): KeyChord => ({
-  ctrl: false, alt: false, shift: false, meta: false, code: "KeyK", ...over,
+  ctrl: false,
+  alt: false,
+  shift: false,
+  meta: false,
+  code: "KeyK",
+  ...over,
 });
 
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.clearAllMocks();
   localStorage.clear();
-  useStore.setState({
-    ...initialState, language: "en", tabs: [], activeId: null, profiles: [], groups: [],
-    panels: { sessions: true, filer: false, sender: false },
-  }, true);
+  useStore.setState(
+    {
+      ...initialState,
+      language: "en",
+      tabs: [],
+      activeId: null,
+      profiles: [],
+      groups: [],
+      panels: { sessions: true, filer: false, sender: false },
+    },
+    true,
+  );
   useWorkbench.setState({ view: "terminals" });
   host = document.createElement("div");
   document.body.appendChild(host);
@@ -63,7 +79,9 @@ describe("Workspace empty state capability entries (PD-05)", () => {
       const entry = entryByLabel(label);
       expect(entry).toBeTruthy();
       // Every entry explains itself; a bare verb is not discoverability.
-      expect(entry.querySelector(".term-empty-entry-hint")?.textContent?.trim().length).toBeGreaterThan(0);
+      expect(
+        entry.querySelector(".term-empty-entry-hint")?.textContent?.trim().length,
+      ).toBeGreaterThan(0);
     }
   });
 
@@ -74,15 +92,17 @@ describe("Workspace empty state capability entries (PD-05)", () => {
     expect(filerChord).toBeTruthy();
 
     expect(entryByLabel("Open File Panel").querySelector("kbd")?.textContent).toBe(filerChord);
-    expect(entryByLabel("Open Sender").querySelector("kbd")?.textContent)
-      .toBe(chordLabel(state.shortcuts.panelSender));
+    expect(entryByLabel("Open Sender").querySelector("kbd")?.textContent).toBe(
+      chordLabel(state.shortcuts.panelSender),
+    );
     // The workbench has no bound command; the entry must not invent one.
     expect(entryByLabel("Open Workbench").querySelector("kbd")).toBeNull();
 
     // The accessible name carries the label and its chord, the way the
     // menu bar's own buttons name themselves.
-    expect(entryByLabel("Open File Panel").getAttribute("aria-label"))
-      .toBe(`Open File Panel (${filerChord})`);
+    expect(entryByLabel("Open File Panel").getAttribute("aria-label")).toBe(
+      `Open File Panel (${filerChord})`,
+    );
   });
 
   it("tracks a rebound chord instead of a written-down one", () => {
@@ -90,7 +110,10 @@ describe("Workspace empty state capability entries (PD-05)", () => {
     const before = entryByLabel("Open File Panel").querySelector("kbd")?.textContent;
     act(() => {
       useStore.setState((state) => ({
-        shortcuts: { ...state.shortcuts, panelFiler: chord({ ctrl: true, alt: true, code: "KeyK" }) },
+        shortcuts: {
+          ...state.shortcuts,
+          panelFiler: chord({ ctrl: true, alt: true, code: "KeyK" }),
+        },
       }));
     });
     const after = entryByLabel("Open File Panel").querySelector("kbd")?.textContent;
@@ -104,7 +127,9 @@ describe("Workspace empty state capability entries (PD-05)", () => {
     filerEntry.focus();
     expect(document.activeElement).toBe(filerEntry);
 
-    act(() => { filerEntry.click(); });
+    act(() => {
+      filerEntry.click();
+    });
 
     expect(useStore.getState().panels.filer).toBe(true);
     expect(entryByLabel("Hide File Panel")).toBeTruthy();
@@ -117,10 +142,14 @@ describe("Workspace empty state capability entries (PD-05)", () => {
 
   it("opens the sender and switches to the workbench view", () => {
     mount();
-    act(() => { entryByLabel("Open Sender").click(); });
+    act(() => {
+      entryByLabel("Open Sender").click();
+    });
     expect(useStore.getState().panels.sender).toBe(true);
 
-    act(() => { entryByLabel("Open Workbench").click(); });
+    act(() => {
+      entryByLabel("Open Workbench").click();
+    });
     expect(useWorkbench.getState().view).toBe("workbench");
   });
 });

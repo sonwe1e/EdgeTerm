@@ -120,9 +120,7 @@ export class ZmodemController {
       if (session.type === "receive") {
         this.startReceive(session);
       } else {
-        void this.startSend(session).catch((error) =>
-          this.failSession(session, error),
-        );
+        void this.startSend(session).catch((error) => this.failSession(session, error));
       }
     } catch (error) {
       this.failSession(this.activeSession, error);
@@ -163,10 +161,7 @@ export class ZmodemController {
     }
   }
 
-  private async receiveOffer(
-    session: ReceiveSession,
-    offer: Offer,
-  ): Promise<boolean> {
+  private async receiveOffer(session: ReceiveSession, offer: Offer): Promise<boolean> {
     const details = offer.get_details();
     const name = safeOfferedName(details.name);
     const reportedSize = validSize(details.size);
@@ -195,9 +190,7 @@ export class ZmodemController {
         const now = performance.now();
         if (now - lastStatusAt < 50 && transferred !== reportedSize) return;
         lastStatusAt = now;
-        this.report(
-          `ZMODEM receiving ${name}: ${formatProgress(transferred, reportedSize)}`,
-        );
+        this.report(`ZMODEM receiving ${name}: ${formatProgress(transferred, reportedSize)}`);
       },
       () => {
         try {
@@ -219,9 +212,7 @@ export class ZmodemController {
     if (result === "failed") throw writer.error;
 
     const transferred = await writer.finish();
-    this.report(
-      `ZMODEM received ${name} (${formatBytes(transferred)})`,
-    );
+    this.report(`ZMODEM received ${name} (${formatBytes(transferred)})`);
     return true;
   }
 
@@ -230,11 +221,7 @@ export class ZmodemController {
     const selected = await openDialog({ multiple: true, directory: false });
     if (this.disposed || session.has_ended()) return;
 
-    const paths = selected
-      ? Array.isArray(selected)
-        ? selected
-        : [selected]
-      : [];
+    const paths = selected ? (Array.isArray(selected) ? selected : [selected]) : [];
     if (paths.length === 0) {
       const closing = session.close();
       await this.drainOutbound();
@@ -289,11 +276,7 @@ export class ZmodemController {
         const ending = transfer.end();
         await this.drainOutbound();
         this.report(`ZMODEM finalizing ${info.name}: waiting for peer confirmation…`);
-        await withTimeout(
-          ending,
-          PEER_CONFIRM_TIMEOUT_MS,
-          `peer did not confirm ${info.name}`,
-        );
+        await withTimeout(ending, PEER_CONFIRM_TIMEOUT_MS, `peer did not confirm ${info.name}`);
       } else {
         while (offset < info.size) {
           if (this.disposed || session.has_ended()) return;
@@ -311,41 +294,26 @@ export class ZmodemController {
             this.report(
               `ZMODEM finalizing ${info.name}: ${formatProgress(offset, info.size)} · waiting for peer confirmation…`,
             );
-            await withTimeout(
-              ending,
-              PEER_CONFIRM_TIMEOUT_MS,
-              `peer did not confirm ${info.name}`,
-            );
+            await withTimeout(ending, PEER_CONFIRM_TIMEOUT_MS, `peer did not confirm ${info.name}`);
           } else {
             transfer.send(bytes);
             offset += bytes.length;
             await this.drainOutbound();
           }
-          this.report(
-            `ZMODEM sending ${info.name}: ${formatProgress(offset, info.size)}`,
-          );
+          this.report(`ZMODEM sending ${info.name}: ${formatProgress(offset, info.size)}`);
         }
       }
 
       sentFiles += 1;
       bytesRemaining -= info.size;
-      this.report(
-        `ZMODEM sent ${info.name} (${formatBytes(info.size)})`,
-      );
+      this.report(`ZMODEM sent ${info.name} (${formatBytes(info.size)})`);
     }
 
     const closing = session.close();
     await this.drainOutbound();
-    await withTimeout(
-      closing,
-      PEER_CONFIRM_TIMEOUT_MS,
-      "peer did not close the ZMODEM session",
-    );
+    await withTimeout(closing, PEER_CONFIRM_TIMEOUT_MS, "peer did not close the ZMODEM session");
     if (!this.failed && !this.disposed) {
-      this.report(
-        `ZMODEM: sent ${sentFiles} file${sentFiles === 1 ? "" : "s"}`,
-        "success",
-      );
+      this.report(`ZMODEM: sent ${sentFiles} file${sentFiles === 1 ? "" : "s"}`, "success");
     }
   }
 
@@ -456,7 +424,5 @@ function safeOfferedName(offered: string): string {
 }
 
 function validSize(size: number | null | undefined): number | null {
-  return typeof size === "number" && Number.isSafeInteger(size) && size >= 0
-    ? size
-    : null;
+  return typeof size === "number" && Number.isSafeInteger(size) && size >= 0 ? size : null;
 }

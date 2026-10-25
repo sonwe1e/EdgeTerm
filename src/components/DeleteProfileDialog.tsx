@@ -67,11 +67,7 @@ export function DeleteProfileDialog({
         <button type="button" className="btn" onClick={onCancel}>
           {t("common.cancel")}
         </button>
-        <button
-          type="button"
-          className="btn is-danger"
-          onClick={onConfirm}
-        >
+        <button type="button" className="btn is-danger" onClick={onConfirm}>
           {t("common.delete")}
         </button>
       </div>

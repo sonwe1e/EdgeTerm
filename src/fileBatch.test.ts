@@ -139,15 +139,11 @@ describe("batchCollisions", () => {
   });
 
   it("refuses local links but leaves remote links to the server", () => {
-    expect(
-      batchCollisions([entry("x")], [entry("x", false, true)], "local").blocked,
-    ).toEqual({
+    expect(batchCollisions([entry("x")], [entry("x", false, true)], "local").blocked).toEqual({
       kind: "symlink",
       existing: expect.objectContaining({ name: "x", isSymlink: true }),
     });
-    expect(
-      batchCollisions([entry("x")], [entry("x", false, true)], "remote").blocked,
-    ).toBeNull();
+    expect(batchCollisions([entry("x")], [entry("x", false, true)], "remote").blocked).toBeNull();
   });
 
   it("matches names case-insensitively when asked", () => {
