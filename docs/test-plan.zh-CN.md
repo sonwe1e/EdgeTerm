@@ -4,6 +4,19 @@
 
 ## 1. 基础检查
 
+### 2026-10-26 体验改进回归
+
+- `terminalGutter.test.ts`：旧行重绘不刷新时间戳、宽度重排保持内容与时间对应，新输出使用新时间；重绘和折行两项在修改前均失败。另覆盖替代屏调整大小、重复日志折行截断，以及 ConPTY 先访问空白尾行再回到提示符的重绘；保留原有滚动截断和元数据上限用例。
+- `sessionSetup.browser.test.ts`：同一失败草稿重试使用同一档案 id、同一标签；900×560 与 1100×720 下连接字段和提交按钮可用。重试用例在修改前失败。
+- `projectSetup.browser.test.ts`：拒绝丢弃时保留表单；无 SSH 服务器时可新增，返回后保留项目名称和路径并选中新服务器。关闭保护和新增入口用例在修改前失败。
+- `transferSettings.browser.test.ts`：设置入口请求直接展开传输参数并聚焦摘要。
+- `fileEditor.test.ts`、`fileEditor.browser.test.ts`：无需项目直接编辑；远程保存携带原会话、目标路径和期望哈希；冲突、不确定写入、保存期间输入和读取期间输入保留草稿；小窗口可操作。
+- Rust `local_text::tests`：本地 UTF-8/BOM/CRLF 往返、冲突拒绝、二进制和超限文件拒绝。
+
+2026-10-26 已在隔离便携数据目录完成 Windows x64 WebView2/ConPTY 检查：分屏和文件面板折行后原输出时间保留，新 echo 有新时间；从文件菜单进入编辑器，真实本地写回保留 CRLF；外部修改冲突保留磁盘内容和草稿；两次真实 SSH 拒绝连接后仍只有一个配置和一个失败标签。证据位于 `.tmp/ux-fixes-20261026/native/`（本机忽略目录）。
+
+浏览器用例使用模拟 IPC，不能证明真实 SSH/SFTP 写回。真实服务器、FTP 内置编辑、崩溃恢复和 macOS/Linux 尚不在这些通过结果内。
+
 ```powershell
 npm ci
 npm test
@@ -33,6 +46,89 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib real_ -- --ignored --nocap
 浏览器验收使用生产 React/CSS 和真实 xterm，但模拟 IPC 数据。应在实际状态栏容器检查新控件，覆盖应用最小宽度900px、长错误、弹层切换/Escape、明暗主题；大队列/恢复/失败文件及diff首尾可达、DOM有界；字节碎片保序与EOF尾批；隐藏/恢复的实际render帧。记录浏览器、源快照和工作负载，不把单次浏览器时延或合成多GPU当真实部署性能/多GPU硬件验证。
 
 按R10在一次性worktree中破坏相关保护：限速扣费、journal归属、字节相等判断、认证身份、guest计数、迟到资源释放、owner停止、输出合批、隐藏采样、快照revision、转发入口owner、传输身份及虚拟化阈值。先运行同快照正常控制，再确认对应行为用例实际失败；编译失败不算检出。保留日志与源码哈希，清理worktree，禁止链接node_modules。
+
+### 日常操作与传输可见性（2026-10-26）
+
+本轮按“后台上传 → 可辨认、可固定的任务队列 → 连接表单和窄窗口工作台”推进，
+基线 `d7d9eaf`，候选为本节同次修改的工作区代码（包含下节 SFTP 引擎改动）。
+
+- Filer 上传只在选择文件/覆盖确认期间占用上传入口，提交后归后台队列管理。
+  完成时只刷新仍在浏览的同一会话、同一目录；不清除选择、不改变路径，不覆盖
+  其他错误。过期目录响应和过期选择器结果不落入新位置；取消不作为失败提示。
+- 任务快照保存协议、服务器身份、第一组源/目标路径、方向和选择项数；仅保存
+  展示所需字段。队列显示扫描、连接、续传校验、传输和提交阶段，未确定总量的
+  阶段使用不定进度；100% 字节不代表提交完成。并行文件继续传数据时更新阶段。
+- 状态栏队列可固定到应用底部，继续操作 Filer 不关闭它；取消固定恢复浮层行为。
+  固定状态属于本次窗口的临时布局，不新增跨启动偏好。
+- 新建连接先填协议、地址和认证，名称/颜色/分组默认折叠，编辑现有连接默认展开。
+  本地与串口的新建焦点分别落在 Shell 和串口字段。
+- 工作台自身宽度不超过 900px 时，在项目、文件和编辑器间切换；区域仍挂载，
+  文档状态保留。空编辑器提供项目文件入口，提示不依赖“右侧”方向。
+  更窄时运行栏换行、日志和运行详情上下排列且可滚动，避免左右 dock 压缩后
+  横向溢出；停止按钮沿用全局危险按钮的对比色，修正红底红字。
+
+回归入口：`filerDownloadQueue.browser.test.ts`、`sessionSetup.browser.test.ts`、
+`workbench/workbench.browser.test.ts`、`fileTransfers.test.ts`、
+`components/panels/FilerSelection.test.ts` 和 Rust `types::context_tests`。
+新增连续上传用例先在旧实现执行，实际失败于首个任务提交后 Refresh 被禁用；
+候选允许继续提交、切换目录，并保留覆盖拒绝、取消和错误处理。
+
+Windows x64，所有检查由 `dev.ps1` 串行运行；前端全量 104 文件、890 项通过，
+Rust 全量 448 项通过、27 项 ignored（包括需要专用服务的用例，不能算通过）。
+相关浏览器回归 7 文件、31 项通过，使用 headless Edge、生产 React/CSS、模拟 IPC，覆盖 1100×720、900×560，
+工作台另按左右 dock 剩余宽度与 18px 字体检查。截图位于 `artifacts/usability/`。
+前端构建（含 TypeScript 检查）、前后端格式检查及 `git diff --check` 通过。
+桌面控制通道在本次会话不可用；这些结果不等于已验证 Tauri/WebView2 原生交互，
+也不证明真实 SFTP 吞吐已追上 rclone。没有构建或发布新的安装包。
+
+### SFTP 请求窗口与小文件下载（2026-10-26）
+
+本轮基线为 `d7d9eaf`，候选为本节同次修改的工作区代码。Windows x64、Rust
+debug 测试构建，经过 `dev.ps1` 限制为 4 个逻辑 CPU、2 个测试线程。
+`file_transfer::sftp::tests` 使用真实 `RawSftpSession` 和生产复制路径，但服务端
+是内存协议夹具，没有真实 SSH 加密、网络或服务器磁盘。以下数值是请求计数与
+窗口占用，**不是吞吐倍数，也不证明已达到 rclone 的速度**。
+
+| 回归场景 | 旧实现（新增用例实际失败） | 候选行为 |
+|---|---|---|
+| 4 个 16 MiB 文件上传，4 文件通道、32 请求额度，暂缓 WRITE 应答 | 仅 16 个请求在途 | 能用满 32 个，不突破任务上限 |
+| 3 个 4 KiB 文件与 1 个 8 MiB 文件上传，同样暂缓应答 | 仅 11 个请求在途 | 长文件可复用未用额度，达到 32 个 |
+| 11 字节小文件下载 | 3 次 READ、3 次 OPEN | 复用初始完整样本，2 次 READ、2 次 OPEN；最终源检查仍执行 |
+
+对应入口为 `throughput_large_file_slots_share_the_entire_window`、
+`throughput_short_files_do_not_strand_the_long_files_window` 和
+`throughput_small_download_reuses_the_initial_sample`。用例先运行于旧生产代码，
+再运行于候选；暂缓应答的测试还核对最终文件字节与完成计数。
+
+`throughput_upload_sends_ready_bytes_while_the_source_waits` 用可控 reader
+检查生产上传流水线：只供给第一块，等待该块到达服务端后才供给第二块。
+`sampled_download_still_rejects_a_source_changed_before_commit` 保持长度及 mtime
+不变、只改变内容，要求报告冲突并保留原目标；另有空文件、64 KiB 边界、短 DATA
+和缓冲额度耗尽时取消的覆盖。缓冲槽覆盖分配至消费的全过程；请求总上限、4 MiB
+检查点间隔、磁盘同步和断点摘要格式保持原契约。
+
+反向抽查在独立 worktree 中进行：把上传改回整窗读完才发送，受控 reader 用例
+实际失败；停用最终源签名比较，源变化用例实际失败。相同源码正常控制已通过。
+本地证据在 `.tmp/records/sftp-throughput-20261026/`，包含控制/变异源码哈希及
+结果；临时 worktree 已清理。小文件缓存续传另核对已确认前缀与未确认尾部。
+
+验证命令为 `./dev.ps1 test:rust`，本轮 445 项通过、27 项 ignored；补充小文件
+续传用例后，`./dev.ps1 test:rust file_transfer::` 为 116 项通过、12 项 ignored。
+ignored 不算通过。真实服务器与 rclone 的上传/下载、大文件/小文件目录对照未运行，
+用户本轮选择先完成代码和回归验证。实际吞吐、额外装箱开销和磁盘同步占比仍待测量。
+
+### 1.4.0 发布前复跑（2026-10-27）
+
+基线 `d7d9eaf`，候选为 1.4.0 的预备提交。`dev.ps1` 串行执行全量检查，全部通过：
+前端单元测试 105 个文件 / 900 项；浏览器回归（Playwright chromium）27 个文件 /
+139 项；Rust 测试 449 项通过、27 项 ignored。TypeScript、Biome 格式检查、lint 与
+生产前端构建通过；lint 保留生成绑定中两条既有 `any` 警告，Rust 保留既有未使用
+代码警告。
+
+上面各批次小节记录的是编写时那一次会话的观测（890 项、139 项中 31 项等），
+与本次复跑数量不同，不是漏报或回退。本次复跑没有使用真实 SSH/SFTP 服务器，也
+没有真实 Tauri/WebView2 交互；ignored 项仍需专用环境，不计入通过。安装包与
+校验和在本轮构建后另行核对。
 
 ## 2. PR #91：排序、布局与设置
 
