@@ -60,11 +60,11 @@ export const deleteRun = async (id: string): Promise<WorkspaceData> =>
 export const probe = (sessionId: string, root: string): Promise<ProjectProbe> =>
   commands.projectProbe(sessionId, root);
 
-export const readText = (sessionId: string, path: string): Promise<TextFile> =>
+export const readText = (sessionId: string | null, path: string): Promise<TextFile> =>
   commands.projectReadText(sessionId, path) as Promise<TextFile>;
 
 export const writeText = (
-  sessionId: string,
+  sessionId: string | null,
   request: {
     path: string;
     content: string;

@@ -337,6 +337,20 @@ dialog.dialog-backdrop.is-fallback[open] {
   color: var(--fg-dim);
 }
 
+.session-organization summary {
+  cursor: pointer;
+  list-style: none;
+}
+.session-organization:not([open]) summary {
+  margin-bottom: 0;
+}
+.session-organization[open] summary .icon {
+  transform: rotate(90deg);
+}
+.session-organization summary:focus-visible {
+  outline: 2px solid var(--accent);
+}
+
 .session-section-heading small {
   overflow: hidden;
   margin-left: auto;
@@ -773,6 +787,12 @@ dialog.dialog-backdrop.is-fallback[open] {
 
 .session-dialog-error .icon {
   margin-top: 1px;
+}
+.session-dialog-error pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 100px;
+  overflow: auto;
 }
 
 .font-size-dialog {
@@ -1566,4 +1586,52 @@ dialog.dialog-backdrop.is-fallback[open] {
 
 .session-forwards-form .btn {
   align-self: flex-end;
+}
+.session-advanced > summary {
+  cursor: pointer;
+  padding: 10px 0;
+  font-weight: 600;
+}
+
+.session-advanced > .session-form-grid {
+  padding-top: 12px;
+}
+
+.file-editor-dialog {
+  width: min(1100px, calc(100vw - 40px));
+  height: min(780px, calc(100vh - 40px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.file-editor-destination {
+  display: grid;
+  gap: 6px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.file-editor-destination code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-editor-destination small {
+  color: var(--text-muted);
+}
+.file-editor-empty {
+  flex: 1;
+  padding: 24px;
+}
+.file-editor-dialog .dialog-footer {
+  flex-wrap: wrap;
+}
+.file-editor-dialog .dialog-footer > span {
+  margin-right: auto;
+}
+.file-editor-dialog .dialog-error {
+  max-height: 100px;
+  overflow: auto;
+  flex-shrink: 0;
 }

@@ -34,6 +34,8 @@ import { StatusBar } from "./components/StatusBar";
 import { UpdateDialog } from "./components/UpdateDialog";
 import { Workspace } from "./components/Workspace";
 import { Workbench } from "./workbench/Workbench";
+import { FileEditorDialog } from "./components/FileEditorDialog";
+import { closeFileEditor, hasUnsavedFile } from "./fileEditor";
 import { useWorkbench } from "./workbench/store";
 import { FilerPanel } from "./components/panels/FilerPanel";
 import { SenderPanel } from "./components/panels/SenderPanel";
@@ -62,6 +64,9 @@ const SessionDialog = lazy(() =>
 
 /** Stable empty result for the closing-tabs selector (see `useShallow`). */
 const EMPTY_CLOSING_TABS: Tab[] = [];
+const exitSafely = async () => {
+  if (await closeFileEditor()) await exit(0);
+};
 
 const hasLiveSessions = () =>
   useStore.getState().tabs.some((tab) => tab.state === "connecting" || tab.state === "connected");
@@ -394,7 +399,13 @@ export default function App() {
         setCloseChoiceOpen(true);
         return;
       }
-      if (!hasLiveSessions()) return;
+      if (!hasLiveSessions()) {
+        if (hasUnsavedFile()) {
+          event.preventDefault();
+          void exitSafely();
+        }
+        return;
+      }
       event.preventDefault();
       openQuitPrompt();
     });
@@ -426,7 +437,7 @@ export default function App() {
   useEffect(() => {
     const unlisten = api.onQuitRequested(() => {
       if (hasLiveSessions()) openQuitPrompt();
-      else void exit(0);
+      else void exitSafely();
     });
     return () => {
       void unlisten.then((off) => off());
@@ -781,6 +792,7 @@ export default function App() {
             />
           </>
         )}
+        <div id="transfer-dock" className="transfer-dock" />
         <PanelDropOverlay />
       </div>
 
@@ -812,11 +824,12 @@ export default function App() {
         />
       )}
 
+      <FileEditorDialog />
       {quitPromptOpen && (
         <QuitConfirmDialog
           onConfirm={() => {
             setQuitPromptOpen(false);
-            void exit(0);
+            void exitSafely();
           }}
           onCancel={() => setQuitPromptOpen(false)}
         />
@@ -836,7 +849,7 @@ export default function App() {
               return;
             }
             if (hasLiveSessions()) openQuitPrompt();
-            else void exit(0);
+            else void exitSafely();
           }}
           onCancel={() => setCloseChoiceOpen(false)}
         />

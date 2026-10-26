@@ -1,4 +1,5 @@
 import type { useFileSelection } from "../../useFileSelection";
+import { openFileEditor } from "../../fileEditor";
 import { errorText } from "../../errorInfo";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import { type MouseEvent } from "react";
@@ -243,7 +244,17 @@ export function useFilerActions({
                 disabled: busy,
                 action: () => void openEntry(entry),
               },
-          ...(entry.isDir ? [] : [openWithMenu(entry)]),
+          ...(entry.isDir
+            ? []
+            : [
+                {
+                  label: t("fileEditor.title"),
+                  icon: "edit" as const,
+                  disabled: busy,
+                  action: () => void openFileEditor(remoteId, entry.path),
+                },
+                openWithMenu(entry),
+              ]),
           {
             label: t("filer.rename"),
             icon: "edit" as const,

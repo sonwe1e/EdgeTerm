@@ -14,13 +14,15 @@ export function CodeEditor({
   onChange,
   onSave,
   onRevealed,
+  remember = true,
 }: {
-  doc: EditorDoc;
+  doc: Pick<EditorDoc, "id" | "path" | "content" | "revealLine">;
   dark: boolean;
   fontSize: number;
   onChange: (content: string) => void;
   onSave: () => void;
   onRevealed: () => void;
+  remember?: boolean;
 }) {
   const t = useT();
   const host = useRef<HTMLDivElement>(null);
@@ -82,7 +84,8 @@ export function CodeEditor({
       });
     return () => {
       disposed = true;
-      handle.current?.destroy();
+      if (remember) handle.current?.destroy();
+      else handle.current?.discard();
       handle.current = null;
     };
     // The parent remounts this component when the document changes (key),
