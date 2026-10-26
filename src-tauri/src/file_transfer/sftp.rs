@@ -5,16 +5,16 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use futures_util::{
-    stream::{FuturesOrdered, FuturesUnordered},
-    StreamExt,
+    stream::{self, FuturesOrdered, FuturesUnordered},
+    FutureExt, StreamExt, TryStreamExt,
 };
 use parking_lot::Mutex;
 use ring::digest::{Context, SHA256};
 use russh_sftp::client::{error::Error, rawsession::Limits, RawSftpSession};
 use russh_sftp::protocol::{FileAttributes, OpenFlags, Packet, StatusCode};
 use tauri::Manager;
-use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
-use tokio::sync::Semaphore;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use super::{local, Checkpoint, Control, Failure, Item, Job, TransferResult};
 use crate::commands::AppState;
@@ -87,6 +87,10 @@ pub(super) struct Remote {
     write_len: usize,
     files: usize,
     requests: Semaphore,
+    /// Shared payload slots, held from before allocation until consumption.
+    /// A file can use the entire window when siblings are waiting or done,
+    /// without multiplying buffered payloads by the number of file lanes.
+    buffers: Arc<Semaphore>,
     /// How many reads the verification read-back keeps in flight. It is the
     /// job's own request ceiling, not a smaller fixed number: a resumed
     /// prefix is re-read at the width it was written at, so a large one costs
@@ -214,6 +218,7 @@ impl Remote {
                 None => job.options.files.min(4),
             },
             requests: Semaphore::new(job.options.requests),
+            buffers: Arc::new(Semaphore::new(job.options.requests)),
             readback: job.options.requests,
             pacer: job.pacer.clone(),
             listings: Mutex::new(HashMap::new()),
@@ -309,6 +314,16 @@ impl Remote {
     async fn close(&self, handle: &str) {
         let _ = tokio::time::timeout(Duration::from_secs(2), self.raw.close(handle)).await;
     }
+    async fn buffer(&self, control: &Control) -> TransferResult<OwnedSemaphorePermit> {
+        control.check()?;
+        // Waiting for another file to consume a buffer is local backpressure,
+        // not a silent-server timeout. Pause/cancel still wake it immediately.
+        tokio::select! {
+            biased;
+            _ = control.stopped() => { control.check()?; unreachable!() },
+            permit = self.buffers.clone().acquire_owned() => permit.map_err(Failure::network),
+        }
+    }
     async fn read(
         &self,
         handle: &str,
@@ -387,6 +402,20 @@ impl Remote {
         control: &Control,
         follow_source: bool,
     ) -> TransferResult<Option<local::Signature>> {
+        Ok(self
+            .inspect_file(path, control, follow_source)
+            .await?
+            .map(|(signature, _)| signature))
+    }
+    /// Keep the initial sample when it contains the whole file. Downloads
+    /// can write these already-paced bytes and still verify the source again
+    /// before committing. Large files retain only their signature.
+    async fn inspect_file(
+        &self,
+        path: &str,
+        control: &Control,
+        follow_source: bool,
+    ) -> TransferResult<Option<(local::Signature, Option<Vec<u8>>)>> {
         let Some(mut meta) = self.attrs(path, control).await? else {
             return Ok(None);
         };
@@ -435,11 +464,14 @@ impl Remote {
             // They are still hashed twice, so the signature a checkpoint holds
             // is unchanged, but the second read would only fetch them again.
             context.update(tail.as_ref().unwrap_or(&head));
-            Ok(Some(local::Signature {
-                size,
-                modified: meta.mtime.map(|v| v as u128),
-                sample: local::hex(context.finish().as_ref()),
-            }))
+            Ok(Some((
+                local::Signature {
+                    size,
+                    modified: meta.mtime.map(|v| v as u128),
+                    sample: local::hex(context.finish().as_ref()),
+                },
+                if tail_offset == 0 { Some(head) } else { None },
+            )))
         }
         .await;
         self.close(&handle).await;
@@ -571,7 +603,10 @@ pub(super) async fn copy_files(job: &Job, remote: &Remote, files: Vec<Item>) -> 
         .min(files.len())
         .min(job.options.requests.max(1))
         .max(1);
-    let depth = (job.options.requests / parallel).max(1);
+    // Lazy chunk producers share Remote's payload slots. A lane that is
+    // waiting for a large-file slot, disk I/O, or commit reserves no window;
+    // the remaining files can use it without increasing the job's ceiling.
+    let depth = job.options.requests.max(1);
     let large = Semaphore::new(2);
     let mut pending = files.into_iter();
     let mut active = FuturesUnordered::new();
@@ -999,11 +1034,11 @@ async fn copy(
             return Err(Failure::new("unsupported", "this SFTP server does not support durable uploads (fsync); disable Durable writes to transfer without it", false));
         }
         let _target_lock = job.lock_target(&item).await?;
-        let source = if item.upload {
-            local::signature(Path::new(&item.local))?
+        let (source, contents) = if item.upload {
+            (local::signature(Path::new(&item.local))?, None)
         } else {
             remote
-                .source_signature(&item.remote, &job.control)
+                .inspect_file(&item.remote, &job.control, true)
                 .await?
                 .ok_or_else(|| Failure::conflict("source disappeared"))?
         };
@@ -1132,7 +1167,7 @@ async fn copy(
         if item.upload {
             upload(job, remote, &mut cp, depth, handle, coalesced).await?;
         } else {
-            download(job, remote, &mut cp, depth, coalesced).await?;
+            download(job, remote, &mut cp, depth, coalesced, contents).await?;
         }
         // A recovery path can finish the file inside the transfer itself: the
         // journal did not record the commit, and the destination already holds
@@ -1172,6 +1207,7 @@ async fn download(
     cp: &mut Checkpoint,
     depth: usize,
     coalesced: bool,
+    contents: Option<Vec<u8>>,
 ) -> TransferResult<()> {
     crate::session::transfer::validate_local_file_target(Path::new(&cp.temporary))
         .map_err(Failure::conflict)?;
@@ -1191,28 +1227,55 @@ async fn download(
         .await?;
     target.set_len(cp.offset).await?;
     target.seek(std::io::SeekFrom::Start(cp.offset)).await?;
-    let handle = remote
-        .open(&cp.item.remote, OpenFlags::READ, &job.control)
-        .await?;
+    let handle = if contents.is_none() {
+        Some(
+            remote
+                .open(&cp.item.remote, OpenFlags::READ, &job.control)
+                .await?,
+        )
+    } else {
+        None
+    };
     let result = async {
+        if let Some(bytes) = contents {
+            // The sample has already crossed the wire and drawn from the
+            // job's rate budget. Only the unconfirmed suffix is written.
+            let remaining = bytes
+                .get(cp.offset as usize..)
+                .ok_or_else(|| Failure::conflict("checkpoint exceeds source size"))?;
+            job.control
+                .run(async { target.write_all(remaining).await.map_err(Failure::from) })
+                .await?;
+            hash.update(remaining);
+            cp.offset = cp.source.size;
+            job.progress(&cp.key, cp.offset, cp.source.size, false);
+        }
         let mut reads = FuturesOrdered::new();
         let mut next = cp.offset;
         let mut saved = cp.offset;
         loop {
             while reads.len() < depth && next < cp.source.size {
                 let length = (cp.source.size - next).min(remote.read_len as u64) as usize;
-                reads.push_back(remote.read(&handle, next, length, &job.control));
+                let offset = next;
+                let handle = handle.as_deref().expect("unsampled download has a handle");
+                reads.push_back(async move {
+                    let permit = remote.buffer(&job.control).await?;
+                    let bytes = remote.read(handle, offset, length, &job.control).await?;
+                    Ok::<_, Failure>((bytes, permit))
+                });
                 next += length as u64;
             }
             let Some(answer) = reads.next().await else {
                 break;
             };
-            let bytes = answer?;
+            let (bytes, permit) = answer?;
             job.control
                 .run(async { target.write_all(&bytes).await.map_err(Failure::from) })
                 .await?;
             hash.update(&bytes);
             cp.offset += bytes.len() as u64;
+            drop(bytes);
+            drop(permit);
             job.progress(&cp.key, cp.offset, cp.source.size, false);
             if cp.offset - saved >= 4 * 1024 * 1024 || cp.offset == cp.source.size {
                 job.control
@@ -1237,7 +1300,9 @@ async fn download(
         }
     }
     .await;
-    remote.close(&handle).await;
+    if let Some(handle) = handle {
+        remote.close(&handle).await;
+    }
     result
 }
 
@@ -1316,33 +1381,23 @@ async fn upload(
         // real sftp-server then fails the late writes against a closed
         // handle. The close (and the durable fsync) therefore run only
         // after every write above has been acknowledged.
-        let mut writes: FuturesOrdered<_> = FuturesOrdered::new();
-        let mut next = cp.offset;
+        let mut writes = upload_chunks(
+            job,
+            remote,
+            &handle,
+            source,
+            cp.offset,
+            cp.source.size,
+            depth,
+        );
         let mut saved = cp.offset;
-        loop {
-            while writes.len() < depth && next < cp.source.size {
-                let length = (cp.source.size - next).min(remote.write_len as u64) as usize;
-                let mut bytes = vec![0; length];
-                job.control
-                    .run(async {
-                        source
-                            .read_exact(&mut bytes)
-                            .await
-                            .map(|_| ())
-                            .map_err(Failure::from)
-                    })
-                    .await?;
-                writes.push_back(remote.write(&handle, next, bytes, &job.control));
-                next += length as u64;
-            }
-            let Some(step) = writes.next().await else {
-                break;
-            };
-            let bytes = step?;
-            // FuturesOrdered only advances after all preceding ACKs, even
+        while let Some((bytes, permit)) = writes.try_next().await? {
+            // try_buffered only advances after all preceding ACKs, even
             // if the server acknowledged later offsets first.
             hash.update(&bytes);
             cp.offset += bytes.len() as u64;
+            drop(bytes);
+            drop(permit);
             job.progress(&cp.key, cp.offset, cp.source.size, false);
             if cp.offset - saved >= 4 * 1024 * 1024 || cp.offset == cp.source.size {
                 cp.prefix_hash = local::hex(hash.clone().finish().as_ref());
@@ -1388,6 +1443,52 @@ async fn upload(
         remote.close(&handle).await;
     }
     result
+}
+
+/// Poll writes while the next disk read is pending. A payload slot is held
+/// until the consumer has hashed the acknowledged bytes, including replies
+/// buffered behind an earlier offset. The whole job's memory window stays
+/// bounded even when each file can borrow its entire request window.
+fn upload_chunks<'a>(
+    job: &'a Job,
+    remote: &'a Remote,
+    handle: &'a str,
+    source: impl AsyncRead + Unpin + Send + 'a,
+    offset: u64,
+    size: u64,
+    depth: usize,
+) -> stream::BoxStream<'a, TransferResult<(Vec<u8>, OwnedSemaphorePermit)>> {
+    stream::try_unfold((source, offset), move |(mut source, offset)| async move {
+        if offset == size {
+            return Ok::<_, Failure>(None);
+        }
+        let permit = remote.buffer(&job.control).await?;
+        let length = (size - offset).min(remote.write_len as u64) as usize;
+        let mut bytes = vec![0; length];
+        job.control
+            .run(async {
+                source
+                    .read_exact(&mut bytes)
+                    .await
+                    .map(|_| ())
+                    .map_err(Failure::from)
+            })
+            .await?;
+        Ok(Some((
+            (offset, bytes, permit),
+            (source, offset + length as u64),
+        )))
+    })
+    .boxed()
+    .map_ok(move |(offset, bytes, permit)| {
+        async move {
+            let bytes = remote.write(handle, offset, bytes, &job.control).await?;
+            Ok((bytes, permit))
+        }
+        .boxed()
+    })
+    .try_buffered(depth)
+    .boxed()
 }
 
 /// A coalesced journal does not record the commit, so a retry can find the
@@ -1734,6 +1835,7 @@ pub async fn cleanup(job: &Job) -> TransferResult<()> {
             write_len: 31 * 1024,
             files: 1,
             requests: Semaphore::new(8),
+            buffers: Arc::new(Semaphore::new(8)),
             readback: 8,
             // Cleanup only removes partials; it reads no file content, and
             // a stopped job's control would interrupt any paced wait anyway.

@@ -14,6 +14,8 @@ struct Server {
     /// Reads at or past this offset fail once, mirroring `fail_write_at`
     /// for interrupted downloads.
     fail_read_at: Option<u64>,
+    /// Mutate a source after serving its first sample, retaining its mtime.
+    replace_after_read: Option<(String, Vec<u8>)>,
     stall_writes: bool,
     short_reads: bool,
     writes: Vec<u64>,
@@ -41,6 +43,8 @@ struct Server {
     data_pending: usize,
     /// Write replies this server has scheduled but not yet delivered.
     pending_writes: usize,
+    /// Holds WRITE replies until the test has observed the occupied window.
+    write_gate: Option<Arc<Semaphore>>,
     /// Whether a close request arrived while a write reply was still
     /// undelivered — the signal that the close was pipelined behind the
     /// final writes instead of waiting for their acknowledgements.
@@ -105,7 +109,7 @@ impl Fixture {
                 let packet = Packet::try_from(&mut Bytes::from(data)).unwrap();
                 let is_write = matches!(packet, Packet::Write(_));
                 let is_data = matches!(packet, Packet::Read(_) | Packet::Write(_));
-                let (serial, reply, delay) = {
+                let (serial, reply, delay, write_gate) = {
                     let mut server = shared.lock();
                     let serial = server.serial;
                     let (reply, delay) = response(&mut server, packet);
@@ -122,7 +126,7 @@ impl Fixture {
                             server.peak_data = server.peak_data.max(server.data_pending);
                         }
                     }
-                    (serial, reply, delay)
+                    (serial, reply, delay, server.write_gate.clone())
                 };
                 let Some(reply) = reply else {
                     continue;
@@ -143,6 +147,13 @@ impl Fixture {
                 let state = shared.clone();
                 let writer = writer.clone();
                 tokio::spawn(async move {
+                    if is_write {
+                        if let Some(gate) = write_gate {
+                            // Closing the gate releases every reply, including
+                            // replies scheduled after the test observed it.
+                            let _ = gate.acquire().await;
+                        }
+                    }
                     if delay > 0 {
                         tokio::time::sleep(Duration::from_millis(delay)).await;
                         // Account for a reply before its bytes are written: a
@@ -183,6 +194,7 @@ impl Fixture {
             write_len,
             files: 4,
             requests: Semaphore::new(32),
+            buffers: Arc::new(Semaphore::new(32)),
             readback: 32,
             pacer,
             listings: Mutex::new(HashMap::new()),
@@ -526,6 +538,11 @@ fn response(server: &mut Server, packet: Packet) -> (Option<Packet>, u64) {
         }
         other => panic!("unimplemented fixture packet: {other:?}"),
     };
+    if matches!(reply, Packet::Data(_)) {
+        if let Some((path, bytes)) = server.replace_after_read.take() {
+            server.files.insert(path, bytes);
+        }
+    }
     (Some(reply), delay)
 }
 
@@ -1340,13 +1357,11 @@ async fn a_target_created_during_commit_is_not_overwritten_by_a_fresh_upload() {
     assert_eq!(f.state.lock().files["/target"], b"someone else");
 }
 
-/// A source signature samples the first and the last 64 KiB. For a file that
-/// fits in one sample those are the same bytes, so reading them twice costs a
-/// round trip for nothing, and a download takes the signature twice (before
-/// and after the copy). The signature itself must not change: a checkpoint
-/// stores it and a resumed transfer compares against it.
+/// The initial source sample already contains a small file's entire content.
+/// Reuse it for the download but still take the final signature, with exactly
+/// the same digest as existing recovery journals.
 #[tokio::test]
-async fn a_small_download_reads_each_byte_range_once_per_signature() {
+async fn throughput_small_download_reuses_the_initial_sample() {
     let f = Fixture::new(Server {
         files: HashMap::from([("/source".into(), b"download me".to_vec())]),
         ..Server::default()
@@ -1364,10 +1379,10 @@ async fn a_small_download_reads_each_byte_range_once_per_signature() {
         .await
         .unwrap();
     assert_eq!(std::fs::read(&target).unwrap(), b"download me");
-    // One read for each of the two signatures and one for the data.
-    assert_eq!(f.count("read"), 3);
+    // The first signature supplies the data; the second verifies the source.
+    assert_eq!(f.count("read"), 2);
     assert_eq!(f.count("lstat"), 2);
-    assert_eq!(f.count("open"), 3);
+    assert_eq!(f.count("open"), 2);
 
     // The stored signature is the one the sampled bytes have always produced:
     // SHA-256 over the sample taken twice.
@@ -1376,6 +1391,108 @@ async fn a_small_download_reads_each_byte_range_once_per_signature() {
     context.update(b"download me");
     context.update(b"download me");
     assert_eq!(stored.sample, local::hex(context.finish().as_ref()));
+}
+
+#[tokio::test]
+async fn sampled_download_still_rejects_a_source_changed_before_commit() {
+    let f = Fixture::new(Server {
+        files: HashMap::from([("/source".into(), b"before".to_vec())]),
+        replace_after_read: Some(("/source".into(), b"after!".to_vec())),
+        ..Server::default()
+    })
+    .await;
+    let target = f.root.join("download");
+    std::fs::write(&target, b"original destination").unwrap();
+    let job = f.job();
+    let item = Item {
+        local: target.to_string_lossy().into(),
+        remote: "/source".into(),
+        upload: false,
+        directory: false,
+    };
+    let error = copy(&job, &f.remote, item.clone(), 4, &Semaphore::new(2))
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, "conflict");
+    assert!(error.message.contains("source changed during transfer"));
+    assert_eq!(std::fs::read(target).unwrap(), b"original destination");
+    assert!(!job.checkpoint(&job.key(&item)).unwrap().complete);
+}
+
+#[tokio::test]
+async fn sampled_download_handles_empty_files_and_the_sample_boundary() {
+    for size in [0, 64 * 1024, 64 * 1024 + 1] {
+        let bytes = payload(size);
+        let f = Fixture::new(Server {
+            files: HashMap::from([("/source".into(), bytes.clone())]),
+            short_reads: true,
+            ..Server::default()
+        })
+        .await;
+        let target = f.root.join("download");
+        let item = Item {
+            local: target.to_string_lossy().into(),
+            remote: "/source".into(),
+            upload: false,
+            directory: false,
+        };
+        copy(&f.job(), &f.remote, item, 4, &Semaphore::new(2))
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read(target).unwrap(), bytes);
+        assert_eq!(f.count("open"), if size <= 64 * 1024 { 2 } else { 3 });
+    }
+}
+
+#[tokio::test]
+async fn sampled_download_resumes_the_confirmed_prefix_and_discards_its_tail() {
+    let bytes = payload(64 * 1024);
+    let f = Fixture::new(Server {
+        files: HashMap::from([("/source".into(), bytes.clone())]),
+        ..Server::default()
+    })
+    .await;
+    let job = f.job();
+    let target = f.root.join("download");
+    let item = Item {
+        local: target.to_string_lossy().into(),
+        remote: "/source".into(),
+        upload: false,
+        directory: false,
+    };
+    let key = job.key(&item);
+    let partial = local::sibling(&target, &key, "part").unwrap();
+    let mut partial_bytes = bytes[..4096].to_vec();
+    partial_bytes.extend_from_slice(b"unconfirmed tail");
+    std::fs::write(&partial, partial_bytes).unwrap();
+    let cp = Checkpoint {
+        key: key.clone(),
+        item: item.clone(),
+        source: f
+            .remote
+            .source_signature("/source", &job.control)
+            .await
+            .unwrap()
+            .unwrap(),
+        original: None,
+        temporary: partial.to_string_lossy().into(),
+        backup: String::new(),
+        offset: 4096,
+        prefix_hash: local::digest(&bytes[..4096]),
+        complete: false,
+        committing: false,
+        owns_temporary: true,
+        owns_backup: false,
+    };
+    job.save(&cp).unwrap();
+    copy(&job, &f.remote, item, 4, &Semaphore::new(2))
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read(target).unwrap(), bytes);
+    assert!(job.checkpoint(&key).unwrap().complete);
+    assert!(!partial.exists());
+    // One sample to build the saved checkpoint and two in the resumed copy.
+    assert_eq!(f.count("read"), 3);
 }
 
 /// Uploads a real folder to a real SFTP server through the production
@@ -2263,6 +2380,166 @@ async fn resume_prefix_readback_shares_the_rate_budget() {
         .unwrap();
     let _ = std::fs::remove_dir_all(&journal_root);
     let _ = std::fs::remove_dir_all(&source_dir);
+}
+
+/// Unsent lanes must not reserve a fixed share of the request window. Gate
+/// replies so this tests occupancy rather than an elapsed-time speed claim.
+async fn assert_upload_window_is_used(sizes: &[usize]) {
+    let gate = Arc::new(Semaphore::new(0));
+    let f = Fixture::new(Server {
+        write_gate: Some(gate.clone()),
+        idle_timeout_ms: 10_000,
+        ..Server::default()
+    })
+    .await;
+    let items: Vec<_> = sizes
+        .iter()
+        .enumerate()
+        .map(|(n, &size)| {
+            let path = f.root.join(format!("source-{n}"));
+            std::fs::write(&path, payload(size)).unwrap();
+            Item {
+                local: path.to_string_lossy().into(),
+                remote: format!("/target-{n}"),
+                upload: true,
+                directory: false,
+            }
+        })
+        .collect();
+    let job = f.job();
+    let running = {
+        let job = job.clone();
+        let remote = f.remote.clone();
+        tokio::spawn(async move { copy_files(&job, &remote, items).await })
+    };
+    let filled = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if f.state.lock().pending_writes == 32 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await;
+    let occupied = f.state.lock().pending_writes;
+    gate.close();
+    tokio::time::timeout(Duration::from_secs(20), running)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    for (n, &size) in sizes.iter().enumerate() {
+        assert_eq!(f.state.lock().files[&format!("/target-{n}")], payload(size));
+    }
+    assert_eq!(job.snapshot.lock().completed_files, sizes.len());
+    assert!(f.state.lock().peak_data <= 32);
+    assert!(
+        filled.is_ok(),
+        "idle file lanes stranded the request window: occupied {occupied} of 32"
+    );
+}
+
+#[tokio::test]
+async fn throughput_large_file_slots_share_the_entire_window() {
+    assert_upload_window_is_used(&[16 * 1024 * 1024; 4]).await;
+}
+
+#[tokio::test]
+async fn throughput_short_files_do_not_strand_the_long_files_window() {
+    assert_upload_window_is_used(&[4 * 1024, 4 * 1024, 4 * 1024, 8 * 1024 * 1024]).await;
+}
+
+#[tokio::test]
+async fn throughput_upload_sends_ready_bytes_while_the_source_waits() {
+    let f = Fixture::new(Server::default()).await;
+    let job = f.job();
+    let handle = f
+        .remote
+        .open(
+            "/target",
+            OpenFlags::CREATE | OpenFlags::WRITE,
+            &job.control,
+        )
+        .await
+        .unwrap();
+    let bytes = payload(256 * 1024);
+    // A controlled reader provides one chunk, then waits until that chunk
+    // reaches the wire before supplying the rest. The production upload
+    // pipeline must not wait to read its entire window before sending.
+    let (mut writer, reader) = tokio::io::duplex(128 * 1024);
+    let running = {
+        let remote = f.remote.clone();
+        let job = job.clone();
+        tokio::spawn(async move {
+            let mut chunks = upload_chunks(&job, &remote, &handle, reader, 0, 256 * 1024, 2);
+            let mut acknowledged = Vec::new();
+            while let Some((bytes, _permit)) = chunks.try_next().await.unwrap() {
+                acknowledged.extend(bytes);
+            }
+            remote.close(&handle).await;
+            acknowledged
+        })
+    };
+    writer.write_all(&bytes[..128 * 1024]).await.unwrap();
+    let sent = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if !f.state.lock().writes.is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await;
+    writer.write_all(&bytes[128 * 1024..]).await.unwrap();
+    drop(writer);
+    let acknowledged = tokio::time::timeout(Duration::from_secs(3), running)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(acknowledged, bytes);
+    assert_eq!(f.state.lock().files["/target"], bytes);
+    assert!(
+        sent.is_ok(),
+        "a pending source read held back a ready write"
+    );
+    assert_eq!(f.remote.buffers.available_permits(), 32);
+}
+
+#[tokio::test]
+async fn payload_slots_bound_allocations_and_waits_are_cancellable() {
+    let f = Fixture::new(Server::default()).await;
+    let job = f.job();
+    let held = f
+        .remote
+        .buffers
+        .clone()
+        .acquire_many_owned(32)
+        .await
+        .unwrap();
+    let item = f.upload(&payload(256 * 1024));
+    let running = {
+        let remote = f.remote.clone();
+        let job = job.clone();
+        tokio::spawn(async move { copy_files(&job, &remote, vec![item]).await })
+    };
+    wait_for(Duration::from_secs(2), "upload to open its partial", || {
+        (f.count("open") > 0).then_some(())
+    })
+    .await;
+    assert!(
+        f.state.lock().writes.is_empty(),
+        "payload bypassed its memory budget"
+    );
+    job.control.set(2);
+    let error = tokio::time::timeout(Duration::from_secs(2), running)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(error.code, "cancelled");
+    assert!(!f.state.lock().files.contains_key("/target"));
+    drop(held);
+    assert_eq!(f.remote.buffers.available_permits(), 32);
 }
 
 /// The `requests` option is the job-wide ceiling on data requests in
