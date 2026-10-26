@@ -28,6 +28,62 @@ export class TerminalViewport {
   /** One deferred proposal for a renderer that has not measured yet; see fit. */
   private pendingProposeRetry: number | null = null;
 
+  private displayFrame: number | null = null;
+  private displayDirty = false;
+  private applyDisplayChange: (() => void) | null = null;
+  private restoreDisplayChange: (() => void) | null = null;
+
+  /**
+   * xterm 6.0.0's RenderService pauses ordinary hidden resizes, but its DPR
+   * entry bypasses that pause and rebuilds cached GPU surfaces. Keep the
+   * existing xterm measurement/renderer path, defer hidden changes, and fit
+   * after visible display metrics settle even if CSS host size did not move.
+   * Installed after open(), when RenderService exists; restored on disposal.
+   */
+  observeDisplayChanges() {
+    if (this.restoreDisplayChange) return;
+    const service = (
+      this.context.term as unknown as {
+        _core?: { _renderService?: { handleDevicePixelRatioChange(): void } };
+      }
+    )._core?._renderService;
+    if (!service) return;
+    const original = service.handleDevicePixelRatioChange;
+    this.applyDisplayChange = () => original.call(service);
+    const changed = () => {
+      if (this.context.disposed) return;
+      this.displayDirty = true;
+      if (!this.context.visible || this.displayFrame !== null) return;
+      this.displayFrame = window.requestAnimationFrame(() => {
+        this.displayFrame = null;
+        if (this.context.disposed || !this.context.visible) return;
+        this.flushDisplayChange();
+        this.fit(true);
+      });
+    };
+    service.handleDevicePixelRatioChange = changed;
+    this.restoreDisplayChange = () => {
+      if (service.handleDevicePixelRatioChange === changed) {
+        service.handleDevicePixelRatioChange = original;
+      }
+    };
+  }
+
+  /** A hidden tab uses the latest scale before its show-time font/fit work. */
+  flushDisplayChange() {
+    if (!this.displayDirty || this.context.disposed || !this.context.visible) return;
+    if (this.displayFrame !== null) window.cancelAnimationFrame(this.displayFrame);
+    this.displayFrame = null;
+    this.displayDirty = false;
+    this.applyDisplayChange?.();
+  }
+
+  suspend() {
+    this.cancelFit();
+    if (this.displayFrame !== null) window.cancelAnimationFrame(this.displayFrame);
+    this.displayFrame = null;
+  }
+
   fit(immediate = false): { cols: number; rows: number } | null {
     if (
       this.context.disposed ||
@@ -66,6 +122,13 @@ export class TerminalViewport {
     immediate: boolean,
   ): { cols: number; rows: number } | null {
     this.cancelFit();
+    if (
+      !immediate &&
+      proposal.cols === this.context.term.cols &&
+      proposal.rows === this.context.term.rows
+    ) {
+      return { cols: this.context.term.cols, rows: this.context.term.rows };
+    }
     if (
       immediate ||
       this.context.term.buffer.normal.length < FIT_BUFFER_THRESHOLD ||
@@ -130,7 +193,11 @@ export class TerminalViewport {
   }
 
   dispose() {
-    this.cancelFit();
+    this.suspend();
+    this.restoreDisplayChange?.();
+    this.restoreDisplayChange = null;
+    this.applyDisplayChange = null;
+    this.displayDirty = false;
     if (this.pendingCellMeasure !== null) window.cancelAnimationFrame(this.pendingCellMeasure);
     this.pendingCellMeasure = null;
     if (this.pendingProposeRetry !== null) window.cancelAnimationFrame(this.pendingProposeRetry);

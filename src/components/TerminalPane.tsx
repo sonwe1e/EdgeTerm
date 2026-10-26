@@ -234,20 +234,10 @@ function TerminalHost({ tab, visible, focused }: { tab: Tab; visible: boolean; f
     };
   }, [id]);
 
-  // A hidden pane keeps its layout — visibility, not display — so it still
-  // reports resizes; fitting an invisible terminal is wasted work, and the
-  // visible effect below refits the moment the tab is shown again.
-  useEffect(() => {
-    const element = ref.current;
-    if (!element) return;
-    // scheduleFit, not fit: a splitter or window drag reports dozens of
-    // sizes a second, and each fit resizes the renderer's canvas.
-    const observer = new ResizeObserver(() => {
-      if (visible) getController(id)?.scheduleFit();
-    });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [id, visible]);
+  // TerminalController observes the actual fit host, including changes from
+  // this pane and from the gutter. Observing the outer pane again duplicates
+  // layout reads for each splitter/window resize. Its observer skips hidden
+  // terminals; the visibility effect below refits on return.
 
   useEffect(() => {
     terminal?.setGutterMode(gutterMode);

@@ -110,9 +110,9 @@ New-Item -ItemType Directory -Force .\hang-dumps | Out-Null
 
 参考：[ProcDump 官方说明](https://learn.microsoft.com/en-us/sysinternals/downloads/procdump)、[WebView2 线程模型](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/threading-model)。WebView2 依赖宿主 UI 消息泵；只有实际线程栈才能判断本次是否发生了阻塞。
 
-## 6. 本次补丁与验证
+## 6. 2026-10-16：拖拽中断补丁与验证记录
 
-基线为 `15d4fad`；候选为其上的本次未提交工作区补丁。验证使用 Node.js 24.19.0、npm 11.17.0、Vitest 4.1.11 / jsdom；不是故障机器上的 WebView。
+基线为 `15d4fad`；补丁已提交为 `e1e5078`。以下保留当时的验证记录，不代表当前完整测试规模或故障机器上的验证。验证使用 Node.js 24.19.0、npm 11.17.0、Vitest 4.1.11 / jsdom；不是故障机器上的 WebView。
 
 [Splitter](../src/components/Splitter.tsx)的改动：
 
@@ -131,3 +131,25 @@ New-Item -ItemType Directory -Force .\hang-dumps | Out-Null
 实机验收需同时满足：正常横/纵拖动尺寸正确；松手、Alt+Tab、Escape、隐藏恢复和拖出窗口后无残留光标/捕获；反复拖动后终端持续响应；有活动会话时任务栏关闭能显示确认框、取消后能继续操作；确认退出正常结束。
 
 仓库现有诊断工具的权限、目标选择和局限见 [scripts/README.md](../scripts/README.md#L50-L67)。CDP 工具须指定专用实例的 `EDGETERM_CDP_TARGET_ID`，不能把任意第一页或生产会话作为目标；合成 pointer 事件不是 OS 鼠标拖动。
+
+## 7. 2026-10-26：显示缩放与重复测量回归
+
+用户补充：另一台电脑在拖动侧栏、调整显示屏缩放比例时都会卡死。该机器的具体版本、缩放方式（系统设置、跨屏移动或应用内字号）、运行时与 GPU 尚未确认；没有取得其 dump/trace。下面是当前源码中独立复现的缺陷，不能据此断言就是那台机器的硬卡死根因。
+
+基线为 `9087a88`。新增 [terminalDisplay.browser.test.ts](../src/test/terminalDisplay.browser.test.ts) 使用本机 Windows、受限任务 runner、Vitest 4.1.11 与系统 Edge 的无头 Chromium，真实 xterm 6.0.0、真实 CSS 和 DOM/WebGL 渲染器；数据为合成终端输出。通过 CDP 设置 DPR，并向测试 iframe 派发 `resize` 进入 xterm 的实际窗口事件链。此路径验证前端行为，不模拟 Windows 的原生 DPI 消息或 WebView2/驱动。
+
+| 触发条件 | 基线观察 | 修改后的行为 |
+|---|---|---|
+| 挂载真实 SessionPane，宽度从 900px 改为 900.25px，终端网格未变化 | `proposeDimensions` 调用 4 次 | 保留实际 host 的唯一尺寸监听；网格未变时跳过重复 fit，测量 1 次 |
+| 可见 GPU 终端写入 300 行，在 CSS 容器大小不变时从 DPR 1 调到 1.25 | 行列数未重新适配：104 列，实际 proposal 为 114 列 | 显示度量更新后立即适配终端；1、1.25、1.5、2 的往返覆盖 GPU 与 DOM，保留输出内容且行号间距与终端一致 |
+| 隐藏的 GPU 终端先改为 DPR 1.5，再改为 2 | 隐藏时仍执行 2 次渲染器 DPR 更新 | 隐藏时只记录待更新状态，再次显示时按最新比例更新一次 |
+
+调用链依据：xterm 6.0.0 的 `RenderService.handleDevicePixelRatioChange()` 不经过普通 resize 的隐藏暂停路径，直接重新测量字符并通知渲染器。应用原先只根据容器尺寸 fit，DPR 改变但 CSS 尺寸不变时没有对应的适配入口。修复在 `open()` 后包装该版本的 DPR 入口，沿用 xterm 自身测量和渲染逻辑；同帧合并、隐藏时延后、显示时冲刷、dispose 时恢复原函数并取消排队任务。该兼容代码依赖固定版本的私有接口，升级 xterm 时必须运行本节回归。
+
+侧栏拖动原有的逐帧合并与大缓冲列调整等待策略不变：少于 200 行立即调整两维；大缓冲行变化立即应用，列变化等待最后一次事件后的 100ms。此次移除外层 pane 与内部 host 的重复监听，并在行列数未变时跳过非强制 fit。显式首次显示、字体和 DPI fit 仍重新同步度量。
+
+新增回归还覆盖：同帧重复通知、排队后隐藏、重新显示、排队后销毁。相关终端 fit、GPU 缓存淘汰、布局和 Splitter 测试用于防止改变既有显隐与尺寸契约。以上测量次数只说明该夹具中的重复工作减少，实际拖动帧率和故障机器上的稳定性仍待验证。
+
+本轮验证：新增浏览器 5 用例通过；连同终端 fit、GPU 缓存淘汰和 dock 布局共 4 文件/19 用例通过；完整单元测试 103 文件/888 用例通过。TypeScript、生产前端构建、格式检查及 `git diff --check` 通过；lint 仅保留生成的 `bindings.ts` 中两条既有 `any` 警告，构建仍有大 chunk 提示。日志与 125% GPU/DOM 截图在本机忽略目录 `artifacts/ui-display/`。未进行故障机验证、原生 Tauri 打包或 Rust 测试（本轮未改后端）。
+
+故障机复核时先记录实际缩放操作和变更前后比例；单独对比侧栏拖动与缩放，保留当前应用版本以及 GPU 开关状态。若仍卡死，按第 3–5 节区分前端长任务、GPU 绘制与原生消息阻塞并保留对应证据。

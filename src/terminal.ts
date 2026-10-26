@@ -677,7 +677,7 @@ export class TerminalController {
     this.hostResize = new ResizeObserver(() => {
       // The entry-level contract: a hidden terminal is never asked to fit
       // (the show path refits explicitly).
-      if (this.visible) this.viewport.scheduleFit();
+      if (this.visible) this.scheduleFit();
     });
     this.hostResize.observe(this.host);
 
@@ -686,6 +686,7 @@ export class TerminalController {
     root.appendChild(this.transferNotice);
 
     this.term.open(this.host);
+    this.viewport.observeDisplayChanges();
     // IME text takes the exactly-once path in imePatch.ts. It hooks the
     // composition helper xterm creates in open(), so it goes right after.
     patchImeInput(this.term);
@@ -712,6 +713,7 @@ export class TerminalController {
     if (this.visible === visible) return;
     this.visible = visible;
     if (visible) {
+      this.viewport.flushDisplayChange();
       // A font change made while hidden lands here, where the renderer can
       // measure it, and before the pane's show refit proposes dimensions.
       const pending = this.pendingFont;
@@ -731,7 +733,7 @@ export class TerminalController {
       this.lineGutter.syncGutter();
       this.semantic.scheduleBacklog();
     } else {
-      this.viewport.cancelFit();
+      this.viewport.suspend();
       this.semantic.stopBacklog();
     }
   }
