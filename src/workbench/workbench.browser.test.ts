@@ -76,7 +76,8 @@ vi.mock("./drafts", async () => {
   };
 });
 
-vi.mock("../api", () => ({
+vi.mock("../api", async (original) => ({
+  ...(await original<typeof import("../api")>()),
   sampleResources: vi.fn().mockResolvedValue({
     status: "ok",
     cpuPercent: 37.5,
@@ -378,7 +379,7 @@ describe("workbench layout", () => {
     await useWorkbench.getState().openFile("w1", "e1", "src/train.py");
 
     await page.viewport(1440, 900);
-    mount(createElement(Workbench));
+    const surface = mount(createElement(Workbench));
 
     // The editor bundle is a dynamic import; wait for the real CodeMirror
     // surface rather than a fixed delay.
@@ -405,6 +406,31 @@ describe("workbench layout", () => {
     expect(body.scrollWidth).toBeLessThanOrEqual(window.innerWidth + 1);
 
     await page.screenshot({ path: "../../artifacts/workbench-light.png" });
+
+    // Compact mode exposes files immediately and retains the mounted editor.
+    await page.viewport(900, 560);
+    // Leave the same room as the normal 220px/300px side docks.
+    surface.container.style.width = "380px";
+    document.documentElement.style.setProperty("--panel-font-size", "18px");
+    await userEvent.click(page.getByRole("button", { name: "项目文件", exact: true }));
+    const explorer = document.querySelector<HTMLElement>(".wb-explorer")!;
+    expect(explorer.getBoundingClientRect().height).toBeGreaterThan(50);
+    expect(explorer.getBoundingClientRect().bottom).toBeLessThanOrEqual(560);
+    const workbench = document.querySelector<HTMLElement>(".wb")!;
+    expect(workbench.scrollWidth).toBeLessThanOrEqual(workbench.clientWidth + 1);
+    const stop = document.querySelector<HTMLElement>(".wb-console .is-danger")!;
+    expect(getComputedStyle(stop).color).not.toBe(getComputedStyle(stop).backgroundColor);
+    expect(document.querySelector<HTMLElement>(".wb-center")!.getBoundingClientRect().height).toBe(
+      0,
+    );
+    await page.screenshot({ path: "../../artifacts/usability/workbench-files-900.png" });
+    await userEvent.click(page.getByRole("button", { name: "编辑器", exact: true }));
+    expect(document.querySelector(".cm-content")).not.toBeNull();
+    expect(useWorkbench.getState().docs).toHaveLength(1);
+    await page.screenshot({ path: "../../artifacts/usability/workbench-editor-900.png" });
+    document.documentElement.style.removeProperty("--panel-font-size");
+    surface.container.style.width = "100%";
+    await page.viewport(1440, 900);
 
     // The project switcher reaches the second project without losing the
     // first project's open document.

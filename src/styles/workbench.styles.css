@@ -206,7 +206,6 @@
 
 .wb-mini.is-danger {
   border-color: color-mix(in srgb, var(--red) 40%, var(--border));
-  color: var(--red);
 }
 
 .wb-body {
@@ -223,14 +222,10 @@
      container below) are both full-width children of .wb, so they measure
      the same inline size .wb would. */
   container-type: inline-size;
-  /* One line while the three columns fit. Below 900px each column takes a
-     full line instead, which stacks them: a container cannot answer for
-     its own size, so .wb-body itself is never queried and the stack is
-     reached by wrapping rather than by restyling .wb-body. */
+  /* Wide layouts keep the three columns; compact layouts use the named
+     workbench container to switch between their still-mounted contents. */
   flex-wrap: wrap;
-  /* The stacked layout is taller than a short window, so the body scrolls
-     instead of pushing the console away. In the wide row the columns are
-     stretched to the body's height, so nothing overflows there. */
+  /* Overflow stays inside this region rather than displacing the console. */
   overflow-y: auto;
 }
 
@@ -1928,46 +1923,97 @@
   }
 }
 
-/* Below 900px the row cannot hold its floor (180 + 360 + 180 + borders =
-   722px), so each column takes a full line: the project tree keeps its own
-   scroll on top, the editor keeps the available width, and the explorer
-   becomes a bounded strip underneath. The stack is reached by wrapping —
-   .wb-body is itself the container and a container cannot query its own
-   size — so no rule here restyles .wb-body itself.
-   The strips take fixed heights, not max-heights: a line whose item has a
-   definite height is not auto-sized, so the align-content distribution
-   leaves every pixel of free space to the editor's line and it fills the
-   body the way the column stack used to. Content-height strips would share
-   that space and leave gaps a tall, narrow window could see. Each strip
-   scrolls inside itself (the sidebar's own overflow-y, the explorer's
-   .wb-tree / .wb-changes), so the fixed height bounds, never clips. */
-@container (max-width: 900px) {
-  .wb-sidebar {
-    flex-basis: 100%;
-    height: 220px;
-    border-right: 0;
+/* Keep a single useful workspace at compact widths instead of stacking three
+   scroll areas and hiding the file tree below the editor. State stays mounted. */
+.wb-compact-nav {
+  display: none;
+}
+@container workbench (max-width: 900px) {
+  .wb-compact-nav {
+    display: flex;
+    flex: none;
+    gap: var(--sp-4);
+    padding: var(--sp-4) var(--sp-8);
     border-bottom: 1px solid var(--border);
   }
-
-  .wb-center {
-    flex-basis: 100%;
-    min-height: 320px;
+  .wb-compact-nav button {
+    flex: 1;
+    min-width: 0;
+    padding: var(--sp-6);
+    color: var(--fg-dim);
+    background: none;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: var(--fs-sm);
   }
-
-  .wb-explorer {
-    flex-basis: 100%;
-    height: 200px;
-    border-left: 0;
-    border-top: 1px solid var(--border);
+  .wb-compact-nav button[aria-pressed="true"] {
+    color: var(--fg);
+    background: var(--bg-hover);
+    border-color: var(--border);
   }
-
+  .wb-compact-nav button:focus-visible {
+    outline: 2px solid var(--accent);
+  }
+  .wb-body {
+    flex-wrap: nowrap;
+    overflow: hidden;
+  }
+  .wb-body > .wb-sidebar,
+  .wb-body > .wb-center,
+  .wb-body > .wb-explorer {
+    display: none;
+    flex-basis: 100%;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    border: 0;
+  }
+  .wb-body[data-view="projects"] > .wb-sidebar,
+  .wb-body[data-view="files"] > .wb-explorer,
+  .wb-body[data-view="editor"] > .wb-center {
+    display: flex;
+  }
   .wb-run-detail {
     flex-basis: 240px;
   }
 }
-
 .wb-dirty-files {
   grid-column: 1 / -1;
+}
+
+@container workbench (max-width: 600px) {
+  .wb-console-head {
+    flex: none;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+  .wb-console-head > strong,
+  .wb-console-head > code,
+  .wb-console-checked {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .wb-console-actions {
+    flex-wrap: wrap;
+  }
+  .wb-console-body {
+    flex-direction: column;
+    overflow: auto;
+  }
+  .wb-console-body > .wb-log {
+    order: -1;
+    flex: 0 0 140px;
+  }
+  .wb-console-body > .wb-run-detail {
+    flex: none;
+    min-width: 0;
+    overflow: visible;
+    border-right: 0;
+    border-top: 1px solid var(--border);
+  }
 }
 
 .wb-dirty-files summary {

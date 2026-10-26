@@ -9,10 +9,12 @@ import { ModalDialog } from "../components/ModalDialog";
 import { Icon } from "../components/icons";
 
 export function EditorArea({
+  onBrowseFiles,
   onQuickOpen,
   onSearch,
   onCompare,
 }: {
+  onBrowseFiles?: () => void;
   onQuickOpen: () => void;
   onSearch: () => void;
   onCompare: (path: string) => void;
@@ -135,6 +137,11 @@ export function EditorArea({
           <Icon name="edit" />
           <h2>{t("wb.noFile")}</h2>
           <p>{t("wb.noFileHint")}</p>
+          {onBrowseFiles && (
+            <button type="button" className="btn is-primary" onClick={onBrowseFiles}>
+              {t("wb.browseFiles")}
+            </button>
+          )}
           <button type="button" className="btn" onClick={onQuickOpen}>
             {t("wb.quickOpen")}
           </button>

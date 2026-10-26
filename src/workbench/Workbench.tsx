@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "../components/icons";
 import { ContextMenu } from "../components/ContextMenu";
 import { ModalDialog } from "../components/ModalDialog";
@@ -89,6 +89,16 @@ export function Workbench() {
   >(null);
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [compactView, setCompactView] = useState<"projects" | "files" | "editor">("editor");
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const browseFiles = () => {
+    setCompactView("files");
+    requestAnimationFrame(() =>
+      bodyRef.current
+        ?.querySelector<HTMLElement>(".wb-explorer input, .wb-explorer button")
+        ?.focus(),
+    );
+  };
 
   useEffect(() => {
     void init();
@@ -127,6 +137,9 @@ export function Workbench() {
   // the hash check on save stays the authority, and a stat is enough to tell
   // the user that the server copy moved.
   const activeDocId = useWorkbench((state) => state.activeDocId);
+  useEffect(() => {
+    if (activeDocId) setCompactView("editor");
+  }, [activeDocId]);
   useEffect(() => {
     if (!activeDocId) return;
     const check = () => {
@@ -183,6 +196,8 @@ export function Workbench() {
   const open = (path: string, line?: number) => {
     if (!workspace || !experiment) return;
     void openFile(workspace.id, experiment.id, path, line);
+    setCompactView("editor");
+    requestAnimationFrame(() => bodyRef.current?.querySelector<HTMLElement>(".wb-center")?.focus());
   };
 
   const handleCompare = (path: string) => {
@@ -291,7 +306,31 @@ export function Workbench() {
       ) : (
         <>
           <HostStrip />
-          <div className="wb-body">
+          <nav className="wb-compact-nav" aria-label={t("wb.title")}>
+            <button
+              type="button"
+              aria-pressed={compactView === "projects"}
+              onClick={() => setCompactView("projects")}
+            >
+              {t("wb.projectDetails")}
+            </button>
+            <button
+              type="button"
+              aria-pressed={compactView === "files"}
+              disabled={!workspace || !experiment}
+              onClick={browseFiles}
+            >
+              {t("wb.browseFiles")}
+            </button>
+            <button
+              type="button"
+              aria-pressed={compactView === "editor"}
+              onClick={() => setCompactView("editor")}
+            >
+              {t("wb.showEditor")}
+            </button>
+          </nav>
+          <div className="wb-body" data-view={compactView} ref={bodyRef}>
             <ProjectSidebar
               data={data}
               activeWorkspaceId={workspace?.id ?? null}
@@ -323,7 +362,7 @@ export function Workbench() {
                 void connect(workspace.id);
               }}
             />
-            <main className="wb-center">
+            <main className="wb-center" tabIndex={-1}>
               {workspace && !connected && (
                 <div className="wb-banner is-warning">
                   <span>{t("wb.connectHint")}</span>
@@ -337,6 +376,7 @@ export function Workbench() {
                 </div>
               )}
               <EditorArea
+                onBrowseFiles={workspace && experiment ? browseFiles : undefined}
                 onQuickOpen={openQuickOpen}
                 onSearch={() => setSearchOpen(true)}
                 onCompare={handleCompare}
