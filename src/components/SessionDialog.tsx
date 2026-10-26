@@ -42,6 +42,8 @@ import { Icon, type IconName } from "./icons";
 interface Props {
   initial: SessionProfile | null;
   onClose: () => void;
+  onSaved?: (profile: SessionProfile) => void;
+  sshOnly?: boolean;
 }
 
 const BLANK: SessionProfile = {
@@ -233,7 +235,8 @@ function nextColorIndex(
   }
 }
 
-export function SessionDialog({ initial, onClose }: Props) {
+export function SessionDialog({ initial, onClose, onSaved, sshOnly = false }: Props) {
+  const attemptTabId = useRef<string | undefined>(undefined);
   const colorPickerRef = useRef<HTMLDivElement>(null);
   // The fields a failed Save/Connect can point at, so the caret lands where
   // the fix belongs instead of on the button that was just pressed.
@@ -254,6 +257,11 @@ export function SessionDialog({ initial, onClose }: Props) {
     element.setAttribute("aria-invalid", "true");
     element.setAttribute("aria-describedby", SESSION_ERROR_ID);
     invalidFieldRef.current = element;
+    let ancestor = element.parentElement;
+    while (ancestor) {
+      if (ancestor instanceof HTMLDetailsElement) ancestor.open = true;
+      ancestor = ancestor.parentElement;
+    }
     element.focus();
   };
   const t = useT();
@@ -272,6 +280,7 @@ export function SessionDialog({ initial, onClose }: Props) {
   // Where recordings go when the profile names no folder; the placeholder.
   const [defaultRecordDir, setDefaultRecordDir] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [connectionError, setConnectionError] = useState(false);
   // A field stays marked only while the message that explains it is shown.
   useEffect(() => {
     if (error || !invalidFieldRef.current) return;
@@ -812,6 +821,7 @@ export function SessionDialog({ initial, onClose }: Props) {
   );
 
   const save = async () => {
+    setConnectionError(false);
     const candidate = normalized();
     const validationError = validateProfile(candidate);
     if (validationError) {
@@ -826,7 +836,8 @@ export function SessionDialog({ initial, onClose }: Props) {
     setBusy(true);
     setError(null);
     try {
-      await upsertProfile(candidate);
+      const saved = await upsertProfile(candidate);
+      onSaved?.(saved);
       onClose();
     } catch (e) {
       setError(errorText(e));
@@ -836,6 +847,7 @@ export function SessionDialog({ initial, onClose }: Props) {
   };
 
   const connect = async () => {
+    setConnectionError(false);
     const candidate = normalized();
     const validationError = validateProfile(candidate);
     if (validationError) {
@@ -856,13 +868,24 @@ export function SessionDialog({ initial, onClose }: Props) {
       // saving "shell" on every Connect left a pile of identical profiles.
       const quickLocal = candidate.kind === "local" && !initial?.id;
       const saved = candidate.name && !quickLocal ? await upsertProfile(candidate) : candidate;
-      const id = await openSession({
-        ...saved,
-        password: candidate.password,
-        passphrase: candidate.passphrase,
-      });
-      if (id) onClose();
-      else setError(useStore.getState().error ?? t("session.connectionFailed"));
+      setProfile((current) => ({ ...current, id: saved.id }));
+      attemptTabId.current ??= crypto.randomUUID();
+      const id = await openSession(
+        {
+          ...saved,
+          password: candidate.password,
+          passphrase: candidate.passphrase,
+        },
+        undefined,
+        attemptTabId.current,
+      );
+      if (id) {
+        onSaved?.(saved);
+        onClose();
+      } else {
+        setConnectionError(true);
+        setError(useStore.getState().error ?? t("session.connectionFailed"));
+      }
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -876,15 +899,19 @@ export function SessionDialog({ initial, onClose }: Props) {
   return (
     <ModalDialog
       open
-      onClose={onClose}
+      onClose={() => {
+        if (!busy) onClose();
+      }}
       dismissable={false}
       draggable
       contentClassName="session-dialog"
       headerClassName="session-dialog-header"
       initialFocus={
-        profile.kind === "local" || profile.kind === "serial"
-          ? '[data-field="name"]'
-          : '[data-field="host"]'
+        profile.kind === "local"
+          ? '[data-field="shell"]'
+          : profile.kind === "serial"
+            ? '[data-field="serialPort"]'
+            : '[data-field="host"]'
       }
       labelledBy="session-dialog-title"
       title={
@@ -923,136 +950,51 @@ export function SessionDialog({ initial, onClose }: Props) {
         <section className="session-section">
           <div className="session-section-heading">
             <Icon name="tag" />
-            <span>{t("session.sectionSession")}</span>
-            <small>{t("session.identityHint")}</small>
+            <span>{t("session.protocol")}</span>
           </div>
           <div className="session-form-grid">
             <div className="session-field is-wide">
-              <span className="session-field-label">{t("session.protocol")}</span>
               <div className="protocol-picker" role="radiogroup" aria-label={t("session.protocol")}>
-                {protocolOptions(t).map((option) => {
-                  const active = option.kinds.includes(profile.kind);
-                  // Keep the current sub-choice when the group already
-                  // matches; otherwise select the option's default kind.
-                  const target = active ? profile.kind : option.kinds[0];
-                  return (
-                    <button
-                      key={option.kinds[0]}
-                      type="button"
-                      role="radio"
-                      aria-checked={active}
-                      className={`protocol-option${active ? " is-active" : ""}`}
-                      onClick={() =>
-                        patch({
-                          kind: target,
-                          port: defaultPort(target, profile.kind === target ? profile.port : null),
-                          // Groups belong to one category; FTP and SFTP share
-                          // theirs, so the choice survives switching between
-                          // them but is cleared across categories.
-                          groupId:
-                            groupCategory(profile.kind) === groupCategory(target)
-                              ? profile.groupId
-                              : null,
-                        })
-                      }
-                    >
-                      <span className="protocol-option-icon">
-                        <Icon name={option.icon} />
-                      </span>
-                      <span className="protocol-option-label">{option.label}</span>
-                      <small className="protocol-option-hint">{option.hint}</small>
-                    </button>
-                  );
-                })}
+                {protocolOptions(t)
+                  .filter((option) => !sshOnly || option.kinds.includes("ssh"))
+                  .map((option) => {
+                    const active = option.kinds.includes(profile.kind);
+                    // Keep the current sub-choice when the group already
+                    // matches; otherwise select the option's default kind.
+                    const target = active ? profile.kind : option.kinds[0];
+                    return (
+                      <button
+                        key={option.kinds[0]}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        className={`protocol-option${active ? " is-active" : ""}`}
+                        onClick={() =>
+                          patch({
+                            kind: target,
+                            port: defaultPort(
+                              target,
+                              profile.kind === target ? profile.port : null,
+                            ),
+                            // Groups belong to one category; FTP and SFTP share
+                            // theirs, so the choice survives switching between
+                            // them but is cleared across categories.
+                            groupId:
+                              groupCategory(profile.kind) === groupCategory(target)
+                                ? profile.groupId
+                                : null,
+                          })
+                        }
+                      >
+                        <span className="protocol-option-icon">
+                          <Icon name={option.icon} />
+                        </span>
+                        <span className="protocol-option-label">{option.label}</span>
+                        <small className="protocol-option-hint">{option.hint}</small>
+                      </button>
+                    );
+                  })}
               </div>
-            </div>
-
-            <label className="session-field">
-              <span className="session-field-label">{t("session.name")}</span>
-              <input
-                {...RAW_TEXT_INPUT}
-                data-field="name"
-                ref={(element) => {
-                  fieldRefs.current.name = element;
-                }}
-                value={profile.name}
-                placeholder={defaultName()}
-                onChange={(event) => patch({ name: event.target.value })}
-              />
-            </label>
-
-            <div className="session-field">
-              <span className="session-field-label">{t("session.color")}</span>
-              <div
-                ref={colorPickerRef}
-                className="session-color-picker"
-                role="radiogroup"
-                aria-label={t("session.sessionColor")}
-                onKeyDown={(event) => {
-                  const current = SESSION_COLORS.indexOf(
-                    (event.target as HTMLElement).dataset.color ?? "",
-                  );
-                  if (current < 0) return;
-                  const next = nextColorIndex(
-                    event.key,
-                    current,
-                    SESSION_COLORS.length,
-                    COLOR_PICKER_COLUMNS,
-                  );
-                  if (next == null) return;
-                  event.preventDefault();
-                  const color = SESSION_COLORS[next];
-                  patch({ color });
-                  colorPickerRef.current
-                    ?.querySelector<HTMLButtonElement>(`[data-color="${color}"]`)
-                    ?.focus();
-                }}
-              >
-                {SESSION_COLORS.map((color, index) => {
-                  const selected = profile.color === color;
-                  // Roving tabindex: only the selected swatch is a Tab stop,
-                  // so Tab moves on to the next field and arrow keys pick colors.
-                  const tabbable =
-                    selected || (!SESSION_COLORS.includes(profile.color ?? "") && index === 0);
-                  return (
-                    <button
-                      key={color}
-                      type="button"
-                      role="radio"
-                      data-color={color}
-                      tabIndex={tabbable ? 0 : -1}
-                      className={`session-color-option${selected ? " is-selected" : ""}`}
-                      style={{ background: color }}
-                      aria-checked={selected}
-                      aria-label={t("session.useColor", { color })}
-                      title={color}
-                      onClick={() => patch({ color })}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-            <div className="session-field is-wide">
-              <label className="session-field-label" htmlFor="session-group">
-                {t("session.group")}
-              </label>
-              <select
-                id="session-group"
-                value={profile.groupId ?? ""}
-                onChange={(event) => patch({ groupId: event.target.value || null })}
-              >
-                <option value="">
-                  {t("session.noGroup", { section: sectionLabel(profile.kind, t) })}
-                </option>
-                {groupChoices.map(({ group }) => (
-                  <option key={group.id} value={group.id}>
-                    {groupPath(groups, group.id).join(" / ")}
-                  </option>
-                ))}
-              </select>
-              {groupChoices.length === 0 && (
-                <small className="session-field-hint">{t("session.groupHint")}</small>
-              )}
             </div>
           </div>
         </section>
@@ -1074,19 +1016,19 @@ export function SessionDialog({ initial, onClose }: Props) {
               <div className="session-field is-wide">
                 <span className="session-field-label">{t("session.protocol")}</span>
                 <div className="kind-picker">
-                  {(["ssh", "telnet"] as SessionKind[]).map((sub) => (
+                  {(sshOnly ? ["ssh"] : (["ssh", "telnet"] as SessionKind[])).map((sub) => (
                     <button
                       key={sub}
                       className={`kind-option${profile.kind === sub ? " is-active" : ""}`}
                       onClick={() =>
                         patch({
-                          kind: sub,
+                          kind: sub as SessionKind,
                           // Swap the default port when it is still the old
                           // default; keep a custom port untouched. The group
                           // survives — SSH and Telnet share one category.
                           port:
                             profile.port === defaultPort(profile.kind)
-                              ? defaultPort(sub)
+                              ? defaultPort(sub as SessionKind)
                               : profile.port,
                         })
                       }
@@ -1143,8 +1085,6 @@ export function SessionDialog({ initial, onClose }: Props) {
                   </label>
 
                   {renderServerAuthFields()}
-                  {renderJumpHostField()}
-                  {renderTextFields(true)}
                 </>
               ) : (
                 <>
@@ -1293,7 +1233,27 @@ export function SessionDialog({ initial, onClose }: Props) {
           </section>
         )}
 
-        {isSshTransport(profile.kind) && renderForwardsSection()}
+        {isSshTransport(profile.kind) && (
+          <details
+            className="session-section session-advanced"
+            open={Boolean(
+              initial?.jumpProfileId ||
+                initial?.forwards?.length ||
+                initial?.locale ||
+                (initial?.encoding && initial.encoding !== "UTF-8") ||
+                initial?.backspace === "controlH",
+            )}
+          >
+            <summary>{t("session.advanced")}</summary>
+            {profile.kind === "ssh" && (
+              <div className="session-form-grid">
+                {renderJumpHostField()}
+                {renderTextFields(true)}
+              </div>
+            )}
+            {renderForwardsSection()}
+          </details>
+        )}
 
         {profile.kind === "local" && (
           <section className="session-section">
@@ -1308,6 +1268,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                 <input
                   {...RAW_TEXT_INPUT}
                   value={profile.shell ?? ""}
+                  data-field="shell"
                   placeholder={IS_WINDOWS ? "%COMSPEC%" : "$SHELL"}
                   onChange={(event) => patch({ shell: event.target.value })}
                 />
@@ -1348,6 +1309,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                 <div className="serial-port-row">
                   <select
                     value={profile.portName ?? ""}
+                    data-field="serialPort"
                     aria-label={t("session.port")}
                     onChange={(event) => patch({ portName: event.target.value })}
                   >
@@ -1459,6 +1421,105 @@ export function SessionDialog({ initial, onClose }: Props) {
           </section>
         )}
 
+        <details
+          className="session-section session-organization"
+          open={initial?.id ? true : undefined}
+        >
+          <summary className="session-section-heading">
+            <Icon name="chevron-right" />
+            {t("session.organization")}
+          </summary>
+          <div className="session-form-grid">
+            <label className="session-field">
+              <span className="session-field-label">{t("session.name")}</span>
+              <input
+                {...RAW_TEXT_INPUT}
+                data-field="name"
+                ref={(element) => {
+                  fieldRefs.current.name = element;
+                }}
+                value={profile.name}
+                placeholder={defaultName()}
+                onChange={(event) => patch({ name: event.target.value })}
+              />
+            </label>
+
+            <div className="session-field">
+              <span className="session-field-label">{t("session.color")}</span>
+              <div
+                ref={colorPickerRef}
+                className="session-color-picker"
+                role="radiogroup"
+                aria-label={t("session.sessionColor")}
+                onKeyDown={(event) => {
+                  const current = SESSION_COLORS.indexOf(
+                    (event.target as HTMLElement).dataset.color ?? "",
+                  );
+                  if (current < 0) return;
+                  const next = nextColorIndex(
+                    event.key,
+                    current,
+                    SESSION_COLORS.length,
+                    COLOR_PICKER_COLUMNS,
+                  );
+                  if (next == null) return;
+                  event.preventDefault();
+                  const color = SESSION_COLORS[next];
+                  patch({ color });
+                  colorPickerRef.current
+                    ?.querySelector<HTMLButtonElement>(`[data-color="${color}"]`)
+                    ?.focus();
+                }}
+              >
+                {SESSION_COLORS.map((color, index) => {
+                  const selected = profile.color === color;
+                  // Roving tabindex: only the selected swatch is a Tab stop,
+                  // so Tab moves on to the next field and arrow keys pick colors.
+                  const tabbable =
+                    selected || (!SESSION_COLORS.includes(profile.color ?? "") && index === 0);
+                  return (
+                    <button
+                      key={color}
+                      type="button"
+                      role="radio"
+                      data-color={color}
+                      tabIndex={tabbable ? 0 : -1}
+                      className={`session-color-option${selected ? " is-selected" : ""}`}
+                      style={{ background: color }}
+                      aria-checked={selected}
+                      aria-label={t("session.useColor", { color })}
+                      title={color}
+                      onClick={() => patch({ color })}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+            <div className="session-field is-wide">
+              <label className="session-field-label" htmlFor="session-group">
+                {t("session.group")}
+              </label>
+              <select
+                id="session-group"
+                value={profile.groupId ?? ""}
+                onChange={(event) => patch({ groupId: event.target.value || null })}
+              >
+                <option value="">
+                  {t("session.noGroup", { section: sectionLabel(profile.kind, t) })}
+                </option>
+                {groupChoices.map(({ group }) => (
+                  <option key={group.id} value={group.id}>
+                    {groupPath(groups, group.id).join(" / ")}
+                  </option>
+                ))}
+              </select>
+              {groupChoices.length === 0 && (
+                <small className="session-field-hint">{t("session.groupHint")}</small>
+              )}
+            </div>
+          </div>
+        </details>
+
         {!isFileSession(profile.kind) && renderRecordingSection()}
       </div>
 
@@ -1467,27 +1528,46 @@ export function SessionDialog({ initial, onClose }: Props) {
       {error && (
         <div className="dialog-error session-dialog-error" id={SESSION_ERROR_ID} role="alert">
           <Icon name="error" />
-          <span>{error}</span>
+          {connectionError ? (
+            <div>
+              <strong>{t("session.connectionHelp")}</strong>
+              <div>{t("session.retryHint")}</div>
+              <details>
+                <summary>{t("session.errorDetails")}</summary>
+                <pre>{error}</pre>
+              </details>
+            </div>
+          ) : (
+            <span>{error}</span>
+          )}
         </div>
       )}
 
       <div className="dialog-footer">
-        <button type="button" className="btn" onClick={onClose}>
-          {t("common.cancel")}
+        <button type="button" className="btn" onClick={onClose} disabled={busy}>
+          {t(profile.id && !initial?.id ? "common.close" : "common.cancel")}
         </button>
         <button type="button" className="btn" onClick={save} disabled={busy}>
           <Icon name="save" />
           {t("common.save")}
         </button>
-        <button
-          type="button"
-          className={`btn is-primary${busy ? " is-loading" : ""}`}
-          onClick={connect}
-          disabled={busy}
-        >
-          <Icon name="plug" />
-          {busy ? t("session.connecting") : t("session.connect")}
-        </button>
+        {!sshOnly && (
+          <button
+            type="button"
+            className={`btn is-primary${busy ? " is-loading" : ""}`}
+            onClick={connect}
+            disabled={busy}
+          >
+            <Icon name="plug" />
+            {busy
+              ? t("session.connecting")
+              : t(
+                  profile.kind === "local" && !initial?.id
+                    ? "session.connect"
+                    : "session.saveConnect",
+                )}
+          </button>
+        )}
       </div>
     </ModalDialog>
   );

@@ -172,9 +172,24 @@ export async function ensureController(id: string): Promise<TerminalController> 
 export async function openSession(
   profile: SessionProfile,
   reuseSessionId?: string,
+  attemptTabId?: string,
 ): Promise<string | null> {
-  const id = newSessionId();
-  useStore.getState().addTab(pendingSessionInfo(id, profile), profile, "connecting");
+  const id = attemptTabId ?? newSessionId();
+  const existing = useStore.getState().tabs.find((tab) => tab.info.id === id);
+  if (existing) {
+    if (existing.state !== "error" && existing.state !== "closed") return null;
+    if (isFileSession(profile.kind)) disposeController(id);
+    useStore.setState((state) => ({
+      tabs: state.tabs.map((tab) =>
+        tab.info.id === id
+          ? { ...tab, info: pendingSessionInfo(id, profile), profile, state: "connecting" as const }
+          : tab,
+      ),
+    }));
+    useStore.getState().setActive(id);
+  } else {
+    useStore.getState().addTab(pendingSessionInfo(id, profile), profile, "connecting");
+  }
   if (!isFileSession(profile.kind)) await ensureController(id);
   return connectSession(id, profile, reuseSessionId);
 }
