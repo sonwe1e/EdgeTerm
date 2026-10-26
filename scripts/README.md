@@ -111,7 +111,20 @@ the requested channel). Boundaries: synthetic entries and stubbed IPC prove
 the front-end measurement and chain behaviour in a real browser engine; they
 say nothing about PTY round-trips, WebView2 packaging or real servers.
 
-The older `cdp-*.cjs` and Win32 `.ps1` files are exploratory diagnostics. Use a
+`diagnose-hang.ps1` is the read-only, external Windows 11 hang collector.
+Run it on the affected machine while the app is still stuck, or double-click
+the adjacent `diagnose-hang.cmd`. It accepts a unique `edgeterm.exe`, otherwise
+requires `-ProcessId <PID>`. JSON goes to Desktop/EdgeTerm-diagnostics (override
+with `-OutputDirectory`). It records app SHA/version, OS/GPU/runtime versions,
+window DPI/regions, one bounded native-message probe, and two process samples.
+It does not restart or kill processes, take screenshots, read terminal text,
+export full command lines, or upload anything. A successful probe does not
+prove JavaScript responsiveness; a timeout does not prove deadlock. See the
+[hang guide](../docs/sidebar-freeze-diagnostics.zh-CN.md). The Windows-only
+`diagnose-hang.test.mjs` uses a hidden native window and synthetic inventory,
+never the user's running EdgeTerm, to test both response and timeout paths.
+
+The other older `cdp-*.cjs` and Win32 `.ps1` files are exploratory diagnostics. Use a
 disposable app instance with synthetic local sessions. They can change window
 geometry, renderer settings, instrumentation and CPU throttling; synthetic DOM
 pointer events are not equivalent to an OS pointer gesture. The new isolated

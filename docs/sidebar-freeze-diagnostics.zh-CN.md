@@ -9,7 +9,7 @@
 - [全局光标样式](../src/styles.css#L3443-L3453)由 `.splitter.is-dragging` 触发。旧版 [Splitter](../src/components/Splitter.tsx) 只在自身 `pointerup`/`pointercancel` 中结束拖拽，没有处理丢失捕获、失焦、隐藏或 Escape。缺失终止事件会残留拖拽状态；这也可能是主线程已经堵塞、终止事件无法执行的结果。
 - [窗口关闭回调](../src/App.tsx#L299-L312)在有活动会话时阻止直接关闭，并通过前端显示确认框。因此“任务栏关闭无效”不等同于“Rust 已死锁”；需同时确认前端及宿主是否仍响应。
 
-用户的实际安装版本、操作系统/构建号、CPU/GPU、显卡驱动、WebView 版本尚未知。本次修改针对当前工作区；需先确认故障机器是否使用同一版本。“老平台”不能直接当作某一 Windows/WebView2 版本。
+2026-10-26 用户进一步确认：故障机为 Windows 11，在系统“显示设置”修改缩放；整窗持续无响应，菜单、键盘均不可用，通常需结束进程，并且经常发生。EdgeTerm 的精确版本、系统构建号、CPU/GPU、显卡驱动、WebView 版本仍未知。“版本较新”不能证明包含当前工作区的补丁；新的收集方式见第 8 节。
 
 ## 2. 先收集最小复现信息
 
@@ -67,19 +67,21 @@
 
 如果实际系统不是 Windows，本节不适用，需按该平台的 WebView/线程采样方式取证。
 
-仓库已有 [diagnose-hang.ps1](../scripts/diagnose-hang.ps1) 可检查窗口消息响应及 `TAURI_DRAG_RESIZE_BORDERS` 子窗口的尺寸/region。它不重启或终止应用，但会截取整个虚拟桌面并保存到用户目录，可能包含其他窗口的敏感内容。它默认选第一个 `edgeterm`，因此只有在确认**恰好一个、且正是故障实例**时才使用：
+仓库的 [diagnose-hang.ps1](../scripts/diagnose-hang.ps1) 已于 2026-10-26 更新，可从应用外部检查原生窗口消息响应、窗口 DPI、子窗口尺寸/region、该实例的 WebView2 进程和版本，以及两次 CPU/内存采样。它不重启或终止应用，不截图、不读取终端内容、不导出完整命令行。无参数时仅接受唯一的 `edgeterm.exe`；多个实例必须指定 PID：
 
 ```powershell
 Get-Process edgeterm | Select-Object Id, Path, MainWindowHandle
-# 核对输出只含唯一故障实例，且同意保存整个桌面截图后，在仓库根目录运行：
+# 在仓库根目录运行，1234 替换为上一步确认的故障实例 PID：
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\diagnose-hang.ps1
+# 多个实例时：
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\diagnose-hang.ps1 -ProcessId 1234
 ```
 
 解释输出时只把它作为线索：
 
-- `responds-to-WM_NULL=False`：主窗口消息未在 2 秒内返回，需要 dump；不能直接证明 COM 死锁。
+- `nativeMessageProbe.responded=false`：所选窗口的消息未返回或 API 失败；同时查看 `lastError`，需要 dump；不能直接证明 COM 死锁。探测超时上限为 2 秒，整个收集还包含系统查询和采样。
 - 原生消息、JavaScript 均响应，却只有鼠标操作异常：查看边框子窗口是否可见、覆盖内容区、region 是否异常。需要确认命中测试和依赖版本后，才考虑修复 Tauri/tao/wry 的原生 resize 路径。
-- `rgnType=0` 也可能是 API 错误。该脚本的 `VERDICT CANDIDATE` 文案推断过强，不能将它直接用作根因或回归验收结论。它也没有证明子窗口一定在最上层。
+- `regionType=0` 是 API 错误/缺少 region 的结果，不能证明它覆盖或拦截了内容区；脚本已移除旧的 `VERDICT CANDIDATE` 根因推断，也不证明子窗口一定在最上层。
 
 不要拿会启动/结束应用的旧复现脚本替代原地取证。
 
@@ -153,3 +155,17 @@ New-Item -ItemType Directory -Force .\hang-dumps | Out-Null
 本轮验证：新增浏览器 5 用例通过；连同终端 fit、GPU 缓存淘汰和 dock 布局共 4 文件/19 用例通过；完整单元测试 103 文件/888 用例通过。TypeScript、生产前端构建、格式检查及 `git diff --check` 通过；lint 仅保留生成的 `bindings.ts` 中两条既有 `any` 警告，构建仍有大 chunk 提示。日志与 125% GPU/DOM 截图在本机忽略目录 `artifacts/ui-display/`。未进行故障机验证、原生 Tauri 打包或 Rust 测试（本轮未改后端）。
 
 故障机复核时先记录实际缩放操作和变更前后比例；单独对比侧栏拖动与缩放，保留当前应用版本以及 GPU 开关状态。若仍卡死，按第 3–5 节区分前端长任务、GPU 绘制与原生消息阻塞并保留对应证据。
+
+## 8. 2026-10-26：Windows 11 系统缩放后持续无响应
+
+用户已确认系统设置缩放，以及需要结束进程的持续无响应。菜单属于同一个 WebView 前端，因此该表现还不能单独区分 JavaScript 主线程阻塞、GPU 绘制停滞与原生窗口消息泵阻塞。
+
+本次核对了锁定的 tao 0.37.1、wry 0.57.0、tauri-runtime-wry 2.12.1：tao 的 Windows DPI 初始化已尝试 Per Monitor V2；其 Windows 11 `WM_DPICHANGED` 路径采用系统建议的矩形，窗口尺寸交给 wry 的 WebView2 controller。应用的 `resize_session` 只向会话队列发送消息，没有同步等待 PTY 或 SSH。窗口记忆在读取窗口状态之后加锁，并由独立线程写盘；本项目未使用 `tauri-plugin-window-state`。以上源码事实没有证明故障机的具体阻塞点，不据此修改原生依赖或禁用沙箱。
+
+微软文档说明 WebView2 的 UI 回调依赖消息泵，阻塞和不支持的重入可导致停滞；这个机制需要实际堆栈确认，不能套用为本次结论：[WebView2 线程模型](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/threading-model)。
+
+故障机先在仍能操作时记录应用版本；再次卡住时，可直接双击随测试包提供的 `diagnose-hang.cmd`。脚本把 JSON 保存到桌面的 `EdgeTerm-diagnostics` 目录，窗口会显示路径。如果检测到多个应用实例，它会列出 PID 并拒绝自动猜选，改用第 5 节的指定 PID 命令。
+
+报告包含所选程序的路径、SHA-256、文件版本、Windows 构建、显卡驱动、窗口 DPI，以及限定到该实例的 WebView2 进程版本和两次累计 CPU 秒数。累计 CPU 秒数不是占用百分比；原生消息返回也不表示 JavaScript 正常。若消息超时，或报告仍不能解释卡死，继续保留相同 PID 的宿主和相关 WebView2 转储，不能只靠报告猜根因。
+
+取证工具的回归使用自行创建的隐藏原生窗口，分别运行正常消息循环与故意阻塞的消息处理，验证真实 `SendMessageTimeoutW` 的超时；另外覆盖进程歧义、WebView2 家族隔离、PID 重用排除、JSON 输出和命令行隐私。该夹具没有制造或证明用户的原始 WebView2 故障。
