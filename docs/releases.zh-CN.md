@@ -1,6 +1,6 @@
 # 本分支历史发布索引
 
-历史索引核对日期：2026-10-23；1.3.0 发布补记：2026-10-26。发行仓库是 [sonwe1e/EdgeTerm](https://github.com/sonwe1e/EdgeTerm)，上游是 [miskin-lee/EdgeTerm](https://github.com/miskin-lee/EdgeTerm)。两者独立发布，不能根据版本数字大小推断功能包含关系。
+历史索引核对日期：2026-10-23；1.3.0 发布补记：2026-10-26；1.4.0 发布补记：2026-10-27。发行仓库是 [sonwe1e/EdgeTerm](https://github.com/sonwe1e/EdgeTerm)，上游是 [miskin-lee/EdgeTerm](https://github.com/miskin-lee/EdgeTerm)。两者独立发布，不能根据版本数字大小推断功能包含关系。
 
 本次索引核对了 GitHub Releases 的发布时间、附件名、发布说明和远端标签；下表 SHA 是标签解引用后的 **commit SHA**，不是 annotated tag 对象 SHA。日期使用北京时间。没有重新下载历史二进制，也没有重新执行旧版本的验收；历史验证结论以对应发布说明及其环境边界为准。
 
@@ -16,8 +16,27 @@
 | [v1.2.4](https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.2.4) | 2026-10-21 | [9bdb1f6](https://github.com/sonwe1e/EdgeTerm/commit/9bdb1f639fbced66957273514980b25fd3125cf4) | 同上；界面精修、SSH 配置转发导入与 SOCKS5 |
 | [v1.2.8](https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.2.8) | 2026-10-23 | [e3e920a](https://github.com/sonwe1e/EdgeTerm/commit/e3e920a6a85998788a8be64e46c2c7405e850155) | 同上；上游 1.0.1–1.0.4 的选择性移植与本地改进，见[移植记录](upstream-ports.zh-CN.md) |
 | [v1.3.0](https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.3.0) | 2026-10-26 | [dd012ba](https://github.com/sonwe1e/EdgeTerm/commit/dd012ba965c857c0a1dc2bcb25584887640f4c22) | Windows x64 安装包、便携包、独立诊断工具、SHA256SUMS；文件栏各列独立调宽、拖动与显示缩放适配、搜索响应性，见[发布说明](release-1.3.0.zh-CN.md) |
+| [v1.4.0](https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.4.0) | 2026-10-27 | [82acfb7](https://github.com/sonwe1e/EdgeTerm/commit/82acfb7b4983b033688ce2856b7a3a89220f1867) | Windows x64 安装包、便携包、独立诊断工具、SHA256SUMS；内置文件编辑器、后台传输队列、连接表单与工作台改进，见[发布说明](release-1.4.0.zh-CN.md) |
 
 截至核对日，本分支没有公开的 macOS/Linux 安装包，也没有签名自动更新清单。上游提供这些平台的发布包，不代表本分支已完成这些平台的构建或验证。`v1.0.0` 是保留的共同基线标签，不是本分支独立发布的 Release；本地其他 `v0.*`、`v1.0.*` 标签也不能当作本分支发布记录。
+
+## 1.4.0 构建与验证记录
+
+前一个本分支公开版本为 1.3.0。内置文件编辑器和后台上传队列属于兼容的新增能力，按独立版本序列使用 minor 版本 1.4.0；既有安装版沿用 `com.edgeterm.desktop` 标识、配置路径和凭据存储，没有数据格式迁移。优先使用安装包退出后覆盖安装；便携包使用独立 `data` 目录，不能用便携包的空目录覆盖已有便携数据。
+
+固定源码为 `82acfb7b4983b033688ce2856b7a3a89220f1867`。在 Windows x64 上通过受限 runner 执行 `tauri:build --bundles nsis`，使用 Node 24.19.0、Rust 1.99.0、MSVC 和 Windows SDK 10.0.26100。安装器及程序的文件版本均为 1.4.0；安装器为 current-user 模式。便携包中的 `EdgeTerm.exe` 与 NSIS 构建输入同源，SHA-256 为 `a3650ba171e2ca8165441c94a4fdf6859b3e48810f4d4a9e9f5883e2f652b4aa`。便携包仅附程序、许可证、说明和空白配置目录说明；诊断包只含 `diagnose-hang.cmd`、`diagnose-hang.ps1` 与说明，不含本机采样报告。
+
+| 1.4.0 附件 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| `EdgeTerm_1.4.0_x64-setup.exe` | 4178359 | `346cf54c347001983a38e74dbaf87c9e83497aaef45c340bc145ac817e97ab65` |
+| `EdgeTerm_1.4.0_x64-portable.zip` | 5251225 | `ce7ab6b9379b5b70f20c1d48b7a50c89811f77b62759876a92ffcc5175a348cb` |
+| `EdgeTerm_1.4.0_windows-diagnostics.zip` | 5739 | `c9e17053d14236df6daf34cb2a4698e20c0c3e90cc56c631ae4fe3fff19f6cbf` |
+
+同页 `SHA256SUMS.txt` 列出上述三个附件，回下载计算的 SHA-256 与本地产物一致。Windows 本地检查：105 个前端单元测试文件 / 900 项、27 个浏览器文件 / 139 项、449 项 Rust 测试通过，27 项专用环境或基准测试保持跳过；类型检查、Biome 格式检查、lint、Rust 格式检查和生产前端构建通过。`d7d9eaf..82acfb7` 的 10 个提交逐提交类型检查通过。生成绑定中的两条 `any` 警告和 4 条 Rust 未使用代码警告仍保留。
+
+该源码的 [GitHub CI](https://github.com/sonwe1e/EdgeTerm/actions/runs/40372354148) 前端和 Rust 两项任务均成功；逐提交消息与类型检查在该工作流中只对 `pull_request` 运行，本次推送被跳过，已在本地对 `d7d9eaf..82acfb7` 执行通过。
+
+验证边界：浏览器回归使用 headless chromium 与模拟 IPC，传输引擎用例使用内存协议夹具；它们不能替代真实 WebView2、真实 SSH/SFTP 服务器、真实吞吐、FTP 内置编辑、崩溃恢复或 macOS/Linux 桌面包的验收。ignored 项需要专用环境，不计入通过。
 
 ## 1.3.0 构建与验证记录
 
