@@ -100,6 +100,87 @@ afterEach(() => {
 });
 
 describe("gutter line numbering", () => {
+  it("does not match a produced blank line with unused screen padding during reflow", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(5000);
+    const controller = createController(100);
+    controller.term.resize(20, 10);
+    vi.setSystemTime(10000);
+    await write(controller, "abcdefghijklmnop\r\n\r\nprompt>");
+    const blankTime = metadata(controller).times[1];
+    vi.setSystemTime(20000);
+    controller.term.resize(10, 10);
+    expect(metadata(controller).times[2]).toBe(blankTime);
+  });
+  it("dates new blank rows skipped by cursor-addressed ConPTY output", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(10000);
+    const controller = createController(100);
+    await write(controller, "old\r\nprompt>");
+    controller.term.resize(40, 20);
+    vi.setSystemTime(15000);
+    await write(controller, "\x1b[12;1H\n\x1b[1;1Hold\r\nprompt>");
+    vi.setSystemTime(20000);
+    await write(controller, "\x1b[3;1Hnew\x1b[5;1Hprompt>");
+    expect(metadata(controller).times[3]).toBe(20000);
+    expect(recordedTimes(controller).get("old")).toBe(10000);
+  });
+  it("keeps the newest occurrence of repeated lines when reflow trims old history", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(10000);
+    const controller = createController(5);
+    controller.term.resize(20, 3);
+    for (let i = 1; i <= 12; i++) {
+      vi.setSystemTime(10000 + i * 1000);
+      await write(controller, "abcdefghijklmnop\r\n");
+    }
+    const latest = recordedTimes(controller).get("abcdefghijklmnop");
+    controller.term.resize(10, 3);
+    expect(recordedTimes(controller).get("klmnop")).toBe(latest);
+  });
+  it("does not date normal history from alternate-screen output or resize", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(10000);
+    const controller = createController(100);
+    controller.term.resize(20, 10);
+    await write(controller, "abcdefghijklmnop\r\nsecond\r\n");
+    const before = recordedTimes(controller);
+    await write(controller, "\x1b[?1049h");
+    vi.setSystemTime(20000);
+    await write(controller, "app\r\nframe\r\n");
+    controller.term.resize(10, 10);
+    await write(controller, "\x1b[?1049l");
+    expect(recordedTimes(controller).get("second")).toBe(before.get("second"));
+    expect(recordedTimes(controller).get("klmnop")).toBe(before.get("abcdefghijklmnop"));
+  });
+  it("keeps timestamps when existing rows are repainted, while new output gets a new time", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-01-01T10:00:00Z"));
+    const controller = createController(100);
+    await write(controller, "alpha\r\nbeta\r\nprompt>");
+    const before = recordedTimes(controller);
+    vi.setSystemTime(new Date("2026-01-01T11:00:00Z"));
+    controller.term.resize(50, 20);
+    await write(controller, "\x1b[Halpha\r\nbeta\r\nprompt>");
+    expect(recordedTimes(controller).get("beta")).toBe(before.get("beta"));
+    await write(controller, "\r\nnew output\r\n\r\n");
+    expect(recordedTimes(controller).get("new output")).toBe(Date.now());
+    expect(metadata(controller).times[4]).toBe(Date.now());
+  });
+
+  it("keeps the timestamp of a logical line when width changes reflow it", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const controller = createController(100);
+    controller.term.resize(20, 10);
+    vi.setSystemTime(10000);
+    await write(controller, "abcdefghijklmnop\r\n");
+    vi.setSystemTime(20000);
+    await write(controller, "second\r\n");
+    const before = recordedTimes(controller);
+    controller.term.resize(10, 10);
+    expect(recordedTimes(controller).get("klmnop")).toBe(before.get("abcdefghijklmnop"));
+    expect(recordedTimes(controller).get("second")).toBe(before.get("second"));
+  });
   it("hides blank tail rows visited before the cursor moved up", async () => {
     const controller = createController(100);
     await write(controller, "\x1b[12;1H\n\x1b[5;1Hprompt>");

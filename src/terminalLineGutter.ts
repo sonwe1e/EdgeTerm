@@ -22,6 +22,8 @@ export class TerminalLineGutter {
    * is compacted away in batches instead.
    */
   private lineTimesStart = 0;
+  private screenText = new Map<number, string>();
+  private lastProducedLine = 0;
 
   /** Absolute line number of buffer line 0; grows as scrollback is trimmed. */
   firstLineNumber = 1;
@@ -64,6 +66,7 @@ export class TerminalLineGutter {
   }
 
   recordLine() {
+    if (this.context.term.buffer.active.type !== "normal") return;
     // The line feed that produced this row may have been the one that dropped
     // the oldest, which moves every index the times are keyed by.
     this.followTrimmedLines();
@@ -71,7 +74,9 @@ export class TerminalLineGutter {
     const at = this.lineTimesStart + buf.baseY + buf.cursorY;
     const now = Date.now();
     while (this.lineTimes.length <= at) this.lineTimes.push(now);
-    this.lineTimes[at] = now;
+    // A cursor-addressed repaint (notably ConPTY after resize) visits old
+    // rows with LF too. Visiting a row does not produce a new line.
+    this.recordNewRows(buf.baseY + buf.cursorY, now);
     this.invalidateGutter();
     this.trimLineMetadata();
   }
@@ -84,6 +89,125 @@ export class TerminalLineGutter {
   setLineTimes(times: number[]) {
     this.lineTimes = times;
     this.lineTimesStart = 0;
+  }
+
+  private recordNewRows(index: number, now: number) {
+    const end = this.firstLineNumber + index;
+    if (end <= this.lastProducedLine) return;
+    const start = Math.max(0, this.lastProducedLine - this.firstLineNumber + 1);
+    for (let row = start; row <= index; row++) this.lineTimes[this.lineTimesStart + row] = now;
+    this.lastProducedLine = end;
+    this.invalidateGutter();
+  }
+
+  /** Update rewritten/previously blank rows without dating an identical repaint. */
+  outputParsed() {
+    const buf = this.context.term.buffer.active;
+    if (buf.type !== "normal") return;
+    this.followTrimmedLines();
+    const next = new Map<number, string>();
+    let contentEnd = buf.baseY + buf.cursorY;
+    for (let i = buf.baseY; i < buf.length; i++) {
+      const text = buf.getLine(i)?.translateToString(true) ?? "";
+      const key = this.firstLineNumber + i;
+      const previous = this.screenText.get(key);
+      next.set(key, text);
+      if (!text) continue;
+      contentEnd = Math.max(contentEnd, i);
+      this.recordNewRows(i, Date.now());
+      const at = this.lineTimesStart + i;
+      while (this.lineTimes.length <= at) this.lineTimes.push(Date.now());
+      if (
+        previous !== undefined &&
+        previous !== text &&
+        (!previous || !text.startsWith(previous))
+      ) {
+        this.lineTimes[at] = Date.now();
+        this.invalidateGutter();
+      }
+    }
+    this.screenText = next;
+    // ConPTY may visit padding with LF and then move back to its prompt.
+    // Those blank tail rows have not produced output yet.
+    this.lastProducedLine = this.firstLineNumber + contentEnd;
+  }
+
+  resetOutputTracking() {
+    const buf = this.context.term.buffer.normal;
+    this.lastProducedLine = this.firstLineNumber + buf.baseY + buf.cursorY;
+    this.screenText.clear();
+    for (let i = buf.baseY; i < buf.length; i++) {
+      const text = buf.getLine(i)?.translateToString(true) ?? "";
+      this.screenText.set(this.firstLineNumber + i, text);
+      if (text) this.lastProducedLine = Math.max(this.lastProducedLine, this.firstLineNumber + i);
+    }
+  }
+
+  /** Reflow changes physical row indices. Carry times by ordered logical lines. */
+  resize(cols: number, resize: () => void) {
+    const term = this.context.term;
+    if (term.cols === cols) {
+      resize();
+      return;
+    }
+    this.followTrimmedLines();
+    const logical = () => {
+      const groups: { text: string; rows: { index: number; offset: number; time: number }[] }[] =
+        [];
+      const buf = term.buffer.normal;
+      let end = buf.baseY + buf.cursorY;
+      for (let i = buf.length - 1; i > end; i--) {
+        if (buf.getLine(i)?.translateToString(true)) {
+          end = i;
+          break;
+        }
+      }
+      // Unused screen padding has no produced-at identity. Including it
+      // would match real blank output with these later empty rows.
+      for (let i = 0; i <= end; i++) {
+        const line = buf.getLine(i)!;
+        if (!line.isWrapped || !groups.length) groups.push({ text: "", rows: [] });
+        const group = groups[groups.length - 1];
+        group.rows.push({
+          index: i,
+          offset: group.text.length,
+          time: this.lineTimes[this.lineTimesStart + i],
+        });
+        group.text += line.translateToString(!buf.getLine(i + 1)?.isWrapped);
+      }
+      return groups;
+    };
+    const before = logical();
+    resize();
+    const after = logical();
+    // Match from the newest end: narrowing a full buffer can trim older
+    // occurrences of identical log lines. They must not date the survivors.
+    const queues = new Map<string, typeof before>();
+    for (const group of before) {
+      const queue = queues.get(group.text) ?? [];
+      queue.push(group);
+      queues.set(group.text, queue);
+    }
+    const times: number[] = [];
+    for (let index = after.length - 1; index >= 0; index--) {
+      const group = after[index];
+      const old = queues.get(group.text)?.pop();
+      let sourceIndex = 0;
+      for (const row of group.rows) {
+        while (
+          old &&
+          sourceIndex + 1 < old.rows.length &&
+          old.rows[sourceIndex + 1].offset <= row.offset
+        )
+          sourceIndex++;
+        const source = old?.rows[sourceIndex];
+        times[row.index] = source?.time ?? Date.now();
+      }
+    }
+    this.setLineTimes(times);
+    this.resetOutputTracking();
+    this.resetTrimMarker();
+    this.invalidateGutter();
   }
 
   trimLineMetadata() {

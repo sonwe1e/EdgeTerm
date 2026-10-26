@@ -370,6 +370,10 @@ export class TerminalController {
       },
     });
 
+    const resizeTerminal = this.term.resize.bind(this.term);
+    this.term.resize = (cols, rows) =>
+      this.lineGutter.resize(cols, () => resizeTerminal(cols, rows));
+
     this.viewport = new TerminalViewport({
       get disposed() {
         return owner.disposed;
@@ -557,6 +561,7 @@ export class TerminalController {
       return false;
     });
     this.term.onWriteParsed(() => {
+      this.lineGutter.outputParsed();
       // New output: xterm has updated the buffer and queued its repaint but
       // not painted yet, so cells painted here show in that same frame. Coloring only from `onRender` (which fires *after* the
       // renderer has drawn) showed every freshly written row plain for one
@@ -934,6 +939,7 @@ export class TerminalController {
   private resetLineMetadata() {
     this.lineGutter.setLineTimes([Date.now()]);
     this.lineGutter.firstLineNumber = 1;
+    this.lineGutter.resetOutputTracking();
     this.lineGutter.resetTrimMarker();
     this.lineGutter.invalidateGutter();
     this.lineGutter.syncGutter();
