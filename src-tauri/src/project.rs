@@ -665,7 +665,7 @@ fn validate_path(path: &str) -> Result<&str> {
     Ok(path)
 }
 
-fn sha256_hex(bytes: &[u8]) -> String {
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     ring::digest::digest(&ring::digest::SHA256, bytes)
         .as_ref()
         .iter()
@@ -673,7 +673,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
         .collect()
 }
 
-fn eol_of(text: &str) -> &'static str {
+pub(crate) fn eol_of(text: &str) -> &'static str {
     let crlf = text.matches("\r\n").count();
     let bare_lf = text.matches('\n').count().saturating_sub(crlf);
     let cr = text.matches('\r').count().saturating_sub(crlf);
@@ -686,7 +686,7 @@ fn eol_of(text: &str) -> &'static str {
     }
 }
 
-fn apply_eol(content: &str, eol: &str) -> String {
+pub(crate) fn apply_eol(content: &str, eol: &str) -> String {
     // Work in LF first: the editor buffer never keeps CR, and a file saved
     // back as CRLF must not end up with doubled carriage returns.
     let normalized = content.replace("\r\n", "\n").replace('\r', "\n");

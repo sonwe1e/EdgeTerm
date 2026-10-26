@@ -11,6 +11,7 @@ mod file_promise;
 mod file_transfer;
 mod fonts;
 mod fs_local;
+mod local_text;
 // Unix test builds compile it too: the decision is pure, mirroring
 // `nvidia_quirk`.
 #[cfg(any(target_os = "windows", all(test, unix)))]

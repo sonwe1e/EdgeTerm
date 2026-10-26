@@ -256,13 +256,13 @@ export const commands = {
 	draftList: () => __TAURI_INVOKE<DraftList>("draft_list"),
 	draftDelete: (docId: string) => __TAURI_INVOKE<null>("draft_delete", { docId }),
 	projectProbe: (id: string, root: string) => __TAURI_INVOKE<ProjectProbe>("project_probe", { id, root }),
-	projectReadText: (id: string, path: string) => __TAURI_INVOKE<TextFile>("project_read_text", { id, path }),
+	projectReadText: (id: string | null, path: string) => __TAURI_INVOKE<TextFile>("project_read_text", { id, path }),
 	projectFileStat: (id: string, path: string) => __TAURI_INVOKE<FileStat>("project_file_stat", { id, path }),
 	/**
 	 *  Saves one text file, refusing when the server's copy no longer matches
 	 *  `expectedHash`. The returned hash becomes the next save's baseline.
 	 */
-	projectWriteText: (id: string, request: TextWrite) => __TAURI_INVOKE<WriteOutcome>("project_write_text", { id, request }),
+	projectWriteText: (id: string | null, request: TextWrite) => __TAURI_INVOKE<WriteOutcome>("project_write_text", { id, request }),
 	projectListFiles: (id: string, root: string) => __TAURI_INVOKE<FileList>("project_list_files", { id, root }),
 	projectSearch: (id: string, root: string, query: string) => __TAURI_INVOKE<SearchResult>("project_search", { id, root, query }),
 	projectGitState: (id: string, root: string) => __TAURI_INVOKE<GitState>("project_git_state", { id, root }),
