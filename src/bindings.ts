@@ -911,6 +911,7 @@ export type FileTransfer = {
 	id: string,
 	sessionId: string,
 	name: string,
+	context: TransferContext | null,
 	status: string,
 	phase: string,
 	transferred: number,
@@ -1990,6 +1991,20 @@ export type TextWrite = {
 export type Theme = "dark" | "light" |
 /**  The two palettes ported from serialX; see `ThemeMode` in `src/types.ts`. */
 "serialx-dark" | "serialx-light";
+
+/**
+ *  Display identity captured at submission, independent of the lifetime of a tab.
+ *  Only the first chosen pair is included so large selections keep events bounded.
+ */
+export type TransferContext = {
+	server: string,
+	protocol: string,
+	local: string,
+	remote: string,
+	firstUpload: boolean,
+	itemCount: number,
+	direction: string,
+};
 
 export type TransferItem = {
 	local: string,

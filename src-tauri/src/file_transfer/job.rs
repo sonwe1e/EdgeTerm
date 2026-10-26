@@ -153,6 +153,11 @@ impl Job {
         snapshot.total_files = progress.len();
         snapshot.completed_files =
             snapshot.completed_files.saturating_sub(old.2 as usize) + complete as usize;
+        // A per-file commit/verification must not leave the whole parallel job
+        // labelled "committing" while other files continue sending payload.
+        if !complete && offset > old.0 && snapshot.phase != "tar streaming" {
+            snapshot.phase = "transferring".into();
+        }
         drop(snapshot);
         drop(progress);
         self.emit(false);

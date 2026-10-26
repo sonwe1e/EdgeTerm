@@ -206,6 +206,7 @@ const transferJob = (
   name: string,
   status: api.FileTransfer["status"],
 ): api.FileTransfer => ({
+  context: null,
   id,
   name,
   status,
@@ -686,74 +687,54 @@ describe("Filer multiple selection at the real panel entry", () => {
       await act(async () => {});
     };
 
-    it("keeps a failed upload in the footer and retries it into the same folder", async () => {
+    it("retains failed uploads in the shared queue and leaves browsing available", async () => {
       useRemote();
-      let attempts = 0;
-      vi.mocked(api.transferFiles).mockImplementation(async () => {
-        attempts += 1;
-        if (attempts === 1) throw Error("connection lost");
-      });
-      await mount();
-      await startUpload();
-      expect(attempts).toBe(1);
-      expect(host.querySelector<HTMLElement>(".filer-transfer.is-error")!.textContent).toContain(
-        "Upload failed",
-      );
-      const retry = host.querySelector<HTMLButtonElement>(".filer-transfer-retry")!;
-      expect(retry).not.toBeNull();
-      await act(async () => {
-        retry.click();
-      });
-      await act(async () => {});
-      expect(attempts).toBe(2);
-      expect(vi.mocked(api.transferFiles).mock.calls[1][1]).toEqual([
-        { local: "/local/notes.txt", remote: "/selection/notes.txt", upload: true },
-      ]);
-      expect(host.querySelector(".filer-transfer.is-error")).toBeNull();
-    });
-
-    // A progressbar is a children-presentational role: while the bar was the
-    // footer's outer element, the cancel and retry buttons inside it were left
-    // out of the accessibility tree and a keyboard user could not reach "cancel"
-    // at all. jsdom has no accessibility tree to ask, so this pins the structure
-    // instead — the role is on the track, and no button lives under it.
-    it("leaves the footer's buttons outside the progressbar", async () => {
-      useRemote();
-      vi.mocked(api.transferFiles).mockImplementation(async () => new Promise(() => {}));
-      await mount();
-      await startUpload();
-      const bar = host.querySelector<HTMLElement>(".filer-transfer-track")!;
-      expect(bar.getAttribute("role")).toBe("progressbar");
-      expect(host.querySelector(".filer-transfer")!.getAttribute("role")).toBeNull();
-      expect(bar.querySelectorAll("button").length).toBe(0);
-      const cancel = host.querySelector<HTMLElement>(".filer-transfer-cancel")!;
-      expect(cancel.getAttribute("role")).toBeNull();
-      expect(bar.contains(cancel)).toBe(false);
-      expect(host.querySelector(".filer-transfer")!.contains(cancel)).toBe(true);
-    });
-
-    it("reruns a failed upload from the error line's Retry instead of only reloading", async () => {
-      useRemote();
-      let attempts = 0;
-      vi.mocked(api.transferFiles).mockImplementation(async () => {
-        attempts += 1;
+      vi.mocked(api.transferFiles).mockImplementation(async (_session, _items, _progress, id) => {
+        useFileTransfers.getState().update({
+          ...transferJob(id!, "notes.txt", "error"),
+          error: { code: "network", message: "connection lost", retryable: true },
+        });
         throw Error("connection lost");
       });
       await mount();
       await startUpload();
-      expect(attempts).toBe(1);
-      const retry = host.querySelector<HTMLButtonElement>(
-        ".panel-empty.is-error .panel-empty-action",
-      )!;
-      expect(retry.textContent).toBe("Retry");
-      await act(async () => {
-        retry.click();
+      expect(useStore.getState().error).toContain("connection lost");
+      expect(toolbar("Refresh").disabled).toBe(false);
+      expect(host.querySelector(".filer-transfer-summary")!.textContent).toContain("1 failed");
+      await act(async () =>
+        host.querySelector<HTMLButtonElement>(".filer-transfer-summary button")!.click(),
+      );
+      expect(useFileTransfers.getState().open).toBe(true);
+      expect(vi.mocked(api.transferFiles).mock.calls[0][1]).toEqual([
+        { local: "/local/notes.txt", remote: "/selection/notes.txt", upload: true },
+      ]);
+    });
+
+    it("leaves the queue entry accessible while an upload is pending", async () => {
+      useRemote();
+      vi.mocked(api.transferFiles).mockImplementation(async (_session, _items, _progress, id) => {
+        useFileTransfers.getState().update(transferJob(id!, "notes.txt", "running"));
+        return new Promise(() => {});
       });
-      await act(async () => {});
-      expect(attempts).toBe(2);
+      await mount();
+      await startUpload();
+      const button = host.querySelector<HTMLButtonElement>(".filer-transfer-summary button")!;
+      expect(button.closest('[role="progressbar"]')).toBeNull();
+      expect(button.disabled).toBe(false);
+      expect(toolbar("Upload files or folders").disabled).toBe(false);
+      expect(host.querySelector(".filer-transfer")).toBeNull();
+    });
+
+    it("reports failure before scheduling and accepts another upload", async () => {
+      useRemote();
+      vi.mocked(api.transferFiles).mockRejectedValue(Error("connection lost"));
+      await mount();
+      await startUpload();
+      expect(useStore.getState().error).toContain("connection lost");
+      await startUpload();
+      expect(api.transferFiles).toHaveBeenCalledTimes(2);
     });
   });
-
   describe("Filer browsing surfaces", () => {
     it("shows a size column and sorts by it the way the dual-pane rows do", async () => {
       const sized = entries.map((entry, index) => ({ ...entry, size: [30, 10, 20, 0][index] }));

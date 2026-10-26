@@ -194,6 +194,7 @@ pub struct Snapshot {
     pub id: String,
     pub session_id: String,
     pub name: String,
+    pub context: Option<TransferContext>,
     pub status: String,
     pub phase: String,
     pub transferred: u64,
@@ -204,6 +205,94 @@ pub struct Snapshot {
     pub error: Option<Failure>,
     pub attempt: usize,
     pub options: Options,
+}
+
+/// Display identity captured at submission, independent of the lifetime of a tab.
+/// Only the first chosen pair is included so large selections keep events bounded.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferContext {
+    pub server: String,
+    pub protocol: String,
+    pub local: String,
+    pub remote: String,
+    pub first_upload: bool,
+    pub item_count: usize,
+    pub direction: String,
+}
+
+impl TransferContext {
+    pub(super) fn new(profile: &SessionProfile, items: &[Item]) -> Option<Self> {
+        let first_item = items.first()?.clone();
+        let ftp = profile.kind == SessionKind::Ftp;
+        let host = profile.host.as_deref().unwrap_or("");
+        let host = if host.contains(':') {
+            format!("[{host}]")
+        } else {
+            host.into()
+        };
+        let user = profile.username.as_deref().filter(|user| !user.is_empty());
+        Some(Self {
+            server: format!(
+                "{}{host}:{}",
+                user.map(|user| format!("{user}@")).unwrap_or_default(),
+                profile.port.unwrap_or(if ftp { 21 } else { 22 })
+            ),
+            protocol: if ftp { "FTP" } else { "SFTP" }.into(),
+            direction: if items.iter().any(|item| item.upload != first_item.upload) {
+                "mixed"
+            } else if first_item.upload {
+                "upload"
+            } else {
+                "download"
+            }
+            .into(),
+            local: first_item.local,
+            remote: first_item.remote,
+            first_upload: first_item.upload,
+            item_count: items.len(),
+        })
+    }
+}
+
+#[cfg(test)]
+mod context_tests {
+    use super::*;
+
+    #[test]
+    fn context_keeps_bounded_paths_and_identity_without_credentials() {
+        let profile: SessionProfile = serde_json::from_value(serde_json::json!({
+            "name": "lab", "kind": "ssh", "host": "::1", "port": 2222,
+            "username": "tester", "password": "private-test-password"
+        }))
+        .unwrap();
+        let items: Vec<Item> = serde_json::from_value(serde_json::json!([
+            {"local": "C:/first", "remote": "/srv/first", "upload": true},
+            {"local": "C:/second", "remote": "/srv/second", "upload": false}
+        ]))
+        .unwrap();
+        let context = TransferContext::new(&profile, &items).unwrap();
+        assert_eq!(context.server, "tester@[::1]:2222");
+        assert_eq!(context.protocol, "SFTP");
+        assert_eq!(context.item_count, 2);
+        assert_eq!(context.direction, "mixed");
+        assert_eq!(context.remote, "/srv/first");
+        let json = serde_json::to_string(&context).unwrap();
+        assert!(!json.contains("private-test-password"));
+        assert!(!json.contains("/srv/second"));
+    }
+
+    #[test]
+    fn payload_progress_replaces_another_files_commit_phase() {
+        let root = std::env::temp_dir().join(format!("edgeterm-phase-{}", uuid::Uuid::new_v4()));
+        let job = test_job(root.clone());
+        job.phase("committing");
+        job.progress("other", 64, 128, false);
+        assert_eq!(job.snapshot.lock().phase, "transferring");
+        drop(job);
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }
 
 /// A journal as it comes back off disk, checkpoints verified.

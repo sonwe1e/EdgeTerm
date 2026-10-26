@@ -1,5 +1,15 @@
-import type { Dispatch, RefObject, SetStateAction } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type RefObject,
+  type SetStateAction,
+} from "react";
 import * as api from "../../api";
+import { errorText, isCancelled } from "../../errorInfo";
+import { useFileTransfers } from "../../fileTransfers";
+import { useStore } from "../../store";
 import type { Translate } from "../../i18n";
 import { ask, open as openDialog } from "../../nativeDialog";
 import type { FileEntry } from "../../types";
@@ -20,11 +30,10 @@ interface Options {
     cancellable?: boolean,
     retry?: () => void,
   ) => string | undefined;
-  progressFor: (id: string | undefined) => (progress: api.TransferProgress) => void;
   finishTransfer: (status: "complete" | "error" | "cancelled", id?: string | undefined) => void;
   load: (target: string, quiet?: boolean, resume?: boolean) => Promise<boolean>;
   failTransfer: (e: unknown, id?: string | undefined) => void;
-  ownsTransfer: (id: string | undefined) => boolean;
+  refresh: (sessionId: string, target: string) => Promise<void>;
   remoteIdRef: RefObject<string | null>;
   offlineReasonRef: RefObject<string | null>;
   updateTransferProgress: (progress: api.TransferProgress) => void;
@@ -39,77 +48,90 @@ export function useFilerUpload({
   setBusy,
   setError,
   beginTransfer,
-  progressFor,
   finishTransfer,
   load,
   failTransfer,
-  ownsTransfer,
+  refresh,
   remoteIdRef,
   offlineReasonRef,
   updateTransferProgress,
   t,
 }: Options) {
-  /**
-   * The upload itself, against an explicit destination. The retry the footer
-   * offers after a failure runs this with the folder the upload was started
-   * for, so browsing somewhere else in the meantime cannot silently redirect
-   * it.
-   */
-  const runUpload = async (sessionId: string, localPaths: string[], destination: string) => {
-    // The backend replaces a same-named file in place. Ask once for the whole
-    // batch, the way a file manager does, instead of letting a drag overwrite
-    // silently.
-    const clashes = localPaths.filter((localPath) =>
-      entries.some((entry) => entry.name === localFileName(localPath)),
-    );
-    if (clashes.length > 0) {
-      const confirmed = await ask(t("filer.replaceConfirm", { count: clashes.length }), {
-        title: t("filer.replaceTitle"),
-        kind: "warning",
-        okLabel: t("filer.replace"),
-        cancelLabel: t("common.cancel"),
-      });
-      if (!confirmed) return;
-    }
-    busyRef.current = true;
-    setBusy(true);
-    setError(null);
-    const transfer = beginTransfer(
-      "upload",
-      // Not a literal "N items": that string never went near the catalog and
-      // stayed English in a Chinese interface.
-      localPaths.length === 1
-        ? localFileName(localPaths[0])
-        : t("filer.manyItems", { count: localPaths.length }),
-      true,
-      () => void runUpload(sessionId, localPaths, destination),
-    );
+  const [choosingUpload, setChoosingUpload] = useState(false);
+  const choosing = useRef(false);
+  const alive = useRef(false);
+  const context = useRef({ remoteId, path });
+  if (context.current.remoteId !== remoteId || context.current.path !== path) {
+    context.current = { remoteId, path };
+  }
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+
+  // A picker/confirmation belongs to the destination visible when it opened.
+  // Switching sessions or folders invalidates it, including a switch away and back.
+  const chooseUpload = async (pick: () => Promise<string[]>) => {
+    if (!remoteId || !path || busyRef.current || choosing.current) return;
+    const target = context.current;
+    const current = () => alive.current && context.current === target;
+    choosing.current = true;
+    setChoosingUpload(true);
     try {
+      const localPaths = await pick();
+      if (!current() || localPaths.length === 0) return;
+      const sessionId = remoteId;
+      const destination = path;
+      // The backend replaces a same-named file in place. Ask once for the whole
+      // batch, the way a file manager does, instead of letting a drag overwrite
+      // silently.
+      const clashes = localPaths.filter((localPath) =>
+        entries.some((entry) => entry.name === localFileName(localPath)),
+      );
+      if (clashes.length > 0) {
+        const confirmed = await ask(t("filer.replaceConfirm", { count: clashes.length }), {
+          title: t("filer.replaceTitle"),
+          kind: "warning",
+          okLabel: t("filer.replace"),
+          cancelLabel: t("common.cancel"),
+        });
+        if (!confirmed || !current()) return;
+      }
+      setError(null);
+      const name =
+        localPaths.length === 1
+          ? localFileName(localPaths[0])
+          : t("filer.manyItems", { count: localPaths.length });
+      const transfer = api.newTransferId();
       const items: api.TransferItem[] = localPaths.map((localPath) => ({
         local: localPath,
         remote: joinRemote(destination, localFileName(localPath)),
         upload: true,
       }));
-      await api.transferFiles(sessionId, items, progressFor(transfer), transfer);
-      finishTransfer("complete", transfer);
-      await load(destination);
+      // Queue snapshots own progress, cancellation and retry, also after unmount.
+      void api
+        .transferFiles(sessionId, items, () => {}, transfer)
+        .catch((error) => {
+          const status = useFileTransfers.getState().jobs[transfer]?.status;
+          if (status === "cancelled" || status === "cancelling" || isCancelled(error)) return;
+          useStore
+            .getState()
+            .setError(t("filer.uploadFailed", { name, error: errorText(error) }), sessionId);
+        })
+        .finally(() => {
+          if (alive.current) void refresh(sessionId, destination);
+        });
     } catch (e) {
-      // Reload first: it clears the error line, and what did arrive should
-      // show.
-      await load(destination);
-      failTransfer(e, transfer);
+      if (current()) setError(errorText(e));
     } finally {
-      if (ownsTransfer(transfer)) busyRef.current = false;
-      if (ownsTransfer(transfer)) setBusy(false);
+      choosing.current = false;
+      if (alive.current) setChoosingUpload(false);
     }
   };
 
-  const uploadPaths = async (localPaths: string[]) => {
-    if (!remoteId || !path || busyRef.current || localPaths.length === 0) {
-      return;
-    }
-    await runUpload(remoteId, localPaths, path);
-  };
+  const uploadPaths = (localPaths: string[]) => chooseUpload(async () => localPaths);
 
   /**
    * The local copy itself, against an explicit destination, so the footer's
@@ -141,8 +163,7 @@ export function useFilerUpload({
       }
     } catch (e) {
       // Reload first: it clears the error line, and what did arrive should
-      // show; the failure then keeps the footer's retry, the way an upload's
-      // does.
+      // show; the local copy's failure then keeps the footer's retry.
       await load(destination);
       failTransfer(e);
     } finally {
@@ -169,17 +190,9 @@ export function useFilerUpload({
     await runCopy(sources, path);
   };
 
-  const upload = async () => {
-    if (!remoteId) return;
-    const picked = await openDialog({ multiple: true });
-    await uploadPaths(pickedPaths(picked));
-  };
+  const upload = () => chooseUpload(async () => pickedPaths(await openDialog({ multiple: true })));
+  const uploadFolder = () =>
+    chooseUpload(async () => pickedPaths(await openDialog({ directory: true, multiple: true })));
 
-  const uploadFolder = async () => {
-    if (!remoteId) return;
-    const picked = await openDialog({ directory: true, multiple: true });
-    await uploadPaths(pickedPaths(picked));
-  };
-
-  return { upload, uploadFolder, uploadPaths, copyPaths };
+  return { upload, uploadFolder, uploadPaths, copyPaths, choosingUpload };
 }

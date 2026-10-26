@@ -3,11 +3,13 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { browserAfterEach, mount, twoFrames } from "./browserHarness";
 import { FilerPanel } from "../components/panels/FilerPanel";
+import { lastPaths, listingCache } from "../components/panels/filerDirectoryCache";
 import { TransferCenter } from "../components/TransferCenter";
 import { useStore, type Tab } from "../store";
 import { useFileTransfers } from "../fileTransfers";
 import type { FileTransfer, TransferItem } from "../api";
 import * as api from "../api";
+import { ask, open } from "../nativeDialog";
 import "../styles.css";
 
 const fixture = vi.hoisted(() => ({
@@ -50,6 +52,15 @@ vi.mock("../api", async (original) => ({
         fixture.pending.set(transfer, { resolve, reject }),
       );
       fixture.changed?.({
+        context: {
+          direction: items[0].upload ? "upload" : "download",
+          firstUpload: items[0].upload,
+          local: items[0].local,
+          remote: items[0].remote,
+          server: "test@fixture:22",
+          protocol: "SFTP",
+          itemCount: items.length,
+        },
         id: transfer,
         sessionId,
         name: items[0].remote.split("/").pop()!,
@@ -93,6 +104,8 @@ vi.mock("@tauri-apps/api/webview", () => ({
 
 const initialState = useStore.getState();
 beforeEach(() => {
+  lastPaths.clear();
+  listingCache.clear();
   vi.clearAllMocks();
   fixture.pending.clear();
   useFileTransfers.setState({ jobs: {}, open: false });
@@ -131,6 +144,145 @@ beforeEach(() => {
   );
   useStore.getState().setLanguage("en");
 });
+
+it("keeps browsing and submitting uploads while previous uploads are pending", async () => {
+  await page.viewport(1100, 820);
+  mount(h("div", { style: { width: 440, height: 720, display: "flex" } }, h(FilerPanel)));
+  await expect.poll(() => document.querySelectorAll(".filer-entry").length).toBeGreaterThan(0);
+  vi.mocked(open).mockResolvedValue(["C:/uploads/first.txt"]);
+  for (let index = 0; index < 3; index++) {
+    await userEvent.click(
+      page.getByRole("button", { name: "Upload files or folders", exact: true }),
+    );
+    await userEvent.click(page.getByRole("menuitem", { name: "Upload Files…", exact: true }));
+    await expect.poll(() => vi.mocked(api.transferFiles).mock.calls.length).toBe(index + 1);
+    expect(page.getByRole("button", { name: "Refresh", exact: true }).element()).not.toBeDisabled();
+  }
+  const destination = vi.mocked(api.transferFiles).mock.calls[0][1][0].remote;
+  await userEvent.click(page.getByRole("button", { name: "Parent folder", exact: true }));
+  await expect.poll(() => vi.mocked(api.sftpList).mock.calls.slice(-1)[0]?.[1]).toBe("/");
+  const calls = vi.mocked(api.sftpList).mock.calls.length;
+  fixture.pending.forEach((task) => task.resolve());
+  await twoFrames();
+  expect(vi.mocked(api.sftpList).mock.calls.length).toBe(calls);
+  expect(destination).toBe("/queue-fixture/first.txt");
+});
+
+it("discards an upload picker result after switching the destination", async () => {
+  let picked!: (paths: string[]) => void;
+  vi.mocked(open).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        picked = resolve;
+      }),
+  );
+  mount(h("div", { style: { width: 440, height: 720, display: "flex" } }, h(FilerPanel)));
+  await expect.poll(() => document.querySelectorAll(".filer-entry").length).toBeGreaterThan(0);
+  await userEvent.click(page.getByRole("button", { name: "Upload files or folders", exact: true }));
+  await userEvent.click(page.getByRole("menuitem", { name: "Upload Files…", exact: true }));
+  await userEvent.click(page.getByRole("button", { name: "Parent folder", exact: true }));
+  await twoFrames();
+  picked(["C:/uploads/first.txt"]);
+  await twoFrames();
+  expect(api.transferFiles).not.toHaveBeenCalled();
+});
+
+it("refreshes completed uploads without clearing the user's selection", async () => {
+  mount(h("div", { style: { width: 440, height: 720, display: "flex" } }, h(FilerPanel)));
+  await expect.poll(() => document.querySelectorAll(".filer-entry").length).toBeGreaterThan(0);
+  vi.mocked(open).mockResolvedValue(["C:/uploads/first.txt"]);
+  await userEvent.click(page.getByRole("button", { name: "Upload files or folders", exact: true }));
+  await userEvent.click(page.getByRole("menuitem", { name: "Upload Files…", exact: true }));
+  await userEvent.click(page.getByText("file2.txt", { exact: true }));
+  const calls = vi.mocked(api.sftpList).mock.calls.length;
+  fixture.pending.forEach((task) => task.resolve());
+  await expect.poll(() => vi.mocked(api.sftpList).mock.calls.length).toBeGreaterThan(calls);
+  await twoFrames();
+  expect(document.querySelector('.filer-entry[aria-selected="true"]')!.textContent).toContain(
+    "file2.txt",
+  );
+});
+
+it("keeps overwrite refusal and cancellation quiet while failures remain visible", async () => {
+  mount(
+    h(
+      "div",
+      null,
+      h("div", { style: { width: 440, height: 720, display: "flex" } }, h(FilerPanel)),
+      h(TransferCenter),
+    ),
+  );
+  await expect.poll(() => document.querySelectorAll(".filer-entry").length).toBeGreaterThan(0);
+  const upload = async () => {
+    await userEvent.click(
+      page.getByRole("button", { name: "Upload files or folders", exact: true }),
+    );
+    await userEvent.click(page.getByRole("menuitem", { name: "Upload Files…", exact: true }));
+    await twoFrames();
+  };
+  vi.mocked(open).mockResolvedValue(["C:/uploads/file0.txt"]);
+  vi.mocked(ask).mockResolvedValueOnce(false);
+  await upload();
+  expect(api.transferFiles).not.toHaveBeenCalled();
+  await upload();
+  const cancelled = [...fixture.pending.keys()][0];
+  await api.controlFileTransfer(cancelled, "cancel");
+  await twoFrames();
+  expect(useStore.getState().error).toBeNull();
+  await upload();
+  const failed = [...fixture.pending.keys()][1];
+  fixture.pending.get(failed)!.reject(Error("connection lost"));
+  await expect.poll(() => useStore.getState().error).toContain("connection lost");
+  expect(page.getByRole("button", { name: "Refresh", exact: true }).element()).not.toBeDisabled();
+});
+
+for (const [width, height] of [
+  [1100, 720],
+  [900, 560],
+]) {
+  it(`pins the queue without covering browsing at ${width} × ${height}`, async () => {
+    await page.viewport(width, height);
+    mount(
+      h(
+        "div",
+        { style: { display: "flex", flexDirection: "column", height: "100vh" } },
+        h(
+          "div",
+          { className: "app-body" },
+          h("div", { className: "main" }, h(FilerPanel)),
+          h("div", { id: "transfer-dock", className: "transfer-dock" }),
+        ),
+        h("div", { className: "statusbar" }, h(TransferCenter)),
+      ),
+    );
+    await expect.poll(() => document.querySelectorAll(".filer-entry").length).toBeGreaterThan(0);
+    await userEvent.click(page.getByText("file0.txt", { exact: true }));
+    await userEvent.click(
+      page.getByRole("button", { name: "Download file or folder", exact: true }),
+    );
+    await userEvent.click(page.getByRole("button", { name: "Open transfer queue", exact: true }));
+    const row = document.querySelector(".transfer-job")!;
+    expect(row.textContent).toContain("↓ Download");
+    expect(row.textContent).toContain("test@fixture:22");
+    expect(row.textContent).toContain("→ /downloads/file0.txt");
+    await userEvent.click(page.getByRole("button", { name: "Pin to bottom", exact: true }));
+    await userEvent.click(page.getByRole("button", { name: "Parent folder", exact: true }));
+    await twoFrames();
+    const panel = document.querySelector<HTMLElement>("#transfer-dock .is-pinned")!;
+    expect(panel).not.toBeNull();
+    expect(panel.getBoundingClientRect().top).toBeGreaterThanOrEqual(
+      document.querySelector(".main")!.getBoundingClientRect().bottom - 1,
+    );
+    expect(panel.getBoundingClientRect().bottom).toBeLessThanOrEqual(height);
+    await page.screenshot({ path: `../../artifacts/usability/transfer-pinned-${width}.png` });
+    await userEvent.keyboard("{Escape}");
+    expect(document.querySelector("#transfer-dock .is-pinned")).not.toBeNull();
+    await userEvent.click(page.getByRole("button", { name: "Unpin", exact: true }));
+    expect(document.querySelector("#transfer-dock")!.children.length).toBe(0);
+    await userEvent.click(page.getByRole("button", { name: "Refresh", exact: true }));
+    expect(document.querySelector(".transfer-center-popover")).toBeNull();
+  });
+}
 afterEach(async () => {
   await browserAfterEach();
   fixture.pending.forEach((task) => task.resolve());

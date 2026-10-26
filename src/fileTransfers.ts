@@ -5,6 +5,9 @@ export type TransferView = api.FileTransfer & { bytesPerSecond: number; sampledA
 interface State {
   open: boolean;
   setOpen: (open: boolean) => void;
+  settingsOpen: boolean;
+  setSettingsOpen: (open: boolean) => void;
+  openSettings: () => void;
   jobs: Record<string, TransferView>;
   update: (job: api.FileTransfer) => void;
   mergeSnapshot: (jobs: api.FileTransfer[]) => void;
@@ -28,7 +31,10 @@ function view(job: api.FileTransfer, old: TransferView | undefined, now: number)
 
 export const useFileTransfers = create<State>((set) => ({
   open: false,
-  setOpen: (open) => set({ open }),
+  setOpen: (open) => set(open ? { open } : { open, settingsOpen: false }),
+  settingsOpen: false,
+  setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
+  openSettings: () => set({ open: true, settingsOpen: true }),
   jobs: {},
   update: (job) =>
     set((state) => {

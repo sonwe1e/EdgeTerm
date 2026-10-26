@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { transferContext, transferIndeterminate, transferPhase } from "../transferPresentation";
 import { errorText } from "../errorInfo";
 import * as api from "../api";
 import {
@@ -19,11 +21,10 @@ import type { MessageKey } from "../i18n";
 
 /**
  * Every queue row is exactly this tall, so VirtualFileRows can place a
- * windowed row without measuring it: status pill and name, progress, then one
- * metadata line. Three lines at a fixed pitch is what makes a long queue read
- * as rows instead of cards.
+ * windowed row without measuring it: identity, source/destination, progress
+ * and stage/measurements each get a line.
  */
-const JOB_ROW_HEIGHT = 76;
+const JOB_ROW_HEIGHT = 100;
 /** A recovery row carries a name line and one metadata line; no progress. */
 const RECOVERY_ROW_HEIGHT = 56;
 /** One failed file per line, ellipsised. */
@@ -39,6 +40,7 @@ const STATUS_LABEL: Record<string, MessageKey> = {
   queued: "transfer.statusQueued",
   running: "transfer.statusRunning",
   retrying: "transfer.statusRetrying",
+  pausing: "transfer.statusPausing",
   paused: "transfer.statusPaused",
   complete: "transfer.statusComplete",
   error: "transfer.statusError",
@@ -110,8 +112,20 @@ export function TransferCenter() {
   const records = useFileTransfers((s) => s.jobs);
   const open = useFileTransfers((s) => s.open);
   const setOpen = useFileTransfers((s) => s.setOpen);
+  const settingsOpen = useFileTransfers((s) => s.settingsOpen);
+  const settings = useRef<HTMLDetailsElement>(null);
   const container = useRef<HTMLDivElement>(null);
-  usePopoverDismiss(open, () => setOpen(false), container);
+  const [pinned, setPinned] = useState(false);
+  const pinButton = useRef<HTMLButtonElement>(null);
+  const dock = document.getElementById("transfer-dock");
+  usePopoverDismiss(open && !pinned, () => setOpen(false), container);
+  useEffect(() => {
+    if (!open) return;
+    if (settingsOpen) {
+      settings.current?.querySelector("summary")?.focus();
+      settings.current?.scrollIntoView({ block: "nearest" });
+    } else pinButton.current?.focus();
+  }, [pinned, open, settingsOpen]);
   const [error, setError] = useState<string | null>(null);
   const [options, setOptions] = useState(readTransferOptions);
   const preferencesRevision = useStore((s) => s.panelPreferencesRevision);
@@ -406,7 +420,9 @@ export function TransferCenter() {
       t("transfer.filesCount", { done: job.completedFiles, total: job.totalFiles }),
       `${transferBytes(job.transferred)} / ${transferBytes(job.total)}`,
     ];
-    if (job.status === "running") {
+    const phase = transferPhase(job, t);
+    if (phase) parts.unshift(phase);
+    if (job.status === "running" && ["transferring", "tar streaming"].includes(job.phase)) {
       if (job.bytesPerSecond > 0) parts.push(`${transferBytes(job.bytesPerSecond)}/s`);
       const eta =
         job.total > job.transferred && job.bytesPerSecond > 0
@@ -418,6 +434,405 @@ export function TransferCenter() {
     }
     return parts.join(" · ");
   };
+  const panel = open ? (
+    <StatusPopover
+      className={`transfer-center-popover${pinned && dock ? " is-pinned" : ""}`}
+      label={t("transfer.transfers")}
+      title={t("transfer.transfers")}
+      closeLabel={t("transfer.closeTransfers")}
+      onClose={() => setOpen(false)}
+      actions={
+        <>
+          {headerActions}
+          <button
+            ref={pinButton}
+            type="button"
+            className="transfer-head-action"
+            disabled={!dock}
+            aria-pressed={pinned}
+            onClick={() => setPinned(!pinned)}
+          >
+            {t(pinned ? "transfer.unpin" : "transfer.pin")}
+          </button>
+        </>
+      }
+    >
+      {error && (
+        <div role="alert" className="status-popover-error">
+          {error}
+        </div>
+      )}
+      {bulkClear && failedJobs.length > 0 && (
+        <div className="transfer-clear-band" role="group" aria-label={t("transfer.clearFailed")}>
+          <span className="transfer-clear-question">
+            {t("transfer.clearFailedBulk", { count: failedJobs.length })}
+          </span>
+          <div className="transfer-job-actions">
+            <button type="button" onClick={() => void clearJobs(failedJobs.map((job) => job.id))}>
+              {t("transfer.dismiss")}
+            </button>
+            <button type="button" onClick={() => setBulkClear(false)}>
+              {t("common.cancel")}
+            </button>
+          </div>
+          <span className="transfer-clear-hint">{t("transfer.clearFailedHint")}</span>
+        </div>
+      )}
+      {jobs.length === 0 && recoverable.length === 0 && (
+        <p className="status-popover-note">{t("transfer.noTransfers")}</p>
+      )}
+      {jobs.length > 0 && (
+        <>
+          <p className="transfer-center-total">{totalsText}</p>
+          <div className="transfer-center-jobs">
+            <VirtualFileRows entries={jobRows} rowHeight={JOB_ROW_HEIGHT} resetKey="transfer-jobs">
+              {(job) => {
+                if (confirming === job.id && job.status === "error") {
+                  return (
+                    <ClearFailedConfirm
+                      key={job.id}
+                      onConfirm={() => void clearFailed(job.id)}
+                      onCancel={() => cancelConfirm(job.id)}
+                    />
+                  );
+                }
+                const percent =
+                  job.status === "complete"
+                    ? 100
+                    : job.total > 0
+                      ? Math.min(100, (job.transferred / job.total) * 100)
+                      : 0;
+                const meta = jobMeta(job);
+                const context = transferContext(job, t);
+                const indeterminate = transferIndeterminate(job);
+                return (
+                  <article className={`transfer-job is-${job.status}`} key={job.id}>
+                    <div className="transfer-job-head">
+                      <span className={`transfer-status is-${STATUS_TONE[job.status] ?? "idle"}`}>
+                        {statusLabel(job.status)}
+                      </span>
+                      <strong className="transfer-job-name" title={job.name}>
+                        {job.name}
+                      </strong>
+                      <div className="transfer-job-actions">
+                        {["queued", "running", "retrying"].includes(job.status) && (
+                          <button type="button" onClick={() => void control(job.id, "pause")}>
+                            {t("transfer.pause")}
+                          </button>
+                        )}
+                        {job.status === "paused" && (
+                          <button type="button" onClick={() => void control(job.id, "resume")}>
+                            {t("transfer.resume")}
+                          </button>
+                        )}
+                        {job.status === "error" && (
+                          <button type="button" onClick={() => void control(job.id, "retry")}>
+                            {t("transfer.retryUnfinished")}
+                          </button>
+                        )}
+                        {job.status === "cancelled" && job.error && (
+                          <button type="button" onClick={() => void control(job.id, "cancel")}>
+                            {t("transfer.retryCleanup")}
+                          </button>
+                        )}
+                        {!["complete", "cancelled", "cancelling"].includes(job.status) && (
+                          <button type="button" onClick={() => void control(job.id, "cancel")}>
+                            {t("common.cancel")}
+                          </button>
+                        )}
+                        {["complete", "cancelled"].includes(job.status) && !job.error && (
+                          <button type="button" onClick={() => void control(job.id, "dismiss")}>
+                            {t("transfer.dismiss")}
+                          </button>
+                        )}
+                        {job.status === "error" && (
+                          <button
+                            type="button"
+                            data-clear-failed={job.id}
+                            onClick={() => setConfirming(job.id)}
+                          >
+                            {t("transfer.dismiss")}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="transfer-job-context" title={context}>
+                      {context}
+                    </div>
+                    <div className="transfer-job-progress">
+                      <div
+                        className={`transfer-job-track${indeterminate ? " is-indeterminate" : ""}`}
+                        role="progressbar"
+                        aria-label={t("transfer.jobProgress", { name: job.name })}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={indeterminate ? undefined : Math.round(percent)}
+                        aria-valuetext={transferPhase(job, t) ?? statusLabel(job.status)}
+                      >
+                        <span className="transfer-job-bar" style={{ width: `${percent}%` }} />
+                      </div>
+                      <span className="transfer-job-percent">
+                        {indeterminate ? "—" : `${Math.round(percent)}%`}
+                      </span>
+                    </div>
+                    <div className="transfer-job-meta">
+                      <span
+                        className={
+                          job.error ? "transfer-job-meta-text is-error" : "transfer-job-meta-text"
+                        }
+                        title={meta}
+                      >
+                        {meta}
+                      </span>
+                      {job.failedFiles.length > 0 && (
+                        <button
+                          type="button"
+                          className="transfer-job-failures"
+                          aria-expanded={failureJob === job.id}
+                          onClick={() => setFailureJob(failureJob === job.id ? null : job.id)}
+                        >
+                          {t("transfer.failedFilesCount", { count: job.failedFiles.length })}
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                );
+              }}
+            </VirtualFileRows>
+          </div>
+        </>
+      )}
+      {failureJob && records[failureJob] && (
+        <section aria-label={t("transfer.failedFilesSection")} className="transfer-failures">
+          <div className="transfer-section-head">
+            <strong title={records[failureJob].name}>
+              {records[failureJob].name}
+              {" · "}
+              {t("transfer.failedFilesCount", { count: failureRows.length })}
+            </strong>
+            <button
+              type="button"
+              className="transfer-icon-button"
+              aria-label={t("transfer.closeFailedFiles")}
+              onClick={() => setFailureJob(null)}
+            >
+              <Icon name="close" />
+            </button>
+          </div>
+          <div className="transfer-failure-rows">
+            <VirtualFileRows
+              entries={failureRows}
+              rowHeight={FAILURE_ROW_HEIGHT}
+              resetKey={failureJob}
+            >
+              {(file) => (
+                <div className="transfer-failure-row" title={file.message}>
+                  {file.message}
+                </div>
+              )}
+            </VirtualFileRows>
+          </div>
+        </section>
+      )}
+      {(recoverable.length > 0 || recoveryError) && (
+        <section className="transfer-recovery">
+          <div className="transfer-section-head">
+            <strong>
+              {t("transfer.interrupted")}
+              {recoverable.length > 0 ? ` (${recoverable.length})` : ""}
+            </strong>
+            {recoverable.length > 0 && (
+              <button
+                type="button"
+                className="transfer-head-action"
+                onClick={() => {
+                  setBulkForget(true);
+                  setBulkClear(false);
+                  setConfirming(null);
+                }}
+              >
+                {t("transfer.clearInterrupted")}
+              </button>
+            )}
+          </div>
+          {bulkForget && recoverable.length > 0 && (
+            <div
+              className="transfer-clear-band"
+              role="group"
+              aria-label={t("transfer.clearInterrupted")}
+            >
+              <span className="transfer-clear-question">
+                {t("transfer.clearInterruptedBulk", { count: recoverable.length })}
+              </span>
+              <div className="transfer-job-actions">
+                <button type="button" onClick={() => void forgetAll()}>
+                  {t("transfer.dismiss")}
+                </button>
+                <button type="button" onClick={() => setBulkForget(false)}>
+                  {t("common.cancel")}
+                </button>
+              </div>
+              <span className="transfer-clear-hint">{t("transfer.clearFailedHint")}</span>
+            </div>
+          )}
+          <p className="status-popover-note transfer-recovery-note">{t("transfer.recoveryNote")}</p>
+          {recoveryError && (
+            <div role="alert" className="status-popover-error">
+              {recoveryError}
+            </div>
+          )}
+          <div className="transfer-recovery-rows">
+            <VirtualFileRows
+              entries={recoveryRows}
+              rowHeight={RECOVERY_ROW_HEIGHT}
+              resetKey="recovery"
+            >
+              {(entry) => {
+                const whom =
+                  [entry.username, entry.host].filter(Boolean).join("@") +
+                  (entry.port ? `:${entry.port}` : "");
+                // An unattributable journal says so once; there is no endpoint or
+                // item count it could honestly report.
+                const meta = entry.unrecognized
+                  ? t("transfer.unrecognized")
+                  : [
+                      entry.kind,
+                      whom || t("transfer.unknownEndpoint"),
+                      t("transfer.itemsCount", { count: entry.items }),
+                    ]
+                      .filter(Boolean)
+                      .join(" · ");
+                return (
+                  <article className="transfer-recovery-row" key={entry.id}>
+                    <div className="transfer-recovery-main">
+                      <strong title={entry.name}>{entry.name}</strong>
+                      <span className="transfer-job-meta-text" title={meta}>
+                        {meta}
+                      </span>
+                    </div>
+                    <div className="transfer-job-actions">
+                      {!entry.unrecognized && (
+                        <button type="button" onClick={() => void recover(entry.id)}>
+                          {t("transfer.resume")}
+                        </button>
+                      )}
+                      <button type="button" onClick={() => void forget(entry.id)}>
+                        {t("transfer.forget")}
+                      </button>
+                    </div>
+                  </article>
+                );
+              }}
+            </VirtualFileRows>
+          </div>
+        </section>
+      )}
+      <details
+        className="transfer-settings"
+        ref={settings}
+        open={settingsOpen}
+        onToggle={(event) => useFileTransfers.getState().setSettingsOpen(event.currentTarget.open)}
+      >
+        <summary>{t("transfer.settings")}</summary>
+        <div className="transfer-settings-grid">
+          <label title={t("transfer.requestsHint")}>
+            {t("transfer.requestsLabel")}
+            <input
+              aria-label={t("transfer.requestsLabel")}
+              type="number"
+              min={1}
+              max={32}
+              value={options.requests}
+              onChange={(e) => {
+                const requests = Number(e.target.value);
+                if (!Number.isInteger(requests) || requests < 1 || requests > 32) return;
+                const next = { ...options, requests };
+                setOptions(next);
+                saveTransferOptions(next);
+              }}
+            />
+          </label>
+          <label title={t("transfer.chunkHint")}>
+            {t("transfer.chunkLabel")}
+            <input
+              aria-label={t("transfer.chunkLabel")}
+              type="number"
+              min={16}
+              max={256}
+              value={options.chunkKib}
+              onChange={(e) => {
+                const chunkKib = Number(e.target.value);
+                if (!Number.isInteger(chunkKib) || chunkKib < 16 || chunkKib > 256) return;
+                const next = { ...options, chunkKib };
+                setOptions(next);
+                saveTransferOptions(next);
+              }}
+            />
+          </label>
+          <label title={t("transfer.filesHint")}>
+            {t("transfer.filesLabel")}
+            <input
+              aria-label={t("transfer.filesLabel")}
+              type="number"
+              min={1}
+              max={32}
+              value={options.files}
+              onChange={(e) => {
+                const files = Number(e.target.value);
+                if (!Number.isInteger(files) || files < 1 || files > 32) return;
+                const next = { ...options, files };
+                setOptions(next);
+                saveTransferOptions(next);
+              }}
+            />
+          </label>
+          <label title={t("transfer.rateLimitHint")}>
+            {t("transfer.rateLimitLabel")}
+            <input
+              aria-label={t("transfer.rateLimitLabel")}
+              type="number"
+              min={0}
+              max={1048576}
+              value={rateKib(options)}
+              onChange={(e) => {
+                const kib = Number(e.target.value);
+                if (!Number.isInteger(kib) || kib < 0 || kib > 1048576) return;
+                const rateLimitBps = kib * 1024;
+                if (!validRateLimitBps(rateLimitBps)) return;
+                const next = { ...options, rateLimitBps };
+                setOptions(next);
+                saveTransferOptions(next);
+              }}
+            />
+          </label>
+          <label className="transfer-settings-toggle" title={t("transfer.durableHint")}>
+            <input
+              type="checkbox"
+              checked={options.durable}
+              onChange={(e) => {
+                const next = { ...options, durable: e.target.checked };
+                setOptions(next);
+                saveTransferOptions(next);
+              }}
+            />{" "}
+            {t("transfer.durableLabel")}
+          </label>
+          <label className="transfer-settings-toggle" title={t("transfer.tarHint")}>
+            <input
+              type="checkbox"
+              checked={options.tar}
+              onChange={(e) => {
+                const next = { ...options, tar: e.target.checked };
+                setOptions(next);
+                saveTransferOptions(next);
+              }}
+            />{" "}
+            {t("transfer.tarLabel")}
+          </label>
+        </div>
+      </details>
+    </StatusPopover>
+  ) : null;
   return (
     <div className="transfer-center" ref={container}>
       <button
@@ -430,391 +845,7 @@ export function TransferCenter() {
         <Icon name="cloud-download" /> {statusName}
         {statusCount}
       </button>
-      {open && (
-        <StatusPopover
-          className="transfer-center-popover"
-          label={t("transfer.transfers")}
-          title={t("transfer.transfers")}
-          closeLabel={t("transfer.closeTransfers")}
-          onClose={() => setOpen(false)}
-          actions={headerActions}
-        >
-          {error && (
-            <div role="alert" className="status-popover-error">
-              {error}
-            </div>
-          )}
-          {bulkClear && failedJobs.length > 0 && (
-            <div
-              className="transfer-clear-band"
-              role="group"
-              aria-label={t("transfer.clearFailed")}
-            >
-              <span className="transfer-clear-question">
-                {t("transfer.clearFailedBulk", { count: failedJobs.length })}
-              </span>
-              <div className="transfer-job-actions">
-                <button
-                  type="button"
-                  onClick={() => void clearJobs(failedJobs.map((job) => job.id))}
-                >
-                  {t("transfer.dismiss")}
-                </button>
-                <button type="button" onClick={() => setBulkClear(false)}>
-                  {t("common.cancel")}
-                </button>
-              </div>
-              <span className="transfer-clear-hint">{t("transfer.clearFailedHint")}</span>
-            </div>
-          )}
-          {jobs.length === 0 && recoverable.length === 0 && (
-            <p className="status-popover-note">{t("transfer.noTransfers")}</p>
-          )}
-          {jobs.length > 0 && (
-            <>
-              <p className="transfer-center-total">{totalsText}</p>
-              <div className="transfer-center-jobs">
-                <VirtualFileRows
-                  entries={jobRows}
-                  rowHeight={JOB_ROW_HEIGHT}
-                  resetKey="transfer-jobs"
-                >
-                  {(job) => {
-                    if (confirming === job.id && job.status === "error") {
-                      return (
-                        <ClearFailedConfirm
-                          key={job.id}
-                          onConfirm={() => void clearFailed(job.id)}
-                          onCancel={() => cancelConfirm(job.id)}
-                        />
-                      );
-                    }
-                    const percent =
-                      job.total > 0 ? Math.min(100, (job.transferred / job.total) * 100) : 0;
-                    const meta = jobMeta(job);
-                    return (
-                      <article className={`transfer-job is-${job.status}`} key={job.id}>
-                        <div className="transfer-job-head">
-                          <span
-                            className={`transfer-status is-${STATUS_TONE[job.status] ?? "idle"}`}
-                          >
-                            {statusLabel(job.status)}
-                          </span>
-                          <strong className="transfer-job-name" title={job.name}>
-                            {job.name}
-                          </strong>
-                          <div className="transfer-job-actions">
-                            {["queued", "running", "retrying"].includes(job.status) && (
-                              <button type="button" onClick={() => void control(job.id, "pause")}>
-                                {t("transfer.pause")}
-                              </button>
-                            )}
-                            {job.status === "paused" && (
-                              <button type="button" onClick={() => void control(job.id, "resume")}>
-                                {t("transfer.resume")}
-                              </button>
-                            )}
-                            {job.status === "error" && (
-                              <button type="button" onClick={() => void control(job.id, "retry")}>
-                                {t("transfer.retryUnfinished")}
-                              </button>
-                            )}
-                            {job.status === "cancelled" && job.error && (
-                              <button type="button" onClick={() => void control(job.id, "cancel")}>
-                                {t("transfer.retryCleanup")}
-                              </button>
-                            )}
-                            {!["complete", "cancelled", "cancelling"].includes(job.status) && (
-                              <button type="button" onClick={() => void control(job.id, "cancel")}>
-                                {t("common.cancel")}
-                              </button>
-                            )}
-                            {["complete", "cancelled"].includes(job.status) && !job.error && (
-                              <button type="button" onClick={() => void control(job.id, "dismiss")}>
-                                {t("transfer.dismiss")}
-                              </button>
-                            )}
-                            {job.status === "error" && (
-                              <button
-                                type="button"
-                                data-clear-failed={job.id}
-                                onClick={() => setConfirming(job.id)}
-                              >
-                                {t("transfer.dismiss")}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                        <div className="transfer-job-progress">
-                          <div
-                            className="transfer-job-track"
-                            role="progressbar"
-                            aria-label={t("transfer.jobProgress", { name: job.name })}
-                            aria-valuemin={0}
-                            aria-valuemax={100}
-                            aria-valuenow={Math.round(percent)}
-                          >
-                            <span className="transfer-job-bar" style={{ width: `${percent}%` }} />
-                          </div>
-                          <span className="transfer-job-percent">{Math.round(percent)}%</span>
-                        </div>
-                        <div className="transfer-job-meta">
-                          <span
-                            className={
-                              job.error
-                                ? "transfer-job-meta-text is-error"
-                                : "transfer-job-meta-text"
-                            }
-                            title={meta}
-                          >
-                            {meta}
-                          </span>
-                          {job.failedFiles.length > 0 && (
-                            <button
-                              type="button"
-                              className="transfer-job-failures"
-                              aria-expanded={failureJob === job.id}
-                              onClick={() => setFailureJob(failureJob === job.id ? null : job.id)}
-                            >
-                              {t("transfer.failedFilesCount", { count: job.failedFiles.length })}
-                            </button>
-                          )}
-                        </div>
-                      </article>
-                    );
-                  }}
-                </VirtualFileRows>
-              </div>
-            </>
-          )}
-          {failureJob && records[failureJob] && (
-            <section aria-label={t("transfer.failedFilesSection")} className="transfer-failures">
-              <div className="transfer-section-head">
-                <strong title={records[failureJob].name}>
-                  {records[failureJob].name}
-                  {" · "}
-                  {t("transfer.failedFilesCount", { count: failureRows.length })}
-                </strong>
-                <button
-                  type="button"
-                  className="transfer-icon-button"
-                  aria-label={t("transfer.closeFailedFiles")}
-                  onClick={() => setFailureJob(null)}
-                >
-                  <Icon name="close" />
-                </button>
-              </div>
-              <div className="transfer-failure-rows">
-                <VirtualFileRows
-                  entries={failureRows}
-                  rowHeight={FAILURE_ROW_HEIGHT}
-                  resetKey={failureJob}
-                >
-                  {(file) => (
-                    <div className="transfer-failure-row" title={file.message}>
-                      {file.message}
-                    </div>
-                  )}
-                </VirtualFileRows>
-              </div>
-            </section>
-          )}
-          {(recoverable.length > 0 || recoveryError) && (
-            <section className="transfer-recovery">
-              <div className="transfer-section-head">
-                <strong>
-                  {t("transfer.interrupted")}
-                  {recoverable.length > 0 ? ` (${recoverable.length})` : ""}
-                </strong>
-                {recoverable.length > 0 && (
-                  <button
-                    type="button"
-                    className="transfer-head-action"
-                    onClick={() => {
-                      setBulkForget(true);
-                      setBulkClear(false);
-                      setConfirming(null);
-                    }}
-                  >
-                    {t("transfer.clearInterrupted")}
-                  </button>
-                )}
-              </div>
-              {bulkForget && recoverable.length > 0 && (
-                <div
-                  className="transfer-clear-band"
-                  role="group"
-                  aria-label={t("transfer.clearInterrupted")}
-                >
-                  <span className="transfer-clear-question">
-                    {t("transfer.clearInterruptedBulk", { count: recoverable.length })}
-                  </span>
-                  <div className="transfer-job-actions">
-                    <button type="button" onClick={() => void forgetAll()}>
-                      {t("transfer.dismiss")}
-                    </button>
-                    <button type="button" onClick={() => setBulkForget(false)}>
-                      {t("common.cancel")}
-                    </button>
-                  </div>
-                  <span className="transfer-clear-hint">{t("transfer.clearFailedHint")}</span>
-                </div>
-              )}
-              <p className="status-popover-note transfer-recovery-note">
-                {t("transfer.recoveryNote")}
-              </p>
-              {recoveryError && (
-                <div role="alert" className="status-popover-error">
-                  {recoveryError}
-                </div>
-              )}
-              <div className="transfer-recovery-rows">
-                <VirtualFileRows
-                  entries={recoveryRows}
-                  rowHeight={RECOVERY_ROW_HEIGHT}
-                  resetKey="recovery"
-                >
-                  {(entry) => {
-                    const whom =
-                      [entry.username, entry.host].filter(Boolean).join("@") +
-                      (entry.port ? `:${entry.port}` : "");
-                    // An unattributable journal says so once; there is no endpoint or
-                    // item count it could honestly report.
-                    const meta = entry.unrecognized
-                      ? t("transfer.unrecognized")
-                      : [
-                          entry.kind,
-                          whom || t("transfer.unknownEndpoint"),
-                          t("transfer.itemsCount", { count: entry.items }),
-                        ]
-                          .filter(Boolean)
-                          .join(" · ");
-                    return (
-                      <article className="transfer-recovery-row" key={entry.id}>
-                        <div className="transfer-recovery-main">
-                          <strong title={entry.name}>{entry.name}</strong>
-                          <span className="transfer-job-meta-text" title={meta}>
-                            {meta}
-                          </span>
-                        </div>
-                        <div className="transfer-job-actions">
-                          {!entry.unrecognized && (
-                            <button type="button" onClick={() => void recover(entry.id)}>
-                              {t("transfer.resume")}
-                            </button>
-                          )}
-                          <button type="button" onClick={() => void forget(entry.id)}>
-                            {t("transfer.forget")}
-                          </button>
-                        </div>
-                      </article>
-                    );
-                  }}
-                </VirtualFileRows>
-              </div>
-            </section>
-          )}
-          <details className="transfer-settings">
-            <summary>{t("transfer.settings")}</summary>
-            <div className="transfer-settings-grid">
-              <label title={t("transfer.requestsHint")}>
-                {t("transfer.requestsLabel")}
-                <input
-                  aria-label={t("transfer.requestsLabel")}
-                  type="number"
-                  min={1}
-                  max={32}
-                  value={options.requests}
-                  onChange={(e) => {
-                    const requests = Number(e.target.value);
-                    if (!Number.isInteger(requests) || requests < 1 || requests > 32) return;
-                    const next = { ...options, requests };
-                    setOptions(next);
-                    saveTransferOptions(next);
-                  }}
-                />
-              </label>
-              <label title={t("transfer.chunkHint")}>
-                {t("transfer.chunkLabel")}
-                <input
-                  aria-label={t("transfer.chunkLabel")}
-                  type="number"
-                  min={16}
-                  max={256}
-                  value={options.chunkKib}
-                  onChange={(e) => {
-                    const chunkKib = Number(e.target.value);
-                    if (!Number.isInteger(chunkKib) || chunkKib < 16 || chunkKib > 256) return;
-                    const next = { ...options, chunkKib };
-                    setOptions(next);
-                    saveTransferOptions(next);
-                  }}
-                />
-              </label>
-              <label title={t("transfer.filesHint")}>
-                {t("transfer.filesLabel")}
-                <input
-                  aria-label={t("transfer.filesLabel")}
-                  type="number"
-                  min={1}
-                  max={32}
-                  value={options.files}
-                  onChange={(e) => {
-                    const files = Number(e.target.value);
-                    if (!Number.isInteger(files) || files < 1 || files > 32) return;
-                    const next = { ...options, files };
-                    setOptions(next);
-                    saveTransferOptions(next);
-                  }}
-                />
-              </label>
-              <label title={t("transfer.rateLimitHint")}>
-                {t("transfer.rateLimitLabel")}
-                <input
-                  aria-label={t("transfer.rateLimitLabel")}
-                  type="number"
-                  min={0}
-                  max={1048576}
-                  value={rateKib(options)}
-                  onChange={(e) => {
-                    const kib = Number(e.target.value);
-                    if (!Number.isInteger(kib) || kib < 0 || kib > 1048576) return;
-                    const rateLimitBps = kib * 1024;
-                    if (!validRateLimitBps(rateLimitBps)) return;
-                    const next = { ...options, rateLimitBps };
-                    setOptions(next);
-                    saveTransferOptions(next);
-                  }}
-                />
-              </label>
-              <label className="transfer-settings-toggle" title={t("transfer.durableHint")}>
-                <input
-                  type="checkbox"
-                  checked={options.durable}
-                  onChange={(e) => {
-                    const next = { ...options, durable: e.target.checked };
-                    setOptions(next);
-                    saveTransferOptions(next);
-                  }}
-                />{" "}
-                {t("transfer.durableLabel")}
-              </label>
-              <label className="transfer-settings-toggle" title={t("transfer.tarHint")}>
-                <input
-                  type="checkbox"
-                  checked={options.tar}
-                  onChange={(e) => {
-                    const next = { ...options, tar: e.target.checked };
-                    setOptions(next);
-                    saveTransferOptions(next);
-                  }}
-                />{" "}
-                {t("transfer.tarLabel")}
-              </label>
-            </div>
-          </details>
-        </StatusPopover>
-      )}
+      {pinned && dock ? createPortal(panel, dock) : panel}
     </div>
   );
 }

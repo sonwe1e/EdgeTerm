@@ -159,6 +159,7 @@ impl Transfers {
     ) -> Result<Arc<Job>> {
         let pacer =
             (options.rate_limit_bps > 0).then(|| Arc::new(Pacer::new(options.rate_limit_bps)));
+        let context = TransferContext::new(&profile, &items);
         Ok(Arc::new(Job {
             id: id.clone(),
             session_id: session_id.clone(),
@@ -176,6 +177,7 @@ impl Transfers {
                 id,
                 session_id,
                 name,
+                context,
                 status: "queued".into(),
                 phase: "queued".into(),
                 transferred: 0,

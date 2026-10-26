@@ -214,9 +214,7 @@ export function SettingsDialog({ onClose, onDisplaySettings }: Props) {
   };
   const openTransferCenter = () => {
     onClose();
-    // The popover's open state is the transfer store's own (see StatusBar),
-    // so opening it is the action the status bar button performs.
-    useFileTransfers.getState().setOpen(true);
+    useFileTransfers.getState().openSettings();
   };
   // A data flow takes over with a native picker (and, for an SSH config
   // import, its own chooser dialog), so it starts from a closed settings

@@ -1,9 +1,7 @@
 /* Transfer centre: the status-bar affordance, the queue body and its rows.
    The frame — width, header, gutter, scroll and field language — belongs to
    popover.styles.css; this file only styles what the transfer body adds.
-   `.transfer-center-popover` stays on the popover as the selector hook other
-   panels' tests use to find it, and deliberately carries no declarations:
-   the shared frame must not be restyled per feature. */
+   The pinned variant places the same frame in the app's bottom dock. */
 
 :root .transfer-center {
   position: relative;
@@ -25,6 +23,10 @@
   margin: 0;
 }
 
+.transfer-center-popover .status-popover-body > * {
+  flex-shrink: 0;
+}
+
 /* The whole queue on one line directly under the header. */
 .transfer-center-total {
   margin: 0;
@@ -38,19 +40,19 @@
 }
 
 /* The queue's scroller: VirtualFileRows measures this element's parent, so it
-   must stay the scrolling box. Four rows tall, then the list scrolls. */
+   must stay the scrolling box, bounded even for a long queue. */
 .transfer-center-jobs {
   position: relative;
   max-height: 320px;
   overflow: auto;
 }
 
-/* ---- one queue row: status + name + actions, progress, one meta line ----- */
+/* ---- one queue row: identity, route, progress and stage ------------------ */
 .transfer-job {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  height: 76px; /* keep in step with JOB_ROW_HEIGHT in TransferCenter.tsx */
+  height: 100px; /* keep in step with JOB_ROW_HEIGHT in TransferCenter.tsx */
   padding: var(--sp-8) 0;
   box-sizing: border-box;
   overflow: hidden;
@@ -59,7 +61,7 @@
 /* A hairline between rows, never above the first: VirtualFileRows renders the
    row wrappers, so the separator hangs off them rather than off the row. It
    is drawn with an inset shadow, not a border: a border would eat one of the
-   row's 76 pixels and clip the meta line. */
+   row's fixed height and clip the meta line. */
 .transfer-center-jobs .virtual-file-rows > div + div > .transfer-job {
   box-shadow: inset 0 1px 0 var(--border);
 }
@@ -147,6 +149,43 @@
   align-items: center;
   gap: var(--sp-8);
   height: 14px;
+}
+
+.transfer-job-context {
+  height: 20px;
+  flex: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-dim);
+  font-size: var(--fs-xs);
+}
+
+.transfer-job-track.is-indeterminate .transfer-job-bar {
+  width: 35% !important;
+  opacity: 0.5;
+}
+
+.transfer-dock:empty {
+  display: none;
+}
+.transfer-dock {
+  flex: none;
+  min-height: 0;
+}
+.transfer-dock .transfer-center-popover.is-pinned {
+  position: relative;
+  inset: auto;
+  width: 100%;
+  height: clamp(170px, 30vh, 300px);
+  max-height: 40vh;
+  box-sizing: border-box;
+  border-radius: 0;
+  box-shadow: none;
+  z-index: auto;
+}
+.transfer-dock .transfer-center-jobs {
+  flex-shrink: 0;
 }
 
 .transfer-job-track {

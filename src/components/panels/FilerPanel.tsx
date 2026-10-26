@@ -332,7 +332,7 @@ function FilerPanelBase() {
     // stop pointing at it.
     setActiveDescendant(null);
   });
-  const { load, goUp, goHome } = useFilerDirectory({
+  const { load, goUp, goHome, refresh } = useFilerDirectory({
     offline,
     remoteId,
     clearSelection: resetSelection,
@@ -344,7 +344,7 @@ function FilerPanelBase() {
     setCreating,
     path,
   });
-  const { upload, uploadFolder, uploadPaths, copyPaths } = useFilerUpload({
+  const { upload, uploadFolder, uploadPaths, copyPaths, choosingUpload } = useFilerUpload({
     remoteId,
     path,
     entries,
@@ -352,11 +352,10 @@ function FilerPanelBase() {
     setBusy,
     setError: reportError,
     beginTransfer,
-    progressFor,
     finishTransfer,
     load,
     failTransfer,
-    ownsTransfer,
+    refresh,
     remoteIdRef,
     offlineReasonRef,
     updateTransferProgress,
@@ -821,7 +820,7 @@ function FilerPanelBase() {
           aria-label={remoteTitle(t("filer.uploadFilesOrFolders"))}
           aria-haspopup="menu"
           aria-expanded={uploadMenu !== null}
-          disabled={!remote || busy || !path}
+          disabled={!remote || busy || !path || choosingUpload}
         >
           <Icon name="cloud-upload" />
         </button>

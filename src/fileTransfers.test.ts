@@ -21,6 +21,7 @@ import { TransferCenter } from "./components/TransferCenter";
 import { readTransferOptions, saveTransferOptions } from "./transferSettings";
 
 const job = (id: string, changes: Partial<FileTransfer> = {}): FileTransfer => ({
+  context: null,
   revision: 1,
   id,
   sessionId: "ssh",
@@ -77,6 +78,49 @@ afterEach(() => {
 });
 
 describe("background transfer state", () => {
+  it("shows location and working stages without presenting scanning as zero-percent payload", async () => {
+    api.listFileTransfers.mockResolvedValue([
+      job("scan-stage", {
+        phase: "scanning",
+        total: 0,
+        transferred: 0,
+        context: {
+          server: "lab@fixture:22",
+          protocol: "SFTP",
+          local: "C:/data",
+          remote: "/srv/data",
+          firstUpload: true,
+          direction: "upload",
+          itemCount: 3,
+        },
+      }),
+      job("commit-stage", { phase: "committing", transferred: 1000 }),
+      job("verify-stage", { phase: "verifying resume prefix" }),
+    ]);
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    try {
+      await act(async () => root.render(h(TransferCenter)));
+      await act(async () => host.querySelector("button")!.click());
+      const scan = [...host.querySelectorAll(".transfer-job")].find((row) =>
+        row.textContent?.includes("Scanning files"),
+      )!;
+      expect(scan.textContent).toContain("↑ Upload");
+      expect(scan.textContent).toContain("C:/data → SFTP lab@fixture:22 /srv/data (+2 more)");
+      expect(scan.querySelector('[role="progressbar"]')!.hasAttribute("aria-valuenow")).toBe(false);
+      const commit = [...host.querySelectorAll(".transfer-job")].find((row) =>
+        row.textContent?.includes("Finalizing file"),
+      )!;
+      expect(commit.querySelector(".transfer-status")!.textContent).toBe("Running");
+      expect(commit.querySelector('[role="progressbar"]')!.getAttribute("aria-valuetext")).toBe(
+        "Finalizing file",
+      );
+      expect(host.textContent).toContain("Verifying existing data");
+      expect(host.querySelector('[role="progressbar"] button')).toBeNull();
+    } finally {
+      act(() => root.unmount());
+    }
+  });
   it("merges a large snapshot once while retaining newer live events and removed jobs", () => {
     const state = useFileTransfers.getState();
     state.update(job("bulk-live", { revision: 3, transferred: 900 }));

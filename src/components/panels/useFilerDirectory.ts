@@ -48,6 +48,40 @@ export function useFilerDirectory({
   /** The last `filerTarget.token` this panel navigated to. */
   const consumedTarget = useRef(0);
   const listRequest = useRef(0);
+  const refreshRequest = useRef(0);
+  const pathRef = useRef(path);
+  pathRef.current = path;
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+
+  /** Background completion updates rows without changing navigation, selection or errors. */
+  const refresh = useStableCallback(async (sessionId: string, target: string) => {
+    if (offline || remoteId !== sessionId || pathRef.current !== target) return;
+    const request = listRequest.current;
+    const refreshId = ++refreshRequest.current;
+    try {
+      const listing = await api.sftpList(sessionId, target);
+      if (
+        !alive.current ||
+        remoteIdRef.current !== sessionId ||
+        pathRef.current !== target ||
+        refreshId !== refreshRequest.current ||
+        request !== listRequest.current
+      )
+        return;
+      setEntries((previous) =>
+        sameListing(previous, listing.entries) ? previous : listing.entries,
+      );
+      rememberListing(sessionId, target, listing.path, listing.entries);
+    } catch {
+      // A background refresh must not replace an actionable transfer error.
+    }
+  });
 
   /**
    * Lists `target` and shows it. Resolves false if the listing failed; the
@@ -184,5 +218,5 @@ export function useFilerDirectory({
     }
   };
 
-  return { load, goUp, goHome };
+  return { load, goUp, goHome, refresh };
 }

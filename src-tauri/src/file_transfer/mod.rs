@@ -60,6 +60,7 @@ fn test_job_items(root: PathBuf, items: Vec<Item>) -> Arc<Job> {
             id: "test".into(),
             session_id: "test".into(),
             name: "test".into(),
+            context: None,
             status: "running".into(),
             phase: "transferring".into(),
             transferred: 0,
