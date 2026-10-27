@@ -7,15 +7,18 @@ import { useStore } from "../store";
 import { browserAfterEach, mount, twoFrames } from "./browserHarness";
 import "../styles.css";
 
+const fixtureSamples = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 vi.mock("../workbench/hostSampling", () => ({
   useHostSampling: () => {},
   useHostSamples: Object.assign(
-    (selector: (state: { samples: object }) => unknown) => selector({ samples: {} }),
-    { getState: () => ({ samples: {} }) },
+    (selector: (state: { samples: object }) => unknown) =>
+      selector({ samples: fixtureSamples.current }),
+    { getState: () => ({ samples: fixtureSamples.current }) },
   ),
 }));
 const initial = useWorkbench.getState();
 beforeEach(async () => {
+  fixtureSamples.current = {};
   await page.viewport(1100, 720);
   useStore.setState({ language: "en" });
   useWorkbench.setState({
@@ -36,6 +39,19 @@ beforeEach(async () => {
       })),
     },
   });
+});
+
+it("distinguishes a zero network rate from an unavailable reading", async () => {
+  fixtureSamples.current = {
+    "dev@one:22": {
+      at: Date.now(),
+      metrics: { networkReceiveBps: 0, networkSendBps: null, gpuStatus: "unsupported", gpus: [] },
+      history: [],
+    },
+  };
+  const triggers = fixture();
+  await userEvent.click(triggers[0]);
+  expect(document.querySelector(".wb-host-detail")!.textContent).toContain("↓0 B/s · ↑—/s");
 });
 afterEach(async () => {
   await browserAfterEach();

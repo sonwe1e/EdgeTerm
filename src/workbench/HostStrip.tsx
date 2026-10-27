@@ -145,8 +145,14 @@ function HostDetail({
         </dd>
         <dt>{t("wb.network")}</dt>
         <dd>
-          ↓{metrics?.networkReceiveBps ? transferBytes(Math.round(metrics.networkReceiveBps)) : "—"}
-          /s · ↑{metrics?.networkSendBps ? transferBytes(Math.round(metrics.networkSendBps)) : "—"}
+          ↓
+          {metrics?.networkReceiveBps != null
+            ? transferBytes(Math.round(metrics.networkReceiveBps))
+            : "—"}
+          /s · ↑
+          {metrics?.networkSendBps != null
+            ? transferBytes(Math.round(metrics.networkSendBps))
+            : "—"}
           /s
         </dd>
         <dt>{t("wb.gpu")}</dt>
