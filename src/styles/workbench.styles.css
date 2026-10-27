@@ -1351,6 +1351,15 @@
   min-height: 74px;
 }
 
+.wb-console.is-collapsed {
+  height: auto;
+  min-height: 0;
+}
+
+.wb-console-body[hidden] {
+  display: none;
+}
+
 .wb-console-head {
   display: flex;
   align-items: center;
@@ -1983,6 +1992,15 @@
 }
 
 @container workbench (max-width: 600px) {
+  /* In a narrow workbench, retain distinct server names and open the full
+     metrics on demand. This also keeps several host chips on one line. */
+  .wb-hosts.is-multi .wb-host-name {
+    max-width: none;
+  }
+  .wb-hosts.is-multi .wb-host-user,
+  .wb-hosts.is-multi .wb-host-metrics {
+    display: none;
+  }
   .wb-console-head {
     flex: none;
     flex-wrap: wrap;

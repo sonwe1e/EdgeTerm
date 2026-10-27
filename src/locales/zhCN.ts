@@ -1189,6 +1189,8 @@ export const zhCN: Catalog = {
   "wb.stop": "停止",
   "wb.attach": "附着终端",
   "wb.runConsole": "运行控制台",
+  "wb.collapseConsole": "收起运行控制台",
+  "wb.expandConsole": "展开运行控制台",
   "wb.runDir": "运行目录",
   "wb.logPath": "日志",
   "wb.code": "代码",

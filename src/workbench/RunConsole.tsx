@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { errorText } from "../errorInfo";
 import { useT } from "../useT";
 import { transferBytes } from "../fileTransfers";
@@ -30,6 +30,8 @@ export function RunConsole({
   const [log, setLog] = useState("");
   const [logError, setLogError] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [collapsed, setCollapsed] = useState(false);
+  const bodyId = useId();
   const offset = useRef(0);
   const pre = useRef<HTMLPreElement>(null);
   const follow = useRef(true);
@@ -108,7 +110,10 @@ export function RunConsole({
   const stale = live && checked > 0 && now - checked > staleAfter;
   const duration = formatDuration(run.startedAt, run.endedAt, now);
   return (
-    <section className="wb-console" aria-label={t("wb.runConsole")}>
+    <section
+      className={`wb-console${collapsed ? " is-collapsed" : ""}`}
+      aria-label={t("wb.runConsole")}
+    >
       <div className="wb-console-head">
         <span className={`wb-status-pill is-${effectiveStatus}`}>
           <span className="wb-run-dot" />
@@ -125,6 +130,17 @@ export function RunConsole({
               : t("wb.notChecked")}
         </span>
         <div className="wb-console-actions">
+          <button
+            type="button"
+            className="wb-icon-button"
+            aria-label={t(collapsed ? "wb.expandConsole" : "wb.collapseConsole")}
+            title={t(collapsed ? "wb.expandConsole" : "wb.collapseConsole")}
+            aria-expanded={!collapsed}
+            aria-controls={bodyId}
+            onClick={() => setCollapsed((value) => !value)}
+          >
+            <Icon name={collapsed ? "chevron-right" : "chevron-down"} />
+          </button>
           <button
             type="button"
             className="wb-icon-button"
@@ -154,10 +170,10 @@ export function RunConsole({
           </button>
         </div>
       </div>
-      {stale && (
+      {stale && !collapsed && (
         <p className="wb-console-warning">{t("wb.staleStatus", { time: formatClock(checked) })}</p>
       )}
-      <div className="wb-console-body">
+      <div className="wb-console-body" id={bodyId} hidden={collapsed}>
         <div className="wb-run-detail">
           <dl>
             <dt>{t("wb.server")}</dt>

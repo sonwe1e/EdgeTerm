@@ -428,6 +428,28 @@ describe("workbench layout", () => {
     expect(document.querySelector(".cm-content")).not.toBeNull();
     expect(useWorkbench.getState().docs).toHaveLength(1);
     await page.screenshot({ path: "../../artifacts/usability/workbench-editor-900.png" });
+
+    // At the dock-reduced width host names should stay distinct and the live
+    // run can be collapsed without losing its identity or the open editor.
+    const chips = [...document.querySelectorAll<HTMLElement>(".wb-host-chip")];
+    expect(chips).toHaveLength(2);
+    expect(
+      Math.abs(chips[0].getBoundingClientRect().top - chips[1].getBoundingClientRect().top),
+    ).toBeLessThan(2);
+    for (const chip of chips) {
+      const name = chip.querySelector<HTMLElement>(".wb-host-name")!;
+      expect(name.scrollWidth).toBeLessThanOrEqual(name.clientWidth + 1);
+    }
+    const editorHeight = document
+      .querySelector<HTMLElement>(".wb-center")!
+      .getBoundingClientRect().height;
+    await userEvent.click(page.getByRole("button", { name: "收起运行控制台" }));
+    expect(
+      document.querySelector<HTMLElement>(".wb-center")!.getBoundingClientRect().height,
+    ).toBeGreaterThan(editorHeight);
+    expect(document.querySelector(".wb-status-pill.is-running")).not.toBeNull();
+    await userEvent.click(page.getByRole("button", { name: "展开运行控制台" }));
+    expect(document.querySelector(".cm-content")).not.toBeNull();
     document.documentElement.style.removeProperty("--panel-font-size");
     surface.container.style.width = "100%";
     await page.viewport(1440, 900);

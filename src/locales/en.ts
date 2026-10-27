@@ -1266,6 +1266,8 @@ export const en = {
   "wb.stop": "Stop",
   "wb.attach": "Attach terminal",
   "wb.runConsole": "Run console",
+  "wb.collapseConsole": "Collapse run console",
+  "wb.expandConsole": "Expand run console",
   "wb.runDir": "Run directory",
   "wb.logPath": "Log",
   "wb.code": "Code",

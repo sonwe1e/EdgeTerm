@@ -36,7 +36,7 @@ export function HostStrip() {
 
   if (hosts.length === 0) return null;
   return (
-    <div className="wb-hosts" aria-label={t("wb.hosts")}>
+    <div className={`wb-hosts${hosts.length > 1 ? " is-multi" : ""}`} aria-label={t("wb.hosts")}>
       <span className="wb-hosts-label">{t("wb.hosts")}</span>
       {hosts.map((host) => {
         const sample = samples[host.key];
