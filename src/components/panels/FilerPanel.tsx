@@ -92,6 +92,7 @@ function FilerPanelBase() {
   const t = useT();
   const tab = useActiveTab();
   const theme = useStore((s) => s.theme);
+  const panelFontSize = useStore((s) => s.panelFontSize);
   const sshFiles = Boolean(tab?.info.kind === "ssh" && tab.info.supportsRemoteFiles);
   const remote = sshFiles && tab?.state === "connected";
   // An SSH session that is still connecting or has dropped shows no files at
@@ -198,6 +199,8 @@ function FilerPanelBase() {
   /** The listbox: the rows' scroll container and the single Tab stop. */
   const listRef = useRef<HTMLDivElement>(null);
   const columnsRef = useRef<HTMLDivElement>(null);
+  const [columnOverflow, setColumnOverflow] = useState(false);
+  const [columnsAtEnd, setColumnsAtEnd] = useState(false);
   // The caption row is a sibling of the scroll container, not a child of it,
   // so nothing tells it how wide the list's scrollbar is and its columns sat
   // a scrollbar to the right of the ones they named. Measured rather than
@@ -224,8 +227,36 @@ function FilerPanelBase() {
     return () => resize.disconnect();
   }, [entries.length]);
 
-  // When the listing is wider than the panel — the name column holding a
-  // width of its own — the rows scroll sideways inside the list, and the
+  // Overlay scrollbars can disappear at rest. Offer a visible, keyboardable
+  // way to reach columns when the current font or a saved width overflows.
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const header = columnsRef.current;
+    if (!list || !header) return;
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      const maximum = Math.max(0, list.scrollWidth - list.clientWidth);
+      setColumnOverflow(maximum > 1);
+      setColumnsAtEnd(maximum > 1 && list.scrollLeft >= maximum - 1);
+    };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(measure);
+    };
+    const resize = new ResizeObserver(schedule);
+    resize.observe(list);
+    resize.observe(header);
+    list.addEventListener("scroll", schedule, { passive: true });
+    schedule();
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      resize.disconnect();
+      list.removeEventListener("scroll", schedule);
+    };
+  }, [entries.length, panelFontSize]);
+
+  // When the name reserve or an explicit width makes the listing wider than
+  // the panel, the rows scroll sideways inside the list, and the
   // caption row above the scroller has to follow: both draw one grid, and it
   // is only honest while every track sits at the same x. A transform, not a
   // scroll position: the caption row is not a scroller, and translating it
@@ -427,7 +458,6 @@ function FilerPanelBase() {
   const remoteTitle = (label: string) => (remote ? label : `${label}${t("filer.sshOnly")}`);
   // The Windows drive list is virtual: drives can be opened but not created,
   // deleted or navigated above.
-  const panelFontSize = useStore((s) => s.panelFontSize);
   /** Row pitch of the virtual list; also the step for scroll-into-view. */
   const rowHeight = Math.max(24, panelFontSize + 10) + 2;
   // The footer walks every entry; a large directory must not pay that on
@@ -1351,6 +1381,19 @@ function FilerPanelBase() {
             )}
             {busy && <span>{t("filer.working")}</span>}
           </>
+        )}
+        {columnOverflow && (
+          <button
+            type="button"
+            className="filer-more-columns"
+            onClick={() => {
+              const list = listRef.current;
+              if (list) list.scrollLeft = columnsAtEnd ? 0 : list.scrollWidth;
+            }}
+          >
+            {t(columnsAtEnd ? "filer.showNames" : "filer.showMoreColumns")}
+            <Icon name={columnsAtEnd ? "arrow-left" : "arrow-right"} />
+          </button>
         )}
       </div>
     </div>

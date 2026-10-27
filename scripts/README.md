@@ -81,10 +81,12 @@ terminal session is involved — that is the gutter gate's path) and asserts
 the audited 12/18px literals (App variable, inner row height, date-column
 font, consecutive-row pitch) at 1100px and the minimum desktop size read from
 `tauri.conf.json` (currently 900×560), with 10,000 windowed entries. At supported
-sizes it also requires each rendered date's text to fit its cell and the list
-viewport. The older 760px browser probe remains: font, pitch and virtualization
-still gate the run, while date clipping below the desktop minimum is reported
-explicitly in `boundaryFindings`, not treated as a supported-window failure.
+sizes it also requires the fixture names to fit initially and each rendered
+date to fit its cell and the list viewport after revealing the counted columns.
+When the panel is too narrow to show both, it scrolls horizontally and provides
+a visible control to reveal the other columns. The older 760px browser probe
+remains: font, pitch and virtualization still gate the run; needing horizontal
+scrolling below the desktop minimum is recorded in `boundaryFindings`.
 Screenshots at every width with the 18px panel font preserve that evidence.
 The IPC whitelist includes recoverable-transfer listing and the close-to-tray
 preference; any other unexpected command still fails the gate.

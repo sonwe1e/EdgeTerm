@@ -101,6 +101,11 @@ window.__appFontChain = {
   calls,
   unknown,
   async font(size) { flushSync(() => useStore.getState().setPanelFontSize(size)); await frames(); },
+  async columns(end) {
+    const list = document.querySelector(".filer-list");
+    list.scrollLeft = end ? list.scrollWidth : 0;
+    await frames();
+  },
   sample() {
     const list = document.querySelector(".filer-list");
     const rows = [...list.querySelectorAll(".filer-entry")];
@@ -111,6 +116,11 @@ window.__appFontChain = {
     })).filter((pair) => pair.delta === 1);
     const app = document.querySelector(".app");
     const dateFont = rows[0]?.querySelector(".filer-col-date");
+    const namesFit = rows.every((row) => {
+      const label = row.querySelector(".row-label");
+      return label && label.scrollWidth <= label.clientWidth + 1 &&
+        label.getBoundingClientRect().right <= list.getBoundingClientRect().left + list.clientWidth + 0.5;
+    });
     const datesFit = rows.every((row) => {
       const date = row.querySelector(".filer-col-date");
       if (!date?.textContent) return true;
@@ -120,13 +130,15 @@ window.__appFontChain = {
       const cell = date.getBoundingClientRect();
       const viewport = list.getBoundingClientRect();
       return text.width > 0 && text.left >= cell.left - 0.5 &&
-        text.right <= cell.right + 0.5 && text.right <= viewport.left + list.clientWidth + 0.5;
+        text.right <= cell.right + 0.5 && text.left >= viewport.left - 0.5 &&
+        text.right <= viewport.left + list.clientWidth + 0.5;
     });
     return {
       fontCss: getComputedStyle(app).getPropertyValue("--panel-font-size"),
       rowPitch: pairs.map((pair) => pair.gap),
       entryHeight: rows[0]?.getBoundingClientRect().height ?? null,
       dateFont: dateFont ? getComputedStyle(dateFont).fontSize : null,
+      namesFit,
       datesFit,
       mountedRows: rows.length,
       listHeight: list.clientHeight,
@@ -256,17 +268,20 @@ try {
   // values re-derived from the code under test.
   const failures = [];
   const expectState = async (name, font, pitch, innerHeight, supportedWindow) => {
+    await invoke("columns", false);
     const value = await sample();
+    await invoke("columns", true);
+    const atEnd = await sample();
+    await invoke("columns", false);
     const checks = {
       appVariable: value.fontCss === `${font}px`,
       pitch:
         value.rowPitch.length > 1 && value.rowPitch.every((gap) => Math.abs(gap - pitch) < 0.1),
       innerHeight: value.entryHeight !== null && Math.abs(value.entryHeight - innerHeight) < 0.1,
       dateFont: value.dateFont === `${font - 2}px`,
-      // Full dates are required at every supported desktop size. Keep the
-      // old 760px probe, but report its clipping separately: Tauri cannot
-      // create that window. All font/pitch/virtualization checks still apply.
-      ...(supportedWindow ? { datesFit: value.datesFit } : {}),
+      // Names must be identifiable at the initial scroll position, and full
+      // dates must be reachable when the user reveals the counted columns.
+      ...(supportedWindow ? { namesFit: value.namesFit, datesReachable: atEnd.datesFit } : {}),
       windowed: value.mountedRows < 100 && value.mountedRows > 1,
     };
     const failed = Object.entries(checks)
@@ -280,7 +295,7 @@ try {
       supportedWindow,
       passed,
       failedChecks: failed,
-      sample: value,
+      sample: { ...value, datesReachable: atEnd.datesFit },
     });
     if (!passed) failures.push({ name, failedChecks: failed, sample: value });
   };
@@ -309,7 +324,7 @@ try {
     .filter((entry) => !entry.supportedWindow && !entry.sample.datesFit)
     .map((entry) => ({
       name: entry.name,
-      finding: "date clipping below the desktop minimum",
+      finding: "date requires horizontal scrolling below the desktop minimum",
       minimum,
     }));
   const report = {
@@ -318,7 +333,7 @@ try {
     channel,
     subjectRoot,
     scope:
-      "Production build (real vite.config). Real App → store.setPanelFontSize → App-owned --panel-font-size → FilerPanel rowHeight + real CSS row height → virtual rows; 10k synthetic entries; consecutive-row pitch within 0.1px of 26/30; full dates required at supported desktop sizes; 760px date clipping reported as a boundary finding; mounted rows < 100 (windowed); unexpected IPC recorded and gated.",
+      "Production build (real vite.config). Real App → store.setPanelFontSize → App-owned --panel-font-size → FilerPanel rowHeight + real CSS row height → virtual rows; 10k synthetic entries; consecutive-row pitch within 0.1px of 26/30; names fit initially and full dates are reachable by horizontal scrolling at supported desktop sizes; 760px date scrolling reported as a boundary finding; mounted rows < 100 (windowed); unexpected IPC recorded and gated.",
     minimum,
     boundaryFindings,
     passedAll,

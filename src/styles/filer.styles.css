@@ -218,21 +218,29 @@
   --filer-date-floor: max(11.4ch, calc(var(--filer-cell-fs) * 8.2));
   --filer-size-min: 4.5ch;
   --filer-date-min: 6ch;
-  /* The name column is never squeezed to nothing, whatever else is on
-      screen: its track refuses to cross this even in the flexible state. */
-  --filer-name-min: max(8ch, 64px);
+  /* Keep enough of a name to distinguish short files at large panel fonts.
+     If the three columns no longer fit, the existing horizontal scroller
+     exposes the counted columns instead of squeezing names to a few letters. */
+  --filer-name-min: max(14ch, 64px);
   /* The name column's track: the width the user dragged, or the flexible
      remainder of the panel while nobody has dragged it. */
   --filer-name-w: var(--filer-name-user, 1fr);
   --filer-size-w: var(--filer-size-user, var(--filer-size-floor));
   --filer-date-w: var(--filer-date-user, var(--filer-date-floor));
+  --filer-min-grid: calc(
+    16px +
+    var(--filer-name-min) +
+    var(--filer-size-w) +
+    var(--filer-date-w) +
+    var(--sp-6) +
+    var(--sp-6) +
+    var(--sp-6)
+  );
   display: grid;
   align-items: center;
-  /* Without a dragged name width the name track is the flexible one and
-     takes whatever room the counted columns leave. With one, all four tracks
-     are fixed and the grid sizes to their sum (see the max-content rule
-     below): wider than the panel means sideways scrolling, not a silent
-     squeeze of the widths the user set. */
+  /* The name track takes the remaining room, but not less than its reserve.
+     Explicit widths are fixed; when the tracks cannot fit, the scroller
+     exposes the counted columns without silently squeezing them. */
   grid-template-columns:
     16px
     minmax(var(--filer-name-min), var(--filer-name-w, 1fr))
@@ -249,6 +257,8 @@
    everything the row prints. */
 .filer-panel[data-name-fixed] .filer-columns,
 .filer-panel[data-name-fixed] .filer-entry {
+  /* An explicit resize can still narrow the name past the default reserve. */
+  --filer-name-min: max(8ch, 64px);
   width: max-content;
   min-width: 100%;
 }
@@ -348,6 +358,7 @@
 
 .filer-columns {
   height: var(--h-control-sm);
+  min-width: calc(var(--filer-min-grid) + var(--sp-12) + var(--sp-12) + var(--filer-sb-w, 0px));
   padding: 0 calc(var(--sp-12) + var(--filer-sb-w, 0px)) 0 var(--sp-12);
   color: var(--fg-faint);
   font-size: var(--filer-cell-fs);
@@ -368,6 +379,24 @@
 
 .filer-list {
   transition: background-color 100ms ease;
+}
+
+.filer-more-columns {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-left: auto;
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+
+.filer-more-columns:hover {
+  color: var(--fg);
+}
+
+.filer-more-columns:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
 }
 
 /* A clicked list takes the keys for type-to-select (upstream issue #108). The
@@ -525,6 +554,7 @@
    is also what it gives the virtualiser as its row pitch — one source for the
    two numbers that have to agree, plus a margin either side. */
 .filer-entry {
+  min-width: calc(var(--filer-min-grid) + var(--sp-12));
   height: var(--filer-row-h, max(24px, calc(var(--panel-font-size) + 10px)));
   /* The hover and selection backgrounds themselves are declared on `.row`
      in panels.styles.css, but a transition belongs to the element that

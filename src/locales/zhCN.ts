@@ -952,6 +952,8 @@ export const zhCN: Catalog = {
   "transfer.viewFailure": "查看失败详情：{name}",
   "transfer.failureDetails": "失败详情",
   "transfer.closeDetails": "关闭详情",
+  "filer.showMoreColumns": "更多列",
+  "filer.showNames": "文件名",
   "transfer.failedFilesCount": "{count} 个失败文件",
   "transfer.closeFailedFiles": "关闭失败文件",
 

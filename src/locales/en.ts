@@ -1022,6 +1022,8 @@ export const en = {
   "transfer.viewFailure": "View failure details: {name}",
   "transfer.failureDetails": "Failure details",
   "transfer.closeDetails": "Close details",
+  "filer.showMoreColumns": "More columns",
+  "filer.showNames": "Names",
   "transfer.failedFilesCount": "{count} failed files",
   "transfer.closeFailedFiles": "Close failed files",
 

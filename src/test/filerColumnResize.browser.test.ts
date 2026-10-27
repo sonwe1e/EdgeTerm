@@ -1,6 +1,6 @@
 import { createElement as h } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { browserAfterEach, mouse, mount, pagePoint, twoFrames } from "./browserHarness";
 import { FilerPanel } from "../components/panels/FilerPanel";
 import { measureCssLength } from "../filerColumns";
@@ -13,8 +13,8 @@ vi.mock("../api", async (original) => ({
   localList: vi.fn(async (path: string) => ({
     path,
     entries: Array.from({ length: 12 }, (_, index) => ({
-      name: `file${index}.txt`,
-      path: `${path}/file${index}.txt`,
+      name: `entry${index}.txt`,
+      path: `${path}/entry${index}.txt`,
       isDir: false,
       isSymlink: false,
       size: 10,
@@ -67,18 +67,53 @@ async function dragHandleTo(handle: () => HTMLElement, x: number) {
   await twoFrames();
 }
 
-async function open() {
+async function open(width = 460, font = 12) {
   await page.viewport(900, 720);
+  useStore.setState({ panelFontSize: font });
   mount(
     h(
       "div",
-      { style: { width: 460, height: 650, display: "flex", margin: "24px auto" } },
+      {
+        className: "app",
+        style: {
+          width,
+          height: 650,
+          display: "flex",
+          margin: "24px auto",
+          "--panel-font-size": `${font}px`,
+        },
+      },
       h(FilerPanel),
     ),
   );
   await expect.poll(() => document.querySelector(".filer-entry") !== null).toBe(true);
   await twoFrames();
 }
+
+it("keeps distinct short filenames readable at the supported large font while retaining the dated columns", async () => {
+  await open(300, 18);
+  const labels = [...document.querySelectorAll<HTMLElement>(".filer-entry .row-label")];
+  expect(labels.length).toBeGreaterThan(1);
+  for (const label of labels.slice(0, 2)) {
+    expect(label.scrollWidth, label.textContent ?? "").toBeLessThanOrEqual(label.clientWidth + 1);
+  }
+  const scroller = list();
+  await userEvent.click(page.getByRole("button", { name: "More columns" }));
+  await twoFrames();
+  const date = rowDate();
+  expect(date.getBoundingClientRect().right).toBeLessThanOrEqual(
+    scroller.getBoundingClientRect().right + 1,
+  );
+  expect(date.scrollWidth).toBeLessThanOrEqual(date.clientWidth + 1);
+  expect(dateCell().getBoundingClientRect().left).toBeCloseTo(date.getBoundingClientRect().left, 1);
+  const rightEdge = scroller.scrollLeft;
+  scroller.focus();
+  await userEvent.keyboard("{ArrowDown}");
+  await twoFrames();
+  expect(scroller.scrollLeft).toBeCloseTo(rightEdge, 0);
+  await userEvent.click(page.getByRole("button", { name: "Names" }));
+  expect(scroller.scrollLeft).toBe(0);
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -179,6 +214,13 @@ it("pins the name column at its rendered width and pushes the columns after it",
   expect(sizeCell().getBoundingClientRect().left - sizeLeftBefore).toBeGreaterThan(55);
   expect(dateCell().getBoundingClientRect().left - dateLeftBefore).toBeGreaterThan(55);
   expect(panel().hasAttribute("data-name-fixed")).toBe(true);
+});
+
+it("lets an explicit name resize go below the automatic large-font reserve", async () => {
+  await open(300, 18);
+  const before = nameCell().getBoundingClientRect().width;
+  await dragHandleTo(nameHandle, pagePoint(nameHandle(), 0.5, 0.5).x - 45);
+  expect(nameCell().getBoundingClientRect().width).toBeLessThan(before - 30);
 });
 
 it("scrolls a listing wider than the panel under a caption that follows it", async () => {
