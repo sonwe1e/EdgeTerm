@@ -721,6 +721,29 @@
     background-color 100ms ease;
 }
 
+.sender-command-options {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--h-control-xs);
+  height: 100%;
+  padding: 0;
+  border-left: 1px solid var(--border);
+  color: var(--fg-dim);
+}
+
+.sender-command-options:hover,
+.sender-command-options:focus-visible {
+  color: var(--fg);
+  background: var(--bg-hover);
+}
+
+.sender-command-options:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 /* Hover answers with the border and the fill, the way every other surface in
    the app does. The 1px lift this used to do was the only transform-hover in
    the interface, and it made the library's tags jump against the rows beside

@@ -7,6 +7,7 @@ import { firstLine } from "../../senderUnits";
 import type { Tab } from "../../store";
 import { type LineEnding, type SavedCommand } from "../../types";
 import { Icon } from "../icons";
+import { SenderCommandOptions } from "./SenderCommandOptions";
 import type { CommandContextMenu, Editing } from "./senderShared";
 import { Target } from "./senderShared";
 
@@ -107,11 +108,15 @@ export function SenderQuickbar({
                 className="sender-command-load"
                 data-own-tooltip
                 aria-label={t("sender.sendAria", { name: command.name, text: command.text })}
-                // Not `disabled`: a disabled button swallows the right click,
-                // and the menu is the tag's only way to its options.
+                // Not `disabled`: a disabled button swallows the existing
+                // right-click shortcut while a command is being sent.
                 aria-disabled={running}
                 onMouseEnter={(event) => showCommandTooltip(command, event.currentTarget)}
-                onMouseLeave={hideCommandTooltip}
+                onMouseLeave={(event) => {
+                  if (document.activeElement !== event.currentTarget) hideCommandTooltip();
+                }}
+                onFocus={(event) => showCommandTooltip(command, event.currentTarget)}
+                onBlur={hideCommandTooltip}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => {
                   if (running) return;
@@ -122,6 +127,13 @@ export function SenderQuickbar({
                 <Icon name="run-compact" />
                 <span>{command.name}</span>
               </button>
+              <SenderCommandOptions
+                command={command}
+                t={t}
+                hideCommandTooltip={hideCommandTooltip}
+                setSelectedCommandId={setSelectedCommandId}
+                setContextMenu={setContextMenu}
+              />
             </div>
           ))
         )}

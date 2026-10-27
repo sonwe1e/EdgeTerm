@@ -150,3 +150,23 @@ it("reloads the mounted library after imports and discards a stale edit", async 
   expect(host.textContent).not.toContain("Check status");
   expect(host.querySelector(".sender-command-tag.is-editing")).toBeNull();
 });
+
+it("previews a focused saved command and provides a keyboard-reachable options button", async () => {
+  await render(true);
+  const send = host.querySelector<HTMLButtonElement>(".sender-command-load")!;
+  await act(async () => {
+    send.focus();
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  });
+  expect(host.querySelector('[role="tooltip"]')?.textContent).toContain("status");
+  const options = host.querySelector<HTMLButtonElement>('[aria-label="Options for Check status"]');
+  expect(options).not.toBeNull();
+  await click(options!);
+  expect(document.querySelector('[role="menuitem"]')?.textContent).toContain("Edit");
+});
+
+it("localizes the expanded command's accessible name", async () => {
+  useStore.setState({ language: "zh-CN" });
+  await render();
+  expect(host.querySelector(".sender-command-load")?.getAttribute("aria-label")).toContain("发送");
+});

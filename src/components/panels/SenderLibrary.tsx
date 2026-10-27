@@ -3,6 +3,7 @@ import type { Translate } from "../../i18n";
 import { senderColor, senderColorStyle } from "../../senderColors";
 import { type LineEnding, type SavedCommand } from "../../types";
 import { Icon } from "../icons";
+import { SenderCommandOptions } from "./SenderCommandOptions";
 import type { CommandContextMenu, Editing } from "./senderShared";
 
 interface Props {
@@ -119,11 +120,15 @@ export function SenderLibrary({
                 className="sender-command-load"
                 type="button"
                 data-own-tooltip
-                aria-label={`Send ${command.name}: ${command.text}`}
-                // Not `disabled`, which would swallow the right click.
+                aria-label={t("sender.sendAria", { name: command.name, text: command.text })}
+                // Not `disabled`, which would swallow the right-click shortcut.
                 aria-disabled={running}
                 onMouseEnter={(event) => showCommandTooltip(command, event.currentTarget)}
-                onMouseLeave={hideCommandTooltip}
+                onMouseLeave={(event) => {
+                  if (document.activeElement !== event.currentTarget) hideCommandTooltip();
+                }}
+                onFocus={(event) => showCommandTooltip(command, event.currentTarget)}
+                onBlur={hideCommandTooltip}
                 // A press here must not move the focus: the point of a
                 // saved command is to send it and keep typing in the
                 // session, and the default focus change would leave the
@@ -139,6 +144,13 @@ export function SenderLibrary({
               >
                 {command.name}
               </button>
+              <SenderCommandOptions
+                command={command}
+                t={t}
+                hideCommandTooltip={hideCommandTooltip}
+                setSelectedCommandId={setSelectedCommandId}
+                setContextMenu={setContextMenu}
+              />
             </div>
           ))}
         </div>
