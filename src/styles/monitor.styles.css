@@ -13,7 +13,9 @@
    the box, the hover/open tint and `nowrap`, so this only clips a cluster that
    outgrows the bar. */
 .resource-summary {
-  max-width: 100%;
+  /* status-item has 4px negative margins on both sides. Its parent's width
+     therefore excludes 8px of the button; include them when capping it. */
+  max-width: calc(100% + var(--sp-8));
   overflow: hidden;
 }
 

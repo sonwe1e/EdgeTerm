@@ -358,3 +358,75 @@ describe("the resource monitor breakpoint at 1100px", () => {
     expect(displays()).toEqual({ wide: "none", compact: "inline" });
   });
 });
+
+describe("resource summary containment", () => {
+  afterEach(async () => {
+    await browserAfterEach();
+    await page.viewport(1100, 720);
+  });
+  it("does not clip the last resource reading inside the status button", async () => {
+    vi.mocked(api.sampleResources).mockResolvedValue({
+      status: "ok",
+      cpuPercent: 22.9,
+      cpuStatus: "ok",
+      memory: { usedBytes: 43, totalBytes: 100 },
+      memoryStatus: "ok",
+      capacity: null,
+      capacityStatus: "unsupported",
+      diskReadBps: null,
+      diskWriteBps: null,
+      diskStatus: "unsupported",
+      networkReceiveBps: null,
+      networkSendBps: null,
+      networkStatus: "unsupported",
+      gpus: [
+        {
+          index: 0,
+          name: "GPU",
+          utilization: 44,
+          usedBytes: null,
+          totalBytes: null,
+          temperature: null,
+        },
+      ],
+      gpuStatus: "ok",
+      npus: [
+        {
+          index: 0,
+          name: "NPU",
+          utilization: 34.9,
+          usedBytes: null,
+          totalBytes: null,
+          temperature: null,
+        },
+      ],
+      npuStatus: "ok",
+    });
+    await page.viewport(1100, 720);
+    mount(
+      createElement(
+        "div",
+        { className: "app" },
+        createElement(
+          "div",
+          { className: "statusbar" },
+          createElement(ResourceMonitorBar, { tab: tabFor("monitor", "ssh") }),
+        ),
+      ),
+    );
+    await expect.poll(() => document.querySelectorAll(".vital-value").length).toBe(4);
+    for (const width of [1100, 1440]) {
+      await page.viewport(width, 720);
+      await twoFrames();
+      const line = document
+        .querySelector<HTMLElement>(".resource-summary-line")!
+        .getBoundingClientRect();
+      const values = document.querySelectorAll<HTMLElement>(".vital-value");
+      const content =
+        width === 1100
+          ? document.querySelector<HTMLElement>(".resource-compact")!
+          : values[values.length - 1];
+      expect(content.getBoundingClientRect().right).toBeLessThanOrEqual(line.right + 0.5);
+    }
+  });
+});
