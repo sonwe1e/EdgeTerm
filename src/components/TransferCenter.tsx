@@ -133,6 +133,19 @@ export function TransferCenter() {
   const [recoverable, setRecoverable] = useState<api.RecoverableTransfer[]>([]);
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
   const [failureJob, setFailureJob] = useState<string | null>(null);
+  const [detail, setDetail] = useState<{ jobId: string; title: string; text: string } | null>(null);
+  const detailInput = useRef<HTMLTextAreaElement>(null);
+  const detailTrigger = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (detail && open) detailInput.current?.focus();
+  }, [detail, open]);
+  useEffect(() => {
+    if (!open || (detail && !records[detail.jobId])) setDetail(null);
+  }, [open, records, detail]);
+  const closeDetail = () => {
+    setDetail(null);
+    requestAnimationFrame(() => detailTrigger.current?.focus());
+  };
   /** The failed record waiting for its explicit confirmation. */
   const [confirming, setConfirming] = useState<string | null>(null);
   /** The bulk "clear failed" awaiting confirmation. */
@@ -556,9 +569,23 @@ export function TransferCenter() {
                         )}
                       </div>
                     </div>
-                    <div className="transfer-job-context" title={context}>
-                      {context}
-                    </div>
+                    <button
+                      type="button"
+                      className="transfer-job-context"
+                      title={context}
+                      aria-label={t("transfer.viewRoute", { name: job.name })}
+                      onClick={(event) => {
+                        detailTrigger.current = event.currentTarget;
+                        setDetail({
+                          jobId: job.id,
+                          title: t("transfer.routeDetails"),
+                          text: context,
+                        });
+                      }}
+                    >
+                      <span>{context}</span>
+                      <Icon name="info" />
+                    </button>
                     <div className="transfer-job-progress">
                       <div
                         className={`transfer-job-track${indeterminate ? " is-indeterminate" : ""}`}
@@ -626,12 +653,47 @@ export function TransferCenter() {
               resetKey={failureJob}
             >
               {(file) => (
-                <div className="transfer-failure-row" title={file.message}>
+                <button
+                  type="button"
+                  className="transfer-failure-row"
+                  title={file.message}
+                  aria-label={t("transfer.viewFailure", { name: file.message })}
+                  onClick={(event) => {
+                    detailTrigger.current = event.currentTarget;
+                    setDetail({
+                      jobId: failureJob,
+                      title: t("transfer.failureDetails"),
+                      text: file.message,
+                    });
+                  }}
+                >
                   {file.message}
-                </div>
+                </button>
               )}
             </VirtualFileRows>
           </div>
+        </section>
+      )}
+      {detail && (
+        <section className="transfer-detail" aria-label={detail.title}>
+          <div className="transfer-section-head">
+            <strong>{detail.title}</strong>
+            <button
+              type="button"
+              className="transfer-icon-button"
+              aria-label={t("transfer.closeDetails")}
+              onClick={closeDetail}
+            >
+              <Icon name="close" />
+            </button>
+          </div>
+          <textarea
+            ref={detailInput}
+            className="transfer-detail-text"
+            aria-label={detail.title}
+            readOnly
+            value={detail.text}
+          />
         </section>
       )}
       {(recoverable.length > 0 || recoveryError) && (

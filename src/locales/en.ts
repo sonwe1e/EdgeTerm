@@ -1017,6 +1017,11 @@ export const en = {
   "transfer.clearInterrupted": "Clear interrupted",
   "transfer.clearInterruptedBulk": "Clear {count} interrupted transfers?",
   "transfer.failedFilesSection": "Failed files",
+  "transfer.viewRoute": "View transfer route for {name}",
+  "transfer.routeDetails": "Transfer route",
+  "transfer.viewFailure": "View failure details: {name}",
+  "transfer.failureDetails": "Failure details",
+  "transfer.closeDetails": "Close details",
   "transfer.failedFilesCount": "{count} failed files",
   "transfer.closeFailedFiles": "Close failed files",
 

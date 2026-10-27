@@ -947,6 +947,11 @@ export const zhCN: Catalog = {
   "transfer.clearInterrupted": "清除未完成",
   "transfer.clearInterruptedBulk": "清除 {count} 项未完成记录？",
   "transfer.failedFilesSection": "失败文件",
+  "transfer.viewRoute": "查看 {name} 的传输路径",
+  "transfer.routeDetails": "传输路径",
+  "transfer.viewFailure": "查看失败详情：{name}",
+  "transfer.failureDetails": "失败详情",
+  "transfer.closeDetails": "关闭详情",
   "transfer.failedFilesCount": "{count} 个失败文件",
   "transfer.closeFailedFiles": "关闭失败文件",
 
