@@ -82,19 +82,26 @@ const resourceSample = () => {
 // upload under a rate limit, a failed upload with per-file reasons, and a
 // completed download.
 const transferOptions = { requests: 4, chunkKib: 256, files: 2, durable: false, tar: false, rateLimitBps: 0 };
+const route = (local, remote, upload = true, itemCount = 1) => ({
+  direction: upload ? "upload" : "download", firstUpload: upload, local, remote,
+  server: "dev@build-box:22", protocol: "SFTP", itemCount,
+});
 const transferJobs = [
   { revision: 7, id: "shot-transfer-running", sessionId: "shot-ssh",
     name: "artifacts/edge-1.2.6-x64.tar.zst", status: "running", phase: "upload",
+    context: route("C:/build/artifacts/edge-1.2.6-x64.tar.zst", "/work/releases/edge-1.2.6-x64.tar.zst", true, 9),
     transferred: 26214400, total: 58720256, completedFiles: 4, totalFiles: 9,
     failedFiles: [], error: null, attempt: 1,
     options: Object.assign({}, transferOptions, { rateLimitBps: 8388608 }) },
   { revision: 2, id: "shot-transfer-queued", sessionId: "shot-ssh",
     name: "docs/site-2026-11.zip", status: "queued", phase: "upload",
+    context: route("C:/build/docs/site-2026-11.zip", "/work/site/site-2026-11.zip", true, 3),
     transferred: 0, total: 73400320, completedFiles: 0, totalFiles: 3,
     failedFiles: [], error: null, attempt: 0,
     options: Object.assign({}, transferOptions, { files: 3 }) },
   { revision: 4, id: "shot-transfer-failed", sessionId: "shot-ssh",
     name: "models/vfi-weights.bin", status: "error", phase: "upload",
+    context: route("C:/models/vfi-weights.bin", "/work/models/vfi-weights.bin"),
     transferred: 1073741824, total: 4294967296, completedFiles: 0, totalFiles: 1,
     failedFiles: ["models/vfi-weights.bin: permission denied (os error 13)",
       "models/vfi-weights.bin.part: no space left on device"],
@@ -102,9 +109,15 @@ const transferJobs = [
     options: Object.assign({}, transferOptions, { files: 1 }) },
   { revision: 12, id: "shot-transfer-complete", sessionId: "shot-ssh",
     name: "logs/2026-10-15.tar.gz", status: "complete", phase: "download",
+    context: route("C:/logs/2026-10-15.tar.gz", "/work/logs/2026-10-15.tar.gz", false),
     transferred: 187695104, total: 187695104, completedFiles: 1, totalFiles: 1,
     failedFiles: [], error: null, attempt: 1,
     options: Object.assign({}, transferOptions, { files: 1 }) },
+];
+const senderCommands = [
+  { id: "shot-status", name: "System status", text: "uptime", ending: "lf", scope: { type: "global" } },
+  { id: "shot-disk", name: "Disk usage", text: "df -h", ending: "lf", scope: { type: "global" } },
+  { id: "shot-logs", name: "Recent application logs", text: "journalctl -u app -n 50", ending: "lf", scope: { type: "global" } },
 ];
 
 // A local forward and a dynamic (SOCKS5) one: the two shapes the tunnel
@@ -135,6 +148,7 @@ window.__TAURI_INTERNALS__ = {
     if (command === "plugin:event|listen") return ++serial;
     if (command === "plugin:event|unlisten") return;
     if (command === "list_workspace_data") return { workspaces: [], experiments: [], runs: [] };
+    if (command === "list_sender_commands") return senderCommands;
     if (command === "local_list" || command === "sftp_list") {
       return { path: args?.path ?? "/synthetic", entries: [], truncated: false, source: "stub" };
     }
@@ -835,10 +849,35 @@ try {
     },
   );
   await auditScene("transfers", {
-    rowGroups: [{ selector: ".transfer-job", fit: true, pitch: 76 }],
+    rowGroups: [{ selector: ".transfer-job", fit: true, pitch: 100 }],
     containers: [".status-popover-body", ".transfer-center-jobs"],
     contrast: [".transfer-status", ".transfer-job-name", ".transfer-job-meta-text"],
   });
+  await closePopover();
+
+  // A long route is opened through the actual row control. This captures the
+  // selectable detail as well as the truncated summary it expands from.
+  await shoot(
+    "transfers-route-detail",
+    async () => {
+      try {
+        await call("ssh");
+        await clickFirst([".transfer-center button[aria-expanded]", ".transfer-center button"]);
+        await page.waitForSelector(".status-popover", { timeout: 8000 });
+        await page
+          .locator(".status-popover .transfer-job-context")
+          .first()
+          .click({ timeout: 4000 });
+        await page.waitForSelector(".transfer-detail-text", { timeout: 4000 });
+      } catch (error) {
+        warnings.push({
+          shot: "transfers-route-detail",
+          missing: `route detail did not open: ${error.message}`,
+        });
+      }
+    },
+    { details: ".transfer-detail-text", context: ".transfer-job-context" },
+  );
   await closePopover();
 
   // 8b. The failed files behind the queue's failed row: the toggle opens the
@@ -872,7 +911,7 @@ try {
   );
   await auditScene("transfers-failed", {
     rowGroups: [
-      { selector: ".transfer-job", fit: true, pitch: 76 },
+      { selector: ".transfer-job", fit: true, pitch: 100 },
       { selector: ".transfer-failure-row", fit: true, pitch: 24 },
     ],
     containers: [".status-popover-body", ".transfer-center-jobs", ".transfer-failure-rows"],
@@ -986,7 +1025,7 @@ try {
     browser: browserVersion,
     channel,
     scope:
-      "Production build (real vite.config). Real App, real stores, real CSS; permissive IPC stub that answers unknown commands with a safe empty value and records them, plus synthetic samples for sample_resources, list_file_transfers and list_port_forwards. Screenshots at 1100x720 (dark) for the surfaces check-app-font-chain.mjs does not reach: dialogs, the workbench view and the three status-bar popovers (host resources, transfers, tunnels). The monitor-wide scene repeats the host-resources popover at 1440x900 so the vitals cluster itself (not only the compact fallback) is measured; tunnels-wide repeats the tunnel popover at 1440x900 in the light theme; tunnels-narrow does it at 900x560 in the dark theme. The `layout` key carries the measured geometry, row rhythm, status-bar trigger metrics, element-cluster visibility/fit and text-contrast ratios behind those screenshots; a failed layout assertion turns the run red.",
+      "Production build (real vite.config). Real App, real stores, real CSS; permissive IPC stub that answers unknown commands with a safe empty value and records them, plus synthetic commands, transfer routes and resource/forward samples. Screenshots at 1100x720 (dark) for the surfaces check-app-font-chain.mjs does not reach: dialogs, the workbench view and the three status-bar popovers (host resources, transfers, tunnels). The monitor-wide scene repeats the host-resources popover at 1440x900 so the vitals cluster itself (not only the compact fallback) is measured; tunnels-wide repeats the tunnel popover at 1440x900 in the light theme; tunnels-narrow does it at 900x560 in the dark theme. The `layout` key carries the measured geometry, row rhythm, status-bar trigger metrics, element-cluster visibility/fit and text-contrast ratios behind those screenshots; a failed layout assertion turns the run red.",
     shots,
     warnings,
     layout,
