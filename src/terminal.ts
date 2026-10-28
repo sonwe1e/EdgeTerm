@@ -163,7 +163,10 @@ export class TerminalController {
   private readonly viewport: TerminalViewport;
 
   fit(immediate = false): { cols: number; rows: number } | null {
-    return this.viewport.fit(immediate);
+    const fitted = this.viewport.fit(immediate);
+    // xterm's fit can clear a DOM fallback before its hidden resize resumes.
+    this.gpu.paintFallback();
+    return fitted;
   }
 
   scheduleFit() {
@@ -719,7 +722,8 @@ export class TerminalController {
    * Tells the terminal whether its pane is on screen. WebGL is loaded on
    * showing and kept while hidden, so switching back to a recent tab costs
    * nothing; the least recently shown terminals lose theirs past
-   * WEBGL_MAX_TERMINALS.
+   * WEBGL_MAX_TERMINALS. An evicted tab first shows its DOM fallback when
+   * the pool is full, then reacquires a GPU slot if the visit lasts.
    */
   setVisible(visible: boolean) {
     if (this.visible === visible) return;
@@ -742,9 +746,11 @@ export class TerminalController {
       // Output that arrived while hidden was not painted; do the viewport now,
       // ahead of the first frame, and the rest in the backlog.
       this.semantic.refreshSemanticColors();
+      this.gpu.paintFallback();
       this.lineGutter.syncGutter();
       this.semantic.scheduleBacklog();
     } else {
+      this.gpu.suspend();
       this.viewport.suspend();
       this.semantic.stopBacklog();
     }

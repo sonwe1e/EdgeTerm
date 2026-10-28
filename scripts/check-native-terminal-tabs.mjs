@@ -16,10 +16,18 @@ const browser = await chromium.connectOverCDP(
   process.env.EDGETERM_CDP_URL || "http://127.0.0.1:9241",
 );
 let page;
-const result = { samples: [], bursts: [], hiddenRows: [], errors: [] };
+const result = {
+  samples: [],
+  bursts: [],
+  backgroundBursts: [],
+  hiddenRows: [],
+  hiddenMutations: [],
+  errors: [],
+};
 const createdSessions = new Set();
 let observer;
 let profiling = false;
+let phase = "select-instance";
 const invoke = (cmd, args = {}) =>
   page.evaluate(({ cmd, args }) => window.__TAURI_INTERNALS__.invoke(cmd, args), { cmd, args });
 try {
@@ -35,6 +43,7 @@ try {
   );
   assert.equal(await invoke("portable_mode"), true, "Use an isolated portable data directory");
   assert.deepEqual(await invoke("list_sessions"), [], "Test instance must start without sessions");
+  assert.equal(await page.locator(".tab").count(), 0, "Test instance must start without tabs");
   assert.deepEqual(
     await invoke("list_profiles"),
     [],
@@ -49,7 +58,12 @@ try {
   }));
   page.on("pageerror", (error) => result.errors.push(String(error)));
   const openShell = async () => {
-    await page.getByText("Local Shell", { exact: true }).first().dblclick();
+    phase = `open-shell-${createdSessions.size + 1}`;
+    console.log(phase);
+    await page
+      .getByText(/^(Local Shell|本地 Shell)$/)
+      .first()
+      .dblclick();
     await page.waitForFunction(
       (count) => document.querySelectorAll(".tab").length === count,
       createdSessions.size + 1,
@@ -75,16 +89,54 @@ try {
   await page.waitForTimeout(1000);
   assert.equal((await invoke("list_sessions")).length, 8);
   await page.keyboard.press("Alt+1");
+  await page.waitForFunction(
+    () => document.querySelector(".tab.is-active .tab-index")?.textContent?.trim() === "1.",
+  );
   const search = async (query) => {
     if (!(await page.locator(".terminal-search").count()))
       await page.keyboard.press("Control+Shift+F");
     await page.locator(".terminal-search input").fill(query);
     await page.waitForFunction(() =>
-      /[1-9]\d*\/[1-9]\d*/.test(document.querySelector(".search-count")?.textContent || ""),
+      /^(?:[1-9]\d*\/)?[1-9]\d*\+?$/.test(
+        document.querySelector(".search-count")?.textContent?.trim() || "",
+      ),
     );
     return page.locator(".search-count").innerText();
   };
+  // Three background sessions produce output at the same time while the
+  // first remains visible. Visit each afterwards and search for its final row
+  // so completing the commands is not mistaken for consuming their output.
+  const backgroundIds = [...createdSessions].slice(1, 4);
+  const backgroundStart = performance.now();
+  await Promise.all(
+    backgroundIds.map((id, index) =>
+      invoke("write_session", {
+        id,
+        data: `for /l %i in (1,1,1500) do @echo NATIVE-BG-${index + 2}-LINE-%i 012345678901234567890123456789\r`,
+      }),
+    ),
+  );
+  for (let index = 0; index < backgroundIds.length; index++) {
+    phase = `search-background-${index + 2}`;
+    console.log(phase);
+    await page.keyboard.press(`Alt+${index + 2}`);
+    await page.waitForFunction(
+      (number) =>
+        document.querySelector(".tab.is-active .tab-index")?.textContent?.trim() === `${number}.`,
+      index + 2,
+    );
+    const finalLineSearch = await search(`NATIVE-BG-${index + 2}-LINE-1500`);
+    result.backgroundBursts.push({
+      tab: index + 2,
+      finalLineSearch,
+      observedAfterMs: performance.now() - backgroundStart,
+    });
+    await page.keyboard.press("Escape");
+  }
+  await page.keyboard.press("Alt+1");
   for (let run = 1; run <= 3; run++) {
+    phase = `foreground-burst-${run}`;
+    console.log(phase);
     await page.keyboard.press("Escape");
     const start = performance.now();
     await invoke("write_session", {
@@ -103,7 +155,7 @@ try {
   await page.keyboard.press("Enter");
   result.interactiveSearch = await search("NATIVE-INTERACTIVE-OK");
   await page.waitForFunction(() =>
-    /\/2$/.test(document.querySelector(".search-count")?.textContent || ""),
+    /^(?:[1-9]\d*\/)?2$/.test(document.querySelector(".search-count")?.textContent?.trim() || ""),
   );
   result.interactiveSearch = await page.locator(".search-count").innerText();
   await page.keyboard.press("Escape");
@@ -121,6 +173,8 @@ try {
     window.__tabGateObserver.observe({ type: "longtask" });
   });
   for (let round = 0; round < 3; round++) {
+    phase = `switch-round-${round + 1}`;
+    console.log(phase);
     for (let index = 1; index <= 8; index++) {
       const start = performance.now();
       await page.keyboard.press(`Alt+${index}`);
@@ -138,6 +192,26 @@ try {
         .locator(".pane-slot.is-hidden .xterm-rows")
         .evaluateAll((rows) => rows.map((row) => row.textContent.length)),
     );
+    // A fallback may retain rows painted while it was visible. Watch for new
+    // hidden updates after settling rather than requiring its DOM to be empty.
+    result.hiddenMutations.push(
+      await page.evaluate(
+        () =>
+          new Promise((done) => {
+            let mutations = 0;
+            const observer = new MutationObserver((records) => {
+              mutations += records.length;
+            });
+            for (const row of document.querySelectorAll(".pane-slot.is-hidden .xterm-rows")) {
+              observer.observe(row, { childList: true, characterData: true, subtree: true });
+            }
+            setTimeout(() => {
+              observer.disconnect();
+              done(mutations);
+            }, 120);
+          }),
+      ),
+    );
   }
   const { profile } = await observer.send("Profiler.stop");
   profiling = false;
@@ -151,13 +225,16 @@ try {
   await page.screenshot({ path: resolve(output, "terminal.png") });
   assert.deepEqual(result.errors, []);
   assert.ok(
-    result.hiddenRows.every((rows) => rows.length === 2 && rows.every((length) => length === 0)),
-    "Evicted hidden terminals painted DOM rows; see hiddenRows and profile.json",
+    result.hiddenRows.every((rows) => rows.length === 2) &&
+      result.hiddenMutations.every((count) => count === 0),
+    "Hidden DOM fallbacks changed after settling; see hiddenRows and hiddenMutations",
   );
   result.passed = true;
 } catch (error) {
   result.passed = false;
   result.failure = String(error);
+  result.phase = phase;
+  if (page) await page.screenshot({ path: resolve(output, "failure.png") }).catch(() => undefined);
   process.exitCode = 1;
 } finally {
   if (page) {
@@ -174,6 +251,7 @@ try {
       failure: result.failure,
       samples: result.samples,
       hiddenRows: result.hiddenRows,
+      hiddenMutations: result.hiddenMutations,
     }),
   );
   await observer?.detach();

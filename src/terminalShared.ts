@@ -44,6 +44,9 @@ export type PaintRecord = { signature: number; cursor: boolean };
  */
 export const WEBGL_MAX_TERMINALS = 6;
 
+/** Let rapid visits to an evicted tab use its DOM renderer before reclaiming a GPU slot. */
+export const WEBGL_REACTIVATION_DELAY_MS = 250;
+
 /**
  * A lost context (WKWebView reclaims them under memory pressure or after a
  * long stay in the background) is recreated after a pause, a few times per

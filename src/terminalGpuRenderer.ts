@@ -1,8 +1,10 @@
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
+import { paintVisibleDomRenderer } from "./terminalDomRenderer";
 import { isWebglEnabled } from "./terminalRegistry";
 import {
   WEBGL_MAX_TERMINALS,
+  WEBGL_REACTIVATION_DELAY_MS,
   WEBGL_RECOVERY_DELAY_MS,
   WEBGL_RECOVERY_LIMIT,
   WEBGL_RECOVERY_WINDOW_MS,
@@ -31,6 +33,11 @@ export class TerminalGpuRenderer {
 
   private webglTimer: number | null = null;
 
+  private reactivationTimer: number | null = null;
+
+  /** A pool eviction is different from an explicit preference change or a loss. */
+  private evicted = false;
+
   private domRenderingGuarded = false;
 
   /**
@@ -40,11 +47,23 @@ export class TerminalGpuRenderer {
    * budget. Semantic colors live in the buffer cells and render on either.
    */
   loadWebgl() {
-    if (!isWebglEnabled() || this.context.disposed || !this.context.host) return;
+    if (!isWebglEnabled() || this.context.disposed || !this.context.visible || !this.context.host)
+      return;
     if (this.webgl) {
       this.promoteWebgl();
       return;
     }
+    if (this.evicted && webglTerminals.length >= WEBGL_MAX_TERMINALS) {
+      this.scheduleReactivation();
+      return;
+    }
+    this.cancelReactivation();
+    this.createWebgl();
+  }
+
+  private createWebgl() {
+    if (!isWebglEnabled() || this.context.disposed || !this.context.visible || !this.context.host)
+      return;
     try {
       this.guardHiddenDomRenderer();
       const webgl = new WebglAddon();
@@ -110,14 +129,41 @@ export class TerminalGpuRenderer {
 
   /** Brings this terminal onto the current renderer preference, if it can. */
   refreshWebgl() {
-    if (!isWebglEnabled()) this.unloadWebgl();
-    else if (this.context.visible) this.loadWebgl();
+    if (!isWebglEnabled()) {
+      this.cancelReactivation();
+      this.unloadWebgl();
+    } else if (this.context.visible) this.loadWebgl();
+  }
+
+  /** A brief visit should not evict another tab after it is hidden again. */
+  suspend() {
+    this.cancelReactivation();
+  }
+
+  paintFallback() {
+    if (this.reactivationTimer !== null && this.context.visible && this.context.host?.clientWidth) {
+      paintVisibleDomRenderer(this.context.term);
+    }
   }
 
   dispose() {
     if (this.webglTimer !== null) window.clearTimeout(this.webglTimer);
     this.webglTimer = null;
+    this.cancelReactivation();
     this.unloadWebgl();
+  }
+
+  private scheduleReactivation() {
+    if (this.reactivationTimer !== null) return;
+    this.reactivationTimer = window.setTimeout(() => {
+      this.reactivationTimer = null;
+      this.createWebgl();
+    }, WEBGL_REACTIVATION_DELAY_MS);
+  }
+
+  private cancelReactivation() {
+    if (this.reactivationTimer !== null) window.clearTimeout(this.reactivationTimer);
+    this.reactivationTimer = null;
   }
 
   /** The addon's canvas: the one in the screen without a render-layer class. */
@@ -166,6 +212,7 @@ export class TerminalGpuRenderer {
   private setWebgl(webgl: WebglAddon | null) {
     this.webgl = webgl;
     if (webgl) {
+      this.evicted = false;
       this.promoteWebgl();
     } else {
       const index = webglTerminals.indexOf(this);
@@ -179,7 +226,11 @@ export class TerminalGpuRenderer {
     if (index >= 0) webglTerminals.splice(index, 1);
     webglTerminals.unshift(this);
     while (webglTerminals.length > WEBGL_MAX_TERMINALS) {
-      webglTerminals.pop()?.unloadWebgl();
+      const victim = webglTerminals.pop();
+      if (victim) {
+        victim.evicted = true;
+        victim.unloadWebgl();
+      }
     }
   }
   constructor(private readonly context: Context) {}

@@ -22,6 +22,15 @@ The review harness mocks Tauri IPC and file listings; it does not validate a
 real remote server. The performance harness measures DOM virtualization and
 ordinary-byte ZMODEM input handling, not complete terminal rendering throughput.
 
+`./dev.ps1 script scripts/check-refinement-shots.mjs <results-name>` builds
+the real app and captures representative screens with synthetic state and a
+permissive IPC stub. Results and layout findings are written under
+`.tmp/records/refinement-shots/`. For a same-fixture tab comparison, set
+`REFINEMENT_TAB_BASELINE_DIR` to a directory containing earlier copies named
+`TabStrip.tsx` and `tabs.styles.css`; only those two sources are substituted
+and the manifest records the choice. These images do not validate native
+WebView2 interaction or real sessions.
+
 `npm run test:browser` runs the `src/**/*.browser.test.ts` contracts in a
 headless browser through the same provider; `npm test` stays the fast jsdom
 unit project and skips those files. The browser project does not load
@@ -69,6 +78,21 @@ renders while its `.pane-slot` is hidden. It exits 1 if the hidden slot still
 renders (the old `visibility: hidden` rendered 120 of 120 frames; `display:
 none` renders 0). It proves the renderer pauses in Chromium only; it says
 nothing about WebView2, WebKitGTK or old GPUs.
+
+`./dev.ps1 script scripts/check-multiterminal-output.mjs <new-results-name>`
+drives four real terminal controllers in headless Edge (one visible, three
+hidden) with synthetic byte streams. It records scrolling output, continuous
+alternate-screen redraws, and alternate-screen redraws separated by quiet
+periods after 8,000 lines of normal history. Its behavior gate requires a
+hidden scrolling terminal to skip viewport coloring and the covered normal
+history to skip backlog coloring while the alternate screen is active. Raw
+samples, browser version and instrumentation timings go to a new directory
+under `.tmp/records/multiterminal-output/`; existing results are not replaced.
+Timing values are diagnostic, not thresholds. On this Windows machine with
+Edge 156.0.4314.50, three samples of the scrolling fixture went from 234 hidden
+viewport passes each to zero; the quiet alternate-screen fixture went from
+15–16 backlog slices (98.6–117.5 ms total) to zero. These synthetic browser
+results do not measure a native WebView2/ConPTY session or OpenCode itself.
 
 `check-gutter-alignment.mjs` and `check-app-font-chain.mjs` build the real
 production bundle (the repo's `vite.config.ts`, platform defines included)
@@ -150,15 +174,37 @@ portable release through WebView2 CDP. Set `EDGETERM_CDP_URL` (default
 `http://127.0.0.1:9241`) and explicitly select its page with
 `EDGETERM_CDP_TARGET_ID` from that endpoint's `/json/list`. The instance must
 have no saved profiles or open sessions and must use the default GPU option.
-It opens eight local ConPTY sessions, writes three bursts of 20,000 synthetic
-lines into the first, checks search/input and cycles all eight tabs three
-times. JSON samples include shortcut dispatch and two animation frames; they
-are not a pure key-to-pixel latency measurement. The behavior gate checks that
-evicted hidden DOM fallbacks do not paint rows, rather than imposing an
+It opens eight local ConPTY sessions, first writes 1,500 synthetic lines into
+each of three background sessions concurrently and searches for their final
+lines, then writes three bursts of 20,000 lines into the first. It checks
+search/input and cycles all eight tabs three times. JSON samples include
+shortcut dispatch and two animation frames; they
+are not a pure key-to-pixel latency measurement. The behavior gate observes
+hidden DOM fallbacks after settling; rows previously painted while visible may
+remain, but the hidden DOM must not keep changing. It does not impose an
 arbitrary timing threshold. A CPU profile and screenshot are saved alongside
 the results. The script closes its test sessions; close the disposable app
 afterward, including on failure. Do not run builds or other tests during the
 timed portion. This proves the recorded WebView2/ConPTY workload only.
+
+`seed-native-opencode-perf.mjs <new-fixture-file>` and
+`check-native-opencode-perf.mjs <new-output-dir>` exercise the real OpenCode 2.x
+TUI with generated conversations. Use an isolated OpenCode server on loopback
+with empty XDG data/config/cache/state and TEMP/TMP directories, an empty test
+project under `.tmp/`, and a private `OPENCODE_PASSWORD`; never point the seed
+script at a server containing personal sessions. Set `EDGETERM_OPENCODE_SERVER`
+to that server, `EDGETERM_OPENCODE_PROJECT` to the test project, and run the
+seed script through `./dev.ps1 script`. It refuses a nonempty session listing and
+imports 16- and 480-message fixtures without invoking a model. Set
+`EDGETERM_OPENCODE_FIXTURES` to its output and `EDGETERM_OPENCODE_EXE` to the
+OpenCode executable. Launch a separate portable EdgeTerm process with the same
+isolated environment and password, enable WebView2 CDP, and set
+`EDGETERM_CDP_TARGET_ID` to its explicit page ID. The second script refuses
+saved profiles or existing terminal sessions, opens test shells, scrolls the
+short and long conversations, and switches eight tabs. Close the disposable
+app and server after the run. Its screenshots contain generated text; CPU
+profiles, frame intervals and shortcut-plus-two-frame samples are diagnostic
+observations, not input-to-pixel latency or proof about a user's own workload.
 
 `check-native-profile-recovery.mjs <seed|blocked|restored> <data-dir>
 <new-output-dir>` uses the same explicit CDP target selection and requires a
