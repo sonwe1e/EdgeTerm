@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import "../styles.css";
+import { setCurrentLanguage } from "../i18n";
 import { useStore } from "../store";
 import { browserAfterEach, mount, wait } from "../test/browserHarness";
 import * as wb from "./api";
@@ -427,7 +428,74 @@ describe("workbench layout", () => {
     await userEvent.click(page.getByRole("button", { name: "编辑器", exact: true }));
     expect(document.querySelector(".cm-content")).not.toBeNull();
     expect(useWorkbench.getState().docs).toHaveLength(1);
+    // At this width the title and actions fit on one row. Keeping them
+    // together gives the editor space without removing any controls.
+    const title = document.querySelector<HTMLElement>(".wb-top-title")!.getBoundingClientRect();
+    const actions = document.querySelector<HTMLElement>(".wb-top-actions")!.getBoundingClientRect();
+    const header = document.querySelector<HTMLElement>(".wb-top")!.getBoundingClientRect();
+    expect(
+      Math.abs((title.top + title.bottom) / 2 - (actions.top + actions.bottom) / 2),
+    ).toBeLessThan(1);
+    expect(actions.left).toBeGreaterThanOrEqual(title.right);
+    expect(actions.right).toBeLessThanOrEqual(header.right);
     await page.screenshot({ path: "../../artifacts/usability/workbench-editor-900.png" });
+
+    // Longer English labels need room of their own; squeezing them into
+    // equal thirds used three lines and took usable height from the editor.
+    const language = useStore.getState().language;
+    try {
+      setCurrentLanguage("en");
+      useStore.setState({ language: "en" });
+      await wait(100);
+      const navButtons = [...document.querySelectorAll<HTMLElement>(".wb-compact-nav button")];
+      const projectLabel = document.createRange();
+      projectLabel.selectNodeContents(navButtons[0]);
+      expect(
+        [...projectLabel.getClientRects()].filter((rect) => rect.width > 0).length,
+      ).toBeLessThanOrEqual(2);
+      for (const width of [380, 320]) {
+        surface.container.style.width = `${width}px`;
+        await wait(100);
+        for (const button of navButtons) {
+          const range = document.createRange();
+          range.selectNodeContents(button);
+          const text = range.getBoundingClientRect();
+          const box = button.getBoundingClientRect();
+          expect(text.left).toBeGreaterThanOrEqual(box.left - 0.5);
+          expect(text.right).toBeLessThanOrEqual(box.right + 0.5);
+        }
+        const breadcrumb = document.querySelector<HTMLElement>(".wb-breadcrumb")!;
+        const breadcrumbBox = breadcrumb.getBoundingClientRect();
+        const editorActions = document
+          .querySelector<HTMLElement>(".wb-editor-actions")!
+          .getBoundingClientRect();
+        expect(breadcrumbBox.width).toBeGreaterThan(width * 0.8);
+        expect(breadcrumbBox.bottom).toBeLessThanOrEqual(editorActions.top + 0.5);
+        for (const child of breadcrumb.children) {
+          expect(child.getBoundingClientRect().right).toBeLessThanOrEqual(
+            breadcrumbBox.right + 0.5,
+          );
+        }
+        if (width === 320) {
+          // The run's header must leave room for at least its first log line.
+          const log = document.querySelector<HTMLElement>(".wb-log-view")!;
+          const logStyle = getComputedStyle(log);
+          const firstLineBottom =
+            log.getBoundingClientRect().top +
+            parseFloat(logStyle.paddingTop) +
+            parseFloat(logStyle.lineHeight);
+          const consoleBottom = document
+            .querySelector<HTMLElement>(".wb-console")!
+            .getBoundingClientRect().bottom;
+          expect(firstLineBottom).toBeLessThanOrEqual(consoleBottom);
+        }
+      }
+    } finally {
+      surface.container.style.width = "380px";
+      setCurrentLanguage(language);
+      useStore.setState({ language });
+      await wait(100);
+    }
 
     // At the dock-reduced width host names should stay distinct and the live
     // run can be collapsed without losing its identity or the open editor.
@@ -477,6 +545,49 @@ describe("workbench layout", () => {
     expect(document.querySelector(".wb-banner.is-warning")).not.toBeNull();
     expect(document.querySelector(".wb-editor-dot.is-dirty")).not.toBeNull();
     await page.screenshot({ path: "../../artifacts/workbench-conflict.png" });
+
+    // A narrow editor must keep conflict actions reachable without scrolling
+    // its tab strip and toolbar out of view or losing the unsaved draft.
+    try {
+      await page.viewport(900, 560);
+      surface.container.style.width = "320px";
+      document.documentElement.style.setProperty("--panel-font-size", "18px");
+      await wait(100);
+      const body = document.querySelector<HTMLElement>(".wb-body")!;
+      const tabs = document.querySelector<HTMLElement>(".wb-editor-tabs")!;
+      const warning = document.querySelector<HTMLElement>(".wb-editor .wb-banner.is-warning")!;
+      const toolbar = document.querySelector<HTMLElement>(".wb-editor-toolbar")!;
+      const toolbarActions = document.querySelector<HTMLElement>(".wb-editor-actions")!;
+      const tabsTop = tabs.getBoundingClientRect().top;
+      const keepEditing = page.getByRole("button", { name: "继续编辑", exact: true }).element();
+      const choices = [...warning.querySelectorAll<HTMLButtonElement>(".wb-banner-actions button")];
+      expect(choices).toHaveLength(3);
+      for (const choice of choices) {
+        choice.focus();
+        await wait(100);
+        const action = choice.getBoundingClientRect();
+        const visibleBody = body.getBoundingClientRect();
+        const visibleWarning = warning.getBoundingClientRect();
+        expect(document.activeElement).toBe(choice);
+        expect(action.left).toBeGreaterThanOrEqual(visibleBody.left - 0.5);
+        expect(action.right).toBeLessThanOrEqual(visibleBody.right + 0.5);
+        expect(action.top).toBeGreaterThanOrEqual(visibleWarning.top - 0.5);
+        expect(action.bottom).toBeLessThanOrEqual(visibleWarning.bottom + 0.5);
+        expect(Math.abs(tabs.getBoundingClientRect().top - tabsTop)).toBeLessThan(1);
+      }
+      expect(document.activeElement).toBe(keepEditing);
+      expect(toolbarActions.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+        toolbar.getBoundingClientRect().bottom + 0.5,
+      );
+      await userEvent.keyboard("{Enter}");
+      expect(document.querySelector(".wb-editor .wb-banner.is-warning")).toBeNull();
+      const kept = useWorkbench.getState().docs.find((item) => item.id === id)!;
+      expect(kept.content).not.toBe(kept.savedContent);
+    } finally {
+      document.documentElement.style.removeProperty("--panel-font-size");
+      surface.container.style.width = "100%";
+      await page.viewport(1440, 900);
+    }
   }, 60_000);
 
   it("lists a stored draft with the server and project it belongs to", async () => {

@@ -183,10 +183,12 @@
 @container workbench (max-width: 36em) {
   .wb-top {
     flex-wrap: wrap;
-    gap: var(--sp-6);
+    gap: var(--sp-6) var(--sp-12);
   }
   .wb-top-title {
-    flex: 1 0 100%;
+    /* Keep the title with its actions when both fit; flex wrapping still
+       gives them separate rows for longer labels or narrower panes. */
+    flex: 0 0 auto;
   }
   .wb-top-actions {
     margin-left: 0;
@@ -1946,8 +1948,9 @@
     border-bottom: 1px solid var(--border);
   }
   .wb-compact-nav button {
-    flex: 1;
-    min-width: 0;
+    /* Let longer labels claim more of the row before text wraps. */
+    flex: 1 1 auto;
+    min-width: min-content;
     padding: var(--sp-6);
     color: var(--fg-dim);
     background: none;
@@ -1987,6 +1990,41 @@
     flex-basis: 240px;
   }
 }
+
+@container workbench (max-width: 25em) {
+  /* A full-width path prevents the fixed action group from squeezing the
+     breadcrumb separators into the sync status at large interface sizes. */
+  .wb-editor-toolbar {
+    flex-wrap: wrap;
+    flex: none;
+    gap: var(--sp-4) var(--sp-8);
+  }
+  .wb-breadcrumb {
+    flex: 1 0 100%;
+  }
+  .wb-editor-actions {
+    min-width: 0;
+    max-width: 100%;
+    margin-left: auto;
+  }
+  .wb-sync {
+    min-width: 0;
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+  /* A conflict or draft warning must remain operable even when the editor
+     is shallow; keep its wrapping and scrolling inside the warning itself. */
+  .wb-editor > .wb-banner {
+    flex-direction: column;
+    align-items: stretch;
+    min-height: 0;
+    overflow: auto;
+  }
+  .wb-editor > .wb-banner .wb-banner-actions {
+    flex-wrap: wrap;
+  }
+}
+
 .wb-dirty-files {
   grid-column: 1 / -1;
 }
@@ -2014,7 +2052,14 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  /* Keep the duration with the run identity and the revision with its
+     check time. This avoids a mostly empty extra row in narrow panes. */
+  .wb-console-head > code,
+  .wb-console-checked {
+    order: 1;
+  }
   .wb-console-actions {
+    order: 2;
     flex-wrap: wrap;
   }
   .wb-console-body {
