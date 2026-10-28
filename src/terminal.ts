@@ -560,6 +560,13 @@ export class TerminalController {
       }
       return false;
     });
+    this.term.buffer.onBufferChange((buffer) => {
+      // Normal scrollback is covered by a full-screen program. Keep its
+      // deferred coloring for the return instead of repeatedly walking it
+      // between the program's redraws.
+      if (buffer.type === "alternate") this.semantic.stopBacklog();
+      else if (this.visible) this.semantic.scheduleBacklog();
+    });
     this.term.onWriteParsed(() => {
       this.lineGutter.outputParsed();
       // New output: xterm has updated the buffer and queued its repaint but
@@ -1084,11 +1091,11 @@ export class TerminalController {
 
   /** Recolors and re-numbers the viewport once the current task is done. */
   private queueViewportSync() {
-    if (this.viewportSyncQueued || this.disposed) return;
+    if (this.viewportSyncQueued || this.disposed || !this.visible) return;
     this.viewportSyncQueued = true;
     queueMicrotask(() => {
       this.viewportSyncQueued = false;
-      if (this.disposed) return;
+      if (this.disposed || !this.visible) return;
       this.semantic.refreshSemanticColors();
       this.lineGutter.syncGutter();
     });

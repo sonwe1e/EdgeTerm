@@ -246,6 +246,29 @@ describe("semantic colors painted into the cells (issue #80)", () => {
     expect(bg(controller, 1, 20)).toBeNull();
   });
 
+  it("defers normal scrollback coloring while a full-screen program is open", async () => {
+    const controller = createController();
+    controller.setVisible(false);
+    await write(controller, "host 10.0.0.1 up\r\n".repeat(100));
+    expect(fg(controller, 0, 5)).toBeNull();
+
+    controller.setVisible(true);
+    const semantic = (controller as unknown as { semantic: { backlogTimer: number | null } })
+      .semantic;
+    expect(semantic.backlogTimer).not.toBeNull();
+    await write(controller, "\x1b[?1049h\x1b[Hhost 10.0.0.2 up\r\n");
+    expect(controller.term.buffer.active.type).toBe("alternate");
+    expect(fg(controller, 0, 5)).toBe(IP_COLOR);
+    expect(semantic.backlogTimer).toBeNull();
+
+    await write(controller, "\x1b[Hhost 10.0.0.3 up\r\n");
+    expect(semantic.backlogTimer).toBeNull();
+    await write(controller, "\x1b[?1049l");
+    expect(semantic.backlogTimer).not.toBeNull();
+    await settle(controller);
+    expect(fg(controller, 0, 5)).toBe(IP_COLOR);
+  });
+
   it("keeps the normal screen's colors after leaving the alternate screen", async () => {
     const controller = createController();
     await write(controller, "host 10.0.0.1 up\r\n");

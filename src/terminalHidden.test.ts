@@ -64,4 +64,42 @@ describe("a terminal that is not on screen", () => {
     controller.setVisible(true);
     expect(fg(controller, 1, 5)).toBe(IP_COLOR);
   });
+
+  it("does not paint a background viewport when output scrolls it", async () => {
+    const { controller } = createController();
+    const semantic = (controller as unknown as { semantic: { refreshSemanticColors(): void } })
+      .semantic;
+    const paint = vi.spyOn(semantic, "refreshSemanticColors");
+    const scroll = vi.fn();
+    controller.term.onScroll(scroll);
+
+    await write(controller, "host 10.0.0.1 up\r\n".repeat(100));
+    await Promise.resolve(); // let the scroll handler's queued work run
+
+    expect(scroll).toHaveBeenCalled();
+    expect(paint).not.toHaveBeenCalled();
+    const viewport = controller.term.buffer.active.viewportY;
+    expect(fg(controller, viewport, 5)).toBeNull();
+
+    controller.setVisible(true);
+    expect(fg(controller, viewport, 5)).toBe(IP_COLOR);
+  });
+
+  it("drops a queued scroll repaint if the tab is hidden before it runs", async () => {
+    const { controller } = createController();
+    await write(controller, "host 10.0.0.1 up\r\n".repeat(100));
+    controller.setVisible(true);
+    const semantic = (controller as unknown as { semantic: { refreshSemanticColors(): void } })
+      .semantic;
+    const paint = vi.spyOn(semantic, "refreshSemanticColors");
+    const scroll = vi.fn();
+    controller.term.onScroll(scroll);
+
+    controller.term.scrollToTop();
+    controller.setVisible(false);
+    await Promise.resolve();
+
+    expect(scroll).toHaveBeenCalled();
+    expect(paint).not.toHaveBeenCalled();
+  });
 });

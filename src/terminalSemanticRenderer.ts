@@ -244,19 +244,31 @@ export class TerminalSemanticRenderer {
    * BACKLOG_SLICE_MS, so it never holds up input or rendering. Any new output
    * restarts the walk from the bottom — rows already colored cost one
    * signature each, so the restart only repeats the cheap part. Only a
-   * visible terminal runs it; showing one starts it.
+   * visible normal buffer runs it; showing one or returning from a full-screen
+   * program starts it.
    */
   scheduleBacklog() {
     this.backlogRow = null;
     if (this.backlogTimer !== null) window.clearTimeout(this.backlogTimer);
     this.backlogTimer = null;
-    if (this.context.disposed || !this.context.visible) return;
+    if (
+      this.context.disposed ||
+      !this.context.visible ||
+      this.context.term.buffer.active.type !== "normal"
+    )
+      return;
     this.backlogTimer = window.setTimeout(() => this.runBacklog(), BACKLOG_QUIET_MS);
   }
 
   private runBacklog() {
     this.backlogTimer = null;
-    if (this.context.disposed || !this.context.visible || !this.semanticPaintReady()) return;
+    if (
+      this.context.disposed ||
+      !this.context.visible ||
+      this.context.term.buffer.active.type !== "normal" ||
+      !this.semanticPaintReady()
+    )
+      return;
     const buf = this.context.term.buffer.normal;
     const deadline = performance.now() + BACKLOG_SLICE_MS;
     let row = Math.min(this.backlogRow ?? Infinity, buf.length - 1);
