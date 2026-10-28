@@ -1647,6 +1647,16 @@ struct SftpHomeServer {
     /// A virtual path whose RMD the server refuses, to stage a permission
     /// failure in the middle of a recursive delete.
     deny_rmdir: Option<String>,
+    /// How long the server stays silent before answering the sftp subsystem
+    /// request: stages the lossy or loaded paths a slow server answers on,
+    /// which the subsystem wait has to outlive (see
+    /// [`super::sftp::SFTP_SUBSYSTEM_TIMEOUT`]).
+    subsystem_delay: Duration,
+    /// How long the server waits between accepting the subsystem and
+    /// speaking its SFTP version: stages an external sftp-server that is
+    /// exec'd through a login shell slow to start, which the version
+    /// exchange has to outlive (see `ensure_sftp`).
+    sftp_start_delay: Duration,
     channels:
         Arc<tokio::sync::Mutex<HashMap<russh::ChannelId, russh::Channel<russh::server::Msg>>>>,
     /// Applied when the next file write reaches the subsystem: how a test
@@ -1663,6 +1673,8 @@ impl SftpHomeServer {
             deny_posix_rename: false,
             packet_len: None,
             deny_rmdir: None,
+            subsystem_delay: Duration::ZERO,
+            sftp_start_delay: Duration::ZERO,
             channels: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             concurrent_edit: Arc::new(Mutex::new(None)),
         }
@@ -1702,6 +1714,13 @@ impl russh::server::Handler for SftpHomeServer {
         let stored = self.channels.lock().await.remove(&channel);
         match (name == "sftp", stored) {
             (true, Some(stored)) => {
+                // The delayed acknowledgement runs inside the handler, the
+                // way a loaded sshd takes its time before replying: nothing
+                // else has to flow while the client waits for it. The slow
+                // sftp-server *start* runs detached instead, because a future
+                // parked inside the handler keeps russh's event loop from
+                // delivering the acknowledgement it already queued.
+                tokio::time::sleep(self.subsystem_delay).await;
                 session.channel_success(channel)?;
                 let files = SftpFiles {
                     root: self.root.clone(),
@@ -1712,7 +1731,13 @@ impl russh::server::Handler for SftpHomeServer {
                     concurrent_edit: self.concurrent_edit.clone(),
                     ..Default::default()
                 };
-                russh_sftp::server::run(stored.into_stream(), files).await;
+                let start_delay = self.sftp_start_delay;
+                tokio::spawn(async move {
+                    if !start_delay.is_zero() {
+                        tokio::time::sleep(start_delay).await;
+                    }
+                    russh_sftp::server::run(stored.into_stream(), files).await;
+                });
             }
             _ => session.channel_failure(channel)?,
         }
@@ -2362,6 +2387,64 @@ async fn a_refused_sftp_folder_removal_is_reported_instead_of_claimed_done() {
     );
 }
 
+/// A server on a slow path — one whose answers cost seconds, whether the
+/// latency is the network's (a lost packet retransmits after seconds) or
+/// the server's (sshd under load) — still gets its sftp channel opened.
+/// The subsystem wait's old 5 s bound cut exactly these servers off on
+/// every Filer and transfer connect, while their terminals, which wait
+/// without a deadline, merely opened slowly.
+#[tokio::test]
+async fn a_slowly_accepted_sftp_subsystem_still_opens_the_channel() {
+    let file = KnownHosts::new();
+    let home = file.path().parent().expect("scratch").join("home");
+    std::fs::create_dir_all(&home).expect("home");
+    let mut server = SftpHomeServer::new(&home);
+    // Above the old 5 s subsystem bound, below the new one.
+    server.subsystem_delay = Duration::from_secs(6);
+    let address = serve_once(server, Preferred::default()).await;
+    let transport = transport_to(address, file.path()).await;
+
+    transport
+        .transfer_channel()
+        .await
+        .expect("a subsystem accepted after more than 5 s is still accepted");
+}
+
+/// An external sftp subsystem is exec'd through the account's login shell,
+/// whose startup can cost far more than the protocol library's default
+/// 10 s per-request ceiling — under which the version exchange runs. The
+/// old default made every Filer connect fail on such a server however
+/// generous EdgeTerm's own budgets were.
+#[tokio::test]
+async fn a_sftp_server_that_speaks_its_version_slowly_still_initializes() {
+    let file = KnownHosts::new();
+    let home = file.path().parent().expect("scratch").join("home");
+    std::fs::create_dir_all(&home).expect("home");
+    std::fs::write(home.join("here.txt"), b"marker").expect("marker");
+    let mut server = SftpHomeServer::new(&home);
+    // Above russh-sftp's 10 s default, below the configured ceiling.
+    server.sftp_start_delay = Duration::from_secs(11);
+    let address = serve_once(server, Preferred::default()).await;
+    let transport = transport_to(address, file.path()).await;
+
+    let mut slot = None;
+    let session = ensure_sftp(&transport.handle, &mut slot)
+        .await
+        .expect("a version spoken after more than 10 s still initializes");
+
+    let listing = run_sftp(session, SftpRequest::List { path: "/".into() })
+        .await
+        .expect("the initialized session lists");
+    let SftpResponse::Listing(listing) = listing else {
+        panic!("the root lists");
+    };
+    assert!(
+        listing.entries.iter().any(|entry| entry.name == "here.txt"),
+        "the listing came from the fixture: {:?}",
+        listing.entries
+    );
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn a_recursive_sftp_delete_unlinks_links_without_following_them() {
@@ -2592,6 +2675,128 @@ async fn a_symlinked_authorized_keys_is_refused() {
         "# elsewhere\n",
         "the symlink's target is untouched"
     );
+}
+
+// --- editor saves over SFTP ------------------------------------------------
+
+/// The app state a project command reads: only the SSH transport is real, and
+/// the store, draft directory and project records stay in this test's scratch
+/// space.
+fn project_state(
+    transport: &Arc<SharedTransport>,
+    profile: &SessionProfile,
+) -> crate::commands::AppState {
+    let scratch = std::env::temp_dir().join(format!("edgeterm-project-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&scratch).expect("scratch");
+    let state = crate::commands::AppState {
+        sessions: Default::default(),
+        outputs: Default::default(),
+        store: crate::store::Store::load_from_test(scratch.join("profiles.json")),
+        remote_edits: Default::default(),
+        auth_prompts: Default::default(),
+        file_transfers: Default::default(),
+        file_diffs: Default::default(),
+        resource_monitor: Default::default(),
+        workspaces: crate::workspace::WorkspaceStore::load_from(scratch.join("workspaces.json")),
+        drafts: crate::drafts::DraftStore::load_from(scratch.join("drafts")),
+        project_ops: Default::default(),
+        key_checks: Default::default(),
+        port_forwards: Default::default(),
+        ssh_transports: Default::default(),
+    };
+    state.file_transfers.remember("editor", profile);
+    state.ssh_transports.register("editor", transport);
+    state
+}
+
+fn editor_write(content: &str, expected: Option<String>) -> crate::project::TextWrite {
+    crate::project::TextWrite {
+        path: "/config.txt".into(),
+        content: content.into(),
+        expected_hash: expected,
+        eol: "lf".into(),
+        bom: false,
+        force: false,
+        encoding: Some("UTF-8".into()),
+    }
+}
+
+/// Saving an open file replaces the server's copy even when the server
+/// enforces SFTP v3 RENAME's no-overwrite rule the way Windows OpenSSH and
+/// several appliances do. That refusal used to end a save with "could not be
+/// replaced" and left the file untouched; the OpenSSH posix-rename extension
+/// is what provides replacement semantics, and a server without it is served
+/// by moving the old file aside first.
+#[tokio::test]
+async fn project_write_replaces_an_existing_remote_file() {
+    for posix_rename in [true, false] {
+        let file = KnownHosts::new();
+        let home = file.path().parent().expect("scratch").join("home");
+        std::fs::create_dir_all(&home).expect("home");
+        let mut server = SftpHomeServer::new(&home);
+        server.posix_rename = posix_rename;
+        let address = serve_once(server, Preferred::default()).await;
+        let transport = transport_to(address, file.path()).await;
+        let state = project_state(&transport, &profile_for(address));
+        let context = format!("posix-rename={posix_rename}");
+
+        let created = crate::project::write_text(
+            &state,
+            &state.project_ops,
+            "editor",
+            editor_write("enabled=true\n", None),
+        )
+        .await
+        .unwrap_or_else(|error| panic!("{context}: create: {error}"));
+        assert_eq!(
+            created.backup, None,
+            "{context}: a new file needs no backup"
+        );
+
+        // The save this test guards called exactly this rename. The fixture
+        // refuses it, so the test would fail on the old implementation instead
+        // of passing vacuously if the fixture stopped modelling v3 semantics.
+        let probe = russh_sftp::client::RawSftpSession::new(
+            transport.transfer_channel().await.expect("probe channel"),
+        );
+        probe.init().await.expect("probe init");
+        std::fs::write(home.join("present.txt"), b"present").expect("probe file");
+        assert!(
+            probe.rename("/config.txt", "/present.txt").await.is_err(),
+            "{context}: the fixture must refuse rename over an existing target"
+        );
+        probe.close_session().expect("probe session");
+        std::fs::remove_file(home.join("present.txt")).expect("probe cleanup");
+
+        let replaced = crate::project::write_text(
+            &state,
+            &state.project_ops,
+            "editor",
+            editor_write("enabled=false\n", Some(created.hash)),
+        )
+        .await
+        .unwrap_or_else(|error| panic!("{context}: replace: {error}"));
+        assert_eq!(replaced.backup, None, "{context}: the old copy is retired");
+        assert_eq!(
+            replaced.size, 14,
+            "{context}: the new bytes are on the server"
+        );
+        assert_eq!(
+            std::fs::read(home.join("config.txt")).expect("file"),
+            b"enabled=false\n",
+            "{context}: the save lands"
+        );
+        let leftovers: Vec<String> = std::fs::read_dir(&home)
+            .expect("home")
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name != "config.txt")
+            .collect();
+        assert!(
+            leftovers.is_empty(),
+            "{context}: no recovery copy may be left after a confirmed replace: {leftovers:?}"
+        );
+    }
 }
 
 // --- public-key checks ----------------------------------------------------

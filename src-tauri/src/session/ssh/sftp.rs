@@ -5,8 +5,16 @@ use super::*;
 pub(super) const SFTP_HEALTH_INTERVAL: Duration = Duration::from_secs(5);
 
 /// How long a server gets to accept or refuse the sftp subsystem; see
-/// `ensure_sftp`. Servers answer at once, so this only bounds a stuck one.
-pub(super) const SFTP_SUBSYSTEM_TIMEOUT: Duration = Duration::from_secs(5);
+/// `ensure_sftp`. A refusal arrives at once, but a *yes* can legitimately
+/// take seconds: one lost packet on a lossy path costs seconds of TCP
+/// retransmit, a high-latency path spends a noticeable slice of its budget
+/// on the round trip alone, and a loaded sshd forks the subsystem under
+/// pressure. The old 5 s bound cut exactly those servers off on every
+/// Filer and transfer connect — while their terminals, which wait without
+/// a deadline, merely opened slowly. 15 s still bounds a genuinely stuck
+/// server and stays inside the lazy bring-up's overall budget
+/// ([`SFTP_INIT_TIMEOUT`]).
+pub(super) const SFTP_SUBSYSTEM_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// An SSH transport that carries only the SFTP subsystem: a file-transfer
 /// session with no shell channel or PTY. See `spawn_sftp`.
@@ -187,17 +195,27 @@ pub(super) const SFTP_OPERATION_TIMEOUT: Duration = Duration::from_secs(30);
 /// the browsing deadline would leave the tree half deleted.
 pub(super) const SFTP_DELETE_TIMEOUT: Duration = Duration::from_secs(300);
 
+/// Per-request ceiling the Filer's SFTP session passes to the protocol
+/// library at construction (russh-sftp defaults to 10 s). The version
+/// exchange runs under it too: a server whose external sftp-server is
+/// exec'd through a login shell that starts slowly (NFS home, rc files, a
+/// loaded machine) never got its first word in under the default, so every
+/// Filer connect failed however generous EdgeTerm's own budgets were —
+/// the transfers, which build their raw session with a 600 s ceiling,
+/// never had this failure. 25 s sits just under the lazy bring-up's
+/// overall budget below, and also covers whole-directory listings on the
+/// same slow links inside the browsing deadline.
+const SFTP_REQUEST_TIMEOUT_SECS: u64 = 25;
+
 /// How long the whole lazy bring-up may take: the channel open, the
 /// subsystem answer, and the version exchange. It has to sit above the
 /// layers it wraps — a server without the subsystem is refused within
-/// [`SFTP_SUBSYSTEM_TIMEOUT`], and one that accepts but never speaks the
-/// version gives up on the protocol library's own 10 s request timeout —
-/// which the old 10 s cap did not: a server that simply starts its
-/// sftp-server slowly (an external subsystem is exec'd through the
-/// account's login shell, whose rc files can cost seconds on a loaded
-/// machine) had its about-to-arrive version reply cut off, so every Filer
-/// request failed as "SFTP initialization timed out". The wait runs off
-/// the session's own loop, so a slow start never freezes the terminal.
+/// [`SFTP_SUBSYSTEM_TIMEOUT`], and one that accepts but speaks its version
+/// slowly is waited out to [`SFTP_REQUEST_TIMEOUT_SECS`] — which the old
+/// 10 s cap did not: a server that simply starts its sftp-server slowly
+/// had its about-to-arrive version reply cut off, so every Filer request
+/// failed as "SFTP initialization timed out". The wait runs off the
+/// session's own loop, so a slow start never freezes the terminal.
 const SFTP_INIT_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub(super) async fn browse_sftp(
@@ -279,7 +297,15 @@ pub(super) async fn ensure_sftp(
             _ => AppError::connection_failed("the server does not offer the sftp subsystem"),
         });
     }
-    let session = SftpSession::new(channel.into_stream()).await.map_err(|e| {
+    let session = SftpSession::new_with_config(
+        channel.into_stream(),
+        russh_sftp::client::Config {
+            request_timeout_secs: SFTP_REQUEST_TIMEOUT_SECS,
+            ..Default::default()
+        },
+    )
+    .await
+    .map_err(|e| {
         AppError::connection_failed(format!("the server refused the sftp subsystem: {e}"))
     })?;
     let session = Arc::new(session);
