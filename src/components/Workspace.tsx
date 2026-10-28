@@ -99,8 +99,8 @@ export function Workspace({ onNewSession }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const rects = useMemo(() => layoutRects(layout), [layout]);
 
-  // One line per capability, under the hero button. The panel entries name the
-  // action in force (open / hide) so the label stays true after a toggle, the
+  // One entry per capability, alongside the primary action when space allows.
+  // The panel entries name the action in force (open / hide), the
   // way the View menu's own checkboxes do. Each entry carries a stable id:
   // keying the rows on the label would remount a button the moment its label
   // flips, dropping the keyboard focus that just activated it.
@@ -155,41 +155,47 @@ export function Workspace({ onNewSession }: Props) {
             <div className="pane-stack" data-pane-id={pane.id}>
               {tabs.length === 0 && (
                 <div className="term-empty">
-                  <img className="term-empty-icon" src={appIcon} alt="" draggable={false} />
-                  <h1>EdgeTerm</h1>
-                  <p className="term-empty-hint">
-                    {newSessionKey ? (
-                      <>
-                        {hintBeforeKey}
-                        <kbd>{newSessionKey}</kbd>
-                        {hintAfterKey}
-                      </>
-                    ) : (
-                      hintNoKey
-                    )}
-                  </p>
-                  <button className="btn is-primary" onClick={onNewSession}>
-                    {t("empty.newSession")}
-                  </button>
-                  <div className="term-empty-entries">
-                    {capabilityEntries.map((entry) => (
-                      <button
-                        key={entry.id}
-                        type="button"
-                        className="term-empty-entry"
-                        // The visible text is label + chord + hint; the
-                        // accessible name keeps the label and its chord, the
-                        // way the bar's own buttons name themselves.
-                        aria-label={entry.chord ? `${entry.label} (${entry.chord})` : entry.label}
-                        onClick={entry.action}
-                      >
-                        <span className="term-empty-entry-label">
-                          {entry.label}
-                          {entry.chord && <kbd>{entry.chord}</kbd>}
-                        </span>
-                        <span className="term-empty-entry-hint">{entry.hint}</span>
+                  <div className="term-empty-content">
+                    <div className="term-empty-start">
+                      <div className="term-empty-brand">
+                        <img className="term-empty-icon" src={appIcon} alt="" draggable={false} />
+                        <h1>EdgeTerm</h1>
+                      </div>
+                      <p className="term-empty-hint">
+                        {newSessionKey ? (
+                          <>
+                            {hintBeforeKey}
+                            <kbd>{newSessionKey}</kbd>
+                            {hintAfterKey}
+                          </>
+                        ) : (
+                          hintNoKey
+                        )}
+                      </p>
+                      <button className="btn is-primary" onClick={onNewSession}>
+                        {t("empty.newSession")}
                       </button>
-                    ))}
+                    </div>
+                    <div className="term-empty-entries">
+                      {capabilityEntries.map((entry) => (
+                        <button
+                          key={entry.id}
+                          type="button"
+                          className="term-empty-entry"
+                          // The visible text is label + chord + hint; the
+                          // accessible name keeps the label and its chord, the
+                          // way the bar's own buttons name themselves.
+                          aria-label={entry.chord ? `${entry.label} (${entry.chord})` : entry.label}
+                          onClick={entry.action}
+                        >
+                          <span className="term-empty-entry-label">
+                            {entry.label}
+                            {entry.chord && <kbd>{entry.chord}</kbd>}
+                          </span>
+                          <span className="term-empty-entry-hint">{entry.hint}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
