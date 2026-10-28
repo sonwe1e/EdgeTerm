@@ -33,6 +33,9 @@ if (!/^[a-z0-9-]+$/.test(resultsArg)) {
 }
 const outDir = path.join(repoRoot, ".tmp", "records", "refinement-shots", resultsArg);
 const buildDir = path.join(repoRoot, ".tmp", "refinement-shots-build", `dist-${resultsArg}`);
+// Optional copies of the earlier tab component and stylesheet let a visual
+// comparison keep all other source, fixture data and viewport settings equal.
+const tabBaselineDir = process.env.REFINEMENT_TAB_BASELINE_DIR?.trim();
 
 // The fixture entry: the real App over the permissive stub, with helpers the
 // driver uses to put the stores into each state before a shot.
@@ -228,6 +231,7 @@ const treeFiles = [
 useStore.setState({
   language: "en", gpuRenderer: false, suggestionsEnabled: false,
   tabs: [localTab], activeId: localTab.info.id,
+  panes: [{ id: paneId, activeTabId: localTab.info.id }], activePaneId: paneId,
   panels: { sessions: true, sender: true, filer: true },
   panelDocks: { left: ["sessions"], right: ["filer"], bottom: ["sender"] },
 });
@@ -243,10 +247,27 @@ window.__refinement = {
   async workbench(patch) { flushSync(() => useWorkbench.setState(patch)); await frames(); },
   async tabs(list) { flushSync(() => useStore.setState({ tabs: list })); await frames(); },
   async frames() { await frames(); },
+  /** A mix of background agents, a finished turn and a disconnected tab. */
+  async multiTabs() {
+    const extra = [
+      ["api", "OpenCode api", "connected", "running", "#4ea1f3"],
+      ["web", "OpenCode web", "connected", "running", "#bc8cff"],
+      ["docs", "OpenCode docs", "connected", "complete", "#39c5cf"],
+      ["worker", "Worker", "error", "idle", "#f0883e"],
+    ].map(([id, name, state, commandActivity, color], index) => ({
+      ...localTab, info: { ...localTab.info, id, name, color },
+      profile: { ...localTab.profile, id, name }, number: index + 2,
+      state, commandActivity, activityKind: "ai",
+    }));
+    flushSync(() => useStore.setState({ tabs: [localTab, ...extra], activeId: localTab.info.id,
+      panes: [{ id: paneId, activeTabId: localTab.info.id }] }));
+    await frames();
+  },
   /** Activates the connected SSH tab: the session all three status popovers
       describe (host vitals, transfers, tunnels). */
   async ssh() {
-    flushSync(() => useStore.setState({ tabs: [localTab, sshTab], activeId: sshTab.info.id }));
+    flushSync(() => useStore.setState({ tabs: [localTab, sshTab], activeId: sshTab.info.id,
+      panes: [{ id: paneId, activeTabId: sshTab.info.id }] }));
     await frames();
   },
   /** The theme is store state; App publishes it as data-theme on <html>. */
@@ -272,7 +293,8 @@ window.__refinement = {
   },
   /** Puts the workbench into a connected project with a file tree on screen. */
   async workbenchTree() {
-    flushSync(() => useStore.setState({ tabs: [localTab, sshTab], activeId: sshTab.info.id }));
+    flushSync(() => useStore.setState({ tabs: [localTab, sshTab], activeId: sshTab.info.id,
+      panes: [{ id: paneId, activeTabId: sshTab.info.id }] }));
     flushSync(() => useWorkbench.setState({
       view: "workbench", status: "ready",
       data: { workspaces: [project], experiments: [baseline], runs: [] },
@@ -284,7 +306,8 @@ window.__refinement = {
   },
   /** The workbench with no projects at all — the R6.6 empty-state button. */
   async workbenchEmpty() {
-    flushSync(() => useStore.setState({ tabs: [localTab], activeId: localTab.info.id }));
+    flushSync(() => useStore.setState({ tabs: [localTab], activeId: localTab.info.id,
+      panes: [{ id: paneId, activeTabId: localTab.info.id }] }));
     flushSync(() => useWorkbench.setState({
       view: "workbench", status: "ready",
       data: { workspaces: [], experiments: [], runs: [] },
@@ -296,7 +319,7 @@ window.__refinement = {
   /** Back to the terminal view with every panel docked. */
   async shell() {
     flushSync(() => useStore.setState({
-      tabs: [localTab], activeId: localTab.info.id,
+      tabs: [localTab], activeId: localTab.info.id, panes: [{ id: paneId, activeTabId: localTab.info.id }],
       panels: { sessions: true, sender: true, filer: true },
       panelDocks: { left: ["sessions"], right: ["filer"], bottom: ["sender"] },
     }));
@@ -339,6 +362,14 @@ try {
         },
         load(id) {
           if (id === entryId) return entry;
+          if (!tabBaselineDir) return;
+          const normalized = id.split("?", 1)[0].replaceAll("\\", "/");
+          if (normalized.endsWith("/src/components/TabStrip.tsx")) {
+            return fs.readFile(path.join(tabBaselineDir, "TabStrip.tsx"), "utf8");
+          }
+          if (normalized.endsWith("/src/styles/tabs.styles.css")) {
+            return fs.readFile(path.join(tabBaselineDir, "tabs.styles.css"), "utf8");
+          }
         },
       },
     ],
@@ -548,6 +579,34 @@ try {
     statusGroup: ".status-group",
     panelHeaderRule: ".panel-header",
   });
+
+  await shoot("multi-tabs", () => call("multiTabs"), {
+    running: ".tab.is-command-running",
+    complete: ".tab.is-command-complete",
+    error: ".tab.is-error",
+  });
+  await shoot(
+    "multi-tabs-menu",
+    async () => {
+      const button = page.locator('.tabstrip-actions button[aria-haspopup="menu"]');
+      const rect = await button.boundingBox();
+      if (!rect) throw new Error("all-sessions button is not visible");
+      await page.mouse.click(rect.x + rect.width / 2, rect.y + rect.height / 2);
+      await page.waitForSelector(".tab-list-menu", { timeout: 5000 });
+    },
+    { list: ".tab-list-menu", items: ".tab-list-menu [role=menuitemradio]" },
+  );
+  await page.keyboard.press("Escape");
+  await page.setViewportSize({ width: 900, height: 560 });
+  await call("theme", "light");
+  await shoot("multi-tabs-narrow-light", () => call("multiTabs"), {
+    running: ".tab.is-command-running",
+    complete: ".tab.is-command-complete",
+    error: ".tab.is-error",
+  });
+  await page.setViewportSize({ width: 1100, height: 720 });
+  await call("theme", "dark");
+  await call("shell");
 
   /**
    * Dismisses whatever dialog is open and proves it is gone. A click is not a
@@ -1024,6 +1083,7 @@ try {
     at: new Date().toISOString(),
     browser: browserVersion,
     channel,
+    tabSources: tabBaselineDir ? "supplied baseline component and stylesheet" : "current sources",
     scope:
       "Production build (real vite.config). Real App, real stores, real CSS; permissive IPC stub that answers unknown commands with a safe empty value and records them, plus synthetic commands, transfer routes and resource/forward samples. Screenshots at 1100x720 (dark) for the surfaces check-app-font-chain.mjs does not reach: dialogs, the workbench view and the three status-bar popovers (host resources, transfers, tunnels). The monitor-wide scene repeats the host-resources popover at 1440x900 so the vitals cluster itself (not only the compact fallback) is measured; tunnels-wide repeats the tunnel popover at 1440x900 in the light theme; tunnels-narrow does it at 900x560 in the dark theme. The `layout` key carries the measured geometry, row rhythm, status-bar trigger metrics, element-cluster visibility/fit and text-contrast ratios behind those screenshots; a failed layout assertion turns the run red.",
     shots,

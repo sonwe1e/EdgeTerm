@@ -866,6 +866,8 @@ export const en = {
 
   // TabStrip
   "tab.ai": "AI",
+  "tab.aiActive": "session active",
+  "tab.aiAttention": "session needs review",
   "tab.command": "command",
   "tab.running": "running",
   "tab.finished": "finished",
@@ -877,6 +879,8 @@ export const en = {
   "tab.duplicateSsh": "Duplicate SSH Channel",
   "tab.closeSession": "Close session",
   "tab.allSessions": "All sessions",
+  "tab.attentionOne": "1 session needs attention",
+  "tab.attentionMany": "{count} sessions need attention",
   "tab.strip": "Sessions",
   "tab.state.connecting": "Connecting",
   "tab.state.connected": "Connected",

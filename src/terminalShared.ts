@@ -60,11 +60,8 @@ export const WEBGL_RECOVERY_WINDOW_MS = 60_000;
 /** Terminals holding a WebGL renderer, most recently shown first. */
 
 /**
- * How long an agentic CLI has to stay silent before its turn counts as
- * finished. Comfortably above the repaint rate of every one of them — they
- * animate a spinner and an elapsed-time counter for as long as they work,
- * tool calls included — and short enough that the tab reports back while the
- * answer is still on screen.
+ * A quiet interval after input marks an agentic CLI session for review.
+ * This heuristic does not establish that the tool finished its work.
  */
 export const AI_QUIET_MS = 2000;
 

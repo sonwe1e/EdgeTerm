@@ -799,6 +799,8 @@ export const zhCN: Catalog = {
     "连接与认证设置相同的新 SSH / SFTP 标签页会复用同一条连接。关闭则分别登录。已有标签页和“Duplicate SSH Channel”保持当前连接不变。",
 
   "tab.ai": "AI",
+  "tab.aiActive": "会话活跃",
+  "tab.aiAttention": "会话待查看",
   "tab.command": "命令",
   "tab.running": "运行中",
   "tab.finished": "已完成",
@@ -810,6 +812,8 @@ export const zhCN: Catalog = {
   "tab.duplicateSsh": "复制 SSH 通道",
   "tab.closeSession": "关闭会话",
   "tab.allSessions": "所有会话",
+  "tab.attentionOne": "1 个会话需要关注",
+  "tab.attentionMany": "{count} 个会话需要关注",
   "tab.strip": "会话标签",
   "tab.state.connecting": "正在连接",
   "tab.state.connected": "已连接",

@@ -260,11 +260,11 @@ export class TerminalCommands {
   }
 
   /**
-   * A keystroke inside an agentic CLI opens a turn, and the tool's own
-   * repainting keeps it open: every one of them animates a spinner and an
-   * elapsed time while it works, and goes quiet the moment it wants the user
-   * back — quiet is the end of the turn. Output alone never opens one, or an
-   * idle tool's occasional repaint would announce work that never happened.
+   * A keystroke inside an agentic CLI starts an activity interval, and output
+   * keeps it open until the stream has been quiet. This is only a signal to
+   * review the tab: a tool can pause and resume before actually finishing.
+   * Output alone never opens an interval, so an idle tool's occasional
+   * repaint does not repeatedly create a new notification.
    */
   private noteAiInput() {
     this.aiOutputAt = Date.now();

@@ -11,7 +11,7 @@ import {
 } from "react";
 
 import { canDuplicateSshChannel, duplicateSshChannel, splitSession } from "../actions";
-import { t as translateMsg } from "../i18n";
+import type { Translate } from "../i18n";
 import { tabTitle, useStore, type DropTarget, type Tab } from "../store";
 import { colorForSession } from "../types";
 import { useT } from "../useT";
@@ -24,8 +24,6 @@ const DRAG_THRESHOLD = 4;
 /** Distance from either strip edge inside which a drag scrolls the strip. */
 const EDGE_SCROLL_ZONE = 32;
 const EDGE_SCROLL_STEP = 6;
-/** Kept deliberately small: every open tab owns these DOM-only particles. */
-const COMMAND_PARTICLES = 6;
 /**
  * How far in from a pane's edge, as a share of its size, a dropped tab
  * splits the pane on that side rather than joining it.
@@ -38,15 +36,16 @@ interface Props {
 
 /**
  * What the tab's activity treatment is reporting, or null while there is
- * nothing to report. An agentic CLI is named for what it is: its session
- * lasts as long as the user keeps it open, so only the assistant's own turns
- * are worth a running or a finished tab.
+ * nothing to report. An AI session's state comes from input and output
+ * activity; a quiet interval is not proof that the tool finished its work.
  */
-function activityLabel(tab: Tab): string | null {
+function activityLabel(tab: Tab, t: Translate): string | null {
   if (tab.commandActivity === "idle") return null;
-  const subject = tab.activityKind === "ai" ? translateMsg("tab.ai") : translateMsg("tab.command");
-  const state =
-    tab.commandActivity === "running" ? translateMsg("tab.running") : translateMsg("tab.finished");
+  if (tab.activityKind === "ai") {
+    return `${t("tab.ai")} ${t(tab.commandActivity === "running" ? "tab.aiActive" : "tab.aiAttention")}`;
+  }
+  const subject = t("tab.command");
+  const state = tab.commandActivity === "running" ? t("tab.running") : t("tab.finished");
   return `${subject} ${state}`;
 }
 
@@ -265,12 +264,27 @@ export function TabStrip({ paneId }: Props) {
   // button's click fires the menu is already gone; remember whether it was
   // open so the button toggles instead of reopening.
   const listWasOpen = useRef(false);
-  const listItems: MenuItem[] = tabs.map((tab) => ({
-    label: `${tab.number}. ${tabTitle(tab)}${activityLabel(tab) ? ` · ${activityLabel(tab)}` : ""}`,
-    checked: tab.info.id === shownId,
-    mark: "radio" as const,
-    action: () => setActive(tab.info.id),
-  }));
+  const attentionCount = tabs.filter(
+    (tab) =>
+      tab.info.id !== shownId && (tab.commandActivity === "complete" || tab.state === "error"),
+  ).length;
+  const listButtonLabel = attentionCount
+    ? `${t("tab.allSessions")} · ${t(attentionCount === 1 ? "tab.attentionOne" : "tab.attentionMany", { count: attentionCount })}`
+    : t("tab.allSessions");
+  const listItems: MenuItem[] = tabs.map((tab) => {
+    const details = [
+      tab.state === "connected" ? null : t(`tab.state.${tab.state}`),
+      activityLabel(tab, t),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    return {
+      label: `${tab.number}. ${tabTitle(tab)}${details ? ` · ${details}` : ""}`,
+      checked: tab.info.id === shownId,
+      mark: "radio" as const,
+      action: () => setActive(tab.info.id),
+    };
+  });
 
   // A tab's own menu: the close commands work along this strip, the way
   // VS Code's "Close to the Right" stays inside its editor group.
@@ -621,6 +635,9 @@ export function TabStrip({ paneId }: Props) {
       {tabs.flatMap((tab, index) => {
         const active = tab.info.id === shownId;
         const sessionColor = tab.info.color ?? colorForSession(tab.info.profileId ?? tab.info.name);
+        const activity = activityLabel(tab, t);
+        const state = t(`tab.state.${tab.state}`);
+        const details = [state, tab.message, activity].filter(Boolean).join(" · ");
         const element = (
           <div
             key={tab.info.id}
@@ -637,23 +654,13 @@ export function TabStrip({ paneId }: Props) {
             id={`tab-${tab.info.id}`}
             role="tab"
             aria-selected={active}
+            aria-label={`${tab.number}. ${tabTitle(tab)}${tab.workspaceName ? ` · ${tab.workspaceName}` : ""} · ${details}`}
             tabIndex={active ? 0 : -1}
             data-tab-id={tab.info.id}
             onMouseDown={() => setActive(tab.info.id)}
             onKeyDown={(event) => onTabKeyDown(event, index, tab.info.id)}
-            title={`${tab.info.protocol} · ${tab.info.address} · ${
-              tab.commandActivity === "running"
-                ? activityLabel(tab)
-                : tab.commandActivity === "complete"
-                  ? `${activityLabel(tab)}${t("tab.selectToView")}`
-                  : (tab.message ?? t(`tab.state.${tab.state}`))
-            }`}
+            title={`${tab.info.protocol} · ${tab.info.address} · ${details}${tab.commandActivity === "complete" && tab.activityKind !== "ai" ? t("tab.selectToView") : ""}`}
           >
-            <span className="tab-command-activity" aria-hidden="true">
-              {Array.from({ length: COMMAND_PARTICLES }, (_, particle) => (
-                <span className="tab-command-particle" key={particle} />
-              ))}
-            </span>
             <span className="tab-index">{tab.number}.</span>
             <span className="tab-dot" aria-hidden="true" />
             <span className="tab-label">{tabTitle(tab)}</span>
@@ -713,7 +720,7 @@ export function TabStrip({ paneId }: Props) {
             <Icon name="chevron-right" />
           </button>
           <button
-            className={`panel-action${listMenu ? " is-open" : ""}`}
+            className={`panel-action tab-list-button${listMenu ? " is-open" : ""}`}
             onMouseDown={() => {
               listWasOpen.current = listMenu !== null;
             }}
@@ -722,11 +729,13 @@ export function TabStrip({ paneId }: Props) {
               const rect = event.currentTarget.getBoundingClientRect();
               setListMenu({ x: rect.right, y: rect.bottom + 2 });
             }}
-            title={t("tab.allSessions")}
+            title={listButtonLabel}
+            aria-label={listButtonLabel}
             aria-haspopup="menu"
             aria-expanded={listMenu !== null}
           >
             <Icon name="chevron-down" />
+            {attentionCount > 0 && <span className="tab-list-attention" aria-hidden="true" />}
           </button>
         </div>
       )}
