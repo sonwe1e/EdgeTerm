@@ -85,6 +85,7 @@ code/          可选的代码快照
 - **调度系统**：探测 `sbatch/qsub/bsub/srun`。`sbatch/qsub/bsub` 只记录“已提交”，不会把提交命令的退出当作训练完成；`srun` 是前台运行，仍以进程退出码为准。
 - **启动结果不确定**：运行记录在启动命令执行**之前**写入（`starting`）。启动命令的返回读不到时，记录改为 `unknown` 并返回警告，界面提示先刷新确认，绝不把它当成“没启动”。用同一 run id 重试会被拒绝（记录已存在，或远端 tmux/pid 仍存活）。
 - **状态**：`starting/running/submitted/finished/failed/lost/stopped/unknown`。连接断开或会话关闭时，运行记录保留上次状态并显示“可能已过期”，不会推断为完成。重连后只查询 tmux/进程与日志，**不自动重新启动**。
+- **日志错误跳转**：运行控制台把 Python traceback 的帧行（`File "…", line N`）识别为可点击目标，点击后用该运行的项目/实验身份打开远程文件并定位行号。边界：只识别这种帧格式；`<stdin>`/`<string>`/`<frozen …>` 等虚拟路径和 Windows 盘符路径不生成链接；相对路径按**项目源码根**（`run.root`）解析，不指向隔离快照目录；只有日志尾部 200 行参与识别（512 KiB 视图的渲染上界）；无连接会话时保持纯文本，不渲染死链接。
 - **环境**：`command.sh` 先 `cd` 到实际执行目录；若环境文本包含 `conda activate`，会先 source 服务器上的 `conda.sh`（通过 `conda info --base` 定位）。环境段在 `set -e` 下执行：`conda activate` 或 `export` 失败会立刻终止，训练命令不会在错误解释器下运行；成功后才写 `env_ok`。如果退出码非零且没有 `env_ok`，状态说明写“环境准备失败，训练命令未执行”，而不是笼统的“训练失败”。
 - **GPU**：只有纯数字/逗号（如 `0,1`）会导出 `CUDA_VISIBLE_DEVICES`；其他写法只记录，不猜测框架。
 - **恢复/重跑**：从运行详情点“继续 / 重跑”会用原命令、环境和 GPU 启动一次新运行，并记录 `resumedFrom` 链接。它不声称复现原运行，也不自动寻找 checkpoint。

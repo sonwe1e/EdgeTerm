@@ -1400,6 +1400,7 @@ export const en = {
   "wb.runDetail": "Run detail",
   "wb.logEmpty": "No log yet.",
   "wb.logWaiting": "Waiting for the first output…",
+  "wb.logJumpOpen": "Open {path} line {line}",
   "wb.logClosed": "The log is not available.",
   "wb.attachDetached": "Detached runs have no terminal to attach; read their log instead.",
   "wb.attachTmuxMissing": "This run did not use tmux, so it cannot be attached.",

@@ -1,9 +1,10 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import { errorText } from "../errorInfo";
 import { useT } from "../useT";
 import { transferBytes } from "../fileTransfers";
 import { Icon } from "../components/icons";
 import * as wb from "./api";
+import { parseLogForJumps } from "./logJump";
 import { formatClock, formatDuration, isRunLive, runCodeId, runStatusKey } from "./model";
 import { connectedTabFor } from "./session";
 import { useWorkbench } from "./store";
@@ -27,6 +28,7 @@ export function RunConsole({
   );
   const runError = useWorkbench((state) => (run ? state.runErrors[run.id] : undefined));
   const reveal = useWorkbench((state) => state.setActiveRun);
+  const openFile = useWorkbench((state) => state.openFile);
   const [log, setLog] = useState("");
   const [logError, setLogError] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
@@ -37,6 +39,9 @@ export function RunConsole({
   const follow = useRef(true);
   const session = run ? (connectedTabFor(run.server)?.info.id ?? null) : null;
   const live = run ? isRunLive(run.status) : false;
+  // Only the interactive tail is parsed, and only when the log changed; a
+  // 512 KiB view must not re-run the scan on every status tick.
+  const parsed = useMemo(() => parseLogForJumps(log, run?.root ?? null), [log, run?.root]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 5000);
@@ -324,7 +329,42 @@ export function RunConsole({
               follow.current = element.scrollHeight - element.scrollTop - element.clientHeight < 24;
             }}
           >
-            {log || (live ? t("wb.logWaiting") : t("wb.logEmpty"))}
+            {log ? (
+              <>
+                {parsed.head}
+                {parsed.lines.map((line, index) => {
+                  const jump = line.jump;
+                  // Without a live session the jump has nowhere to read from,
+                  // so the line stays text instead of a dead button.
+                  const node =
+                    jump && session ? (
+                      <button
+                        type="button"
+                        className="wb-log-link"
+                        title={t("wb.logJumpOpen", { path: jump.path, line: jump.line })}
+                        aria-label={t("wb.logJumpOpen", { path: jump.path, line: jump.line })}
+                        onClick={() =>
+                          void openFile(run.workspaceId, run.experimentId, jump.path, jump.line)
+                        }
+                      >
+                        {line.text}
+                      </button>
+                    ) : (
+                      line.text
+                    );
+                  return (
+                    <Fragment key={index}>
+                      {node}
+                      {index < parsed.lines.length - 1 ? "\n" : null}
+                    </Fragment>
+                  );
+                })}
+              </>
+            ) : live ? (
+              t("wb.logWaiting")
+            ) : (
+              t("wb.logEmpty")
+            )}
           </pre>
         </div>
       </div>

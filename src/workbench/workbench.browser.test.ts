@@ -351,7 +351,10 @@ describe("workbench layout", () => {
     });
     vi.mocked(wb.readLog).mockResolvedValue({
       path: "/data/vfi/baseline/.edgeterm/runs/r1/run.log",
-      content: "[epoch 12] loss=0.0182 psnr=31.4\n[epoch 12] saved checkpoint step_12000.pth\n",
+      content:
+        "[epoch 12] loss=0.0182 psnr=31.4\n[epoch 12] saved checkpoint step_12000.pth\n" +
+        'Traceback (most recent call last):\n  File "train.py", line 6, in train\n' +
+        '    loss = criterion(pred, batch["middle"])\nRuntimeError: CUDA error\n',
       offset: 80,
       size: 80,
       reset: true,
@@ -390,6 +393,28 @@ describe("workbench layout", () => {
     }
     expect(document.querySelector(".cm-content")).not.toBeNull();
     await wait(300);
+
+    // A traceback frame in the log opens that remote file; the line target is
+    // verified by the store/logJump unit tests, this proves the click path.
+    const logLinks = document.querySelectorAll<HTMLButtonElement>(".wb-log-link");
+    expect(logLinks.length).toBe(1);
+    await userEvent.click(logLinks[0]);
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      if (vi.mocked(wb.readText).mock.calls.some(([, path]) => path.includes("train.py"))) {
+        break;
+      }
+      await wait(100);
+    }
+    const jumpId = "w1::/data/vfi/baseline/train.py";
+    const jumped = useWorkbench.getState().docs.find((doc) => doc.id === jumpId);
+    expect(jumped).toBeDefined();
+    expect(vi.mocked(wb.readText)).toHaveBeenCalledWith("s1", "/data/vfi/baseline/train.py");
+    expect(useWorkbench.getState().activeDocId).toBe(jumpId);
+    await wait(300);
+
+    // Leave the original single-document state for the assertions below.
+    await useWorkbench.getState().closeDoc(jumpId);
+    expect(useWorkbench.getState().docs).toHaveLength(1);
 
     const body = document.body;
     expect(body.textContent).toContain("vfi-baseline");

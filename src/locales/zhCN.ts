@@ -1318,6 +1318,7 @@ export const zhCN: Catalog = {
   "wb.runDetail": "运行详情",
   "wb.logEmpty": "还没有日志。",
   "wb.logWaiting": "等待第一批输出…",
+  "wb.logJumpOpen": "打开 {path} 第 {line} 行",
   "wb.logClosed": "日志不可用。",
   "wb.attachDetached": "脱离进程没有可附着的终端，请查看日志。",
   "wb.attachTmuxMissing": "该运行未使用 tmux，无法附着终端。",

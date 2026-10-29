@@ -1527,6 +1527,25 @@
   overflow-wrap: anywhere;
 }
 
+/* A traceback frame line: part of the log until hovered or focused. */
+.wb-log-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  text-align: inherit;
+  white-space: inherit;
+  cursor: pointer;
+}
+
+.wb-log-link:hover,
+.wb-log-link:focus-visible {
+  color: var(--accent-bright);
+  text-decoration: underline;
+}
+
 /* --- overlays and dialogs --------------------------------------------- */
 
 .wb-overlay {
