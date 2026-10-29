@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use russh_sftp::client::RawSftpSession;
-use russh_sftp::protocol::{FileAttributes, OpenFlags, StatusCode};
+use russh_sftp::protocol::{FileAttributes, OpenFlags, Packet, StatusCode};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, ErrorCode, Result};
@@ -808,8 +808,50 @@ fn first_line(value: &str) -> String {
 
 // --- SFTP ---------------------------------------------------------------
 
+/// Why a replacement could not be completed, and what the server holds now.
+struct ReplaceRefused {
+    /// Every attempt's reason, joined for the caller's error message.
+    reasons: String,
+    /// The previous content was moved back onto the path, so the recovery copy
+    /// named in the save request no longer exists.
+    restored: bool,
+}
+
+impl ReplaceRefused {
+    fn kept(reasons: String) -> Self {
+        Self::with(reasons, false)
+    }
+
+    fn with(reasons: String, restored: bool) -> Self {
+        Self { reasons, restored }
+    }
+}
+
+/// What the server holds after a refused replacement, in one sentence.
+///
+/// A restore consumed the backup: when the rewrite after it also failed, the
+/// path holds the old bytes, a partial copy of the new ones, or anything in
+/// between. The sentence must not promise the previous content is still there.
+fn recovery_note(replacing: bool, restored: bool, path: &str, temp: &str, backup: &str) -> String {
+    if !replacing {
+        return format!("the new content is at {temp}");
+    }
+    if restored {
+        return format!(
+            "the previous content was moved back to {path}, but the rewrite after it failed, \
+             so {path} may hold partial new content; the new content is at {temp}"
+        );
+    }
+    format!("the new content is at {temp} and the previous content at {backup}")
+}
+
 struct Sftp {
     raw: RawSftpSession,
+    /// The OpenSSH `posix-rename@openssh.com` extension, when the server
+    /// announces it. It is the only SFTP operation that replaces an existing
+    /// file atomically: v3 RENAME must refuse an existing target, and servers
+    /// differ in how strictly they enforce that.
+    posix_rename: bool,
 }
 
 impl Sftp {
@@ -820,10 +862,15 @@ impl Sftp {
             .map_err(|error| AppError::connection_failed(error.to_string()))?;
         let raw = RawSftpSession::new(stream);
         raw.set_timeout(20);
-        raw.init()
+        let version = raw
+            .init()
             .await
             .map_err(|error| AppError::connection_failed(error.to_string()))?;
-        Ok(Self { raw })
+        let posix_rename = version
+            .extensions
+            .get("posix-rename@openssh.com")
+            .is_some_and(|value| value == "1");
+        Ok(Self { raw, posix_rename })
     }
 
     async fn read(
@@ -919,6 +966,110 @@ impl Sftp {
             .await
             .map_err(|error| AppError::new(format!("closing {path}: {error}")))?;
         Ok(())
+    }
+
+    /// Puts the complete copy at `temp` in place of `path`.
+    ///
+    /// A server that enforces v3 RENAME's no-overwrite rule refuses the plain
+    /// rename this save used to rely on, which made writing an existing file
+    /// fail with "could not be replaced". The ladder below keeps the atomic
+    /// path first and opens a gap only when the server offers nothing better.
+    /// `backup` already holds the previous content, so a failure leaves both
+    /// versions on the server for the caller to report.
+    async fn replace(
+        &self,
+        temp: &str,
+        path: &str,
+        backup: &str,
+        replacing: bool,
+        bytes: &[u8],
+        permissions: Option<u32>,
+    ) -> std::result::Result<(), ReplaceRefused> {
+        if !replacing {
+            // A new file: RENAME's no-overwrite contract is exactly right, and
+            // a target that appeared meanwhile must not be replaced.
+            return self
+                .raw
+                .rename(temp, path)
+                .await
+                .map(|_| ())
+                .map_err(|error| ReplaceRefused::kept(format!("rename: {error}")));
+        }
+        let mut refused = Vec::new();
+        if self.posix_rename {
+            match self.extended_rename(temp, path).await {
+                Ok(()) => return Ok(()),
+                Err(error) => refused.push(format!("posix-rename: {error}")),
+            }
+        }
+        // A server without the extension may still replace through v3 RENAME;
+        // OpenSSH on Unix does, and trying costs one round trip.
+        match self.raw.rename(temp, path).await {
+            Ok(_) => return Ok(()),
+            Err(error) => refused.push(format!("rename: {error}")),
+        }
+        // Move the old file out of the way first. Its bytes are already at
+        // `backup`, so the gap this opens is recoverable: the restore below
+        // runs before anything else when the second half fails.
+        let mut restored = false;
+        match self.raw.remove(path).await {
+            Ok(_) => match self.raw.rename(temp, path).await {
+                Ok(_) => return Ok(()),
+                Err(error) => {
+                    refused.push(format!("replace: {error}"));
+                    match self.raw.rename(backup, path).await {
+                        // The old content is back on the path and the copy at
+                        // `backup` went with it; the rewrite below starts from
+                        // what that restore put there.
+                        Ok(_) => restored = true,
+                        Err(error) => {
+                            refused.push(format!("restore: {error}"));
+                            return Err(ReplaceRefused::kept(refused.join("; ")));
+                        }
+                    }
+                }
+            },
+            Err(error) => refused.push(format!("remove: {error}")),
+        }
+        // A server may refuse every rename and still write the file itself.
+        if let Err(error) = self.write(path, bytes, permissions).await {
+            refused.push(format!("write: {error}"));
+            return Err(ReplaceRefused::with(refused.join("; "), restored));
+        }
+        // A rewrite in place is not atomic, so the landed bytes are read back
+        // instead of trusting the close; the uploaded copy is then redundant.
+        match self.read(path, TEXT_LIMIT).await {
+            Ok((landed, ..)) if landed == bytes => {
+                let _ = self.raw.remove(temp).await;
+                Ok(())
+            }
+            Ok(_) => {
+                refused.push("write: the file reads back with different content".into());
+                Err(ReplaceRefused::with(refused.join("; "), restored))
+            }
+            Err(error) => {
+                refused.push(format!("verify: {}", error.message));
+                Err(ReplaceRefused::with(refused.join("; "), restored))
+            }
+        }
+    }
+
+    /// The OpenSSH extended request that renames over an existing file.
+    async fn extended_rename(
+        &self,
+        from: &str,
+        to: &str,
+    ) -> std::result::Result<(), russh_sftp::client::error::Error> {
+        let mut data = Vec::new();
+        for path in [from, to] {
+            data.extend_from_slice(&(path.len() as u32).to_be_bytes());
+            data.extend_from_slice(path.as_bytes());
+        }
+        match self.raw.extended("posix-rename@openssh.com", data).await? {
+            Packet::Status(status) if status.status_code == StatusCode::Ok => Ok(()),
+            Packet::Status(status) => Err(russh_sftp::client::error::Error::Status(status)),
+            _ => Err(russh_sftp::client::error::Error::UnexpectedPacket),
+        }
     }
 }
 
@@ -1246,19 +1397,31 @@ pub async fn write_text(
         ));
     }
 
-    if let Err(error) = sftp.raw.rename(&temp, &path).await {
-        // Both files stay: the caller needs the new bytes (temp) and the old
-        // ones (backup) to decide what to do.
+    if let Err(refused) = sftp
+        .replace(
+            &temp,
+            &path,
+            &backup,
+            existing.is_some(),
+            &bytes,
+            permissions,
+        )
+        .await
+    {
+        // The new bytes stay at `temp`; where the previous ones are depends on
+        // how far the ladder got, so the message names what is really on the
+        // server instead of a recovery copy that may have moved back.
+        let recovery = recovery_note(existing.is_some(), refused.restored, &path, &temp, &backup);
         return Err(AppError::coded(
             ErrorCode::RemoteWriteUncertain,
             format!(
-                "{path} could not be replaced ({error}); the new content is at {temp} \
-                 and the previous content at {backup}"
+                "{path} could not be replaced ({}); {recovery}",
+                refused.reasons
             ),
         ));
     }
 
-    // The rename is done. Confirm the size, then retire the backup.
+    // The replacement is done. Confirm the size, then retire the backup.
     let verified = match sftp.raw.stat(&path).await {
         Ok(entry) => entry.attrs.size == Some(size),
         Err(_) => false,
@@ -2380,6 +2543,10 @@ pub async fn stop_run(state: &crate::commands::AppState, id: &str, run: &RunReco
     }
     Ok(())
 }
+
+/// A wire-protocol fixture for the editor save's replacement ladder.
+#[cfg(test)]
+mod sftp_replace_tests;
 
 #[cfg(test)]
 mod tests {
