@@ -412,6 +412,30 @@ describe("workbench layout", () => {
     expect(useWorkbench.getState().activeDocId).toBe(jumpId);
     await wait(300);
 
+    // Reloading a dirty buffer asks before discarding it, and both answers do
+    // what they say.
+    useWorkbench.getState().updateDoc(jumpId, "dirty edit\n");
+    const reloadButton = [
+      ...document.querySelectorAll<HTMLButtonElement>(".wb-editor-actions button"),
+    ].find((button) => button.title.includes("重新加载") || button.title.includes("Reload"));
+    expect(reloadButton).toBeDefined();
+    await userEvent.click(reloadButton!);
+    let confirmDialog = document.querySelector<HTMLElement>(".confirm-dialog");
+    expect(confirmDialog).not.toBeNull();
+    await userEvent.click(confirmDialog!.querySelector<HTMLButtonElement>(".btn")!);
+    expect(useWorkbench.getState().docs.find((doc) => doc.id === jumpId)?.content).toBe(
+      "dirty edit\n",
+    );
+    await userEvent.click(reloadButton!);
+    confirmDialog = document.querySelector<HTMLElement>(".confirm-dialog");
+    await userEvent.click(confirmDialog!.querySelector<HTMLButtonElement>(".btn.is-danger")!);
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      if (useWorkbench.getState().docs.find((doc) => doc.id === jumpId)?.sync === "synced") break;
+      await wait(100);
+    }
+    const reloaded = useWorkbench.getState().docs.find((doc) => doc.id === jumpId);
+    expect(reloaded?.content).toBe(PYTHON);
+    expect(reloaded?.sync).toBe("synced");
     // Leave the original single-document state for the assertions below.
     await useWorkbench.getState().closeDoc(jumpId);
     expect(useWorkbench.getState().docs).toHaveLength(1);

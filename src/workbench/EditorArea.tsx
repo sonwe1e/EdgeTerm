@@ -33,6 +33,7 @@ export function EditorArea({
   const clearReveal = useWorkbench((state) => state.clearReveal);
   const setDraftsOpen = useWorkbench((state) => state.setDraftsOpen);
   const [closing, setClosing] = useState<string | null>(null);
+  const [reloading, setReloading] = useState<string | null>(null);
   const [dismissedConflict, setDismissedConflict] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -50,6 +51,15 @@ export function EditorArea({
     if (!target) return;
     if (target.content !== target.savedContent) setClosing(id);
     else void closeDoc(id);
+  };
+
+  // A reload replaces the buffer with the server copy. A dirty buffer is the
+  // user's unsaved work, so it gets the same explicit decision as a close.
+  const requestReload = (id: string) => {
+    const target = docs.find((item) => item.id === id);
+    if (!target) return;
+    if (target.content !== target.savedContent) setReloading(id);
+    else void reloadDoc(id);
   };
 
   const save = async (force = false) => {
@@ -177,7 +187,7 @@ export function EditorArea({
                 type="button"
                 className="wb-icon-button"
                 title={t("wb.reload")}
-                onClick={() => void reloadDoc(doc.id)}
+                onClick={() => requestReload(doc.id)}
               >
                 <Icon name="refresh" />
               </button>
@@ -322,6 +332,39 @@ export function EditorArea({
               }}
             >
               {t("wb.close")}
+            </button>
+          </div>
+        </ModalDialog>
+      )}
+      {reloading && (
+        <ModalDialog
+          open
+          role="alertdialog"
+          contentClassName="confirm-dialog"
+          onClose={() => setReloading(null)}
+        >
+          <div className="dialog-header">{t("wb.dirtyReloadTitle")}</div>
+          <div className="dialog-body confirm-dialog-body">
+            <p>
+              {t("wb.dirtyReloadBody", {
+                path: docs.find((item) => item.id === reloading)?.path ?? "",
+              })}
+            </p>
+          </div>
+          <div className="dialog-footer">
+            <button type="button" className="btn" onClick={() => setReloading(null)}>
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn is-danger"
+              onClick={() => {
+                const id = reloading;
+                setReloading(null);
+                void reloadDoc(id);
+              }}
+            >
+              {t("wb.dirtyReloadConfirm")}
             </button>
           </div>
         </ModalDialog>

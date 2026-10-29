@@ -551,6 +551,70 @@ describe("workbench store: drafts and saves", () => {
     expect(after.some((doc) => doc.id === dirty.id)).toBe(true);
     expect(after.length).toBeLessThanOrEqual(16);
   });
+
+  it("replaces the buffer with the server copy when a reload reads cleanly", async () => {
+    const docPath = "/data/vfi/base/src/train.py";
+    await useWorkbench.getState().init();
+    await useWorkbench.getState().openFile("w1", "e1", "src/train.py");
+    const id = useWorkbench.getState().docs[0].id;
+    vi.mocked(wb.readText).mockResolvedValue(remote(docPath, "edited on the server\n", "h2"));
+    await useWorkbench.getState().reloadDoc(id);
+    const doc = useWorkbench.getState().docs[0];
+    expect(doc.content).toBe("edited on the server\n");
+    expect(doc.savedContent).toBe("edited on the server\n");
+    expect(doc.sync).toBe("synced");
+  });
+
+  it("keeps input typed while a reload was reading and says it was cancelled", async () => {
+    const docPath = "/data/vfi/base/src/train.py";
+    vi.mocked(wb.readText).mockResolvedValue(remote(docPath, "first copy\n", "h1"));
+    await useWorkbench.getState().init();
+    await useWorkbench.getState().openFile("w1", "e1", "src/train.py");
+    const id = useWorkbench.getState().docs[0].id;
+    let resolveRead: (value: ReturnType<typeof remote>) => void = () => undefined;
+    vi.mocked(wb.readText).mockImplementation(
+      () =>
+        new Promise<ReturnType<typeof remote>>((resolve) => {
+          resolveRead = resolve;
+        }),
+    );
+    const reloading = useWorkbench.getState().reloadDoc(id);
+    useWorkbench.getState().updateDoc(id, "typed during the read\n");
+    resolveRead(remote(docPath, "edited on the server\n", "h2"));
+    await reloading;
+
+    const doc = useWorkbench.getState().docs[0];
+    expect(doc.content).toBe("typed during the read\n");
+    expect(doc.savedContent).toBe("first copy\n");
+    expect(doc.sync).toBe("dirty");
+    expect(useWorkbench.getState().notice).toBeTruthy();
+    // The cancelled reload did not retire the draft of the typed input.
+    expect(draftStore.stored.get(id)?.content).toBe("typed during the read\n");
+  });
+
+  it("keeps input typed while a file was still loading", async () => {
+    const docPath = "/data/vfi/base/src/train.py";
+    await useWorkbench.getState().init();
+    let resolveRead: (value: ReturnType<typeof remote>) => void = () => undefined;
+    vi.mocked(wb.readText).mockImplementation(
+      () =>
+        new Promise<ReturnType<typeof remote>>((resolve) => {
+          resolveRead = resolve;
+        }),
+    );
+    const opening = useWorkbench.getState().openFile("w1", "e1", "src/train.py");
+    const id = useWorkbench.getState().docs[0].id;
+    expect(useWorkbench.getState().docs[0].sync).toBe("loading");
+    useWorkbench.getState().updateDoc(id, "typed before the load finished\n");
+    resolveRead(remote(docPath, "server copy\n", "h2"));
+    await opening;
+
+    const doc = useWorkbench.getState().docs[0];
+    expect(doc.content).toBe("typed before the load finished\n");
+    expect(doc.savedContent).toBe("server copy\n");
+    expect(doc.sync).toBe("dirty");
+    expect(draftStore.stored.get(id)?.content).toBe("typed before the load finished\n");
+  });
 });
 
 describe("workbench store: runs", () => {

@@ -659,9 +659,14 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       // The mirror is authoritative for "is there a draft"; make sure it has
       // been read before deciding that this file has none.
       await ensureDraftsLoaded();
+      // Input typed while the reads were in flight is the newest fact about
+      // this buffer; the load must not clobber it. It wins over both the
+      // server copy and any stored draft, like a draft restore would.
+      const typed = get().docs.find((item) => item.id === id)?.content ?? "";
+      const hasTyped = typed !== "";
       const draft = cachedDraft(id);
       const sameServer = draft?.serverKey === doc.serverKey;
-      if (draft && sameServer && draft.content !== remote.content) {
+      if (!hasTyped && draft && sameServer && draft.content !== remote.content) {
         const restored: EditorDoc = {
           ...doc,
           content: draft.content,
@@ -687,6 +692,34 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       // kept on disk and listed in the recovery view, with the identity it
       // came from, instead of being silently dropped.
       const foreign = draft !== null && !sameServer && draft.content !== remote.content;
+      if (hasTyped) {
+        // The server copy is the saved baseline, the typed buffer stays as
+        // the unsaved content, and its draft write is scheduled now.
+        const typedDoc: EditorDoc = {
+          ...doc,
+          content: typed,
+          savedContent: remote.content,
+          hash: remote.hash,
+          remoteHash: null,
+          size: remote.size,
+          encoding: remote.encoding,
+          eol: remote.eol,
+          bom: remote.bom,
+          modifiedAt: remote.modifiedAt,
+          sync: typed === remote.content ? "synced" : "dirty",
+          error: null,
+          draftState: "idle",
+          draftError: null,
+        };
+        replaceDoc(set, get, typedDoc);
+        if (typedDoc.sync === "dirty") void flushDraft(typedDoc);
+        else {
+          void removeDraft(id);
+          setDraftState(id, "idle", null);
+        }
+        rememberOpenFiles(get().docs);
+        return;
+      }
       const loaded: EditorDoc = {
         ...doc,
         content: remote.content,
@@ -824,13 +857,33 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
 
   async reloadDoc(id) {
     const doc = get().docs.find((item) => item.id === id);
-    if (!doc) return;
+    if (!doc || doc.sync === "loading") return;
+    const before = doc.content;
+    const priorSync = doc.sync;
     replaceDoc(set, get, { ...doc, sync: "loading", error: null });
     try {
       const workspace = get().data.workspaces.find((item) => item.id === doc.workspaceId);
       if (!workspace) throw new Error(t("wb.profileMissing"));
       const session = liveSession(workspace.server);
       const remote = await wb.readText(session, doc.absolutePath);
+      const current = get().docs.find((item) => item.id === id);
+      if (!current) return;
+      // Replacing now would drop input typed while the file was being read.
+      // The buffer keeps it; the reload needs a fresh decision.
+      if (current.content !== before) {
+        const sync =
+          current.content === current.savedContent
+            ? "synced"
+            : priorSync === "conflict"
+              ? "conflict"
+              : "dirty";
+        replaceDoc(set, get, { ...current, sync });
+        set({ notice: t("wb.reloadAbortedEdit") });
+        // The typed buffer was one accidental replace away from being lost;
+        // its draft goes to disk now instead of after the debounce.
+        void flushDraft(current);
+        return;
+      }
       replaceDoc(set, get, {
         ...doc,
         content: remote.content,

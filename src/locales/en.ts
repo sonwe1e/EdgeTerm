@@ -1401,6 +1401,12 @@ export const en = {
   "wb.logEmpty": "No log yet.",
   "wb.logWaiting": "Waiting for the first output…",
   "wb.logJumpOpen": "Open {path} line {line}",
+  "wb.dirtyReloadTitle": "Unsaved changes",
+  "wb.dirtyReloadBody":
+    "Reloading discards the unsaved changes in {path} and replaces them with the server copy. Continue?",
+  "wb.dirtyReloadConfirm": "Discard and reload",
+  "wb.reloadAbortedEdit":
+    "New typing arrived while the file was being read; the reload was cancelled.",
   "wb.logClosed": "The log is not available.",
   "wb.attachDetached": "Detached runs have no terminal to attach; read their log instead.",
   "wb.attachTmuxMissing": "This run did not use tmux, so it cannot be attached.",
