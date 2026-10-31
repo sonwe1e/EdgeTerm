@@ -187,6 +187,17 @@ the results. The script closes its test sessions; close the disposable app
 afterward, including on failure. Do not run builds or other tests during the
 timed portion. This proves the recorded WebView2/ConPTY workload only.
 
+`check-native-sidebar-drag.mjs <new-output-dir>` uses the same explicit CDP
+target and portable-instance guards, with no saved profiles or sessions. It
+opens the Filer and three local shells, writes 3,000 synthetic lines to the
+first, and performs six slow alternating sidebar drags with Playwright mouse
+input. The fixture folder and screenshot use the new output directory. The
+gate observes the terminal container and xterm screen widths while held and
+after release; it does not inspect IPC or measure the likelihood of a freeze.
+The script closes its test sessions; close the disposable app afterwards.
+CDP mouse input is not an OS pointer gesture, and this workload is not the
+user's OpenCode session.
+
 `seed-native-opencode-perf.mjs <new-fixture-file>` and
 `check-native-opencode-perf.mjs <new-output-dir>` exercise the real OpenCode 2.x
 TUI with generated conversations. Use an isolated OpenCode server on loopback

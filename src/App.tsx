@@ -610,13 +610,10 @@ export default function App() {
 
   // --- side dock drags -------------------------------------------------------
   //
-  // One side splitter drag, deliberately outside React: each frame's target
-  // is written straight onto the layout row as a CSS variable (the side docks
-  // are sized by it), so following the pointer costs no App re-render. The
-  // release commits the shown width into state and the preference, which
-  // re-renders with the very value the DOM already has — nothing jumps. Only
-  // the real layout work (the terminal re-fitting its container) remains per
-  // frame, and the terminal's own debouncing manages that.
+  // Pointer moves update a guide outside React; release applies the dock
+  // width once. Keeping the terminal's container still during the gesture
+  // avoids repeated xterm reflows and renderer resizes when a pointer pauses
+  // longer than the terminal's fit debounce.
   const mainRef = useRef<HTMLDivElement>(null);
   const sideDrag = useRef<{
     side: "left" | "right";
@@ -626,8 +623,9 @@ export default function App() {
      * applied to the target each frame, so backing away from a boundary the
      * drag just hit moves the splitter again on the very next frame. */
     total: number;
-    /** The last width actually shown: what a release or a cancel commits. */
+    /** The last width indicated by the guide: what release or cancel commits. */
     shown: number;
+    target: HTMLDivElement;
   } | null>(null);
 
   const otherShownSide = (side: "left" | "right") =>
@@ -645,18 +643,21 @@ export default function App() {
     else setRightWidth(width);
   };
 
-  const beginSideDrag = (side: "left" | "right") => {
+  const beginSideDrag = (side: "left" | "right", target: HTMLDivElement) => {
+    target.dataset.preview = "";
     sideDrag.current = {
       side,
       base: widthRefs.current[side],
       total: 0,
       shown: widthRefs.current[side],
+      target,
     };
   };
 
   const applySideFrame = (side: "left" | "right", delta: number) => {
     const live = sideDrag.current;
-    if (!live || live.side !== side) {
+    if (!live || live.side !== side || !live.target.isConnected) {
+      if (live && !live.target.isConnected) sideDrag.current = null;
       // A keypress arrives with no drag behind it: apply it immediately,
       // through the same clamp the pointer meets, and commit like a release.
       commitSide(
@@ -672,19 +673,24 @@ export default function App() {
       otherShownSide(side),
     );
     live.shown = target;
-    mainRef.current?.style.setProperty(
-      side === "left" ? "--dock-left-w" : "--dock-right-w",
-      `${target}px`,
-    );
+    const offset = (target - live.base) * (side === "left" ? 1 : -1);
+    live.target.style.setProperty("--splitter-preview-x", `${offset}px`);
   };
 
   const endSideDrag = () => {
     const live = sideDrag.current;
     sideDrag.current = null;
-    // A release and an interruption alike keep what the user watched: the
-    // frames already applied are real widths, and committing them is what
-    // stops the next render from snapping the dock back to its old value.
-    if (live) commitSide(live.side, live.shown);
+    // A release and an interruption alike keep the last guide position,
+    // matching the previous splitter contract for already-applied movement.
+    if (live) {
+      live.target.removeAttribute("data-preview");
+      live.target.style.removeProperty("--splitter-preview-x");
+      mainRef.current?.style.setProperty(
+        live.side === "left" ? "--dock-left-w" : "--dock-right-w",
+        `${live.shown}px`,
+      );
+      commitSide(live.side, live.shown);
+    }
   };
 
   const renderPanel = (panel: PanelName) =>
@@ -742,7 +748,7 @@ export default function App() {
               <DockArea dock="left" panels={left} size={leftWidth} render={renderPanel} />
               <Splitter
                 orientation="vertical"
-                onDragStart={() => beginSideDrag("left")}
+                onDragStart={(target) => beginSideDrag("left", target)}
                 onResize={(delta) => applySideFrame("left", delta)}
                 onEnd={() => endSideDrag()}
               />
@@ -760,7 +766,7 @@ export default function App() {
             <>
               <Splitter
                 orientation="vertical"
-                onDragStart={() => beginSideDrag("right")}
+                onDragStart={(target) => beginSideDrag("right", target)}
                 onResize={(delta) => applySideFrame("right", delta)}
                 onEnd={() => endSideDrag()}
               />

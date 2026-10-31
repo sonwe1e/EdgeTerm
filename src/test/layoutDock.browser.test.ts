@@ -14,15 +14,20 @@
 // made the right dock disappear and the terminal area jump ~300px wider.
 import { createElement as h } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { browserAfterEach, mount, twoFrames } from "./browserHarness";
+import { browserAfterEach, mouse, mount, pagePoint, twoFrames, wait } from "./browserHarness";
 import App from "../App";
 import { useStore } from "../store";
 import { Workbench } from "../workbench/Workbench";
+import { useWorkbench } from "../workbench/store";
+import { disposeController, getController } from "../terminalRegistry";
 import "../styles.css";
 import { page, userEvent } from "vitest/browser";
 
 afterEach(async () => {
   await browserAfterEach();
+  disposeController("sidebar-drag-fixture");
+  useStore.setState(initialState, true);
+  useWorkbench.setState(initialWorkbenchState, true);
   vi.restoreAllMocks();
 });
 
@@ -156,6 +161,7 @@ const callbacks: Record<number, (message: unknown) => void> = {};
 };
 
 const initialState = useStore.getState();
+const initialWorkbenchState = useWorkbench.getState();
 const width = (element: Element) => Math.round(element.getBoundingClientRect().width);
 
 const fileSessionTab = () => {
@@ -203,6 +209,175 @@ const filerDock = (root: ParentNode) =>
   );
 
 describe("layout regressions (Wave B)", () => {
+  it("previews the sidebar boundary without repeatedly resizing a live terminal", async () => {
+    await page.viewport(1200, 800);
+    localStorage.clear();
+    const id = "sidebar-drag-fixture";
+    const profile = { id, name: id, kind: "local" as const };
+    useWorkbench.getState().setView("terminals");
+    useStore.setState(
+      {
+        ...initialState,
+        gpuRenderer: false,
+        tabs: [
+          {
+            info: {
+              id,
+              profileId: null,
+              name: id,
+              kind: "local",
+              protocol: "local",
+              address: "",
+              color: null,
+              supportsRemoteFiles: false,
+              recording: null,
+              legacyAlgorithms: [],
+              sharedConnection: false,
+            },
+            profile,
+            number: 1,
+            ordinal: 0,
+            state: "connected",
+            commandActivity: "idle",
+            activityKind: "command",
+            cols: 80,
+            rows: 24,
+            paneId: initialState.activePaneId,
+          },
+        ],
+        activeId: id,
+        panes: [{ id: initialState.activePaneId, activeTabId: id }],
+        panels: { sessions: false, filer: true, sender: false },
+        panelDocks: { left: [], right: ["filer"], bottom: [] },
+      },
+      true,
+    );
+    mount(h(App));
+    await expect.poll(() => getController(id)).toBeDefined();
+    const terminal = getController(id)!;
+    await wait(200);
+    await new Promise<void>((resolve) =>
+      terminal.term.write("a line of scrollback\r\n".repeat(300), resolve),
+    );
+    await wait(200);
+    const center = document.querySelector<HTMLElement>(".main > .center")!;
+    const splitter = document.querySelector<HTMLElement>(".main > .splitter.is-vertical")!;
+    const beforeWidth = center.getBoundingClientRect().width;
+    const beforeCols = terminal.term.cols;
+    const resizes: number[] = [];
+    const subscription = terminal.term.onResize(({ cols }) => resizes.push(cols));
+    const observations: { width: number; cols: number }[] = [];
+    const at = pagePoint(splitter);
+    await mouse.press(at.x, at.y);
+    for (const delta of [20, 40, 60]) {
+      await mouse.moveTo(at.x - delta, at.y);
+      await wait(150); // Longer than the existing 100 ms fit settle interval.
+      observations.push({ width: center.getBoundingClientRect().width, cols: terminal.term.cols });
+    }
+    const whileHeld = [...resizes];
+    const transform = getComputedStyle(splitter, "::before").transform;
+    await mouse.release(at.x - 60, at.y);
+    await expect.poll(() => terminal.term.cols).toBeLessThan(beforeCols);
+    for (const observation of observations) {
+      expect(observation.width).toBeCloseTo(beforeWidth, 1);
+      expect(observation.cols).toBe(beforeCols);
+    }
+    expect(whileHeld).toEqual([]);
+    expect(transform).not.toBe("none");
+    const previewDelta = new DOMMatrix(transform).m41;
+    expect(previewDelta).toBeLessThan(0);
+    expect(center.getBoundingClientRect().width).toBeCloseTo(beforeWidth + previewDelta, 0);
+    expect(resizes).toHaveLength(1);
+    subscription.dispose();
+  });
+
+  it.each(["left", "right"] as const)(
+    "keeps the last preview on interruption and supports another %s dock adjustment",
+    async (side) => {
+      await page.viewport(1200, 800);
+      localStorage.clear();
+      useWorkbench.getState().setView("terminals");
+      useStore.setState(
+        {
+          ...initialState,
+          tabs: [],
+          activeId: null,
+          panels: { sessions: false, filer: true, sender: false },
+          panelDocks: {
+            left: side === "left" ? ["filer"] : [],
+            right: side === "right" ? ["filer"] : [],
+            bottom: [],
+          },
+        },
+        true,
+      );
+      mount(h(App));
+      await twoFrames();
+      const center = document.querySelector<HTMLElement>(".main > .center")!;
+      const splitter = document.querySelector<HTMLElement>(".main > .splitter.is-vertical")!;
+      const initialWidth = center.getBoundingClientRect().width;
+      const at = pagePoint(splitter);
+      const direction = side === "left" ? -1 : 1;
+      await mouse.press(at.x, at.y);
+      await mouse.moveTo(at.x + direction * 180, at.y);
+      await twoFrames();
+      const boundary = new DOMMatrix(getComputedStyle(splitter, "::before").transform).m41;
+      await mouse.moveTo(at.x + direction * 40, at.y);
+      await twoFrames();
+      const preview = new DOMMatrix(getComputedStyle(splitter, "::before").transform).m41;
+      expect(Math.abs(preview)).toBeLessThan(Math.abs(boundary));
+      splitter.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      await twoFrames();
+      expect(splitter.hasAttribute("data-preview")).toBe(false);
+      expect(center.getBoundingClientRect().width).toBeCloseTo(
+        initialWidth + (side === "left" ? -preview : preview),
+        0,
+      );
+      await mouse.release(at.x + direction * 40, at.y);
+      const afterCancel = center.getBoundingClientRect().width;
+      splitter.focus();
+      await userEvent.keyboard("{ArrowRight}");
+      await twoFrames();
+      expect(center.getBoundingClientRect().width).not.toBe(afterCancel);
+    },
+  );
+
+  it("keeps a pointer preview when the opposite dock receives a keyboard resize", async () => {
+    await page.viewport(1200, 800);
+    localStorage.clear();
+    useWorkbench.getState().setView("terminals");
+    useStore.setState(
+      {
+        ...initialState,
+        tabs: [],
+        activeId: null,
+        panels: { sessions: true, filer: true, sender: false },
+        panelDocks: { left: ["sessions"], right: ["filer"], bottom: [] },
+      },
+      true,
+    );
+    mount(h(App));
+    await twoFrames();
+    const main = document.querySelector<HTMLElement>(".main")!;
+    const [left, right] = [...main.querySelectorAll<HTMLElement>(":scope > .splitter.is-vertical")];
+    const rightBefore = parseFloat(main.style.getPropertyValue("--dock-right-w"));
+    const at = pagePoint(right);
+    await mouse.press(at.x, at.y);
+    await mouse.moveTo(at.x - 40, at.y);
+    await twoFrames();
+    const preview = new DOMMatrix(getComputedStyle(right, "::before").transform).m41;
+    left.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(right.hasAttribute("data-preview")).toBe(true);
+    await mouse.release(at.x - 40, at.y);
+    await twoFrames();
+    expect(right.hasAttribute("data-preview")).toBe(false);
+    expect(parseFloat(main.style.getPropertyValue("--dock-right-w"))).toBeCloseTo(
+      rightBefore - preview,
+      0,
+    );
+  });
+
   it("keeps workbench controls and host chips within the dock-reduced width at both font sizes", async () => {
     await page.viewport(1440, 900);
     const mounted = mount(h(Workbench));

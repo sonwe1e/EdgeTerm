@@ -17,7 +17,7 @@ interface Props {
    * whatever the deltas will move — a base size measured now, not on every
    * frame. Keyboard resizing never triggers it.
    */
-  onDragStart?: () => void;
+  onDragStart?: (target: HTMLDivElement) => void;
   /**
    * Called once when a pointer drag ends, after the final frame was flushed
    * (committed) or dropped (interrupted). `committed` is true only for a
@@ -132,7 +132,7 @@ export function Splitter({ orientation, onResize, onDragStart, onEnd }: Props) {
       window.addEventListener("blur", cancel);
       window.addEventListener("keydown", keydown, true);
       document.addEventListener("visibilitychange", visibility);
-      began.current?.();
+      began.current?.(target);
       setDragging(true);
     },
     [finish, orientation],

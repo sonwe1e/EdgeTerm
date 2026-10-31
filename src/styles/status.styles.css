@@ -251,6 +251,11 @@ button.status-item:focus-visible {
   width: 3px;
 }
 
+/* The guide moves during a side-dock drag; the dock itself moves on release. */
+.splitter.is-vertical[data-preview]::before {
+  transform: translateX(var(--splitter-preview-x, 0px));
+}
+
 .splitter.is-horizontal::before {
   left: 0;
   right: 0;
