@@ -26,8 +26,11 @@ export const SENDER_SAVE_LEVEL_KEY = "edgeterm.senderSaveLevel";
 /** Applications files were last opened with; see the Filer panel. */
 export const FILER_OPEN_WITH_KEY = "edgeterm.filerOpenWith";
 
-/** Dragged widths of the Filer's size and modified columns; see filerColumns.ts. */
+/** Dragged widths of the Filer's columns; see filerColumns.ts. */
 export const FILER_COLUMNS_KEY = "edgeterm.filerColumns";
+
+/** Whether the Filer shows its size column; see filerColumns.ts. */
+export const FILER_SIZE_VISIBLE_KEY = "edgeterm.filerSizeVisible";
 
 /** Workbench view, last project, experiment memory and open files. */
 export const WORKBENCH_VIEW_KEY = "edgeterm.workbench.view";
@@ -51,6 +54,7 @@ export const PANEL_PREFERENCE_KEYS: readonly string[] = [
   SENDER_SAVE_LEVEL_KEY,
   FILER_OPEN_WITH_KEY,
   FILER_COLUMNS_KEY,
+  FILER_SIZE_VISIBLE_KEY,
   TRANSFER_OPTIONS_KEY,
   RESOURCE_MONITOR_KEY,
   WORKBENCH_VIEW_KEY,

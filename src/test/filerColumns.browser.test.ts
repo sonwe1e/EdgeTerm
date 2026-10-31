@@ -86,6 +86,26 @@ function mountFiler(width: number, virtual: boolean, fixedName = false) {
 
 describe("the Filer's three columns", () => {
   for (const virtual of [false, true]) {
+    for (const fixed of [false, true]) {
+      it(`${virtual ? "virtualised" : "in flow"}, hidden size keeps dates aligned${fixed ? " with a pinned name" : ""}`, () => {
+        const filer = mountFiler(420, virtual, fixed);
+        const panel = filer.app.querySelector<HTMLElement>(".filer-panel")!;
+        panel.dataset.sizeHidden = "";
+        expect(getComputedStyle(filer.caption("filer-col-size").parentElement!).display).toBe(
+          "none",
+        );
+        const caption = filer.caption("filer-col-date").getBoundingClientRect();
+        for (const cell of filer.cell("filer-col-date")) {
+          const box = cell.getBoundingClientRect();
+          expect(box.left).toBeCloseTo(caption.left, 1);
+          expect(box.right).toBeCloseTo(caption.right, 1);
+        }
+        filer.app.remove();
+      });
+    }
+  }
+
+  for (const virtual of [false, true]) {
     it(`${virtual ? "virtualised" : "in flow"}, the captions sit over their own column`, () => {
       const filer = mountFiler(420, virtual);
       for (const column of ["filer-col-name", "filer-col-size", "filer-col-date"]) {

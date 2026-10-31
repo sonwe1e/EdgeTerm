@@ -35,8 +35,10 @@ import * as api from "../../api";
 import {
   clampColumnWidth,
   loadFilerColumns,
+  loadFilerSizeVisible,
   measureCssLength,
   saveFilerColumns,
+  saveFilerSizeVisible,
   suggestColumnWidth,
   COLUMN_MAX_PX,
   DEFAULT_FILER_COLUMNS,
@@ -124,16 +126,23 @@ function FilerPanelBase() {
   const sort = useStore((s) => s.filerSort);
   const setFilerSort = useStore((s) => s.setFilerSort);
   const sortedEntries = useMemo(() => sortFileEntries(entries, sort), [entries, sort]);
-  // The two columns whose width the user may drag; see filerColumns.ts. The
-  // name column is the grid's flexible track, so it takes whatever room these
-  // two leave — narrowing either widens the names.
+  // Name takes the space left by the visible metadata columns unless pinned.
   const [columns, setColumns] = useState<FilerColumns>(loadFilerColumns);
+  const [sizeVisible, setSizeVisible] = useState(loadFilerSizeVisible);
+  const preferencesRevision = useStore((s) => s.panelPreferencesRevision);
+  useEffect(() => {
+    setColumns(loadFilerColumns());
+    setSizeVisible(loadFilerSizeVisible());
+  }, [preferencesRevision]);
   // Debounced like the dock sizing: a drag writes a width per frame, and the
   // stored value only has to be right when the drag ends.
   useEffect(() => {
     const timer = window.setTimeout(() => saveFilerColumns(columns), 250);
     return () => window.clearTimeout(timer);
   }, [columns]);
+  useEffect(() => {
+    saveFilerSizeVisible(sizeVisible);
+  }, [sizeVisible]);
   const selection = useFileSelection(sortedEntries);
   const {
     paths: selected,
@@ -186,11 +195,12 @@ function FilerPanelBase() {
   // upload button's click fires the menu is already gone; remember whether it
   // was open so the button toggles instead of reopening.
   const uploadMenuWasOpen = useRef(false);
+  const [columnsMenu, setColumnsMenu] = useState<{ x: number; y: number } | null>(null);
+  const columnsMenuWasOpen = useRef(false);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [pendingDelete, setPendingDelete] = useState<readonly FileEntry[] | null>(null);
   useEffect(() => setPendingDelete(null), [remoteId, path]);
   const [openWithApps, setOpenWithApps] = useState<string[]>(loadOpenWithApps);
-  const preferencesRevision = useStore((s) => s.panelPreferencesRevision);
   useEffect(() => setOpenWithApps(loadOpenWithApps()), [preferencesRevision]);
   const remoteIdRef = useRef(remoteId);
   const offlineReasonRef = useRef(offlineReason);
@@ -253,7 +263,7 @@ function FilerPanelBase() {
       resize.disconnect();
       list.removeEventListener("scroll", schedule);
     };
-  }, [entries.length, panelFontSize]);
+  }, [entries.length, panelFontSize, sizeVisible]);
 
   // When the name reserve or an explicit width makes the listing wider than
   // the panel, the rows scroll sideways inside the list, and the
@@ -776,6 +786,7 @@ function FilerPanelBase() {
       // holds a width of its own (see the max-content rule in
       // filer.styles.css).
       data-name-fixed={columns.name !== null ? "" : undefined}
+      data-size-hidden={!sizeVisible ? "" : undefined}
       // Two values the rows need and only this component can compute: the row
       // height the stylesheet and the virtualiser both have to work from, and
       // the width the list's scrollbar steals from its rows. Both are handed
@@ -808,7 +819,46 @@ function FilerPanelBase() {
             </span>
           )}
         </div>
+        <button
+          type="button"
+          className={`panel-action filer-columns-trigger${columnsMenu ? " is-open" : ""}`}
+          title={t("filer.columns")}
+          aria-label={t("filer.columns")}
+          aria-haspopup="menu"
+          aria-expanded={columnsMenu !== null}
+          onPointerDown={() => {
+            columnsMenuWasOpen.current = columnsMenu !== null;
+          }}
+          onClick={(event) => {
+            if (columnsMenuWasOpen.current) {
+              columnsMenuWasOpen.current = false;
+              return;
+            }
+            const rect = event.currentTarget.getBoundingClientRect();
+            setColumnsMenu({ x: rect.right, y: rect.bottom + 2 });
+          }}
+        >
+          {t("filer.columns")}
+        </button>
       </div>
+
+      {columnsMenu && (
+        <ContextMenu
+          x={columnsMenu.x}
+          y={columnsMenu.y}
+          align="right"
+          items={[
+            {
+              label: t("filer.size"),
+              checked: sizeVisible,
+              action: () => setSizeVisible((visible) => !visible),
+            },
+            "separator",
+            { label: t("filer.resetColumns"), icon: "discard", action: resetColumns },
+          ]}
+          onClose={() => setColumnsMenu(null)}
+        />
+      )}
 
       {/* Upload and download stay visible on local sessions, just disabled. */}
       <div className="filer-toolbar" role="toolbar" aria-label={t("filer.fileActions")}>
@@ -1378,6 +1428,19 @@ function FilerPanelBase() {
             <span>{entrySummary}</span>
             {selectedEntries.length > 0 && (
               <span>{t("filer.selectedCount", { count: selectedEntries.length })}</span>
+            )}
+            {!sizeVisible && sort.key === "size" && (
+              <span
+                className="filer-hidden-sort"
+                title={t(sort.direction === "asc" ? "filer.sizeSortAsc" : "filer.sizeSortDesc")}
+              >
+                <span aria-hidden="true">
+                  {t("filer.size")} {sort.direction === "asc" ? "↑" : "↓"}
+                </span>
+                <span className="sr-only">
+                  {t(sort.direction === "asc" ? "filer.sizeSortAsc" : "filer.sizeSortDesc")}
+                </span>
+              </span>
             )}
             {busy && <span>{t("filer.working")}</span>}
           </>

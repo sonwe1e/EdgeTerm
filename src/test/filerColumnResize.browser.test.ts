@@ -115,6 +115,111 @@ it("keeps distinct short filenames readable at the supported large font while re
   expect(scroller.scrollLeft).toBe(0);
 });
 
+it("hides and restores the size column without losing its width, and remembers the choice", async () => {
+  await open(460, 12);
+  await userEvent.click(columns().querySelector<HTMLButtonElement>('[data-sort-key="size"]')!);
+  expect(useStore.getState().filerSort.key).toBe("size");
+  await dragHandleTo(sizeHandle, pagePoint(sizeHandle(), 0.5, 0.5).x + 40);
+  const sizeWidth = sizeCell().getBoundingClientRect().width;
+  const nameWidth = nameCell().getBoundingClientRect().width;
+
+  await userEvent.click(page.getByRole("button", { name: "Columns", exact: true }));
+  await userEvent.click(page.getByRole("menuitemcheckbox", { name: "Size" }));
+  await twoFrames();
+  expect(getComputedStyle(sizeCell()).display).toBe("none");
+  expect(
+    getComputedStyle(document.querySelector<HTMLElement>(".filer-entry .filer-col-size")!).display,
+  ).toBe("none");
+  expect(nameCell().getBoundingClientRect().width).toBeGreaterThan(nameWidth + 30);
+  expect(document.querySelector(".filer-hidden-sort")?.textContent).toContain(
+    "Sorted by size, ascending",
+  );
+  expect(useStore.getState().filerSort.key).toBe("size");
+  expect(dateCell().getBoundingClientRect().left).toBeCloseTo(
+    rowDate().getBoundingClientRect().left,
+    1,
+  );
+  await expect.poll(() => localStorage.getItem("edgeterm.filerSizeVisible")).toBe("false");
+
+  await browserAfterEach();
+  await open(460, 12);
+  expect(getComputedStyle(sizeCell()).display).toBe("none");
+  await userEvent.click(page.getByRole("button", { name: "Columns", exact: true }));
+  await userEvent.click(page.getByRole("menuitemcheckbox", { name: "Size" }));
+  await twoFrames();
+  expect(sizeCell().getBoundingClientRect().width).toBeCloseTo(sizeWidth, 1);
+  expect(dateCell().getBoundingClientRect().left).toBeCloseTo(
+    rowDate().getBoundingClientRect().left,
+    1,
+  );
+});
+
+it("reclaims space for names and keeps dates aligned at a narrow width and large font", async () => {
+  await open(300, 18);
+  await userEvent.click(page.getByRole("button", { name: "More columns" }));
+  expect(list().scrollLeft).toBeGreaterThan(0);
+  await userEvent.click(page.getByRole("button", { name: "Columns", exact: true }));
+  await userEvent.click(page.getByRole("menuitemcheckbox", { name: "Size" }));
+  await twoFrames();
+  const date = rowDate().getBoundingClientRect();
+  const caption = dateCell().getBoundingClientRect();
+  expect(caption.left).toBeCloseTo(date.left, 1);
+  expect(caption.right).toBeCloseTo(date.right, 1);
+  expect(date.right).toBeLessThanOrEqual(list().getBoundingClientRect().right + 1);
+  expect(list().scrollWidth).toBeLessThanOrEqual(list().clientWidth + 1);
+  expect(list().scrollLeft).toBe(0);
+});
+
+it("applies imported and reset column preferences to an already mounted panel", async () => {
+  await open();
+  useStore.getState().applySettings({
+    preferences: {
+      "edgeterm.filerSizeVisible": false,
+      "edgeterm.filerColumns": { name: 210, size: 130, date: 140 },
+    },
+  });
+  await expect.poll(() => getComputedStyle(sizeCell()).display).toBe("none");
+  expect(panel().hasAttribute("data-name-fixed")).toBe(true);
+  expect(useStore.getState().exportSettings().preferences?.["edgeterm.filerSizeVisible"]).toBe(
+    false,
+  );
+  useStore.getState().resetSettings();
+  await expect.poll(() => getComputedStyle(sizeCell()).display).not.toBe("none");
+  expect(panel().hasAttribute("data-name-fixed")).toBe(false);
+});
+
+it("opens the column menu from the keyboard after closing it with the mouse", async () => {
+  await open();
+  const button = page.getByRole("button", { name: "Columns", exact: true });
+  await userEvent.click(button);
+  expect(document.querySelector('[role="menuitemcheckbox"]')).not.toBeNull();
+  await userEvent.click(button);
+  expect(document.querySelector('[role="menuitemcheckbox"]')).toBeNull();
+  document.querySelector<HTMLButtonElement>('[aria-label="Columns"]')!.focus();
+  await userEvent.keyboard("{Enter}");
+  expect(document.querySelector('[role="menuitemcheckbox"]')).not.toBeNull();
+});
+
+it("keeps the column menu visibly labeled in a narrow panel at a large font", async () => {
+  await open(150, 18);
+  const button = document.querySelector<HTMLButtonElement>(".filer-columns-trigger")!;
+  const header = button.closest<HTMLElement>(".panel-header")!;
+  const title = header.querySelector<HTMLElement>(".panel-title")!;
+  for (const [language, label] of [
+    ["en", "Columns"],
+    ["zh-CN", "显示列"],
+  ] as const) {
+    useStore.getState().setLanguage(language);
+    await expect.poll(() => button.textContent?.trim()).toBe(label);
+    const box = button.getBoundingClientRect();
+    const headerBox = header.getBoundingClientRect();
+    expect(box.left).toBeGreaterThanOrEqual(headerBox.left);
+    expect(box.right).toBeLessThanOrEqual(headerBox.right);
+    expect(title.getBoundingClientRect().right).toBeLessThanOrEqual(box.left + 1);
+    expect(button.scrollWidth).toBeLessThanOrEqual(button.clientWidth + 1);
+  }
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();

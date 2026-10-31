@@ -6,12 +6,14 @@ import {
   NAME_MAX_PX,
   clampColumnWidth,
   loadFilerColumns,
+  loadFilerSizeVisible,
   measureCssLength,
   parseFilerColumns,
   saveFilerColumns,
+  saveFilerSizeVisible,
   suggestColumnWidth,
 } from "./filerColumns";
-import { FILER_COLUMNS_KEY } from "./persistKeys";
+import { FILER_COLUMNS_KEY, FILER_SIZE_VISIBLE_KEY } from "./persistKeys";
 
 beforeEach(() => {
   localStorage.clear();
@@ -161,5 +163,22 @@ describe("loadFilerColumns", () => {
   it("falls through to the defaults on an unusable shape", () => {
     localStorage.setItem(FILER_COLUMNS_KEY, '{"size":"wide"}');
     expect(loadFilerColumns()).toEqual(DEFAULT_FILER_COLUMNS);
+  });
+});
+
+describe("size column visibility", () => {
+  it("defaults to visible for missing, corrupt, or non-boolean preferences", () => {
+    expect(loadFilerSizeVisible()).toBe(true);
+    for (const value of ["{", "null", '"false"', "0"]) {
+      localStorage.setItem(FILER_SIZE_VISIBLE_KEY, value);
+      expect(loadFilerSizeVisible()).toBe(true);
+    }
+  });
+
+  it("round-trips the user's choice", () => {
+    saveFilerSizeVisible(false);
+    expect(loadFilerSizeVisible()).toBe(false);
+    saveFilerSizeVisible(true);
+    expect(loadFilerSizeVisible()).toBe(true);
   });
 });

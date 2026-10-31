@@ -1,4 +1,4 @@
-import { FILER_COLUMNS_KEY } from "./persistKeys";
+import { FILER_COLUMNS_KEY, FILER_SIZE_VISIBLE_KEY } from "./persistKeys";
 
 /**
  * The three Filer columns whose width the user may drag, in CSS pixels.
@@ -153,5 +153,22 @@ export function saveFilerColumns(columns: FilerColumns): void {
     localStorage.setItem(FILER_COLUMNS_KEY, JSON.stringify(columns));
   } catch {
     // Storage full or blocked; the in-session widths still apply.
+  }
+}
+
+/** Missing, malformed and old settings keep the size column visible. */
+export function loadFilerSizeVisible(): boolean {
+  try {
+    return JSON.parse(localStorage.getItem(FILER_SIZE_VISIBLE_KEY) ?? "true") !== false;
+  } catch {
+    return true;
+  }
+}
+
+export function saveFilerSizeVisible(visible: boolean): void {
+  try {
+    localStorage.setItem(FILER_SIZE_VISIBLE_KEY, JSON.stringify(visible));
+  } catch {
+    // Storage full or blocked; the in-session choice still applies.
   }
 }

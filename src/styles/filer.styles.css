@@ -32,13 +32,25 @@
   color: var(--fg-dim);
 }
 
+/* The column menu is a named action, not an unexplained icon in the title. */
+.filer-columns-trigger {
+  flex: 0 0 auto;
+  width: auto;
+  padding: 0 var(--sp-6);
+  background: var(--bg-panel-alt);
+  color: var(--fg-dim);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+
 .filer-action:hover:not(:disabled) {
   color: var(--fg);
   background: var(--bg-hover);
 }
 
 .filer-action:active:not(:disabled),
-.filer-action.is-open {
+.filer-action.is-open,
+.filer-columns-trigger.is-open {
   /* A glyph that has to be identified, on a solid accent tint. The lifted twin
      only reached 3.25:1 on serialx-light's tint; the accent ink clears 4.8:1
      in every palette. */
@@ -247,6 +259,32 @@
     minmax(var(--filer-size-min), var(--filer-size-w))
     minmax(var(--filer-date-min), var(--filer-date-w));
   column-gap: var(--sp-6);
+}
+
+/* A hidden size column gives its track and gap back to the flexible name.
+   Both grids use the same tracks, including when the listing scrolls. */
+.filer-panel[data-size-hidden] .filer-columns,
+.filer-panel[data-size-hidden] .filer-entry {
+  --filer-min-grid: calc(
+    16px +
+    var(--filer-name-min) +
+    var(--filer-date-w) +
+    var(--sp-6) +
+    var(--sp-6)
+  );
+  grid-template-columns:
+    16px
+    minmax(var(--filer-name-min), var(--filer-name-w, 1fr))
+    minmax(var(--filer-date-min), var(--filer-date-w));
+}
+
+.filer-panel[data-size-hidden] .filer-col-cell.is-size,
+.filer-panel[data-size-hidden] .filer-entry .filer-col-size {
+  display: none;
+}
+
+.filer-panel[data-size-hidden] .filer-col-cell.is-date {
+  grid-column: 3;
 }
 
 /* Once the name column holds a width of its own, the grid is a fixed-width
@@ -719,6 +757,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.filer-footer > .filer-hidden-sort {
+  flex: 0 0 auto;
 }
 
 .filer-transfer-summary {
