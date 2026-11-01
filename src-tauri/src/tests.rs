@@ -10,9 +10,8 @@ use crate::error::ErrorCode;
 use crate::fs_local;
 use crate::model::{
     shell_words, split_command_line, AppData, AuthKind, CommandScope, FileEntry, LineEnding,
-    SavedCommand,
-    SessionGroup, SessionKind, SessionProfile, Theme, APP_DATA_APP, APP_DATA_EXTENSION,
-    APP_DATA_FORMAT,
+    SavedCommand, SessionGroup, SessionKind, SessionProfile, Theme, APP_DATA_APP,
+    APP_DATA_EXTENSION, APP_DATA_FORMAT,
 };
 use crate::port_forward::Direction;
 use crate::session::{join_remote, sort_entries, TransferProgress};
@@ -506,7 +505,6 @@ fn a_shell_path_pasted_without_quotes_is_one_program() {
     let posix = shell_words("/opt/my shell/bin/zsh", false, |_| true).unwrap();
     assert_eq!(posix, ["/opt/my", "shell/bin/zsh"]);
 }
-
 
 #[test]
 fn store_duplicates_profiles_with_their_credentials() {
