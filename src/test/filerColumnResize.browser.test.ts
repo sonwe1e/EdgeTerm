@@ -54,8 +54,13 @@ const panel = () => document.querySelector<HTMLElement>(".filer-panel")!;
 const list = () => document.querySelector<HTMLElement>(".filer-list")!;
 const rowDate = () => document.querySelector<HTMLElement>(".filer-entry .filer-col-date")!;
 
-async function dragHandleTo(handle: () => HTMLElement, x: number) {
+async function dragHandleBy(handle: () => HTMLElement, delta: number) {
   const at = pagePoint(handle(), 0.5, 0.5);
+  const preview = window.frameElement as HTMLIFrameElement;
+  // pagePoint maps the starting point to the outer viewport; distances need
+  // the same scale or an 80px gesture moves more than 80 CSS pixels.
+  const scale = preview.getBoundingClientRect().width / preview.offsetWidth;
+  const x = Math.round(at.x + delta * scale);
   await mouse.press(at.x, at.y);
   // In steps, the way a hand moves: each move settles a frame, which is what
   // lets the drag's frame batch apply before the next one queues.
@@ -119,7 +124,7 @@ it("hides and restores the size column without losing its width, and remembers t
   await open(460, 12);
   await userEvent.click(columns().querySelector<HTMLButtonElement>('[data-sort-key="size"]')!);
   expect(useStore.getState().filerSort.key).toBe("size");
-  await dragHandleTo(sizeHandle, pagePoint(sizeHandle(), 0.5, 0.5).x + 40);
+  await dragHandleBy(sizeHandle, 40);
   const sizeWidth = sizeCell().getBoundingClientRect().width;
   const nameWidth = nameCell().getBoundingClientRect().width;
 
@@ -247,7 +252,7 @@ it("widens the size column from its own right edge in the untouched state", asyn
   const dateLeftBefore = dateCell().getBoundingClientRect().left;
   const dateWidthBefore = dateCell().getBoundingClientRect().width;
 
-  await dragHandleTo(sizeHandle, pagePoint(sizeHandle(), 0.5, 0.5).x + 80);
+  await dragHandleBy(sizeHandle, 80);
 
   expect(Math.abs(sizeCell().getBoundingClientRect().width - (floor! + 80))).toBeLessThanOrEqual(
     1.5,
@@ -263,6 +268,23 @@ it("widens the size column from its own right edge in the untouched state", asyn
   );
 });
 
+it("measures drag distances in CSS pixels when the test preview is scaled", async () => {
+  await open();
+  const preview = window.frameElement as HTMLElement;
+  const previousTransform = preview.style.transform;
+  try {
+    preview.style.transform = "scale(0.85)";
+    await twoFrames();
+    const before = sizeCell().getBoundingClientRect().width;
+    await dragHandleBy(sizeHandle, 80);
+    expect(Math.abs(sizeCell().getBoundingClientRect().width - (before + 80))).toBeLessThanOrEqual(
+      1.5,
+    );
+  } finally {
+    preview.style.transform = previousTransform;
+  }
+});
+
 it("narrows a counted column past its suggested width down to the drag floor", async () => {
   await open();
 
@@ -274,7 +296,7 @@ it("narrows a counted column past its suggested width down to the drag floor", a
   const floor = measureCssLength(columns(), "var(--filer-size-floor)");
   expect(floor).not.toBeNull();
 
-  await dragHandleTo(sizeHandle, pagePoint(sizeHandle(), 0.5, 0.5).x - 300);
+  await dragHandleBy(sizeHandle, -300);
 
   const width = sizeCell().getBoundingClientRect().width;
   expect(Math.abs(width - min!)).toBeLessThanOrEqual(1);
@@ -291,7 +313,7 @@ it("moves only the column whose edge is held", async () => {
   // what the counted columns take, which slides the middle columns left —
   // the invariant is each column's width, not its x: the size column keeps
   // exactly the width it had, and only the modified column grew.
-  await dragHandleTo(dateHandle, pagePoint(dateHandle(), 0.5, 0.5).x + 80);
+  await dragHandleBy(dateHandle, 80);
 
   expect(Math.abs(sizeCell().getBoundingClientRect().width - sizeWidthBefore)).toBeLessThanOrEqual(
     1,
@@ -309,7 +331,7 @@ it("pins the name column at its rendered width and pushes the columns after it",
   const dateLeftBefore = dateCell().getBoundingClientRect().left;
   expect(panel().hasAttribute("data-name-fixed")).toBe(false);
 
-  await dragHandleTo(nameHandle, pagePoint(nameHandle(), 0.5, 0.5).x + 60);
+  await dragHandleBy(nameHandle, 60);
 
   // The drag began by pinning the name at the width it rendered at, so the
   // whole 60px shows as movement of the boundary the user is holding.
@@ -324,7 +346,7 @@ it("pins the name column at its rendered width and pushes the columns after it",
 it("lets an explicit name resize go below the automatic large-font reserve", async () => {
   await open(300, 18);
   const before = nameCell().getBoundingClientRect().width;
-  await dragHandleTo(nameHandle, pagePoint(nameHandle(), 0.5, 0.5).x - 45);
+  await dragHandleBy(nameHandle, -45);
   expect(nameCell().getBoundingClientRect().width).toBeLessThan(before - 30);
 });
 
@@ -333,7 +355,7 @@ it("scrolls a listing wider than the panel under a caption that follows it", asy
 
   // Fixed columns wider than the panel scroll sideways instead of squeezing
   // anyone: widen the pinned names far past what fits.
-  await dragHandleTo(nameHandle, pagePoint(nameHandle(), 0.5, 0.5).x + 400);
+  await dragHandleBy(nameHandle, 400);
 
   const scroller = list();
   expect(scroller.scrollWidth).toBeGreaterThan(scroller.clientWidth);
@@ -358,8 +380,7 @@ it("fits a double-clicked column back to its content", async () => {
 
   const floor = measureCssLength(columns(), "var(--filer-size-floor)");
   expect(floor).not.toBeNull();
-  const at = pagePoint(sizeHandle(), 0.5, 0.5);
-  await dragHandleTo(sizeHandle, at.x + 200);
+  await dragHandleBy(sizeHandle, 200);
   const widened = sizeCell().getBoundingClientRect().width;
   expect(widened - floor!).toBeGreaterThan(150);
 
