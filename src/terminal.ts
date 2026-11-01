@@ -303,6 +303,10 @@ export class TerminalController {
         return owner.disposed;
       },
 
+      get locked() {
+        return owner.locked;
+      },
+
       get term() {
         return owner.term;
       },
@@ -830,6 +834,7 @@ export class TerminalController {
     this.locked = locked;
     this.term.write(locked ? "\x1b[?25l" : "\x1b[?25h");
     if (locked) {
+      this.clipboard.endSession();
       this.commands.hidePopup();
       this.commands.resetCommandTracking();
       // A reconnected shell starts over in its home directory; the old

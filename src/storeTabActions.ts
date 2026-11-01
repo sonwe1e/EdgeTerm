@@ -284,8 +284,10 @@ export const createTabActions: StateCreator<
   },
 
   applyState(id, state, message) {
+    const current = get();
+    const ended = state === "closed" || state === "error";
     set({
-      tabs: patchTab(get().tabs, id, {
+      tabs: patchTab(current.tabs, id, {
         state,
         message,
         // A command cannot remain in progress after its session ends; a
@@ -294,10 +296,17 @@ export const createTabActions: StateCreator<
           ? {}
           : { commandActivity: "idle" as const, activityKind: "command" as const }),
       }),
+      ...(ended
+        ? {
+            pastePrompt: current.pastePrompt?.sessionId === id ? null : current.pastePrompt,
+            clipboardPrompt:
+              current.clipboardPrompt?.sessionId === id ? null : current.clipboardPrompt,
+          }
+        : {}),
     });
     // An ended session has nothing to type into; lock its terminal until a
     // reconnect brings it back.
-    getController(id)?.setLocked(state === "closed" || state === "error");
+    getController(id)?.setLocked(ended);
   },
 
   markCommandStarted(id, kind = "command") {

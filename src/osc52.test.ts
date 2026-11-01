@@ -93,6 +93,48 @@ describe("OSC 52 in the terminal", () => {
     expect(writeClipboardText.mock.calls).toEqual([["allowed"]]);
   });
 
+  it("asks again after the connection ends even when the terminal is reused", async () => {
+    const controller = createController();
+    const asked: string[] = [];
+    controller.onConfirmClipboardWrite((text) => asked.push(text));
+    await copy(controller, "first connection");
+    controller.allowProgramClipboard("first connection");
+
+    controller.setLocked(true);
+    controller.setLocked(false);
+    await copy(controller, "new connection");
+
+    expect(asked).toEqual(["first connection", "new connection"]);
+    expect(writeClipboardText.mock.calls).toEqual([["first connection"]]);
+  });
+
+  it("requires a new confirmation after clipboard writes were denied", async () => {
+    const controller = createController();
+    const asked: string[] = [];
+    controller.onConfirmClipboardWrite((text) => asked.push(text));
+    await copy(controller, "initial permission");
+    controller.allowProgramClipboard("initial permission");
+    controller.setProgramClipboard("deny");
+    controller.setProgramClipboard("ask");
+    await copy(controller, "permission revoked");
+
+    expect(asked).toEqual(["initial permission", "permission revoked"]);
+    expect(writeClipboardText.mock.calls).toEqual([["initial permission"]]);
+  });
+
+  it("ignores output and stale confirmations after the connection ends", async () => {
+    const controller = createController();
+    const asked: string[] = [];
+    controller.onConfirmClipboardWrite((text) => asked.push(text));
+    await copy(controller, "before disconnect");
+    controller.setLocked(true);
+    controller.allowProgramClipboard("before disconnect");
+    await copy(controller, "late output");
+
+    expect(asked).toEqual(["before disconnect"]);
+    expect(writeClipboardText).not.toHaveBeenCalled();
+  });
+
   it("drops a write nobody can confirm", async () => {
     const controller = createController();
     await copy(controller, "orphan");

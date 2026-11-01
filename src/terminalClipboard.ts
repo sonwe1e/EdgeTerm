@@ -9,6 +9,7 @@ import { errorMessage, type TransferNoticeKind } from "./terminalTransfer";
 interface Context {
   readonly host: HTMLElement | null;
   readonly disposed: boolean;
+  readonly locked: boolean;
   readonly term: Terminal;
   readonly showTransferNotice: (message: string, kind: TransferNoticeKind) => void;
 }
@@ -27,6 +28,9 @@ export class TerminalClipboard {
   selectionChanged = false;
 
   private confirmPaste: ((text: string) => void) | null = null;
+
+  /** Reads begun by a connection must not paste into its replacement. */
+  private sessionRevision = 0;
 
   /** Edit → Programs Can Set Clipboard; see `programClipboardWrite`. */
   private programClipboard: ProgramClipboardMode = "ask";
@@ -111,12 +115,17 @@ export class TerminalClipboard {
    * #45 looked: a paste that did nothing at all.
    */
   pasteFromClipboard() {
+    if (this.context.disposed || this.context.locked) return;
+    const revision = this.sessionRevision;
+    const current = () => !this.context.disposed && revision === this.sessionRevision;
     void this.readClipboard().then(
       (text) => {
-        if (text) this.paste(text);
+        if (text && current()) this.paste(text);
       },
       (error: unknown) => {
-        this.context.showTransferNotice(`Paste failed: ${errorMessage(error)}`, "error");
+        if (current()) {
+          this.context.showTransferNotice(`Paste failed: ${errorMessage(error)}`, "error");
+        }
       },
     );
   }
@@ -135,6 +144,7 @@ export class TerminalClipboard {
    * goes through, since refusing to paste would be worse than pasting.
    */
   paste(text: string) {
+    if (this.context.disposed || this.context.locked) return;
     if (this.pasteWarning && this.confirmPaste && needsPasteWarning(text)) {
       this.confirmPaste(text);
       return;
@@ -147,6 +157,7 @@ export class TerminalClipboard {
    * has said yes, and the only path that may skip the check.
    */
   writePaste(text: string) {
+    if (this.context.disposed || this.context.locked) return;
     this.context.term.paste(text);
   }
 
@@ -162,7 +173,14 @@ export class TerminalClipboard {
 
   /** Edit → Programs Can Set Clipboard. */
   setProgramClipboard(mode: ProgramClipboardMode) {
+    if (mode !== this.programClipboard) this.programClipboardAllowed = false;
     this.programClipboard = mode;
+  }
+
+  /** The terminal may keep its scrollback while the connection is replaced. */
+  endSession() {
+    this.sessionRevision += 1;
+    this.programClipboardAllowed = false;
   }
 
   /**
@@ -180,6 +198,7 @@ export class TerminalClipboard {
    * selection and one prompt each time would be unusable.
    */
   allowProgramClipboard(text: string) {
+    if (this.context.disposed || this.context.locked || this.programClipboard === "deny") return;
     this.programClipboardAllowed = true;
     this.writeClipboard(text);
   }
@@ -191,7 +210,7 @@ export class TerminalClipboard {
    * claim on it that has not been granted.
    */
   programClipboardWrite(text: string) {
-    if (this.context.disposed || this.programClipboard === "deny") return;
+    if (this.context.disposed || this.context.locked || this.programClipboard === "deny") return;
     if (this.programClipboard === "allow" || this.programClipboardAllowed) {
       this.writeClipboard(text);
     } else {

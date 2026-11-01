@@ -45,6 +45,22 @@ beforeEach(() => {
   );
 });
 
+describe("clipboard prompts belong to a live connection", () => {
+  it.each(["closed", "error"] as const)("clears old prompts when a session becomes %s", (state) => {
+    const pastePrompt = { sessionId: "one", text: "first\nsecond" };
+    const clipboardPrompt = { sessionId: "one", text: "copied by the old connection" };
+    useStore.setState({ pastePrompt, clipboardPrompt });
+
+    useStore.getState().applyState("two", state);
+    expect(useStore.getState().pastePrompt).toEqual(pastePrompt);
+    expect(useStore.getState().clipboardPrompt).toEqual(clipboardPrompt);
+
+    useStore.getState().applyState("one", state);
+    expect(useStore.getState().pastePrompt).toBeNull();
+    expect(useStore.getState().clipboardPrompt).toBeNull();
+  });
+});
+
 describe("tab command activity", () => {
   it("keeps a background completion unread until the tab is selected", () => {
     const store = useStore.getState();
