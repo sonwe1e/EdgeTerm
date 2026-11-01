@@ -1,7 +1,7 @@
 import { createElement as h, StrictMode } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
-import { browserAfterEach, mount, twoFrames } from "../test/browserHarness";
+import { browserAfterEach, mount, mouse, pagePoint, twoFrames } from "../test/browserHarness";
 import { ProjectSearch } from "./ProjectSearch";
 import { QuickOpen } from "./QuickOpen";
 import * as wb from "./api";
@@ -99,6 +99,42 @@ it("keeps the keyboard-selected quick-open row visible and opens it", async () =
   await page.screenshot({ path: "../../artifacts/ui-search/quick-open-keyboard.png" });
   await userEvent.keyboard("{Enter}");
   expect(onOpen).toHaveBeenCalledWith(files[25]);
+});
+
+it("keeps keyboard navigation when results scroll beneath a stationary pointer", async () => {
+  const onOpen = vi.fn();
+  const files = Array.from({ length: 80 }, (_, i) => `src/file-${String(i).padStart(2, "0")}.ts`);
+  mount(
+    h(QuickOpen, {
+      files: { root: "/project", source: "fixture", files, truncated: false },
+      error: null,
+      onRetry() {},
+      onOpen,
+      onClose() {},
+    }),
+  );
+  await twoFrames();
+  const point = pagePoint(document.querySelector(".wb-quickopen-row")!);
+  await mouse.moveTo(point.x, point.y);
+  await userEvent.keyboard("{ArrowDown>25/}");
+  await twoFrames();
+  expect(document.querySelector('.wb-quickopen-row[aria-selected="true"] small')?.textContent).toBe(
+    files[25],
+  );
+  await userEvent.keyboard("{Enter}");
+  expect(onOpen).toHaveBeenCalledWith(files[25]);
+
+  const visible = [...document.querySelectorAll<HTMLElement>(".wb-quickopen-row")].find((row) => {
+    const box = row.getBoundingClientRect();
+    const viewport = row.parentElement!.getBoundingClientRect();
+    return box.top >= viewport.top && box.bottom <= viewport.bottom;
+  })!;
+  const nextPoint = pagePoint(visible);
+  await mouse.moveTo(nextPoint.x + 3, nextPoint.y);
+  await twoFrames();
+  expect(document.querySelector('.wb-quickopen-row[aria-selected="true"] small')?.textContent).toBe(
+    visible.querySelector("small")!.textContent,
+  );
 });
 
 it("keeps the first result selectable after ArrowDown while files load", async () => {

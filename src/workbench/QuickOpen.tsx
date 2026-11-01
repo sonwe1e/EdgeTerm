@@ -107,7 +107,9 @@ export function QuickOpen({
               role="option"
               aria-selected={index === active}
               className={`wb-quickopen-row${index === active ? " is-active" : ""}`}
-              onMouseEnter={() => setActive(index)}
+              // Scrolling from the keyboard can place a new row beneath a
+              // stationary pointer. Only pointer movement changes selection.
+              onMouseMove={() => setActive(index)}
               onClick={() => choose(path)}
             >
               <span>{path.split("/").pop()}</span>
