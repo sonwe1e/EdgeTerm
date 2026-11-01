@@ -134,6 +134,7 @@ function doctor(env) {
         sdkVersion: env.WindowsSDKVersion,
         cpuMask: env.EDGETERM_CPU_MASK,
         allowedLogicalCpus: env.EDGETERM_CPU_COUNT,
+        priority: env.EDGETERM_PRIORITY,
         cargoJobs: env.CARGO_BUILD_JOBS,
         rustTestThreads: env.RUST_TEST_THREADS,
         freeMemoryGiB: +(os.freemem() / 1024 ** 3).toFixed(1),
@@ -144,8 +145,10 @@ function doctor(env) {
       2,
     ),
   );
+  // Inherited stdio, not a pipe: a host that forbids redirecting a child's
+  // output makes `doctor` fail on the probe instead of reporting the tools.
   for (const command of [env.EDGETERM_CARGO || "cargo", env.RUSTC || "rustc"]) {
-    if (run(command, ["--version"], env, true)) return 1;
+    if (run(command, ["--version"], env)) return 1;
   }
   return 0;
 }

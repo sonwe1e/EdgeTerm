@@ -10,6 +10,11 @@ const report = {
   args,
   jobs: process.env.CARGO_BUILD_JOBS,
   heapLimitMiB: v8.getHeapStatistics().heap_size_limit / 1024 ** 2,
+  budget: {
+    mask: process.env.EDGETERM_CPU_MASK ?? null,
+    cpus: process.env.EDGETERM_CPU_COUNT ?? null,
+    priority: process.env.EDGETERM_PRIORITY ?? null,
+  },
 };
 if (process.platform === "win32") {
   const ps = path.join(process.env.SystemRoot, "System32/WindowsPowerShell/v1.0/powershell.exe");

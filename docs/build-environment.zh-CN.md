@@ -14,6 +14,10 @@
 ./dev.ps1 tauri:build
 ```
 
+`tauri:build` 产出当前平台的全部 bundle（Windows 上是 NSIS 安装包和 MSI，
+首次构建 MSI 会下载 WiX）；正式发版只出 NSIS，用 `./dev.ps1 tauri:build --bundles nsis`，
+步骤见[发布索引](releases.zh-CN.md#发版步骤可复现清单)。
+
 已有 `npm test`、`npm run build`、`npm run tauri:dev` 等命令也经过相同入口。
 `dev.ps1` 直接读取持久化的用户／系统 PATH，因此刚安装工具、旧终端尚未刷新
 环境，或者当前终端没有 Node/npm 时，也可以启动。PowerShell 执行策略阻止
@@ -26,6 +30,11 @@
   小机器最多取逻辑处理器的一半（至少 1 个），使用 BelowNormal 优先级。
   这也覆盖单个 rustc、链接器和 esbuild 内部的线程，而不仅是 Cargo 进程数。
   单逻辑处理器机器只能降低优先级，无法额外预留一个处理器。
+- 受限主机（容器、agent 沙箱、部分企业策略）会拒绝 affinity 或优先级调用。
+  这些调用是按主机能力尽力而为的预算：拒绝时入口在 stderr 打印
+  `[edgeterm] warning: CPU affinity not applied ...` 并继续执行，不再在任务
+  启动前直接失败；`doctor` 用 `cpuMask: unbounded`、`priority: unchanged`
+  如实报告降级状态。降级意味着可能用满整机核心，长时间构建不要在忙的机器上并行其他重活。
 - Cargo 同时编译 2 个任务，Rust 测试线程 2，CMake/Go/Rayon/libuv 并行预算 2。
 - 每个 Node 子进程的 V8 old-space 堆预算为 3072 MiB，保留其他 NODE_OPTIONS。
   这约束 JS 堆，避免测试 worker 各自按整机内存扩张；不等于进程总内存上限。

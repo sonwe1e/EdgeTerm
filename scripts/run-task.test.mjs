@@ -97,9 +97,23 @@ describe("resource-bounded task entry", () => {
           .find((line) => line.startsWith("PROBE:"))
           .slice(6),
       );
-      expect(report.mask).toBeGreaterThan(0);
-      expect(report.mask.toString(2).replaceAll("0", "").length).toBeLessThanOrEqual(4);
-      expect(report.priority).toBe("BelowNormal");
+      // The budget is enforced where the host allows it. A restricted host
+      // (container, agent sandbox, an enterprise policy) denies the affinity
+      // call; the entry must then say so and keep working instead of failing
+      // before the task starts. Both outcomes are checked; a silent third
+      // state is not accepted.
+      const bounded = report.budget.mask !== "unbounded";
+      if (bounded) {
+        const bits = report.mask.toString(2).replaceAll("0", "").length;
+        expect(report.mask).toBeGreaterThan(0);
+        expect(bits).toBeLessThanOrEqual(4);
+        expect(Number(report.budget.cpus)).toBe(bits);
+        expect(report.priority).toBe("BelowNormal");
+        expect(report.budget.priority).toBe("BelowNormal");
+      } else {
+        expect(report.budget.cpus || null).toBeNull();
+        expect(result.stderr).toContain("CPU affinity not applied");
+      }
       expect(report.nested.status, report.nested.stderr).toBe(0);
       const child = JSON.parse(report.nested.stdout.split("PROBE:")[1]);
       expect(child.mask).toBe(report.mask);

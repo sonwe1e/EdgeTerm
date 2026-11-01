@@ -13,21 +13,38 @@ try {
     $env:Path = (Get-EdgeTermInstalledPath) + ';' + $env:Path
     # The same CPU set across invocations prevents overlapping runs from adding
     # up to all cores. Children inherit affinity, including rustc/link/esbuild.
+    # A restricted host (container, agent sandbox, some enterprise policies)
+    # denies the affinity or priority call. There the budget degrades to a
+    # warning instead of failing before the task starts; doctor reports which
+    # mode is in effect, and the warning says when the budget was not applied.
     $self = [Diagnostics.Process]::GetCurrentProcess()
-    $available = $self.ProcessorAffinity.ToInt64()
     [long]$mask = 0
     $count = 0
     $limit = [Math]::Max(1, [Math]::Min(4, [Math]::Floor([Environment]::ProcessorCount / 2)))
-    if ($env:EDGETERM_CPU_COUNT -match '^[1-4]$') { $limit = [int]$env:EDGETERM_CPU_COUNT }
-    for ($bit = 0; $bit -lt 63 -and $count -lt $limit; $bit++) {
-        [long]$flag = [long]1 -shl $bit
-        if (($available -band $flag) -ne 0) { $mask = $mask -bor $flag; $count++ }
+    $requested = $env:EDGETERM_CPU_COUNT
+    if ($requested -match '^[1-4]$') { $limit = [int]$requested }
+    try {
+        $available = $self.ProcessorAffinity.ToInt64()
+        for ($bit = 0; $bit -lt 63 -and $count -lt $limit; $bit++) {
+            [long]$flag = [long]1 -shl $bit
+            if (($available -band $flag) -ne 0) { $mask = $mask -bor $flag; $count++ }
+        }
+        if ($mask -eq 0) { throw 'no usable logical processor was reported' }
+        $self.ProcessorAffinity = [IntPtr]$mask
+        $env:EDGETERM_CPU_MASK = $mask.ToString()
+        $env:EDGETERM_CPU_COUNT = $count.ToString()
+    } catch {
+        $env:EDGETERM_CPU_MASK = 'unbounded'
+        $env:EDGETERM_CPU_COUNT = ''
+        [Console]::Error.WriteLine("[edgeterm] warning: CPU affinity not applied ($($_.Exception.Message)); this task may use every core.")
     }
-    if ($mask -eq 0) { throw 'Could not establish a safe CPU affinity mask.' }
-    $self.ProcessorAffinity = [IntPtr]$mask
-    $self.PriorityClass = 'BelowNormal'
-    $env:EDGETERM_CPU_MASK = $mask.ToString()
-    $env:EDGETERM_CPU_COUNT = $count.ToString()
+    try {
+        $self.PriorityClass = 'BelowNormal'
+        $env:EDGETERM_PRIORITY = 'BelowNormal'
+    } catch {
+        $env:EDGETERM_PRIORITY = 'unchanged'
+        [Console]::Error.WriteLine("[edgeterm] warning: process priority not lowered ($($_.Exception.Message)).")
+    }
 
     # OS-owned mutex has no stale lock file after a crash. Tauri's frontend
     # hooks inherit the live owner and are part of the same budget.
