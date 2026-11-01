@@ -204,6 +204,19 @@ profile isolated. These checks cover the recorded Windows/Pi version only.
 The script records whether the actual bundled command has the local
 startup-order repair described below; it never patches Pi itself.
 
+After the input checks, the script exits Pi normally and requires a shell
+completion marker, released mouse reporting, no generated history markers
+after leaving the alternate screen, a resume hint, and all 160 saved messages
+unchanged. It captures both the TUI write log and the PTY output: Pi prints
+the resume hint directly to stdout, outside its TUI log. Optional arguments
+are `[resume-hint|default|transcript] [ctrl-d|ctrl-c|quit]`. The defaults are
+`resume-hint ctrl-d`; select `quit` or `ctrl-c` to check the other normal exit
+paths. `default` leaves the exit preference unset in the isolated profile;
+Pi 1.4.0 then reprints the transcript and the gate intentionally fails.
+This fixture setting never changes the user's Pi configuration. For the
+user-level repair, set `fullscreenExitOutput` to `resume-hint` in the Pi agent
+directory's `settings.json` and run `/reload` in an already running Pi.
+
 `./dev.ps1 script scripts/patch-pi-windows-mouse.mjs` repairs native Windows
 Pi 1.4.0's fullscreen startup order in the installation explicitly selected by
 `EDGETERM_PI_ROOT`. It reissues mouse modes after Windows VT input is enabled

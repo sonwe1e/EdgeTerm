@@ -1,6 +1,8 @@
 // Windows WebView2/ConPTY acceptance with an installed Pi and generated
 // conversation only. No model requests, user sessions, or user Pi config.
 // Select a disposable portable target explicitly, as in the other native gates.
+// Args: <new-output-dir> [resume-hint|default|transcript] [ctrl-d|ctrl-c|quit].
+// default/transcript are negative controls: history replay must fail the gate.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
@@ -14,6 +16,11 @@ assert.ok(
   "Set EDGETERM_PI_ROOT to the installed pi-coding-agent package",
 );
 assert.ok(process.argv[2], "Pass a fresh output directory under .tmp");
+const exitOutput = process.argv[3] || "resume-hint";
+const exitMethod = process.argv[4] || "ctrl-d";
+assert.ok(["default", "transcript", "resume-hint"].includes(exitOutput), "Unknown exit output");
+assert.ok(["ctrl-d", "ctrl-c", "quit"].includes(exitMethod), "Unknown exit method");
+assert.ok(process.argv.length <= 5, "Unexpected arguments");
 const output = resolve(process.argv[2]);
 assert.ok(output.startsWith(resolve(".tmp") + "\\"));
 await mkdir(output);
@@ -80,8 +87,13 @@ const history = resolve(project, "history.jsonl");
 await writeFile(history, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
 await writeFile(
   resolve(agent, "settings.json"),
-  JSON.stringify({ quietStartup: true, checkForUpdates: false }),
+  JSON.stringify({
+    quietStartup: true,
+    checkForUpdates: false,
+    ...(exitOutput === "default" ? {} : { fullscreenExitOutput: exitOutput }),
+  }),
 );
+const exitMarker = `PI-EXIT-COMPLETE-${randomUUID()}`;
 const launcher = resolve(project, "launch-pi.cmd");
 await writeFile(
   launcher,
@@ -91,6 +103,7 @@ await writeFile(
     `set "PI_TUI_WRITE_LOG=${resolve(output, "pi-output.ansi")}"`,
     `cd /d "${project}"`,
     `"${process.execPath}" "${piEntry}" --offline --no-approve --no-context-files --no-extensions --no-mcp --no-skills --no-prompt-templates --no-themes --no-tools --session "${history}" --tui-mode fullscreen`,
+    `echo ${exitMarker}`,
     "",
   ].join("\r\n"),
 );
@@ -98,6 +111,8 @@ await writeFile(
 const result = {
   piVersion: piPackage.version,
   piEntry: piPackage.bin.pi,
+  exitOutput,
+  exitMethod,
   piWindowsMousePatch: piMouseSource.includes(
     "EdgeTerm: reissue mouse modes after Windows VT input is enabled.",
   ),
@@ -211,8 +226,11 @@ try {
       [...(await rows.innerText()).matchAll(/PI-HISTORY-(\d+)/g)].map((match) => Number(match[1])),
     ),
   ];
-  const bottom = await markers();
-  assert.ok(bottom.includes(80));
+  let bottom = [];
+  await poll(async () => {
+    bottom = await markers();
+    return bottom.includes(80);
+  }, "Pi history settled at its latest message");
   await page.waitForTimeout(500);
   result.mouseClass = await page.locator(".pane-slot:not(.is-hidden) .xterm").getAttribute("class");
   await page
@@ -282,6 +300,79 @@ try {
     second,
   );
   result.checks.tabs = true;
+
+  // Close Pi normally rather than only killing its entire test session.
+  // Its default transcript replay happens after leaving the alternate screen.
+  await page.keyboard.press("Control+Shift+Tab");
+  await page.waitForFunction(
+    (id) => document.querySelector(".tab.is-active")?.getAttribute("data-tab-id") === id,
+    first,
+  );
+  await page.keyboard.press("Control+A");
+  await page.keyboard.press("Control+K");
+  await poll(async () => !(await rows.innerText()).includes("beta gamma"), "Pi editor cleared");
+  const exitOutputStart = await page.evaluate(() => window.__terminalOutput.length);
+  if (exitMethod === "quit") {
+    await page.keyboard.type("/quit");
+    await page.keyboard.press("Enter");
+  } else if (exitMethod === "ctrl-c") {
+    await page.keyboard.press("Control+C");
+    await page.keyboard.press("Control+C");
+  } else {
+    await page.keyboard.press("Control+D");
+  }
+  await poll(async () => (await rows.innerText()).includes(exitMarker), "Pi returned to its shell");
+  const sourceOutput = await readFile(resolve(output, "pi-output.ansi"));
+  const leaveSequence = Buffer.from("\x1b[?1049l");
+  const leaveOffset = sourceOutput.lastIndexOf(leaveSequence);
+  assert.ok(leaveOffset >= 0, "Pi must leave the alternate screen");
+  const sourceAfterExit = sourceOutput.subarray(leaveOffset + leaveSequence.length);
+  const exitChunks = await page.evaluate(
+    (start) => window.__terminalOutput.slice(start),
+    exitOutputStart,
+  );
+  const ptyExitOutput = Buffer.from(exitChunks.flat());
+  const ptyLeaveOffset = ptyExitOutput.lastIndexOf(leaveSequence);
+  assert.ok(ptyLeaveOffset >= 0, "The PTY must restore the normal screen");
+  const ptyAfterExit = ptyExitOutput.subarray(ptyLeaveOffset + leaveSequence.length);
+  await writeFile(resolve(output, "pi-after-exit.ansi"), sourceAfterExit);
+  await writeFile(resolve(output, "pty-exit.ansi"), ptyExitOutput);
+  const savedEntries = (await readFile(history, "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  const savedMessages = savedEntries.filter((entry) => entry.type === "message");
+  const mouseClass = await page.locator(".pane-slot:not(.is-hidden) .xterm").getAttribute("class");
+  result.checks.exit = {
+    sourceBytesAfterAltScreen: sourceAfterExit.length,
+    ptyBytesDuringExit: ptyExitOutput.length,
+    historyMarkersAfterAltScreen: [...sourceAfterExit.toString("utf8").matchAll(/PI-HISTORY-\d+/g)]
+      .length,
+    ptyHistoryMarkersAfterAltScreen: [...ptyAfterExit.toString("utf8").matchAll(/PI-HISTORY-\d+/g)]
+      .length,
+    // The resume hint uses process.stdout directly, outside Pi's TUI write log.
+    resumeHint: ptyAfterExit.includes(Buffer.from("--session ")),
+    savedMessages: savedMessages.length,
+    mouseDisabled: !mouseClass.includes("enable-mouse-events"),
+    shellReady: true,
+  };
+  await page.screenshot({ path: resolve(output, "pi-exited.png") });
+  assert.deepEqual(
+    savedMessages,
+    entries.filter((entry) => entry.type === "message"),
+  );
+  assert.equal(result.checks.exit.mouseDisabled, true, "Pi must release mouse reporting");
+  assert.equal(
+    result.checks.exit.historyMarkersAfterAltScreen,
+    0,
+    "Pi replayed conversation history on exit",
+  );
+  assert.equal(
+    result.checks.exit.ptyHistoryMarkersAfterAltScreen,
+    0,
+    "History replay reached the normal screen",
+  );
+  assert.equal(result.checks.exit.resumeHint, true, "Keep a hint for reopening the saved session");
   result.reports = await page.evaluate(() => window.__terminalInputWrites);
   assert.ok(
     result.reports.some(({ bytes, data }) => bytes?.[2] === 77 || data?.startsWith("\x1b[<")),

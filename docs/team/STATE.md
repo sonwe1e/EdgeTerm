@@ -36,5 +36,13 @@ Pi 修复详情、重启和还原方法见 [终端输入记录](../terminal-inpu
 ## 边界与后续
 
 - Windows 原生仅覆盖本机和 Pi 1.4.0，CDP 输入不等于物理键鼠；真实 SSH/SFTP/FTP、macOS/Linux 未验证。未发布安装包、推送或自动更新。
-- 同一工作区另一会话留下的 `terminalSemanticRenderer` 折行死循环修复及诊断文档独立保留，详见 [现场记录](../sidebar-freeze-diagnostics.zh-CN.md)。该会话的未提交文件没有混入本轮上述 5 项修复提交。
+- 同一工作区另一会话留下的 `terminalSemanticRenderer` 折行死循环修复及诊断文档，按用户后续要求已提交为 `8353e4c`，详见 [现场记录](../sidebar-freeze-diagnostics.zh-CN.md)。提交前重新通过类型检查、4 项真实 xterm 回归和 3 个浏览器响应性场景。
 - 本轮已确认缺陷均有修复及回归。未来筛查应依据新的可复现问题继续；现有测试全绿不等于整个产品不存在其他缺陷。
+
+## 后续：退出 Pi 后历史大量刷新
+
+- 触发：Pi 1.4.0 fullscreen 模式下正常退出。旧验收直接关闭测试 Shell，未覆盖这个路径。
+- 原因已复现：`fullscreenExitOutput` 默认 `transcript`，Pi 在退出备用屏幕后重绘整份对话。相同 160 条消息的原生负例记录了 151,877 字节 TUI 输出、640 个历史标记；来源是 Pi 本身。
+- 实际修复：本机 Pi agent 的 `settings.json` 添加 `fullscreenExitOutput: "resume-hint"`，原文件旁保留备份并核对其余设置未变。Pi 自身读取器确认有效值。已运行的 Pi 执行 `/reload` 后使用该值，新进程自动加载。
+- 验收：Ctrl+D、`/quit`、两次 Ctrl+C 三种正常退出均没有历史重放；TUI 与 PTY 两端都为 0 个历史标记，160 条消息逐项不变，恢复命令可见、鼠标模式释放、返回 Shell。详情及证据位置见 [终端输入记录](../terminal-input-fixes.zh-CN.md#退出-pi-后整段历史刷回-shell)。
+- 实现边界：退出行为用 Pi 已有偏好解决，没有新增 EdgeTerm 输出过滤或再次修改 Pi bundle。仓库内提交的是正常退出验收及可复用配置说明；用户配置留在本机。
