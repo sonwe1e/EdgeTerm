@@ -1,48 +1,31 @@
-# 缺陷筛查状态
+# 项目状态
 
-本轮完成：保存初始代码，修复 EdgeTerm 中 Pi 对话滚动，筛查并修复输入、剪贴板和快速打开的现有缺陷；没有新增产品功能。
+## 本轮：目录与打包整理、缺陷修复（2026-11-01）
 
-## 协作与基线
+- 基线 `b4ba925`，工作区干净。协作约定见 [TEAM.md](../../TEAM.md)：本轮由 Lead 派两个只读审计任务（打包一致性、前端缺陷），修复与验证由 Lead 完成；审计者无写权限，结论逐条由 Lead 复核并给出可执行证据。
+- 提交：`3536ebe` 受管入口在受限主机上的降级、`613c54b` 版本一致性守卫、`1e54e02` 手工发版产物忽略 + bump 脚本不再推送、`97d22e3` 文档索引与发版清单、`9ba681d` Sender 重复计数与状态本地化、`38d9800` 面板宽度偏好、`210e166` 传输设置写入失败。
 
-- 约定：[TEAM.md](../../TEAM.md)。当前工具没有独立 Agent 调度接口，本轮由同一 Agent 分阶段诊断、实现和验证；不将自查称为独立多人审查。
-- 初始基线 `8805e77`；用户原有工作原样保存为检查点 `efd2faf`，类型检查通过。
-- 复现、原生结果和反向验证位于忽略目录 `.tmp/bug-sweep/`。机制及取舍见 [DECISIONS.md](DECISIONS.md)，经验见 [LEARNINGS.md](LEARNINGS.md)。
+### 修复与证据
 
-## 修复与提交
-
-| 问题 | 修复 | 验证与提交 |
+| 问题 | 修复 | 证据 |
 | --- | --- | --- |
-| Pi 只滚动编辑器 | 旧补丁只覆盖 SDK；补齐 npm `bin.pi` 实际加载的 bundled TUI，原生脚本改用该入口 | `b6b5527`；旧脚本的 bundle 用例失败；真实 Windows 修复前无鼠标模式，修复后可见对话末组从 80 到 78、76 再回到 80；Alt+Delete 与双向标签切换通过 |
-| 自定义 Alt+方向键或 Alt+Backspace 仍向 Shell 发兼容序列 | 显式快捷键优先于兼容转换 | `196702b`；两项单元、一项真实 App/xterm 浏览器回归先失败后通过 |
-| 关闭或重连后迟到的剪贴板粘贴 | 读取归属于原连接，结束连接后作废，关闭后不再弹出确认 | `18ef883`；两项旧实现回归失败，正常单行/多行粘贴控制与候选通过 |
-| OSC 52 临时授权跨连接或策略变更保留 | 结束连接或更改策略时清理临时权限，结束状态清理该会话的待确认弹窗 | 同上；旧实现的授权与弹窗回归失败；候选通过，其他会话的弹窗保留 |
-| 快速打开中键盘选中项被静止鼠标覆盖 | 只在鼠标移动时更新指针选中项 | `7caeee9`；固定鼠标后方向键滚动，旧实现把 file-25 改成 file-12；候选保留 file-25，移动鼠标仍可选行 |
-| Filer 列宽验收在缩小预览中误报 | 测试把 CSS 像素距离换算为预览外层坐标，产品代码无需改动 | `fdf1140`；0.85 缩放下旧测试输入有约 14px 误差，修正后 14 项列宽检查通过 |
+| 受限主机拒绝 CPU affinity 时，所有受管任务在启动前失败 | affinity/优先级降级为警告，doctor 报告真实预算；doctor 的版本探测不再经管道捕获 | `3536ebe`；`./dev.ps1 doctor` 由 “Exception setting ProcessorAffinity: Access is denied” 变为 `cpuMask: unbounded` 并继续执行；入口契约用例只接受“有预算”或“降级且告警” |
+| 四个版本文件没有自动一致性校验（原校验随停用 workflow 失效） | 只读 `scripts/check-version.mjs` + `npm run version:check`，接入 CI | `613c54b`；漂移副本退出码 1 并指出 Cargo.toml 1.5.0 ≠ 1.5.1 |
+| 手工发版产物未被忽略；`version-bump.sh` 会直接 push | 增加忽略规则；脚本只改版本、跑校验并打印提交命令 | `1e54e02` |
+| Sender 在没有可写会话时仍计一次重复，并虚报 “repeated … done” | 只有 sendUnits 真正写入至少一个会话才计数；三条状态改走语言目录 | `9ba681d`；旧实现一个 tick 后 `getSchedule()` 变 null 且状态含 done，新实现保持等待；中文界面断言 “发送器：命令已重复 1 次，完成” |
+| 窗口缩放后的面板宽度被当作偏好写回，放大窗口也回不去 | 偏好与显示值分离（`loadPanelSizingPreference`），底栏同一规则 | `38d9800`；500/500 在 1000px 窗口打开后仍能在 1600px 恢复 |
+| 存储写入失败时 `saveTransferOptions` 把异常抛给 UI | 与其余偏好一致地捕获 | `210e166`；旧实现抛 QuotaExceededError |
 
-Pi 修复详情、重启和还原方法见 [终端输入记录](../terminal-input-fixes.zh-CN.md)。本机 Pi 1.4.0 的 SDK 与 npm bundle 均已应用补丁；正在运行的 Pi 需要重启才加载补丁。它是本机兼容修复，没有变为 EdgeTerm 的依赖或启动动作。
+### 验证
 
-## 验证结果
+- 单元：112 文件 / 950 用例通过（基线 111 / 944；新增 3 条 Sender 重复、2 条面板偏好、1 条传输设置）。
+- Rust：`./dev.ps1 test:rust` 459 通过、27 ignored、0 失败；本轮未改 Rust。
+- 类型检查、Biome lint（仅生成绑定里两条既有 `any` 警告）、`format:check`、前端生产构建通过。
+- 新增回归用例先在旧实现上运行并失败，修复后通过（逐条见上表）。
+- 未验证：真实 Tauri 窗口内的面板拖拽与 Sender 重复（jsdom 只覆盖状态机与纯布局函数）；未运行 `test:browser`；未运行 `tauri:build` 出包。
 
-- 初始基线：108 个单元文件 / 925 项通过，32 个浏览器文件 / 169 项通过。
-- 最终工作区：111 个单元文件 / 944 项通过；其中包括另一会话同时加入的 4 项语义着色回归。32 个浏览器文件 / 172 项通过，使用本机 Microsoft Edge。
-- Rust 全量：459 项通过、27 项 ignored；ignored 不计通过。没有修改 Rust 源码。
-- TypeScript、全量 Biome 格式检查、lint、rustfmt、`git diff --check` 通过。lint 仅保留生成绑定的两条既有 `any` 警告。
-- `8805e77..fdf1140` 的 6 个提交逐一类型检查及提交规范检查通过，0 error / 0 warning。
-- 前端生产构建与隔离 Windows x64 调试构建通过；原生 Pi 验收在独立 portable 数据目录、WebView2 156、DPR 1.75、DOM 渲染器执行。
-- 一次性 worktree 正常控制 33 项通过。撤掉按键优先、读取 revision、disposed、连接授权重置、策略撤权、弹窗清理及 bundle 修补的 7 种变异均被行为断言检出；源码哈希和日志保留在 `worktree-checks/`。worktree 已移除，没有链接 `node_modules`。
+### 边界与后续
 
-保留失败证据：Playwright 自带 Chromium 未安装，改用已安装 Edge；首次全量浏览器运行检出快速打开问题和列宽测试坐标误差，修正后完整套件通过，未跳过失败用例。worktree 初次运行被 Vite 的仓库外依赖访问限制拒绝，在该临时配置显式允许主仓库后重跑正常控制及变异；导入失败不算检出。
-
-## 边界与后续
-
-- Windows 原生仅覆盖本机和 Pi 1.4.0，CDP 输入不等于物理键鼠；真实 SSH/SFTP/FTP、macOS/Linux 未验证。未发布安装包、推送或自动更新。
-- 同一工作区另一会话留下的 `terminalSemanticRenderer` 折行死循环修复及诊断文档，按用户后续要求已提交为 `8353e4c`，详见 [现场记录](../sidebar-freeze-diagnostics.zh-CN.md)。提交前重新通过类型检查、4 项真实 xterm 回归和 3 个浏览器响应性场景。
-- 本轮已确认缺陷均有修复及回归。未来筛查应依据新的可复现问题继续；现有测试全绿不等于整个产品不存在其他缺陷。
-
-## 后续：退出 Pi 后历史大量刷新
-
-- 触发：Pi 1.4.0 fullscreen 模式下正常退出。旧验收直接关闭测试 Shell，未覆盖这个路径。
-- 原因已复现：`fullscreenExitOutput` 默认 `transcript`，Pi 在退出备用屏幕后重绘整份对话。相同 160 条消息的原生负例记录了 151,877 字节 TUI 输出、640 个历史标记；来源是 Pi 本身。
-- 实际修复：本机 Pi agent 的 `settings.json` 添加 `fullscreenExitOutput: "resume-hint"`，原文件旁保留备份并核对其余设置未变。Pi 自身读取器确认有效值。已运行的 Pi 执行 `/reload` 后使用该值，新进程自动加载。
-- 验收：Ctrl+D、`/quit`、两次 Ctrl+C 三种正常退出均没有历史重放；TUI 与 PTY 两端都为 0 个历史标记，160 条消息逐项不变，恢复命令可见、鼠标模式释放、返回 Shell。详情及证据位置见 [终端输入记录](../terminal-input-fixes.zh-CN.md#退出-pi-后整段历史刷回-shell)。
-- 实现边界：退出行为用 Pi 已有偏好解决，没有新增 EdgeTerm 输出过滤或再次修改 Pi bundle。仓库内提交的是正常退出验收及可复用配置说明；用户配置留在本机。
+- 发版第 5、6 步（便携包、诊断包、`SHA256SUMS.txt`）仍是手工步骤，仓库没有脚本；步骤见[发布索引](../releases.zh-CN.md#发版步骤可复现清单)。
+- 只读审计已报告但本轮未做：`check:icons` 只校验 dist 里的文件图标、不校验 `bundle.icon`；CI 不跑 `build`/`check:bindings`；`.cmd` 文件在 `.gitattributes` 下统一为 LF。
+- 上一轮的输入、剪贴板与 Pi 修复细节见[终端输入修复](../terminal-input-fixes.zh-CN.md)、[侧栏诊断](../sidebar-freeze-diagnostics.zh-CN.md)，提交范围 `b6b5527..8353e4c`。
