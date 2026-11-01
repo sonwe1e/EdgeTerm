@@ -1058,7 +1058,7 @@ const grouped = useMemo(() => {
 | 查找下一个 | ⌘G | Ctrl+Shift+G |
 | 清除 | ⌘K | Alt+K |
 | 显示终端目录 | ⌘J | Ctrl+Shift+J |
-| 上一个/下一个标签 | ⌘[ / ⌘] | Alt+[ / Alt+] |
+| 上一个/下一个标签 | ⌘[ / ⌘] | Ctrl+Shift+Tab / Ctrl+Tab（默认绑定下兼容 Alt+[ / Alt+]） |
 | 右/下分屏 | ⌘\ / ⌘⇧\ | Ctrl+Shift+\ / Ctrl+Alt+\ |
 | 上一个/下一个窗格 | ⌘⌥[ / ⌘⌥] | Ctrl+Alt+[ / Ctrl+Alt+] |
 | 复制/粘贴/全选 | ⌘C / ⌘V / ⌘A | Ctrl+Shift+C / Ctrl+Shift+V / Ctrl+Shift+A |

@@ -187,6 +187,33 @@ the results. The script closes its test sessions; close the disposable app
 afterward, including on failure. Do not run builds or other tests during the
 timed portion. This proves the recorded WebView2/ConPTY workload only.
 
+`check-native-terminal-input.mjs <new-output-dir-under-.tmp>` uses an explicitly
+selected disposable portable WebView2 target (`EDGETERM_CDP_URL` and
+`EDGETERM_CDP_TARGET_ID`). Set `EDGETERM_PI_ROOT` to an installed
+`@earendil-works/pi-coding-agent` package. It creates a separate Pi agent
+configuration and 160 generated messages, resumes them offline without model
+requests, then checks transcript wheel scrolling in both directions,
+Alt+Delete word deletion without opening the menu, and Ctrl+Tab /
+Ctrl+Shift+Tab navigation between two local sessions. It records the emitted
+mouse reports, screenshots, Pi version and browser environment. Its DOM
+renderer setting applies only to the disposable app profile. Close that app
+afterward. When another EdgeTerm is running, build the test copy with a
+separate Tauri `identifier` to keep the single-instance guard isolated.
+These checks cover the recorded Windows/Pi version only. The script records
+whether Pi has the local startup-order repair described below; it never
+patches Pi itself.
+
+`./dev.ps1 script scripts/patch-pi-windows-mouse.mjs` repairs native Windows
+Pi 1.4.0's fullscreen startup order in the installation explicitly selected by
+`EDGETERM_PI_ROOT`. It reissues mouse modes after Windows VT input is enabled,
+checks the package versions and source shape, and saves the original beside
+the file with the suffix `.edgeterm-windows-mouse.bak`. Repeating the command
+is idempotent; `--restore` verifies the patched file and restores that backup.
+Restart Pi after applying it. Reinstalling/upgrading Pi may replace the patched
+package; another version needs its own review. This is an optional local Pi
+repair, not a patch to the PTY backend or a dependency shipped with EdgeTerm.
+See [terminal input findings](../docs/terminal-input-fixes.zh-CN.md).
+
 `check-native-sidebar-drag.mjs <new-output-dir>` uses the same explicit CDP
 target and portable-instance guards, with no saved profiles or sessions. It
 opens the Filer and three local shells, writes 3,000 synthetic lines to the

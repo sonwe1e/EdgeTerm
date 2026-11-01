@@ -499,6 +499,13 @@ export class TerminalController {
     // A file transfer owns the byte stream while it is active. Forwarding
     // keystrokes or paste data in the middle of a binary frame corrupts it.
     this.term.onData((data) => this.handleData(data));
+    // xterm sends legacy mouse reports, including wheel events, through
+    // onBinary. Coordinates above 95 become bytes above 127: UTF-8 encoding
+    // would corrupt them.
+    this.term.onBinary((data) => {
+      if (this.locked || this.isTransferActive()) return;
+      this.callbacks.onBinary?.(Uint8Array.from(data, (char) => char.charCodeAt(0)));
+    });
     // Shells with OSC 7 / 1337 / 9;9 integration announce their working
     // directory at every prompt. Only the latest report is kept: it answers
     // "Reveal Working Directory in Filer" exactly, nested shells and sudo

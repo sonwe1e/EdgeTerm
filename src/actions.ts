@@ -107,6 +107,7 @@ export async function ensureController(id: string): Promise<TerminalController> 
     id,
     {
       onData: (data) => void api.writeSession(id, data).catch(() => undefined),
+      onBinary: (data) => void api.writeSessionBytes(id, data).catch(() => undefined),
       // Enter on the dead session reconnects it; the host key dialog owns
       // the next connection attempt while it is open.
       onReconnect: () => {

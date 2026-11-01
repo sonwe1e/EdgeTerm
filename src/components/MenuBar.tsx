@@ -914,15 +914,27 @@ export function MenuBar(props: Props) {
       initialFocus.current = "first";
       setOpen(firstTitle);
     };
-    const onKeyDown = (event: KeyboardEvent) => {
+    // Observe Alt chords before xterm or an editor can stop propagation.
+    // F10 remains on the bubble path so a terminal can claim it first.
+    const trackAlt = (event: KeyboardEvent) => {
       const target = event.target;
-      if (target instanceof Element && target.closest("dialog[open]")) return;
-      if (event.key === "Alt") {
-        altDown = true;
+      if (target instanceof Element && target.closest("dialog[open]")) {
+        altDown = false;
         altChord = false;
         return;
       }
-      if (altDown) altChord = true;
+      if (event.key === "Alt") {
+        if (!altDown) {
+          altDown = true;
+          altChord = event.ctrlKey || event.shiftKey || event.metaKey;
+        }
+      } else if (altDown) {
+        altChord = true;
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest("dialog[open]")) return;
       if (
         event.key === "F10" &&
         !event.altKey &&
@@ -955,10 +967,12 @@ export function MenuBar(props: Props) {
       altDown = false;
       altChord = false;
     };
+    document.addEventListener("keydown", trackAlt, true);
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("keyup", onKeyUp);
     window.addEventListener("blur", reset);
     return () => {
+      document.removeEventListener("keydown", trackAlt, true);
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("blur", reset);

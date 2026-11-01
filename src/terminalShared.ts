@@ -312,6 +312,8 @@ export const FIND_COLORS: Record<ThemeMode, FindColors> = {
 
 export interface Callbacks {
   onData: (data: string) => void;
+  /** Legacy mouse reports contain byte coordinates, not UTF-8 text. */
+  onBinary?: (data: Uint8Array) => void;
   onResize: (cols: number, rows: number) => void;
   onStatus: (message: string, error?: boolean) => void;
   /**

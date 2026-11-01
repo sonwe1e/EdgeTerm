@@ -200,8 +200,8 @@ const OTHER_DEFAULTS: ShortcutBindings = {
   findNext: chord("KeyG", { ctrl: true, shift: true }),
   clear: chord("KeyK", { alt: true }),
   revealCwd: chord("KeyJ", { ctrl: true, shift: true }),
-  prevTab: chord("BracketLeft", { alt: true }),
-  nextTab: chord("BracketRight", { alt: true }),
+  prevTab: chord("Tab", { ctrl: true, shift: true }),
+  nextTab: chord("Tab", { ctrl: true }),
   // Ctrl+\ is VS Code's split but SIGQUIT in a terminal; with Shift the
   // shell would get the same byte, so it is taken like Ctrl+Shift+letter.
   // Alt+\ is readline's delete-horizontal-space and Alt+Shift switches the
@@ -529,6 +529,22 @@ export function matchAppShortcut(event: ShortcutKeyEvent): AppShortcut | null {
   for (const { id, action } of SHORTCUT_COMMANDS) {
     const binding = activeShortcuts[id];
     if (binding && chordMatches(binding, event)) return action;
+  }
+  // Keep the earlier Alt+[ / Alt+] scheme available with the default tab
+  // bindings. Explicit rebinding or unassigning still belongs to the user,
+  // and another command explicitly assigned these keys wins above.
+  if (
+    !IS_MAC &&
+    event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.shiftKey &&
+    (event.code === "BracketLeft" || event.code === "BracketRight")
+  ) {
+    const command = event.code === "BracketLeft" ? "prevTab" : "nextTab";
+    if (sameChord(activeShortcuts[command], DEFAULT_SHORTCUTS[command])) {
+      return { kind: "tabStep", step: command === "prevTab" ? -1 : 1 };
+    }
   }
   return tabNumberShortcut(event);
 }
