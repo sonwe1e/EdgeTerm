@@ -5,7 +5,6 @@ import { layoutRects, type Rect, type SplitterRect } from "../layout";
 import { chordLabel } from "../shortcuts";
 import { useStore } from "../store";
 import { useT } from "../useT";
-import { useWorkbench } from "../workbench/store";
 import { Splitter } from "./Splitter";
 import { TabStrip } from "./TabStrip";
 import { SessionPane } from "./TerminalPane";
@@ -82,12 +81,10 @@ export function Workspace({ onNewSession }: Props) {
   const dropTarget = useStore((s) => s.dropTarget);
   const resizeLayout = useStore((s) => s.resizeLayout);
   const newSessionKey = useStore((s) => chordLabel(s.shortcuts.newSession));
-  // The three capabilities the hero empty state used to leave to the View menu
-  // (PD-05). Each panel entry reads its real binding, and the workbench has no
-  // bound command, so its entry shows no chord rather than an invented one.
+  // The capabilities the hero empty state used to leave to the View menu
+  // (PD-05). Each panel entry reads its real binding.
   const panels = useStore((s) => s.panels);
   const togglePanel = useStore((s) => s.togglePanel);
-  const setWorkbenchView = useWorkbench((s) => s.setView);
   const filerKey = useStore((s) => chordLabel(s.shortcuts.panelFiler));
   const senderKey = useStore((s) => chordLabel(s.shortcuts.panelSender));
   // The hint wraps the chord in a <kbd>; the catalogs put {key} where it goes.
@@ -118,13 +115,6 @@ export function Workspace({ onNewSession }: Props) {
       hint: t("empty.openSenderHint"),
       chord: senderKey,
       action: () => togglePanel("sender"),
-    },
-    {
-      id: "workbench",
-      label: t("empty.openWorkbench"),
-      hint: t("empty.openWorkbenchHint"),
-      chord: "",
-      action: () => setWorkbenchView("workbench"),
     },
   ];
 

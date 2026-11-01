@@ -654,7 +654,7 @@ export function TabStrip({ paneId }: Props) {
             id={`tab-${tab.info.id}`}
             role="tab"
             aria-selected={active}
-            aria-label={`${tab.number}. ${tabTitle(tab)}${tab.workspaceName ? ` · ${tab.workspaceName}` : ""} · ${details}`}
+            aria-label={`${tab.number}. ${tabTitle(tab)} · ${details}`}
             tabIndex={active ? 0 : -1}
             data-tab-id={tab.info.id}
             onMouseDown={() => setActive(tab.info.id)}
@@ -664,11 +664,6 @@ export function TabStrip({ paneId }: Props) {
             <span className="tab-index">{tab.number}.</span>
             <span className="tab-dot" aria-hidden="true" />
             <span className="tab-label">{tabTitle(tab)}</span>
-            {tab.workspaceName && (
-              <span className="tab-workspace" title={tab.workspaceName}>
-                {tab.workspaceName}
-              </span>
-            )}
             <button
               className="tab-close"
               // Kept out of the tab order: the strip is one Tab stop, and the

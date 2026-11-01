@@ -20,7 +20,7 @@ const legacyTitle = (servers: LegacyAlgorithms[]): string =>
     ...servers.map(({ address, algorithms }) => `${address}: ${algorithms.join(", ")}`),
   ].join("\n");
 
-function StatusBarBase({ showResources = true }: { showResources?: boolean }) {
+function StatusBarBase() {
   const t = useT();
   const tab = useActiveTab();
   const status = useStore((s) => s.status);
@@ -101,7 +101,7 @@ function StatusBarBase({ showResources = true }: { showResources?: boolean }) {
           </button>
         )}
       </span>
-      {showResources && <ResourceMonitorBar tab={tab} />}
+      <ResourceMonitorBar tab={tab} />
       <ForwardCenter />
       <TransferCenter />
       {tab && (
@@ -143,6 +143,6 @@ function StatusBarBase({ showResources = true }: { showResources?: boolean }) {
   );
 }
 
-// Memoised: the one prop changes only when the workbench takes over host
-// sampling, so the app's other re-renders skip the bar.
+// Memoised: the one prop changes only when the active tab changes, so the
+// app's other re-renders skip the bar.
 export const StatusBar = memo(StatusBarBase);

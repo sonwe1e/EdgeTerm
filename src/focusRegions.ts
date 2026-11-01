@@ -29,8 +29,8 @@ function focusTarget(region: HTMLElement): HTMLElement {
 
 /**
  * Move focus to the next (step 1) or previous (step -1) region, wrapping at
- * the ends. Returns false when the interface has no regions (the workbench,
- * for instance), so the caller can leave the key alone.
+ * the ends. Returns false when the interface has no regions, so the caller can
+ * leave the key alone.
  */
 export function focusNextRegion(step: 1 | -1): boolean {
   const regions = Array.from(document.querySelectorAll<HTMLElement>(REGION_SELECTOR)).filter(

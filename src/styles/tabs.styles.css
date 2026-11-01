@@ -297,8 +297,7 @@
      with a short title sits at its min-width floor with free space left
      over — without this the × trailed the title and floated mid-tab, so
      a click aimed at the tab's right edge landed in the empty strip
-     beside it. The workspace chip stays with the title; the gap opens
-     between them and the ×. */
+     beside it. */
   margin-left: auto;
   width: 22px;
   height: var(--h-control-sm);
@@ -360,25 +359,4 @@
   border-radius: 50%;
   background: var(--accent-bright);
   box-shadow: 0 0 0 1px var(--bg-app);
-}
-
-/* The workbench project a session was opened for; the tab title alone says
-   only the server. The tint drops to 12% and the word takes the accent ink:
-   on the 20% tint the light canvases' accent only reached 3.8-4.4:1. */
-.tab-workspace {
-  max-width: 84px;
-  margin-left: 2px;
-  padding: 0 var(--sp-4);
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--accent-ink);
-  font-size: var(--fs-2xs);
-  line-height: 15px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  /* Shrinks (and ellipsises) before the close button is pushed out of a tab
-     held at its minimum width. */
-  flex: 0 1 auto;
-  min-width: 0;
 }

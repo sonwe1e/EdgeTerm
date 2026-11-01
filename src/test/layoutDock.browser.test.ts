@@ -1,13 +1,9 @@
 // Wave B — two layout defects from the 2026-10-20 review, both about surfaces
 // assuming things about the window that are not true.
 //
-// UI-01: the workbench's three columns were fixed pixels and its breakpoints
-// measured the viewport, while the workbench actually renders inside .center —
-// which the left and right docks eat into. At 1440 with the default docks the
-// editor got ~376px; at a laptop width it approached zero. The columns now
-// compress and the breakpoints measure the container. This test mounts the
-// workbench in a fixed-width wrapper so the container can be wider than the
-// test viewport — the case the old viewport breakpoints got wrong.
+// UI-01 — the Filer's three columns were fixed pixels and its breakpoints
+// measured the viewport, while the docked panel actually renders inside
+// .center, which the left and right docks eat into.
 //
 // PD-01: the Filer dock was unmounted outright whenever an SFTP/FTP tab was
 // active (the dual-pane browser already shows files there), so switching tabs
@@ -17,8 +13,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { browserAfterEach, mouse, mount, pagePoint, twoFrames, wait } from "./browserHarness";
 import App from "../App";
 import { useStore } from "../store";
-import { Workbench } from "../workbench/Workbench";
-import { useWorkbench } from "../workbench/store";
 import { disposeController, getController } from "../terminalRegistry";
 import "../styles.css";
 import { page, userEvent } from "vitest/browser";
@@ -27,7 +21,6 @@ afterEach(async () => {
   await browserAfterEach();
   disposeController("sidebar-drag-fixture");
   useStore.setState(initialState, true);
-  useWorkbench.setState(initialWorkbenchState, true);
   vi.restoreAllMocks();
 });
 
@@ -109,19 +102,6 @@ const callbacks: Record<number, (message: unknown) => void> = {};
               },
             },
           ],
-          // The explorer column only exists beside an experiment; a project
-          // without one is the state the onboarding warns about.
-          experiments: [
-            {
-              id: "e1",
-              workspaceId: "w1",
-              name: "baseline",
-              kind: "baseline",
-              createdAt: 0,
-              updatedAt: 0,
-            },
-          ],
-          runs: [],
         };
       case "sftp_home":
         return "/home/backup";
@@ -161,8 +141,6 @@ const callbacks: Record<number, (message: unknown) => void> = {};
 };
 
 const initialState = useStore.getState();
-const initialWorkbenchState = useWorkbench.getState();
-const width = (element: Element) => Math.round(element.getBoundingClientRect().width);
 
 const fileSessionTab = () => {
   const profile = seed.profiles[1];
@@ -214,7 +192,6 @@ describe("layout regressions (Wave B)", () => {
     localStorage.clear();
     const id = "sidebar-drag-fixture";
     const profile = { id, name: id, kind: "local" as const };
-    useWorkbench.getState().setView("terminals");
     useStore.setState(
       {
         ...initialState,
@@ -296,7 +273,6 @@ describe("layout regressions (Wave B)", () => {
     async (side) => {
       await page.viewport(1200, 800);
       localStorage.clear();
-      useWorkbench.getState().setView("terminals");
       useStore.setState(
         {
           ...initialState,
@@ -345,7 +321,6 @@ describe("layout regressions (Wave B)", () => {
   it("keeps a pointer preview when the opposite dock receives a keyboard resize", async () => {
     await page.viewport(1200, 800);
     localStorage.clear();
-    useWorkbench.getState().setView("terminals");
     useStore.setState(
       {
         ...initialState,
@@ -378,68 +353,6 @@ describe("layout regressions (Wave B)", () => {
     );
   });
 
-  it("keeps workbench controls and host chips within the dock-reduced width at both font sizes", async () => {
-    await page.viewport(1440, 900);
-    const mounted = mount(h(Workbench));
-    mounted.container.classList.add("app");
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    for (const language of ["en", "zh-CN"] as const) {
-      useStore.setState({ language });
-      for (const font of [12, 18]) {
-        mounted.container.style.setProperty("--panel-font-size", `${font}px`);
-        for (const available of [918, 578, 378, 260]) {
-          mounted.container.style.width = `${available}px`;
-          await twoFrames();
-          const top = document.querySelector(".wb-top")!.getBoundingClientRect();
-          for (const element of document.querySelectorAll<HTMLElement>(
-            ".wb-top button, .wb-host-chip",
-          )) {
-            const rect = element.getBoundingClientRect();
-            if (!rect.width || !rect.height) continue;
-            expect(
-              rect.left,
-              `${language}/${font}/${available}: ${element.textContent} left`,
-            ).toBeGreaterThanOrEqual(top.left);
-            expect(
-              rect.right,
-              `${language}/${font}/${available}: ${element.textContent} right`,
-            ).toBeLessThanOrEqual(top.right + 1);
-            if (!element.closest(".wb-top")) continue;
-            const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-            let text: Node | null;
-            while ((text = walker.nextNode())) {
-              if (!text.textContent?.trim()) continue;
-              const range = document.createRange();
-              range.selectNodeContents(text);
-              const label = range.getBoundingClientRect();
-              expect(label.top).toBeGreaterThanOrEqual(rect.top - 1);
-              expect(label.bottom).toBeLessThanOrEqual(rect.bottom + 1);
-              expect(label.right).toBeLessThanOrEqual(rect.right + 1);
-            }
-          }
-        }
-      }
-    }
-    useStore.setState({ language: "en" });
-  });
-
-  it("keeps secondary actions reachable in a narrow workbench", async () => {
-    useStore.setState({ language: "en" });
-    const mounted = mount(h(Workbench));
-    mounted.container.classList.add("app");
-    mounted.container.style.width = "378px";
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    await userEvent.click(document.querySelector(".wb-more")!);
-    const menu = document.querySelector(".context-menu")!;
-    expect(menu.getBoundingClientRect().right).toBeLessThanOrEqual(window.innerWidth);
-    const newProject = [...menu.querySelectorAll<HTMLButtonElement>("button")].find((button) =>
-      button.textContent?.includes("New project"),
-    )!;
-    await userEvent.click(newProject);
-    await twoFrames();
-    expect(document.querySelector("dialog[open]")).not.toBeNull();
-  });
-
   it("keeps the Filer dock mounted on a file session, with a reason (PD-01)", async () => {
     fileSessionTab();
     mount(h(App));
@@ -453,34 +366,5 @@ describe("layout regressions (Wave B)", () => {
     expect(dock!.textContent).toContain("dual-pane file manager");
     // The dual-pane workspace is the center area, as the notice says.
     expect(document.querySelector(".ftp-dual-pane")).not.toBeNull();
-  });
-
-  it("measures the workbench's breakpoints against its container, not the viewport (UI-01)", async () => {
-    // A 1000px container inside a viewport far narrower than that: the old
-    // viewport breakpoints fired here and stacked the columns; the container
-    // query must not, because 1000px still fits the narrowed three columns.
-    const mounted = mount(h(Workbench));
-    mounted.container.style.width = "1000px";
-    mounted.container.style.height = "600px";
-    await twoFrames();
-    await new Promise((resolve) => setTimeout(resolve, 400)); // loadData + first paint
-
-    const body = document.querySelector<HTMLElement>(".wb-body");
-    expect(body, "workbench body missing").toBeTruthy();
-    // The container is the query's subject; without it the media queries win.
-    expect(getComputedStyle(body!).containerType).toBe("inline-size");
-
-    const sidebar = document.querySelector<HTMLElement>(".wb-sidebar")!;
-    const explorer = document.querySelector<HTMLElement>(".wb-explorer")!;
-    const center = document.querySelector<HTMLElement>(".wb-center")!;
-    const container = body!.clientWidth;
-
-    // The narrowed branch (container > 900): the side columns give way to
-    // 220px and the editor keeps its 360px floor.
-    expect(width(sidebar)).toBeLessThanOrEqual(260);
-    expect(width(explorer)).toBeLessThanOrEqual(280);
-    expect(width(center)).toBeGreaterThanOrEqual(360);
-    // And the columns still share the container rather than wrapping.
-    expect(width(sidebar) + width(explorer) + width(center)).toBeLessThanOrEqual(container + 2);
   });
 });

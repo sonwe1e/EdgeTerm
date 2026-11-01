@@ -1,10 +1,10 @@
 // PD-05 — a fresh install showed only the session tree and a hero button:
-// the Filer, the Sender and the Workbench were all default-hidden with no
-// discoverable entry, so the product's headline capabilities (file transfer
-// above all) were invisible on the first screen. The regression: the empty
-// state lists the three capabilities with their real chords, each entry
-// performs its action and then names the action now in force, and the entry
-// survives its own label flip so a keyboard user keeps focus.
+// the Filer and the Sender were default-hidden with no discoverable entry, so
+// the product's headline capabilities (file transfer above all) were invisible
+// on the first screen. The regression: the empty state lists those
+// capabilities with their real chords, each entry performs its action and then
+// names the action now in force, and the entry survives its own label flip so
+// a keyboard user keeps focus.
 import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -17,7 +17,6 @@ vi.mock("../api", async (original) => ({
 
 import { useStore } from "../store";
 import { chordLabel, type KeyChord } from "../shortcuts";
-import { useWorkbench } from "../workbench/store";
 import { Workspace } from "./Workspace";
 
 const initialState = useStore.getState();
@@ -60,7 +59,6 @@ beforeEach(() => {
     },
     true,
   );
-  useWorkbench.setState({ view: "terminals" });
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -72,10 +70,10 @@ afterEach(() => {
 });
 
 describe("Workspace empty state capability entries (PD-05)", () => {
-  it("lists the three capabilities the hero state used to omit, each with a hint", () => {
+  it("lists the panel capabilities the hero state used to omit, each with a hint", () => {
     mount();
-    expect(entries()).toHaveLength(3);
-    for (const label of ["Open File Panel", "Open Sender", "Open Workbench"]) {
+    expect(entries()).toHaveLength(2);
+    for (const label of ["Open File Panel", "Open Sender"]) {
       const entry = entryByLabel(label);
       expect(entry).toBeTruthy();
       // Every entry explains itself; a bare verb is not discoverability.
@@ -85,7 +83,7 @@ describe("Workspace empty state capability entries (PD-05)", () => {
     }
   });
 
-  it("shows the panels' real chords, and none for the unbound workbench", () => {
+  it("shows the panels' real chords", () => {
     mount();
     const state = useStore.getState();
     const filerChord = chordLabel(state.shortcuts.panelFiler);
@@ -95,8 +93,6 @@ describe("Workspace empty state capability entries (PD-05)", () => {
     expect(entryByLabel("Open Sender").querySelector("kbd")?.textContent).toBe(
       chordLabel(state.shortcuts.panelSender),
     );
-    // The workbench has no bound command; the entry must not invent one.
-    expect(entryByLabel("Open Workbench").querySelector("kbd")).toBeNull();
 
     // The accessible name carries the label and its chord, the way the
     // menu bar's own buttons name themselves.
@@ -140,16 +136,11 @@ describe("Workspace empty state capability entries (PD-05)", () => {
     expect(document.activeElement).toBe(filerEntry);
   });
 
-  it("opens the sender and switches to the workbench view", () => {
+  it("opens the sender from the empty state", () => {
     mount();
     act(() => {
       entryByLabel("Open Sender").click();
     });
     expect(useStore.getState().panels.sender).toBe(true);
-
-    act(() => {
-      entryByLabel("Open Workbench").click();
-    });
-    expect(useWorkbench.getState().view).toBe("workbench");
   });
 });

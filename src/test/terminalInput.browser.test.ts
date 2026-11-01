@@ -6,14 +6,12 @@ import { IS_MAC } from "../platform";
 import { defaultShortcuts, setActiveShortcuts } from "../shortcuts";
 import { useStore, type Tab } from "../store";
 import { disposeController, getController } from "../terminalRegistry";
-import { useWorkbench } from "../workbench/store";
 import { browserAfterEach, mount, mouse, pagePoint, twoFrames } from "./browserHarness";
 import "../styles.css";
 
 // Real App, actions, xterm and IPC serialization; only the native host is a
 // fixture. Native ConPTY acceptance is separate from this browser contract.
 const initial = useStore.getState();
-const initialWorkbench = useWorkbench.getState();
 const writes: { command: string; args: unknown }[] = [];
 let serial = 0;
 window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
@@ -26,7 +24,6 @@ window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
       writes.push({ command, args });
     }
     if (command === "plugin:event|listen") return ++serial;
-    if (command === "list_workspace_data") return { workspaces: [], experiments: [], runs: [] };
     if (command.startsWith("list_")) return [];
     if (command === "local_home") return "C:/fixture";
     if (command === "local_list") return { path: "C:/fixture", entries: [] };
@@ -39,7 +36,6 @@ window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
 const ids = ["input-first", "input-second", "input-third"];
 async function fixture() {
   await page.viewport(1440, 900);
-  useWorkbench.getState().setView("terminals");
   useStore.getState().setShortcuts(defaultShortcuts());
   const paneId = initial.activePaneId;
   const tabs: Tab[] = ids.map((id, index) => ({
@@ -104,7 +100,6 @@ afterEach(async () => {
   await browserAfterEach();
   for (const id of ids) disposeController(id);
   useStore.setState(initial, true);
-  useWorkbench.setState(initialWorkbench, true);
   setActiveShortcuts(initial.shortcuts);
   writes.length = 0;
 });

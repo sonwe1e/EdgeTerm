@@ -245,8 +245,6 @@ interface Props {
   onKeyboardShortcuts: () => void;
   onCheckForUpdates: () => void;
   onAbout: () => void;
-  workbenchOpen: boolean;
-  onToggleWorkbench: () => void;
 }
 
 export function MenuBar(props: Props) {
@@ -638,12 +636,6 @@ export function MenuBar(props: Props) {
     {
       title: t("menu.view"),
       entries: [
-        {
-          label: t("wb.title"),
-          checked: props.workbenchOpen,
-          action: props.onToggleWorkbench,
-        },
-        "separator",
         {
           label: t("menu.panelSessions"),
           shortcut: accel("panelSessions"),
