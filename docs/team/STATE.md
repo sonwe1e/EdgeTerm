@@ -49,3 +49,32 @@
 - 修复（`563a47f`）：`shell_words` 在 Windows 下把“不带引号且整串指向已存在文件”当作单个程序，其余情况仍走原切分；本地会话改用它。失败提示按会话类型区分，本地失败指向 Shell 字段而不是地址/端口。
 - 证据：新用例先断言旧切分（同一路径被切成两段）再断言新行为；`cargo test --lib shell` 14 通过，Rust 全量 460 通过 / 27 ignored，前端 113 文件 / 955 用例通过，typecheck/lint/format:check 通过；用当前树重出安装包 4,183,760 B。
 - 未验证：真实窗口里“新建本地终端”的端到端路径，需用户实机复验。
+
+## 删除实验工作台（2026-11-02）
+
+用户决定把"实验工作台"整套能力从产品中移除，回到纯终端 + Filer + Sender 的表面。保留的唯一用户能力是 Filer 的"在内置编辑器中编辑"。
+
+- 删除：`src/workbench/` 整目录（含浏览器截图）、`src/styles/workbench.styles.css`、`docs/workbench.zh-CN.md`；Rust 侧 `workspace.rs`、`drafts.rs`、`commands/workspaces.rs`、`commands/drafts.rs` 与 20 个 IPC 命令。
+- 裁剪：`project.rs` 2902 → 922 行，只留 `read_text`/`write_text` 及 `ProjectOps`、`Sftp`、替换阶梯与锁；`commands/project.rs` 157 → 37 行。`file_diff.rs` 删 `compare_remote`，`session/exec.rs` 删 `ExecStatus`/`run_status`（均只剩工作台调用方）。
+- 迁移（删了会连带删掉用户可见功能）：`CodeEditor`/`codemirror`/`editorState`/`editorTypes`/`textFile` → `src/editor/`；`Sparkline`/`resourceTrend` → `src/monitor/`；`.spark*` 样式迁 `monitor.styles.css`，`@keyframes wb-pulse` 改名 `pulse` 并迁 `foundation.styles.css`；i18n `wb.loading` → `common.loading`。
+- 界面：菜单项、空状态入口、视图切换、两处快捷键守卫、`StatusBar` 的 `showResources` 全部移除；Tab 的 `workspaceId`/`workspaceName` 与项目 chip 删除。
+
+### 验证
+
+| 项目 | 结果 |
+| --- | --- |
+| 前端单测 | 107 文件 / 898 用例通过（删除前 113 / 955，差额为工作台用例） |
+| typecheck | 通过 |
+| 前端生产构建 | 通过 |
+| Biome format / lint | format 通过；lint 仅 `src/bindings.ts` 两条既有 `any` 警告 |
+| Rust | `cargo test --lib` 431 通过 / 0 失败 / 27 ignored（沙箱外基线 460 / 0 / 27，差额为工作台用例） |
+| 绑定 | `node scripts/bindings.mjs` 重新生成，`--check` 通过（94/99 命令，工作台命令与类型已消失） |
+| `cargo fmt --check` | **失败，但只在 `src-tauri/src/tests.rs`**，该文件本轮未改；已用 `git show HEAD` 的原文 + rustfmt 复现同样 diff，属既有问题 |
+
+### 边界与后续
+
+- `project_read_text`/`project_write_text`/`local_text.rs` 保留：内置编辑器的本地与远程读写仍走它们，`read_text` 与 `write_text` 函数体与删除前逐字节一致。
+- 用户磁盘上已有的 `workspaces.json` 与 `drafts/` 目录不再被读取，也未主动删除。
+- 提交（`40191cf` 之后四个，逐个独立通过 typecheck）：`608b390` 迁移共享模块、`63f1606` 删除工作台前端、`6173ce0` 删除 Rust 后端并重建绑定、`8a670f0` 文档。删除动作一度被仓库 ACL（继承 `Everyone:(I)(CI)(DENY)(DC)`）拒绝，四个 Rust 文件与 `__sandbox_probe__.txt` 由用户在普通终端执行一次性脚本删除。
+- `src-tauri/src/tests.rs` 的 rustfmt 偏差是既有问题，可另行单独提交修复，不要混进本轮。
+- 未验证：真实 Tauri 窗口内的内置编辑器端到端路径（jsdom 与浏览器用例只覆盖状态机与组件契约）；浏览器用例未在本机运行（Playwright Chromium 未安装）。

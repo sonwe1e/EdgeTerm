@@ -34,7 +34,7 @@ Biome 的范围是 `src/`、`scripts/` 中支持的源码、根目录 TS/MJS 配
 
 # 格式化整个受管前端／脚本范围，或仅格式化本次修改的文件。
 ./dev.ps1 format
-./dev.ps1 format src/workbench/HostStrip.tsx
+./dev.ps1 format src/components/HostStrip.tsx
 
 # 只检查，不写入。
 ./dev.ps1 format:check
@@ -52,7 +52,7 @@ git diff --check
 ```
 
 Node/npm 已在 PATH 时，可用 `npm run format`、`npm run format:check`，单文件写作
-`npm run format -- src/workbench/HostStrip.tsx`。这些命令走相同的受管入口。
+`npm run format -- src/components/FileEditorDialog.tsx`。这些命令走相同的受管入口。
 CI 分别检查 Biome 格式与 Rust 格式。日常功能修改只格式化相关文件，便于评审。
 
 ## 编辑器
@@ -72,9 +72,9 @@ CI 分别检查 Biome 格式与 Rust 格式。日常功能修改只格式化相�
 | --- | --- |
 | 应用与终端交互 | `src/App.tsx` → `src/components/` → `src/actions.ts`、`src/store*.ts` |
 | 终端输入、输出和渲染 | `src/terminal.ts` → 对应 `src/terminal*.ts` → `src-tauri/src/session/` |
-| IPC 请求与错误 | `src/api.ts`／`src/workbench/api.ts` → `src/bindings.ts`（只读）→ `src-tauri/src/commands/` |
+| IPC 请求与错误 | `src/api.ts`／`src/editor/textFile.ts` → `src/bindings.ts`（只读）→ `src-tauri/src/commands/` |
 | 文件传输 | `src/fileTransfers.ts` → `src/components/TransferCenter.tsx` → `src-tauri/src/file_transfer/` |
-| 工作台与运行记录 | `src/workbench/Workbench.tsx` → `store.ts`、对应组件 → `src-tauri/src/workspace.rs`、`project.rs` |
+| 内置编辑器读写 | `src/editor/CodeEditor.tsx` → `src/editor/textFile.ts` → `src-tauri/src/commands/project.rs`、`project.rs` |
 | 样式与布局 | `src/styles.css` 的导入顺序 → `src/styles/` 中对应领域样式 |
 | 错误日志 | `src/diagnostics.ts` → `src-tauri/src/diagnostics.rs`、`error.rs` |
 

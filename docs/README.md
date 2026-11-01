@@ -28,7 +28,6 @@
 | [code-style.zh-CN.md](code-style.zh-CN.md) | 代码风格、编辑器与调试约定 |
 | [build-environment.zh-CN.md](build-environment.zh-CN.md) | 构建入口、资源预算、受限主机上的降级行为、工具来源 |
 | [ipc-contracts.zh-CN.md](ipc-contracts.zh-CN.md) | specta/tauri-specta 生成的 IPC 契约与手写绑定的边界 |
-| [workbench.zh-CN.md](workbench.zh-CN.md) | 实验工作台的模型、已核实/未核实边界 |
 | [history-and-branches.zh-CN.md](history-and-branches.zh-CN.md) | 分支与已发布历史的维护规则和归档做法 |
 | [releases.zh-CN.md](releases.zh-CN.md) | 历史发布索引与各版本构建、校验记录 |
 | [upstream-ports.zh-CN.md](upstream-ports.zh-CN.md) | 上游提交的处置记录（直接移植/改造/已有能力/不采纳） |
