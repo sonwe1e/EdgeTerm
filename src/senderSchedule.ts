@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { errorText } from "./errorInfo";
+import { t } from "./i18n";
 
 import { SENDER_REPEAT_KEY } from "./persistKeys";
 import { newStopSignal, sendUnits, type StopSignal } from "./senderSend";
@@ -163,23 +164,28 @@ export function startSchedule(spec: ScheduleSpec): string | null {
     const { ids, gone } = targetsOf(spec);
     if (gone) {
       stopSchedule();
-      setStatus("Sender: stopped repeating, the session was closed");
+      setStatus(t("sender.repeatStopped"));
       return;
     }
+    // Only a tick that actually wrote to a session counts as one of the
+    // repeats. With nothing connected, or every target busy with a transfer,
+    // the timer keeps waiting and the count keeps saying what happened.
+    let wrote = false;
     if (ids.length > 0) {
       try {
-        await sendUnits(ids, entry.units, spec.ending, entry.stop);
+        const outcome = await sendUnits(ids, entry.units, spec.ending, entry.stop);
+        wrote = outcome.sent.length > 0;
       } catch (error) {
-        setStatus(`Sender: ${errorText(error)}`);
+        setStatus(t("sender.error", { error: errorText(error) }));
       }
     }
     if (active !== entry) return;
 
-    const sent = entry.state.sent + 1;
+    const sent = wrote ? entry.state.sent + 1 : entry.state.sent;
     if (spec.times > 0 && sent >= spec.times) {
       active = null;
       notify();
-      setStatus(`Sender: repeated the command ${sent} times, done`);
+      setStatus(t("sender.repeatDone", { count: sent }));
       return;
     }
     const nextAt = Date.now() + spec.every * 1000;

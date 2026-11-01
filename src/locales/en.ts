@@ -657,6 +657,8 @@ export const en = {
   "sender.sentSkipped":
     "Sender: {what}; skipped {count} session(s) with a file transfer or another send running",
   "sender.error": "Sender: {error}",
+  "sender.repeatStopped": "Sender: stopped repeating, the session was closed",
+  "sender.repeatDone": "Sender: repeated the command {count} times, done",
   "sender.scheduleProblem": "Sender: {problem}",
 
   // FilerPanel

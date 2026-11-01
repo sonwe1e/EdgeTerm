@@ -600,6 +600,8 @@ export const zhCN: Catalog = {
   "sender.sentOnly": "发送器：{what}",
   "sender.sentSkipped": "发送器：{what}；跳过 {count} 个正在进行文件传输或其他发送的会话",
   "sender.error": "发送器：{error}",
+  "sender.repeatStopped": "发送器：已停止重复，会话已关闭",
+  "sender.repeatDone": "发送器：命令已重复 {count} 次，完成",
   "sender.scheduleProblem": "发送器：{problem}",
 
   "filer.offline": "会话已断开 —— 重连后即可浏览和上传文件",
