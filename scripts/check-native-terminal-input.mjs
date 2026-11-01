@@ -3,7 +3,7 @@
 // Select a disposable portable target explicitly, as in the other native gates.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
 
@@ -23,10 +23,19 @@ await mkdir(project);
 await mkdir(agent);
 const piRoot = resolve(process.env.EDGETERM_PI_ROOT);
 const piPackage = JSON.parse(await readFile(resolve(piRoot, "package.json"), "utf8"));
-const piMouseSource = await readFile(
-  resolve(piRoot, "node_modules/@earendil-works/pi-tui/dist/tui-alt-screen.js"),
-  "utf8",
-);
+assert.equal(piPackage.name, "@earendil-works/pi-coding-agent");
+assert.equal(typeof piPackage.bin?.pi, "string", "Pi must declare its command entry");
+const piEntry = resolve(piRoot, piPackage.bin.pi);
+assert.ok(piEntry.startsWith(piRoot + "\\"), "Pi command entry must be inside its package");
+const tuiChunks = [];
+const chunksRoot = resolve(piRoot, "dist/bundle/chunks");
+for (const name of await readdir(chunksRoot)) {
+  if (!name.endsWith(".js")) continue;
+  const source = await readFile(resolve(chunksRoot, name), "utf8");
+  if (source.includes("TuiAltScreen=class extends TuiBase{")) tuiChunks.push(source);
+}
+assert.equal(tuiChunks.length, 1, "Expected one bundled fullscreen TUI implementation");
+const piMouseSource = tuiChunks[0];
 const now = Date.now();
 const timestamp = new Date(now).toISOString();
 const entries = [{ type: "session", version: 3, id: randomUUID(), timestamp, cwd: project }];
@@ -81,13 +90,14 @@ await writeFile(
     `set "PI_CODING_AGENT_DIR=${agent}"`,
     `set "PI_TUI_WRITE_LOG=${resolve(output, "pi-output.ansi")}"`,
     `cd /d "${project}"`,
-    `"${process.execPath}" "${resolve(piRoot, "dist/cli.js")}" --offline --no-approve --no-context-files --no-extensions --no-mcp --no-skills --no-prompt-templates --no-themes --no-tools --session "${history}" --tui-mode fullscreen`,
+    `"${process.execPath}" "${piEntry}" --offline --no-approve --no-context-files --no-extensions --no-mcp --no-skills --no-prompt-templates --no-themes --no-tools --session "${history}" --tui-mode fullscreen`,
     "",
   ].join("\r\n"),
 );
 
 const result = {
   piVersion: piPackage.version,
+  piEntry: piPackage.bin.pi,
   piWindowsMousePatch: piMouseSource.includes(
     "EdgeTerm: reissue mouse modes after Windows VT input is enabled.",
   ),
