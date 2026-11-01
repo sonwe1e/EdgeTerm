@@ -125,4 +125,17 @@ GitHub 附件元数据在核对日提供的当前摘要如下（仅核对元数�
 - 已公开标签、对应源码与附件保持不变。代码或交付包需要修订时发新版本；发现历史错误通过新增说明纠正，不覆盖旧二进制。
 - 每次发布补本表，写明固定源码 SHA、平台、安装方式、校验和、验证范围、已知限制及前一**本分支公开版本**。Release 正文按用户可见变化归类，不直接把所有 `git log` 标题当新功能，尤其不能把保留旧历史的合并算作新增能力。
 
+### 发版步骤（可复现清单）
+
+上面几条规则对应的命令，按顺序执行；任一步失败就停下，不继续出包。
+
+1. 干净的工作区：`git status --short` 无输出，`git rev-parse HEAD` 就是要发布的源码。脏树打出的包无法对应任何提交，校验和也就失去意义。
+2. 版本：`npm run version:set -- <x.y.z>`，再 `npm run version:check` 比对 `package.json`、`package-lock.json`、`Cargo.toml`、`Cargo.lock`，并确认 `tauri.conf.json` 仍写 `"../package.json"`。`scripts/version-bump.sh <x.y.z>` 只做这两步，不提交、不推送。
+3. 检查：`./dev.ps1 typecheck`、`./dev.ps1 lint`、`./dev.ps1 format:check`、`./dev.ps1 test`、`./dev.ps1 test:rust`、`./dev.ps1 build`。
+4. 安装包：`./dev.ps1 tauri:build --bundles nsis`。不带 `--bundles` 时会按 `bundle.targets: "all"` 额外产出 MSI（首次构建要下载 WiX），那不是发布产物。
+5. 便携包：把 `src-tauri/target/release/edgeterm.exe` 复制成 `EdgeTerm.exe`，与 `data/`（空目录）和说明文件一起压成 `EdgeTerm_<版本>_x64-portable.zip`。`data/` 是否存在决定便携模式（见 `src-tauri/src/store.rs`），说明文件沿用停用 workflow 里的 `README.txt` 内容。
+6. 校验与记录：生成 `SHA256SUMS.txt`，在本文件补版本小节（固定源码 SHA、平台、附件字节数与 SHA-256、验证范围、已知限制），再提交版本与记录。
+
+第 5、6 步仍是手工步骤：仓库里没有便携包、诊断包和校验和的脚本（原自动化随 `release.yml` 一起停用）。手工产物放仓库根目录或 `.tmp/`，两者都已被 `.gitignore` 忽略。
+
 维护边界与分支处理见[分支与历史维护](history-and-branches.zh-CN.md)。
