@@ -77,6 +77,14 @@ CPU affinity 不是固定的整机占用百分比承诺；逻辑处理器的性�
    选定 Node/Rust 的目录放在最前面。所有修正仅作用于任务进程及其子进程，
    不修改全局 PATH，不把某个版本的 MSVC 目录永久写进系统设置。
 
+首次 `tauri:build --bundles nsis` 会从 GitHub 下载 NSIS 3.11 工具链到
+`%LOCALAPPDATA%\tauri\NSIS`。网络受限时这一步会以 `Peer disconnected` 失败，
+而同一台机器上 Node 往往仍能连（命令行 TLS 走 Schannel，可能拿不到凭证）。
+这种情况下用 Node 分块下载 `nsis-3.11.zip` 与 `nsis_tauri_utils.dll`，
+按 tauri-cli 对应 tag 的 `crates/tauri-bundler/src/bundle/windows/nsis/mod.rs`
+里的 SHA-1 核对，解压后把 `nsis-3.11` 目录改名为 `NSIS`，DLL 放进
+`Plugins/x86-unicode/additional/`，再重跑打包。工具链缓存不随仓库分发。
+
 缺失 Rust 时安装 rustup；缺失 MSVC/SDK 时安装 Visual Studio Build Tools 的
 “使用 C++ 的桌面开发”和 Windows SDK。缺失 Node 时安装 Node LTS。
 `doctor` 会显示精确路径、版本、CPU mask 和可用内存；失败信息指向缺失组件。

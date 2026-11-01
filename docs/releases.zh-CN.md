@@ -133,9 +133,9 @@ GitHub 附件元数据在核对日提供的当前摘要如下（仅核对元数�
 2. 版本：`npm run version:set -- <x.y.z>`，再 `npm run version:check` 比对 `package.json`、`package-lock.json`、`Cargo.toml`、`Cargo.lock`，并确认 `tauri.conf.json` 仍写 `"../package.json"`。`scripts/version-bump.sh <x.y.z>` 只做这两步，不提交、不推送。
 3. 检查：`./dev.ps1 typecheck`、`./dev.ps1 lint`、`./dev.ps1 format:check`、`./dev.ps1 test`、`./dev.ps1 test:rust`、`./dev.ps1 build`。
 4. 安装包：`./dev.ps1 tauri:build --bundles nsis`。不带 `--bundles` 时会按 `bundle.targets: "all"` 额外产出 MSI（首次构建要下载 WiX），那不是发布产物。
-5. 便携包：把 `src-tauri/target/release/edgeterm.exe` 复制成 `EdgeTerm.exe`，与 `data/`（空目录）和说明文件一起压成 `EdgeTerm_<版本>_x64-portable.zip`。`data/` 是否存在决定便携模式（见 `src-tauri/src/store.rs`），说明文件沿用停用 workflow 里的 `README.txt` 内容。
-6. 校验与记录：生成 `SHA256SUMS.txt`，在本文件补版本小节（固定源码 SHA、平台、附件字节数与 SHA-256、验证范围、已知限制），再提交版本与记录。
+5. 附件：`npm run release:package`。它把安装包复制到 `artifacts/release-<版本>/`，用同一个 `edgeterm.exe` 生成便携包（`EdgeTerm.exe` + 空 `data/` + `README.txt`）和诊断包（`diagnose-hang.ps1`/`.cmd` + 说明），并写出 `SHA256SUMS.txt`。安装包明显早于 `edgeterm.exe` 时脚本直接报错，避免把上一次构建的安装包混进这一版。
+6. 核对与记录：`npm run release:package -- --check`（可传下载目录）逐个比对 SHA-256；在本文件补版本小节（固定源码 SHA、平台、附件字节数与 SHA-256、验证范围、已知限制），再提交版本与记录。
 
-第 5、6 步仍是手工步骤：仓库里没有便携包、诊断包和校验和的脚本（原自动化随 `release.yml` 一起停用）。手工产物放仓库根目录或 `.tmp/`，两者都已被 `.gitignore` 忽略。
+第 5、6 步的产物写在 `artifacts/release-<版本>/`（已被 `.gitignore` 忽略）。`release.yml` 里的上传与签名步骤仍然停用。
 
 维护边界与分支处理见[分支与历史维护](history-and-branches.zh-CN.md)。

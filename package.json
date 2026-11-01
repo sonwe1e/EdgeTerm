@@ -14,6 +14,7 @@
     "test:browser": "node scripts/run-task.mjs test:browser",
     "version:set": "node scripts/set-version.mjs",
     "version:check": "node scripts/check-version.mjs",
+    "release:package": "node scripts/package-release.mjs",
     "check:commits": "node scripts/run-task.mjs check:commits",
     "check:icons": "node scripts/check-icon-assets.mjs",
     "tauri": "node scripts/run-task.mjs tauri",
