@@ -187,3 +187,27 @@ New-Item -ItemType Directory -Force .\hang-dumps | Out-Null
 同一台 Windows 11（构建 26300）机器上，Vitest/Playwright 的 Chromium 浏览器夹具挂载真实 App、xterm 和 300 行合成历史，以三次间隔各 150 毫秒的鼠标移动模拟一次缓慢拖动。基线实现的终端列数在按住期间依次从 94 变为 91、89、86；改动后按住期间保持 94，松手后变化一次。该样本证明此夹具中的重复调整被合并，不是卡死发生率或拖动帧率的测量。回归还覆盖左右停靠、边界回拉、拖动中断和键盘调整。
 
 另在隔离便携实例中使用 Windows WebView2 156、DPR 1.75、画布终端、三个本地 ConPTY 会话和首个会话的 3,000 行合成输出，完成六轮缓慢往返拖动：终端区域和 xterm 画面宽度在按住期间保持不变，每轮松手后观察到一次画面宽度变化，终端区域与指示线位置一致。CDP 鼠标输入不等于物理鼠标操作，该夹具也不代表用户的 OpenCode 会话。最终测试版的原始结果存放在本机忽略目录 `.tmp/records/native-sidebar-drag-20261031-final/`；先前尝试替换 IPC 函数未成功，未取得 IPC 调用次数。需要在实际工作负载下继续验证；若再次持续无响应，按本指南在现场保留诊断报告和进程堆栈。
+
+## 11. 2026-11-01：备用屏幕折行导致语义着色死循环
+
+本次在用户仍卡住的 Windows 实例上取得了进程采样、完整 renderer 转储和六次线程上下文，确认了具体阻塞路径。运行程序为本机 `.tmp/terminal-input/app/edgeterm.exe`，文件版本 1.5.1；SHA-256 和 WebView2 版本保存在诊断报告中，不能仅凭文件版本视为正式 1.5.1 的相同源码。
+
+- 宿主 PID 12928 的原生窗口消息返回；2.04 秒采样内，renderer PID 37164 增加约 2.03 CPU 秒，宿主和 GPU 进程没有可见 CPU 增量。
+- 热线程 18616 的六次采样位于同一段 V8 生成代码。根据转储中的 JavaScript 函数对象和采样指令解码，栈顶为 `logicalLine → refreshSemanticColors`。
+- 实际缓冲区为 `alternate`，长度和容量均为 37，环形起点为 13；37 个保留行的 `isWrapped` 全部为 true。诊断摘要只记录这些结构字段，不导出终端文本。
+
+`TerminalSemanticRenderer.logicalLine()` 原来仅用 `buf.getLine(last + 1)?.isWrapped` 判断继续扫描。锁定版本 xterm 6.0.0 的 `BufferApiView.getLine()` 委托给 `CircularList.get()`，后者明确不检查索引边界，而是按容量取模。扫描越过末尾后会重新读到最前面的行；当所有行都是折行时，没有退出条件。这个同步循环占住 WebView 的 JavaScript 主线程，导致菜单、输入和标签操作不能处理。4,000 字符的着色长度限制位于后续步骤，不能保护这次扫描。
+
+修复为向下扫描增加 `last + 1 < buf.length` 条件，在真实缓冲区末尾结束。没有修改 xterm 私有状态、终端输出或 GPU 配置。本次证据足以确认这一现场的根因；它不证明前面各节没有堆栈的历史卡死都是同一问题。
+
+验证基线为 `efd2faf` 中的语义渲染器，候选为本次工作区补丁：
+
+- `terminalSemanticRenderer.test.ts` 使用真实 xterm，通过连续无换行输出丢弃最初的非折行行，覆盖无历史、满历史、备用屏幕，以及延后的历史着色。越界读取陷阱只负责把无限循环转成可报告失败；旧实现四项全部失败，候选四项通过，之后输出和 IP 着色仍正常。
+- `check-terminal-wrap-responsiveness.mjs` 使用 Windows 11 构建 26300、Edge 156.0.4314.58、8 列 × 3 行、80 个连续字符。真实 `TerminalController.write()` 和输出回调在旧源码的独立 worktree 中导致 renderer 超过外部 3 秒期限仍不应答；候选的三个缓冲区场景均继续处理 `WRAP-OK` 并执行心跳。该夹具没有挂载绘制器，不作为 GPU 或 ConPTY 验证。
+- 完整前端单元测试 111 文件 / 944 项通过；TypeScript、改动文件的 lint/格式检查和 `git diff --check` 通过。相关显示缩放、fit 和后台输出浏览器回归 3 文件 / 15 项在系统 Edge 上通过；默认 Playwright Chromium 缺少已安装的运行文件，首次启动未执行用例，随后按仓库支持的 `PERF_BROWSER=msedge` 运行。没有修改 Rust 源码。
+- `./dev.ps1 tauri:build --no-bundle` 生成 Windows x64 release 程序，SHA-256 为 `2DE7A850357F26ACEAD83C204B4E1F7C7FE36BE0F46F98CB0A7FC80DD23BF5CB`。保持基准版本 1.5.1，是 `efd2faf` 加当前工作区改动的开发构建，不是新的正式发布；未生成安装包。构建仅保留既有大 chunk 和 Rust 未使用代码等警告。
+- 在独立便携目录 `.tmp/terminal-wrap-fix/app/` 验证该 release 程序：Windows WebView2 156、DPR 1.75、画布绘制器、141 列 × 38 行、两个本地 ConPTY 会话。通过现有生产控制器的字节写入入口注入合成备用屏幕输出，三轮都确认 38 行全部折行，六次标签切换和后续输出正常，页面错误为零。最后通过真实 `write_session` 执行 echo 并读回独立结果行，验证 ConPTY 往返。折行负载由页面入口注入，不能宣称复现了用户应用的原始输出；没有重启或注入用户的故障实例。截图和报告位于 `native-candidate/`，用例完成后关闭测试会话和测试程序。
+
+原始诊断、转储解析脚本、失败/通过日志和浏览器报告保存在本机忽略目录 `.tmp/records/hang-20261101/`。完整转储只留本机，不入库。临时基线 worktree 已清理。
+
+同日 09:18，经用户确认可以中断原会话后，结束故障实例，将已验证的程序替换到原路径并重启；沿用原 `data` 目录，原可执行文件保留备份。新 PID 为 38508，文件 SHA-256 与上面的原生测试程序一致。启动后原生消息探测立即返回，renderer 在约 2.05 秒采样中仅增加约 0.08 CPU 秒，未再表现为原先的单核持续忙循环。该启动采样不代替后续实际工作负载验证。替换记录和启动后的诊断位于同一证据目录的 `deployment.json` 与 `after-restart/`。

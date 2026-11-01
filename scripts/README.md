@@ -269,6 +269,23 @@ followed by immediate byte-for-byte reads, a Unicode path, a nonzero typed-array
 offset, and file-read offsets. This exercises real WebView2 IPC and local disk;
 it does not validate remote transfer engines or other desktop platforms.
 
+### Terminal wrap responsiveness
+
+`./dev.ps1 script scripts/check-terminal-wrap-responsiveness.mjs <output.json>`
+uses an isolated Vite/Edge page and the real terminal controller's byte-write
+hooks. It fills a normal buffer (with and without scrollback) and an alternate
+screen with soft wraps until the original first row is trimmed, then checks
+continued output and event-loop progress. Its external three-second watchdog
+can fail and close a renderer trapped in a synchronous loop. `EDGETERM_WRAP_ROOT`
+selects a disposable worktree for the same baseline check; no dependency links
+are needed. The report records the semantic renderer's source hash and browser
+version. There is no attached canvas/DOM terminal renderer, native IPC or server
+in this fixture. `terminalSemanticRenderer.test.ts` additionally checks viewport
+and deferred history walks using real xterm buffers, with an out-of-range read
+trap so the old implementation fails without hanging Vitest. The actual Windows
+incident and separate WebView2 validation are recorded in the
+[hang guide](../docs/sidebar-freeze-diagnostics.zh-CN.md#11-2026-11-01备用屏幕折行导致语义着色死循环).
+
 ### Terminal search responsiveness
 
 `./dev.ps1 script scripts/check-search-responsiveness.mjs <output.json>` starts

@@ -88,7 +88,9 @@ export class TerminalSemanticRenderer {
     let first = row;
     while (first > 0 && buf.getLine(first)?.isWrapped) first -= 1;
     let last = row;
-    while (buf.getLine(last + 1)?.isWrapped) last += 1;
+    // xterm 6's getLine delegates to a circular list without bounds checks.
+    // If every retained row is wrapped, reading past length cycles forever.
+    while (last + 1 < buf.length && buf.getLine(last + 1)?.isWrapped) last += 1;
     return [first, last];
   }
 
