@@ -87,20 +87,48 @@ export function fitSides(
   return { left: nextLeft, right: nextRight };
 }
 
-export function loadPanelSizing(): PanelSizing {
-  const fallback = { ...DEFAULT_PANEL_SIZING };
-  let stored: Partial<PanelSizing> = {};
+function readStoredSizing(): Partial<PanelSizing> {
   try {
     const raw = localStorage.getItem(PANEL_SIZING_KEY);
     if (raw) {
       const parsed: unknown = JSON.parse(raw);
       if (parsed && typeof parsed === "object") {
-        stored = parsed as Partial<PanelSizing>;
+        return parsed as Partial<PanelSizing>;
       }
     }
   } catch {
     // A corrupt or blocked entry falls through to the defaults.
   }
+  return {};
+}
+
+/** The dock widths the user actually arranged. */
+export interface PanelSizingPreference {
+  left: number;
+  right: number;
+  bottom: number;
+}
+
+/**
+ * The widths to remember, before the live window gets a say. `loadPanelSizing`
+ * scales a stored layout down so it fits the current window; saving that
+ * scaled value back would turn one small window into a permanent narrowing, so
+ * the preference is read — and written — through this instead.
+ */
+export function loadPanelSizingPreference(): PanelSizingPreference {
+  const stored = readStoredSizing();
+  return {
+    left: Math.round(clamp(finite(stored.left, DEFAULT_PANEL_SIZING.left), SIDE_MIN, SIDE_MAX)),
+    right: Math.round(clamp(finite(stored.right, DEFAULT_PANEL_SIZING.right), SIDE_MIN, SIDE_MAX)),
+    bottom: Math.round(
+      clamp(finite(stored.bottom, DEFAULT_PANEL_SIZING.bottom), BOTTOM_MIN, BOTTOM_MAX),
+    ),
+  };
+}
+
+export function loadPanelSizing(): PanelSizing {
+  const fallback = { ...DEFAULT_PANEL_SIZING };
+  const stored = readStoredSizing();
   const viewportWidth = typeof window === "undefined" ? 1440 : window.innerWidth;
   const viewportHeight = typeof window === "undefined" ? 900 : window.innerHeight;
   const sides = fitSides(

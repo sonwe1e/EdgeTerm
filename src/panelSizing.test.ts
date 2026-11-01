@@ -10,6 +10,7 @@ import {
   clampSide,
   fitSides,
   loadPanelSizing,
+  loadPanelSizingPreference,
   savePanelSizing,
 } from "./panelSizing";
 import { PANEL_SIZING_KEY } from "./persistKeys";
@@ -112,5 +113,45 @@ describe("loadPanelSizing", () => {
     window.innerWidth = 900;
     const loaded = loadPanelSizing();
     expect(loaded.left + loaded.right + MIN_CENTER_WIDTH + 2).toBeLessThanOrEqual(900);
+  });
+});
+
+describe("loadPanelSizingPreference", () => {
+  it("keeps the width the user dragged instead of the window's squeeze", () => {
+    // A layout arranged on a wide window, reopened on a narrow one: what is
+    // shown has to fit, but saving the fitted value back would make the
+    // squeeze permanent once the window grows again.
+    localStorage.setItem(
+      PANEL_SIZING_KEY,
+      JSON.stringify({ left: 500, right: 500, bottom: 160, senderExpanded: false }),
+    );
+    window.innerWidth = 1000;
+    const shown = loadPanelSizing();
+    expect(shown.left).toBeLessThan(500);
+
+    const preference = loadPanelSizingPreference();
+    expect(preference).toEqual({ left: 500, right: 500, bottom: 160 });
+    savePanelSizing({ ...shown, ...preference });
+
+    window.innerWidth = 1600;
+    expect(loadPanelSizing()).toEqual({
+      left: 500,
+      right: 500,
+      bottom: 160,
+      senderExpanded: false,
+    });
+  });
+
+  it("clamps to the fixed range without fitting to the window", () => {
+    localStorage.setItem(
+      PANEL_SIZING_KEY,
+      JSON.stringify({ left: 9999, right: 10, bottom: 5000, senderExpanded: false }),
+    );
+    window.innerWidth = 600;
+    expect(loadPanelSizingPreference()).toEqual({
+      left: SIDE_MAX,
+      right: SIDE_MIN,
+      bottom: BOTTOM_MAX,
+    });
   });
 });

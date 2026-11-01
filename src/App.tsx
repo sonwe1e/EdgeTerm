@@ -46,7 +46,14 @@ import { commandHistory } from "./history";
 import type { PanelDock } from "./panelDock";
 import { HAS_TRAY, IS_WINDOWS } from "./platform";
 import { matchAppShortcut } from "./shortcuts";
-import { clampBottom, clampSide, fitSides, loadPanelSizing, savePanelSizing } from "./panelSizing";
+import {
+  clampBottom,
+  clampSide,
+  fitSides,
+  loadPanelSizing,
+  loadPanelSizingPreference,
+  savePanelSizing,
+} from "./panelSizing";
 import { type PanelName, tabTitle, useStore, type Tab } from "./store";
 import { allControllers, getController, setWebglEnabled } from "./terminalRegistry";
 import { isFileSession, type SessionProfile, type SessionState } from "./types";
@@ -191,6 +198,7 @@ export default function App() {
   // The layout the user arranged last time; reloaded when settings are
   // imported or restored (the revision bump), and saved below after a drag.
   const [initialSizing] = useState(loadPanelSizing);
+  const [initialPreference] = useState(loadPanelSizingPreference);
   const [leftWidth, setLeftWidth] = useState(initialSizing.left);
   const [rightWidth, setRightWidth] = useState(initialSizing.right);
   const [bottomHeight, setBottomHeight] = useState(initialSizing.bottom);
@@ -198,16 +206,22 @@ export default function App() {
   const panelPreferencesRevision = useStore((s) => s.panelPreferencesRevision);
   const widthRefs = useRef({ left: leftWidth, right: rightWidth });
   widthRefs.current = { left: leftWidth, right: rightWidth };
-  // What the user asked each side dock to be — the persisted preference — as
-  // distinct from the width currently shown. A window too small for both
-  // docks shrinks what is shown (the resize handler below re-fits from these
-  // values) without overwriting the preference, so widening the window again
-  // gives the arrangement back instead of cementing the temporary squeeze.
-  const preferredSides = useRef({ left: initialSizing.left, right: initialSizing.right });
+  // What the user asked each dock to be — the persisted preference — as
+  // distinct from the size currently shown. A window too small for the docks
+  // shrinks what is shown (the resize handler below re-fits from these values)
+  // without overwriting the preference, so widening the window again gives the
+  // arrangement back instead of cementing the temporary squeeze.
+  const preferredSides = useRef({
+    left: initialPreference.left,
+    right: initialPreference.right,
+  });
+  const preferredBottom = useRef(initialPreference.bottom);
 
   useEffect(() => {
     const next = loadPanelSizing();
-    preferredSides.current = { left: next.left, right: next.right };
+    const wanted = loadPanelSizingPreference();
+    preferredSides.current = { left: wanted.left, right: wanted.right };
+    preferredBottom.current = wanted.bottom;
     setLeftWidth(next.left);
     setRightWidth(next.right);
     setBottomHeight(next.bottom);
@@ -220,7 +234,7 @@ export default function App() {
         savePanelSizing({
           left: preferredSides.current.left,
           right: preferredSides.current.right,
-          bottom: bottomHeight,
+          bottom: preferredBottom.current,
           senderExpanded,
         }),
       250,
@@ -240,7 +254,7 @@ export default function App() {
       );
       setLeftWidth(sides.left);
       setRightWidth(sides.right);
-      setBottomHeight((height) => clampBottom(height, window.innerHeight));
+      setBottomHeight(clampBottom(preferredBottom.current, window.innerHeight));
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
@@ -780,13 +794,18 @@ export default function App() {
             <Splitter
               orientation="horizontal"
               onResize={(delta) => {
+                const dragBottom = (height: number) => {
+                  const next = clampBottom(height - delta, window.innerHeight);
+                  preferredBottom.current = next;
+                  return next;
+                };
                 if (senderCompact) {
                   if (delta < 0) {
                     setSenderExpanded(true);
-                    setBottomHeight((height) => clampBottom(height - delta, window.innerHeight));
+                    setBottomHeight(dragBottom);
                   }
                 } else {
-                  setBottomHeight((height) => clampBottom(height - delta, window.innerHeight));
+                  setBottomHeight(dragBottom);
                 }
               }}
             />
