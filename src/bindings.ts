@@ -220,62 +220,12 @@ export const commands = {
 	cancelFileDiff: (requestId: string) => __TAURI_INVOKE<void>("cancel_file_diff", { requestId }),
 	sampleResources: (id: string, requestId: string) => __TAURI_INVOKE<Metrics>("sample_resources", { id, requestId }),
 	cancelResourceSample: (requestId: string) => __TAURI_INVOKE<void>("cancel_resource_sample", { requestId }),
-	listWorkspaceData: () => __TAURI_INVOKE<WorkspaceData>("list_workspace_data"),
-	saveWorkspace: (workspace: Workspace) => __TAURI_INVOKE<Workspace>("save_workspace", { workspace }),
-	/**
-	 *  Removes a project with its experiments and runs; the returned snapshot
-	 *  lets the front end drop every affected view in one update.
-	 */
-	deleteWorkspace: (id: string) => __TAURI_INVOKE<WorkspaceData>("delete_workspace", { id }),
-	saveExperiment: (experiment: Experiment) => __TAURI_INVOKE<Experiment>("save_experiment", { experiment }),
-	deleteExperiment: (id: string) => __TAURI_INVOKE<WorkspaceData>("delete_experiment", { id }),
-	recordRun: (run: RunRecord) => __TAURI_INVOKE<RunRecord>("record_run", { run }),
-	updateRun: (update: RunUpdate) => __TAURI_INVOKE<RunRecord>("update_run", { update }),
-	deleteRun: (id: string) => __TAURI_INVOKE<WorkspaceData>("delete_run", { id }),
-	draftSave: (draft: Draft) => __TAURI_INVOKE<Draft>("draft_save", { draft }),
-	draftLoad: (docId: string) => __TAURI_INVOKE<{
-	docId: string,
-	workspaceId: string,
-	/**
-	 *  Login identity + endpoint the draft was written against. Restoring it
-	 *  through a different server is refused rather than guessed.
-	 */
-	serverKey: string,
-	serverLabel?: string,
-	projectName?: string,
-	path?: string,
-	absolutePath: string,
-	content: string,
-	/**
-	 *  Hash of the server copy the edit started from; the editor compares it
-	 *  with the current remote hash before applying the draft.
-	 */
-	baseHash: string,
-	updatedAt: number,
-} | null>("draft_load", { docId }),
-	draftList: () => __TAURI_INVOKE<DraftList>("draft_list"),
-	draftDelete: (docId: string) => __TAURI_INVOKE<null>("draft_delete", { docId }),
-	projectProbe: (id: string, root: string) => __TAURI_INVOKE<ProjectProbe>("project_probe", { id, root }),
 	projectReadText: (id: string | null, path: string) => __TAURI_INVOKE<TextFile>("project_read_text", { id, path }),
-	projectFileStat: (id: string, path: string) => __TAURI_INVOKE<FileStat>("project_file_stat", { id, path }),
 	/**
 	 *  Saves one text file, refusing when the server's copy no longer matches
 	 *  `expectedHash`. The returned hash becomes the next save's baseline.
 	 */
 	projectWriteText: (id: string | null, request: TextWrite) => __TAURI_INVOKE<WriteOutcome>("project_write_text", { id, request }),
-	projectListFiles: (id: string, root: string) => __TAURI_INVOKE<FileList>("project_list_files", { id, root }),
-	projectSearch: (id: string, root: string, query: string) => __TAURI_INVOKE<SearchResult>("project_search", { id, root, query }),
-	projectGitState: (id: string, root: string) => __TAURI_INVOKE<GitState>("project_git_state", { id, root }),
-	projectGitDiff: (id: string, root: string, path: string | null) => __TAURI_INVOKE<DiffText>("project_git_diff", { id, root, path }),
-	projectReadLog: (id: string, path: string, offset: number) => __TAURI_INVOKE<LogChunk>("project_read_log", { id, path, offset }),
-	projectStartRun: (id: string, request: StartRunRequest) => __TAURI_INVOKE<RunLaunch>("project_start_run", { id, request }),
-	projectRunStatus: (id: string, run: RunRecord) => __TAURI_INVOKE<RunObservation>("project_run_status", { id, run }),
-	projectStopRun: (id: string, run: RunRecord) => __TAURI_INVOKE<null>("project_stop_run", { id, run }),
-	/**
-	 *  Compares the same file across two project directories, including two
-	 *  servers. The result is the Filer's existing bounded comparison.
-	 */
-	projectCompare: (leftId: string, leftPath: string, rightId: string, rightPath: string) => __TAURI_INVOKE<FileComparison>("project_compare", { leftId, leftPath, rightId, rightPath }),
 	localHome: () => __TAURI_INVOKE<string>("local_home"),
 	/**
 	 *  Where the session's shell is right now, for the Filer's "Reveal Working
@@ -697,12 +647,6 @@ export type DiffRow = {
 	rightEnding: string | null,
 };
 
-export type DiffText = {
-	text: string,
-	truncated: boolean,
-	bytes: number,
-};
-
 export type DirListing = {
 	path: string,
 	entries: FileEntry[],
@@ -714,38 +658,6 @@ export type Direction = "local" | "remote" |
  *  through it names its own far end, the way `ssh -D` works.
  */
 "dynamic";
-
-export type Draft = {
-	docId: string,
-	workspaceId: string,
-	/**
-	 *  Login identity + endpoint the draft was written against. Restoring it
-	 *  through a different server is refused rather than guessed.
-	 */
-	serverKey: string,
-	serverLabel?: string,
-	projectName?: string,
-	path?: string,
-	absolutePath: string,
-	content: string,
-	/**
-	 *  Hash of the server copy the edit started from; the editor compares it
-	 *  with the current remote hash before applying the draft.
-	 */
-	baseHash: string,
-	updatedAt: number,
-};
-
-export type DraftList = {
-	drafts: Draft[],
-	dir: string,
-	bytes: number,
-	/**
-	 *  Files that could not be read back (permissions, a partial write from
-	 *  an older version). They are reported, never silently dropped.
-	 */
-	unreadable: number,
-};
 
 /**
  *  The machine-readable half of [`AppError`]: what went wrong, as a stable
@@ -807,35 +719,6 @@ export type ErrorCode =
  */
 "conflict";
 
-/**
- *  Where a run's command actually executed. `Workspace` is the project
- *  directory the user edits: the snapshot beside the run is then evidence of
- *  what was there at launch, not a copy the run used. `Isolated` executes
- *  inside that snapshot, with explicitly linked data directories.
- */
-export type ExecutionMode = "workspace" | "isolated";
-
-export type Experiment = {
-	id?: string,
-	workspaceId?: string,
-	name?: string,
-	kind?: ExperimentKind,
-	/**  The variant this one is measured against; empty for a baseline. */
-	baselineId?: string | null,
-	/**  Code directory when the variant lives outside the workspace root. */
-	root?: string | null,
-	/**
-	 *  Optional git branch the variant is expected to use. It is recorded,
-	 *  not checked out: launching never changes the user's working tree.
-	 */
-	branch?: string | null,
-	notes?: string,
-	createdAt?: number,
-	updatedAt?: number,
-};
-
-export type ExperimentKind = "baseline" | "variant";
-
 export type Failure = {
 	code: string,
 	message: string,
@@ -887,25 +770,6 @@ export type FileEntry = {
 	group: string | null,
 };
 
-export type FileList = {
-	root: string,
-	files: string[],
-	truncated: boolean,
-	/**  `git` (tracked + untracked, honouring .gitignore) or `find`. */
-	source: string,
-};
-
-/**
- *  A cheap "did it change?" probe: no content, so an open editor can notice a
- *  remote edit without downloading the file again.
- */
-export type FileStat = {
-	path: string,
-	exists: boolean,
-	size: number,
-	modifiedAt: number | null,
-};
-
 export type FileTransfer = {
 	revision: number,
 	id: string,
@@ -932,24 +796,6 @@ export type FontFamily = {
 	name: string,
 	monospaced: boolean,
 	symbols: boolean,
-};
-
-export type GitFileChange = {
-	path: string,
-	/**  `M`, `A`, `D`, `R`, `??` … straight from `git status --porcelain`. */
-	status: string,
-};
-
-export type GitState = {
-	isRepository: boolean,
-	branch: string,
-	commit: string,
-	dirty: boolean,
-	files: GitFileChange[],
-	diffSha256: string,
-	diffBytes: number,
-	diffTruncated: boolean,
-	note: string,
 };
 
 export type Gpu = {
@@ -1182,19 +1028,6 @@ export type LocalCopySummary = {
 	skipped: number,
 };
 
-export type LogChunk = {
-	path: string,
-	content: string,
-	offset: number,
-	size: number,
-	/**
-	 *  The reader restarted from the tail because the requested offset was
-	 *  past the end (a log was rotated or truncated).
-	 */
-	reset: boolean,
-	exists: boolean,
-};
-
 export type Memory = {
 	usedBytes: number,
 	totalBytes: number,
@@ -1277,22 +1110,6 @@ export type PortForwardSpec = {
 	targetPort?: number | null,
 };
 
-export type ProjectProbe = {
-	os: string,
-	home: string,
-	shell: string,
-	git: boolean,
-	tmux: boolean,
-	python: string | null,
-	conda: boolean,
-	nvidiaSmi: boolean,
-	scheduler: string | null,
-	isRepository: boolean,
-	rootExists: boolean,
-	/**  `git`, `tmux`, `python`… as the server's `command -v` printed them. */
-	paths: string[],
-};
-
 /**
  *  What a promise drag reports back: `Write` when a receiver asks for the
  *  file (once per drop in practice, and possibly after `Ended`), `Ended` once
@@ -1353,182 +1170,6 @@ export type RemoteEditEvent = {
 
 export type RowKind = "equal" | "modified" | "deleted" | "added";
 
-/**
- *  What a launch was bound to, written beside the run and kept in the record.
- *  It answers "which code, which directory, which edits" without implying
- *  that a run is reproducible: environment packages, data and weights are
- *  recorded only when the user or the server actually reported them.
- */
-export type RunBinding = {
-	execution?: ExecutionMode,
-	/**  Absolute directory the command ran in. */
-	executedFrom?: string,
-	workspaceRoot?: string,
-	/**  Whether the executed directory was a copy made for this run. */
-	isolated?: boolean,
-	snapshotVerified?: boolean,
-	/**
-	 *  Files with unsaved local edits when the launch was confirmed. Their
-	 *  remote copies are what ran.
-	 */
-	unsynced?: string[],
-	/**  Project-relative paths linked into the isolated copy (data, weights). */
-	links?: string[],
-	note?: string,
-};
-
-/**
- *  The code a run was launched from. A commit alone does not identify a
- *  dirty tree, so the uncommitted diff is part of it; the digest is over the
- *  bounded diff text (see `project::capture_code`).
- */
-export type RunCodeState = {
-	branch?: string,
-	commit?: string,
-	dirty?: boolean,
-	dirtyFiles?: string[],
-	diffSha256?: string,
-	diffBytes?: number,
-	/**
-	 *  Whether the captured diff hit its byte limit. A truncated diff still
-	 *  identifies this launch, but it is not the whole change set.
-	 */
-	diffTruncated?: boolean,
-	/**
-	 *  `true` only when git answered; a run outside a repository records
-	 *  no commit and says so instead of pretending.
-	 */
-	isRepository?: boolean,
-};
-
-export type RunLaunch = {
-	run: RunRecord,
-	warnings: string[],
-	/**
-	 *  The launch command's own result could not be read. The run record
-	 *  exists, so the UI can poll it instead of starting a second copy.
-	 */
-	uncertain?: boolean,
-};
-
-export type RunMode =
-/**  Executed in a named tmux session: reattachable and observable. */
-"tmux" |
-/**
- *  Executed under setsid/nohup: observable through its files, not
- *  reattachable interactively.
- */
-"detached" |
-/**  Launched in a terminal tab; EdgeTerm does not manage its lifecycle. */
-"terminal";
-
-export type RunObservation = {
-	status: RunStatus,
-	exitCode: number | null,
-	alive: boolean,
-	logSize: number,
-	checkedAt: number,
-	note: string,
-};
-
-export type RunRecord = {
-	id?: string,
-	workspaceId?: string,
-	experimentId?: string,
-	server?: ServerRef,
-	/**
-	 *  Directory the command runs in (the experiment root, not necessarily
-	 *  the workspace root).
-	 */
-	root?: string,
-	command?: string,
-	env?: string,
-	/**
-	 *  GPU selection as the user typed it (`0`, `0,1`, `none`). Nothing here
-	 *  translates it into a framework-specific variable.
-	 */
-	gpu?: string,
-	/**  The scheduler the launch command submits to, when one was detected. */
-	scheduler?: string | null,
-	/**
-	 *  True when the command only submits work (for example `sbatch`); this
-	 *  client then observes the submission, not the training job.
-	 */
-	submitOnly?: boolean,
-	mode?: RunMode,
-	status?: RunStatus,
-	startedAt?: number,
-	endedAt?: number | null,
-	exitCode?: number | null,
-	code?: RunCodeState,
-	snapshot?: RunSnapshot,
-	/**
-	 *  The executed directory, its code copy and the edits that were still
-	 *  local at launch.
-	 */
-	binding?: RunBinding,
-	runDir?: string,
-	logPath?: string,
-	/**  tmux session name or detached process id file, whichever the mode uses. */
-	taskName?: string,
-	/**
-	 *  Run this one continues (for example a checkpoint resume). It is a
-	 *  link, not a claim that the new run reproduces the old one.
-	 */
-	resumedFrom?: string | null,
-	note?: string,
-	/**
-	 *  Last time the launcher confirmed anything about the process. Stale
-	 *  values make the UI say "unknown", not "running".
-	 */
-	lastSeenAt?: number,
-};
-
-export type RunSnapshot = {
-	mode?: SnapshotMode,
-	path?: string,
-	files?: number,
-	bytes?: number,
-	/**
-	 *  Files left out by the count, size or exclusion limits. Non-zero means
-	 *  the snapshot is not a complete copy of the project.
-	 */
-	skipped?: number,
-	/**
-	 *  The copy was extracted and the file count matched the list it was
-	 *  built from. Only a verified snapshot may back an isolated run.
-	 */
-	verified?: boolean,
-	note?: string,
-};
-
-export type RunStatus = "starting" | "running" |
-/**
- *  The launch command returned after submitting to a scheduler; the
- *  training itself is not observable through this run.
- */
-"submitted" | "finished" | "failed" |
-/**
- *  The process was alive when last checked but nothing can be confirmed
- *  now (the session is gone, or the host cannot be asked).
- */
-"unknown" |
-/**  The process ended and its exit status could not be read. */
-"lost" | "stopped";
-
-/**
- *  What `update_run` may change after a launch. Code, command, environment
- *  and paths are immutable: rewriting them would break the run's identity.
- */
-export type RunUpdate = {
-	id: string,
-	status: RunStatus,
-	exitCode?: number | null,
-	endedAt?: number | null,
-	lastSeenAt?: number,
-	note?: string | null,
-};
-
 /**  A reusable command shown as a tag in the Sender pane. */
 export type SavedCommand = SavedCommand_Serialize | SavedCommand_Deserialize;
 
@@ -1564,37 +1205,10 @@ export type SavedCommand_Serialize = {
 	color?: string | null,
 };
 
-export type SearchMatch = {
-	path: string,
-	line: number,
-	text: string,
-};
-
-export type SearchResult = {
-	root: string,
-	query: string,
-	matches: SearchMatch[],
-	truncated: boolean,
-	skipped: string,
-};
-
 export type SerialPortDesc = {
 	portName: string,
 	portType: string,
 	description: string | null,
-};
-
-/**
- *  The server a record belongs to. `profile_id` is the link to the saved
- *  login; the rest is an identity snapshot so a record still says which
- *  machine it means when the profile is renamed, moved or deleted.
- */
-export type ServerRef = {
-	profileId?: string,
-	name?: string,
-	host?: string,
-	port?: number,
-	username?: string,
 };
 
 /**
@@ -1816,8 +1430,6 @@ export type SessionProfile_Serialize = {
 	flowControl: string | null,
 };
 
-export type SnapshotMode = "none" | "code";
-
 /**  One `Host` alias, resolved to what `ssh alias` would connect to. */
 export type SshConfigEntry = SshConfigEntry_Serialize | SshConfigEntry_Deserialize;
 
@@ -1910,36 +1522,6 @@ export type SshImportSummary = {
 	 *  were still saved.
 	 */
 	warnings?: string[],
-};
-
-export type StartRunRequest = {
-	run: RunRecord,
-	/**  Where run directories live; empty means `<root>/.edgeterm/runs`. */
-	runRoot?: string,
-	snapshot?: SnapshotMode,
-	/**  Extra relative directories or files kept out of the code snapshot. */
-	excludes?: string[],
-	/**
-	 *  Run in the project directory (`Workspace`) or in this run's code copy
-	 *  (`Isolated`). Isolation needs a verified snapshot.
-	 */
-	execution?: ExecutionMode,
-	/**
-	 *  Project-relative paths linked into an isolated copy: datasets and
-	 *  weights that were excluded from the snapshot.
-	 */
-	links?: string[],
-	/**
-	 *  Files the editor still holds unsaved edits for. Their remote copies
-	 *  are what a run executes; the list is recorded with the run.
-	 */
-	unsynced?: string[],
-	/**
-	 *  Refuse to launch while `unsynced` is non-empty. The UI sets this
-	 *  unless the user explicitly confirmed using the remote copies; the
-	 *  default is the safe one.
-	 */
-	requireClean?: boolean,
 };
 
 export type StateEvent = {
@@ -2055,40 +1637,6 @@ export type TransferOptions = {
 export type TransferProgress = {
 	transferred: number,
 	total: number,
-};
-
-export type Workspace = {
-	id?: string,
-	name?: string,
-	server?: ServerRef,
-	/**  Absolute directory of the project on the server (the baseline code). */
-	root?: string,
-	/**  Shell prelude run before commands, e.g. `conda activate vfi`. */
-	env?: string,
-	commands?: WorkspaceCommand[],
-	/**
-	 *  Where this project's runs and logs are written. Empty means
-	 *  `<root>/.edgeterm/runs`.
-	 */
-	runRoot?: string,
-	baselineExperimentId?: string | null,
-	createdAt?: number,
-	updatedAt?: number,
-};
-
-export type WorkspaceCommand = {
-	id?: string,
-	label?: string,
-	command?: string,
-	kind?: WorkspaceCommandKind,
-};
-
-export type WorkspaceCommandKind = "train" | "validate" | "infer" | "shell" | "other";
-
-export type WorkspaceData = {
-	workspaces?: Workspace[],
-	experiments?: Experiment[],
-	runs?: RunRecord[],
 };
 
 export type WriteOutcome = {

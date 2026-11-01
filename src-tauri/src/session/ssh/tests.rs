@@ -2697,8 +2697,6 @@ fn project_state(
         file_transfers: Default::default(),
         file_diffs: Default::default(),
         resource_monitor: Default::default(),
-        workspaces: crate::workspace::WorkspaceStore::load_from(scratch.join("workspaces.json")),
-        drafts: crate::drafts::DraftStore::load_from(scratch.join("drafts")),
         project_ops: Default::default(),
         key_checks: Default::default(),
         port_forwards: Default::default(),

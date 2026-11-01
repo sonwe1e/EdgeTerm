@@ -40,9 +40,6 @@ pub struct AppState {
     pub file_transfers: crate::file_transfer::Transfers,
     pub file_diffs: crate::file_diff::FileDiffs,
     pub resource_monitor: crate::resource_monitor::ResourceMonitor,
-    pub workspaces: crate::workspace::WorkspaceStore,
-    /// Unsaved editor content, kept on disk rather than in a webview cache.
-    pub drafts: crate::drafts::DraftStore,
     pub project_ops: crate::project::ProjectOps,
     pub key_checks: crate::key_check::KeyChecks,
     pub port_forwards: crate::port_forward::Forwards,
@@ -106,9 +103,5 @@ mod file_drag;
 pub use file_drag::*;
 mod responses;
 use responses::*;
-mod workspaces;
-pub use workspaces::*;
-mod drafts;
-pub use drafts::*;
 mod project;
 pub use project::*;
