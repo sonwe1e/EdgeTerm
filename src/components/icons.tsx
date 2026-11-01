@@ -57,6 +57,7 @@ import newFile from "@vscode/codicons/src/icons/new-file.svg?raw";
 import newFolder from "@vscode/codicons/src/icons/new-folder.svg?raw";
 import newSession from "@vscode/codicons/src/icons/new-session.svg?raw";
 import newline from "@vscode/codicons/src/icons/newline.svg?raw";
+import pin from "@vscode/codicons/src/icons/pin.svg?raw";
 import plug from "@vscode/codicons/src/icons/plug.svg?raw";
 import record from "@vscode/codicons/src/icons/record.svg?raw";
 import refresh from "@vscode/codicons/src/icons/refresh.svg?raw";
@@ -136,6 +137,7 @@ const SVGS = {
   "new-folder": newFolder,
   "new-session": newSession,
   newline,
+  pin,
   plug,
   record,
   refresh,

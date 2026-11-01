@@ -78,3 +78,74 @@
 - 提交（`40191cf` 之后四个，逐个独立通过 typecheck）：`608b390` 迁移共享模块、`63f1606` 删除工作台前端、`6173ce0` 删除 Rust 后端并重建绑定、`8a670f0` 文档。删除动作一度被仓库 ACL（继承 `Everyone:(I)(CI)(DENY)(DC)`）拒绝，四个 Rust 文件与 `__sandbox_probe__.txt` 由用户在普通终端执行一次性脚本删除。
 - `src-tauri/src/tests.rs` 的 rustfmt 偏差是既有问题，可另行单独提交修复，不要混进本轮。
 - 未验证：真实 Tauri 窗口内的内置编辑器端到端路径（jsdom 与浏览器用例只覆盖状态机与组件契约）；浏览器用例未在本机运行（Playwright Chromium 未安装）。
+
+## 本轮：终端与远程资源协同（2026-11-02）
+
+用户 2026-11-02 确认：四项功能一次交付、质量优先（发现缺陷堆积或质量下滑可停下报告）；只提交代码、不发版；验收先做本机可验项，真机项最后列清单；基线用当前 HEAD `48a12a0`（方案写作时的 `8805e77` 已过期，见 DECISIONS D12）。
+
+| # | 功能 | 用户已定约束 |
+| --- | --- | --- |
+| ② | 鼠标定位 | 普通 Shell Alt+左键；OpenCode/TUI 走程序原生点击；用户未实测过症状 → 先复现再改；CJK/宽字符/折行必须测 |
+| ③ | Filer 跟随终端 | 默认关闭、可暂停、每服务器独立、仅运行期内存、不轮询服务器 |
+| ④ | 文件路径 Ctrl+点击 | 主要是 Linux 风格报错路径；相对路径归属"想办法解决、体验优先"（不拿确认弹窗打断）；复用内置编辑器与 revealLine |
+| ⑤ | 远程预览 | 入口只在 Filer 右键；首版只支持 HTML 同目录相对资源；系统浏览器打开；允许 hyper/hyper-util 作为直接依赖 |
+
+### 协作与写入边界
+
+Lead 负责 `src/terminal.ts`、`src/actions.ts`、`src/locales/*`、`src/test/*` 的接线与全部验证/提交；共享任务 task-1..4 分别由 follow-builder（③）、links-builder（④）、preview-builder（⑤-B Rust）、remote-builder（⑤-A）独占写入范围。
+
+### 验收环境（本机真实环境）
+
+- WSL Ubuntu 26.04 内专用 sshd：`127.0.0.1:2222`，用户 `edgeterm`，密钥 `.tmp/ssh/id_ed25519`（`.tmp/` 已被忽略）；账号已解锁，密码仅用于解锁语义。
+- 真实样例：`/home/edgeterm/work/exp`（`report.html` + `style.css` + `charts.js` + `data.json` + `assets/loss.png` + 8 MiB `big.bin` + 两个指向根目录外的符号链接）、`/home/edgeterm/work/project/train/model.py`（第 238 行）、远端 `127.0.0.1:6006` 静态服务作为 TensorBoard 替身。
+- 浏览器契约用真实 Edge（`PERF_BROWSER=msedge`）。
+
+### P0 鼠标定位：结论（已实测）
+
+用真实 App + 真实 xterm + 真实 Chromium 指针输入（CDP，含 Alt 修饰键）验证：xterm 6.0.0 的 `_handleMouseUp` 在"无选择、按下-抬起 <500ms、Alt 按住、视口贴底"时用 `moveToCellSequence` 发方向键序列。4 条用例通过：
+
+| 用例 | 断言 |
+| --- | --- |
+| 普通缓冲区 Alt+点击第 2 列（光标在第 20 列） | 发出 18 个 `\x1b[D`，无选择、光标未被本地改动 |
+| 6 个 CJK 宽字符（光标 12 格） | 发出 12 个 `\x1b[D`（按格不按字符） |
+| 程序已开鼠标跟踪（`?1000h?1006h`） | 发出 SGR 鼠标报告（按钮码含 Alt 位），不发方向键，不走 binary 通道 |
+| 视口回滚进历史 | 不发出任何字节（不会改前台程序输入） |
+
+⇒ 结论：该能力在终端契约层已存在且正确（此前缺少的是显式声明与回归用例，不是重新开发）。仍需真机 WebView2 验收（见文末未验证项）。
+
+### 逐项进展
+
+（Builder 交付后逐条补充；验证结果统一在"验证"一节。）
+
+
+### 最终结果（2026-11-02）
+
+四项功能全部落地，验证在本机真实环境完成（WSL sshd、真实 Edge、真实 Rust 后端）。
+
+| 项目 | 结果 |
+| --- | --- |
+| 前端单测 | 110 文件 / 1026 用例通过 |
+| 浏览器契约（真实 Edge） | 29 文件 / 156 用例通过（含本轮新增 Alt+点击 4 条、跟随与文件跳转 2 条） |
+| Rust 全量 | 451 通过 / 0 失败 / 28 ignored |
+| Rust 真实 sshd 验收（ignored） | `real_remote_report_preview_serves_assets_refuses_escapes_and_stops` 1 通过（127.0.0.1:2222） |
+| typecheck / format / lint / 前端构建 | 通过（lint 仅 `src/bindings.ts` 两条既有 any 警告） |
+| 绑定 | 重新生成 97/102 命令，`check:bindings` 通过 |
+| rustfmt | `cargo fmt -- --check` 通过（顺带修掉 `scripts/bindings.mjs` 之外的 Rust 排版） |
+
+逐项：
+
+- ② 鼠标定位：xterm 6 的 Alt+点击在真实 Chromium 中已可用（普通缓冲区走方向键、CJK 按格、鼠标跟踪程序收 SGR 报告、历史区不动前台输入）。本轮做的是显式声明 `altClickMovesCursor`、补真实浏览器回归，并确认 TUI 场景不抢鼠标。
+- ③ Filer 跟随：三态按钮（pin / 暂停图标 / 胶囊高亮），每会话独立、默认关闭、手动浏览即暂停、隐藏零请求、400ms 防抖只落最后一个目录、本地会话跨主机会暂停并提示、无 OSC 时首次同步回退到一次 `session_cwd`。浏览器用例覆盖"按钮开启 → 报目录 → Filer 落地"。
+- ④ 文件跳转：`terminalFileLinks.ts`（traceback / path:N / path:N:C / 相对路径 / 引号括号 / grep 风格；抑制 URL、Windows 形态、裸 a:b、超限行号、超长 token）+ `CwdAttribution`（按稳定行号锚定，trim 由 `firstLineNumber` 换算）+ xterm link provider（Ctrl/Cmd、单元格 1-based、TUI 不响应、hover 零 IO）+ 编辑器先读后开、行号透传与 `clearRevealLine`。相对路径回退顺序：锚定 cwd → 会话当前 cwd → 报错；成功后在状态栏说明打开路径。
+- ⑤-A 远程服务：SSH 会话里字面 loopback 地址经 127.0.0.1:0 转发打开，按 (session, 目标 host, 目标 port) 去重、并发点击共享一次建链、失败回滚本次创建的转发、浏览器失败保留可用转发；公网地址与其它会话类型按原行为直接打开。
+- ⑤-B HTML 预览：Rust 只读回环服务（127.0.0.1:0 + 128-bit token + Host 校验 + realpath 根边界 + 只 GET/HEAD + no-store + 64 KiB 流式 + 单段 Range + 512 MiB/8 并发/16 连接/16 预览上限），Filer 右键 .html 打开、再右键可停止；会话关闭显式清理（`close_session` 已接入）。
+
+需要留意的新增依赖：hyper 的 `server` feature 强制带进 `httpdate 1.0.3`（Cargo.lock 新增一条传递依赖，无其它新 crate）。
+
+### 未验证（真机项，需用户复验）
+
+- 真实 Tauri/WebView2 窗口内的行为：Alt+点击、Ctrl+点击文件路径、Filer 跟随按钮、右键预览菜单、系统浏览器实际打开。本机的浏览器用例跑在 Edge 页里，证明的是终端与前端契约，不是 WebView2。
+- OpenCode / Vim / tmux 的真实 TUI 点击（无真实环境）；中文输入法组合态下点击。
+- 真实隧道端到端：应用窗口内点 `http://localhost:6006/` 建转发并在系统浏览器打开（后端转发与前端分类各自有测试，但没在窗口里串起来验过）。
+- 高输出下的链接识别/跟随性能走查（本轮未做基准测量）。
+- 8 路并发/512 MiB 上限/客户端中途断开的资源回收；macOS 与 Linux 构建。

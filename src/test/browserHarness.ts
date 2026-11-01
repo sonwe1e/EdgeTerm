@@ -170,7 +170,8 @@ export const mouse = {
   held(): { x: number; y: number } | null {
     return pressedAt;
   },
-  async press(x: number, y: number): Promise<void> {
+  /** `modifiers` is the CDP bitmask: Alt 1, Ctrl 2, Meta 4, Shift 8. */
+  async press(x: number, y: number, modifiers = 0): Promise<void> {
     await cdpSession().send("Input.dispatchMouseEvent", {
       type: "mousePressed",
       x,
@@ -178,6 +179,7 @@ export const mouse = {
       button: "left",
       buttons: 1,
       clickCount: 1,
+      modifiers,
     });
     pressedAt = { x, y };
     await inputSettle();
@@ -199,7 +201,7 @@ export const mouse = {
     if (held) pressedAt = { x, y };
     await inputSettle();
   },
-  async release(x: number, y: number): Promise<void> {
+  async release(x: number, y: number, modifiers = 0): Promise<void> {
     await cdpSession().send("Input.dispatchMouseEvent", {
       type: "mouseReleased",
       x,
@@ -207,6 +209,7 @@ export const mouse = {
       button: "left",
       buttons: 0,
       clickCount: 1,
+      modifiers,
     });
     pressedAt = null;
     await inputSettle();

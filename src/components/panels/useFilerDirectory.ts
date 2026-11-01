@@ -17,6 +17,9 @@ import {
 import { remoteParent } from "./filerPresentation";
 import { NewEntryDraft } from "./filerTypes";
 
+/** Why a directory is being listed; only a manual navigation pauses following. */
+type LoadReason = "manual" | "follow" | "resume";
+
 interface Options {
   offline: boolean;
   remoteId: string | null;
@@ -45,6 +48,7 @@ export function useFilerDirectory({
   const remoteIdRef = useRef(remoteId);
   remoteIdRef.current = remoteId;
   const filerTarget = useStore((s) => s.filerTarget);
+  const activeId = useStore((s) => s.activeId);
   /** The last `filerTarget.token` this panel navigated to. */
   const consumedTarget = useRef(0);
   const listRequest = useRef(0);
@@ -88,8 +92,21 @@ export function useFilerDirectory({
    * error is shown unless `quiet`, for a caller that has a fallback.
    */
   const load = useCallback(
-    async (target: string, quiet = false, resume = false): Promise<boolean> => {
+    async (
+      target: string,
+      quiet = false,
+      resume = false,
+      reason: LoadReason = "manual",
+    ): Promise<boolean> => {
       if (offline || remoteIdRef.current !== remoteId) return false;
+      // Browsing by hand takes the wheel from the follow: the next `cd` must
+      // not yank the panel back. Reloading the directory already shown
+      // (refresh, rename, upload) is not navigation, and neither a follow nor
+      // a resume load is the user choosing where to go.
+      if (reason === "manual" && target !== pathRef.current) {
+        const sessionId = remoteIdRef.current ?? useStore.getState().activeId;
+        if (sessionId !== null) useStore.getState().pauseFilerFollow(sessionId);
+      }
       const request = ++listRequest.current;
       clearSelection();
       setBusy(true);
@@ -157,19 +174,29 @@ export function useFilerDirectory({
     (async () => {
       try {
         // Revealing with the panel hidden shows it: start at the requested
-        // directory rather than loading home first and racing it.
+        // directory rather than loading home first and racing it. A reveal is
+        // not the user browsing, so it does not pause a follow.
         const target = claimTarget();
         if (target !== null) {
-          await load(target);
+          await load(target, false, false, "follow");
           return;
         }
+        // A followed session catches up with the shell's current directory:
+        // the reports that arrived while the panel was closed were not acted
+        // on. The panel is on screen now, so this is one listing, not a poll.
+        const shown = useStore.getState().activeId;
+        const followed =
+          shown === null ? null : await useStore.getState().resolveFilerFollow(shown);
+        if (cancelled) return;
+        if (followed !== null && (await load(followed, true, true, "follow"))) return;
+        if (cancelled) return;
         // Coming back to a session resumes where it was browsed; home only
         // the first time, or when that directory no longer lists.
         const last = lastPaths.get(remoteId ?? LOCAL_SOURCE);
-        if (last !== undefined && (await load(last, true, true))) return;
+        if (last !== undefined && (await load(last, true, true, "resume"))) return;
         if (cancelled) return;
         const home = remoteId ? await api.sftpHome(remoteId) : await api.localHome();
-        if (!cancelled) await load(home);
+        if (!cancelled) await load(home, false, false, "resume");
       } catch (e) {
         if (!cancelled) setError(errorText(e));
       }
@@ -191,8 +218,33 @@ export function useFilerDirectory({
 
   useEffect(() => {
     const target = claimTarget();
-    if (target !== null) void load(target);
+    if (target !== null) void load(target, false, false, "follow");
   }, [filerTarget, load]);
+
+  /**
+   * The Filer follows the session it shows, and only that one: reports that
+   * arrived while another tab held the screen were deliberately ignored. A
+   * followed session catches up here when it is shown again — one listing,
+   * no polling. A source change (to an SSH tab, to the local file system) is
+   * the effect above's job and is left to it.
+   */
+  const shownSession = useRef<{ session: string | null; source: string } | null>(null);
+  useEffect(() => {
+    const source = remoteId ?? LOCAL_SOURCE;
+    const previous = shownSession.current;
+    shownSession.current = { session: activeId, source };
+    if (offline || activeId === null || previous === null) return;
+    if (previous.source !== source || previous.session === activeId) return;
+    const session: string = activeId;
+    let cancelled = false;
+    void (async () => {
+      const followed = await useStore.getState().resolveFilerFollow(session);
+      if (!cancelled && followed !== null) await load(followed, true, true, "follow");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeId, remoteId, offline, load]);
 
   const goUp = async () => {
     if (!path) return;

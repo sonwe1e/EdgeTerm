@@ -74,6 +74,12 @@ ring = "0.17"
 notify = "8"
 futures-util = "0.3"
 
+# The loopback HTTP server behind a remote report preview (see
+# `preview.rs`): hyper's server half and the tokio adapter only. Both
+# versions were already in the tree through tauri.
+hyper = { version = "1.11", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+
 # Structured diagnostics: a request-scoped, rotating file log behind "export
 # diagnostics" (see `diagnostics.rs`). Writes go through a non-blocking
 # channel, so a slow disk never sits on a connection.

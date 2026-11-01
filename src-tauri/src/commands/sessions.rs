@@ -328,8 +328,15 @@ pub fn answer_auth_prompt(
 
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
-pub fn close_session(state: State<'_, AppState>, id: String) -> Result<()> {
+pub fn close_session(
+    state: State<'_, AppState>,
+    previews: State<'_, crate::preview::Previews>,
+    id: String,
+) -> Result<()> {
     state.file_transfers.forget(&id);
+    // The report previews read this session's connection, so their loopback
+    // listeners go with it rather than outliving the login.
+    previews.close_session(&id);
     state.file_diffs.close_session(&id);
     state.resource_monitor.close_session(&id);
     state.key_checks.close_session(&id);

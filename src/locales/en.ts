@@ -144,6 +144,24 @@ export const en = {
   "status.filerNotConnected": "Filer: the session is not connected",
   "status.filerPath": "Filer: {path}",
   "status.filerError": "Filer: {error}",
+  "status.followPausedManual": "Follow paused: you browsed away manually",
+  "status.followResumed": "Following again: {path}",
+  "status.followUnavailable": "This shell reports no working directory, so it cannot be followed",
+  "status.followForeignHost": "The shell moved to another host or container; following paused",
+  "status.followInitialOnly":
+    "Synced to the shell's directory; this shell reports no directory changes, so later cd commands will not follow",
+  "status.linkOpening": "Opening {path}",
+  "status.linkOpenFailed": "Cannot open {path}: {error}",
+  "status.fileLinkOpened": "Opened {path} in the editor",
+  "status.linkNoDirectory":
+    "Cannot tell which directory {path} belongs to; run a command from it first",
+  "status.linkForwarding": "Setting up a tunnel to {url}…",
+  "status.linkOpened": "Opened {url} in the browser",
+  "status.linkOpenError": "Cannot open the link: {error}",
+  "status.previewStarting": "Starting the preview: {path}",
+  "status.previewOpened": "Preview opened in the browser: {url}",
+  "status.previewFailed": "Preview failed: {error}",
+  "status.previewStopped": "Preview stopped",
 
   // --- text written into a terminal when a session ends --------------------
   "terminal.sessionClosed": "[session closed — press Enter to reconnect]",
@@ -661,6 +679,14 @@ export const en = {
 
   // FilerPanel
   "filer.offline": "Session disconnected — reconnect to browse and upload files",
+  "filer.followOff": "Follow terminal",
+  "filer.following": "Following",
+  "filer.followPaused": "Paused",
+  "filer.followToggle": "Follow the terminal's directory",
+  "filer.followResume": "Resume following the terminal's directory",
+  "filer.followStop": "Stop following the terminal's directory",
+  "filer.previewInBrowser": "Preview in browser",
+  "filer.previewStop": "Stop preview",
   "ftp.serverTitle": "{protocol} Server",
   "ftp.localComputer": "Local Computer",
   "ftp.thisDevice": "This device",

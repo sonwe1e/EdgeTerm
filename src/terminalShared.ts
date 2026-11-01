@@ -1,9 +1,11 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { type IMarker, type ITheme } from "@xterm/xterm";
+import * as api from "./api";
 import type { CommandSuggestion } from "./history";
 import { IS_MAC } from "./platform";
+import { createRemotePreview, type RemotePreview } from "./remotePreview";
 import type { FindColors } from "./terminalFind";
-import type { ThemeMode } from "./types";
+import { type SessionKind, type ThemeMode } from "./types";
 
 export type GutterMode = "off" | "line" | "time" | "both";
 
@@ -144,15 +146,84 @@ export function parseOsc9(data: string): ReportedCwd | null {
   return path ? { host: "", path } : null;
 }
 
-export function openTerminalWebLink(event: MouseEvent, uri: string) {
-  // Opening terminal output on an unmodified click makes accidental launches
-  // too easy. Match native terminal behavior on macOS and other platforms.
+/** What a terminal's owner knows about the session behind a clicked link. */
+export interface TerminalLinkSession {
+  id: string;
+  kind: SessionKind;
+  /** False while connecting, after a disconnect, and after an error. */
+  connected: boolean;
+}
+
+/** Where a Ctrl+clicked link can go; supplied by the terminal's owner. */
+export interface TerminalLinkContext {
+  session: TerminalLinkSession | null;
+  /** The status line; a tunnel's progress and failures are reported there. */
+  onStatus?: (message: string, error?: boolean) => void;
+}
+
+/**
+ * One preview instance for the whole window: its map of tunnels being set up
+ * is what makes two clicks on the same address share one forward. The
+ * dependencies are the IPC wrappers, so nothing here reads the store.
+ */
+let previews: RemotePreview | null = null;
+
+/**
+ * Built on first use, not at import: every terminal that loads this module
+ * would otherwise depend on the tunnel commands at load time, which ties
+ * unrelated callers (and their stubbed IPC) to a feature they never use.
+ */
+const remotePreview = (): RemotePreview =>
+  (previews ??= createRemotePreview({
+    startForward: api.startPortForward,
+    listForwards: api.listPortForwards,
+    stopForward: api.stopPortForward,
+    removeForward: api.removePortForward,
+    openUrl,
+  }));
+
+/**
+ * Opens a link printed in the terminal. An unmodified click does nothing:
+ * opening output by accident is too easy, and native terminals ask for the
+ * same modifier. Ctrl+click (⌘+click on macOS) opens public addresses as
+ * written; an address on the SSH server's own loopback — `localhost`,
+ * `127.0.0.1`, `0.0.0.0`, `::1` or `::` — is opened through a temporary local
+ * tunnel to that server, so it reaches the service that printed it rather
+ * than one running on this machine.
+ */
+export function openTerminalWebLink(
+  event: MouseEvent,
+  uri: string,
+  context?: TerminalLinkContext,
+): void {
   if (!event.metaKey && !event.ctrlKey) return;
 
   event.preventDefault();
-  void openUrl(uri).catch((error) => {
-    console.error(`Failed to open terminal link ${uri}`, error);
-  });
+  const session = context?.session ?? null;
+  // A disconnected session has no transport to tunnel over. Passing no
+  // reachable session opens the link exactly as written — the behavior before
+  // tunnels existed — instead of failing the click.
+  const reachable = session?.connected ? session : null;
+  void remotePreview().openSessionUrl(
+    reachable?.id ?? "",
+    reachable?.kind ?? null,
+    uri,
+    context?.onStatus,
+  );
+}
+
+/**
+ * The WebLinksAddon handler for one terminal: binds the session the owner
+ * resolves at click time, plus the status line, to `openTerminalWebLink`.
+ */
+export function terminalWebLinkHandler(
+  callbacks: Callbacks,
+): (event: MouseEvent, uri: string) => void {
+  return (event, uri) =>
+    openTerminalWebLink(event, uri, {
+      session: callbacks.linkSession?.() ?? null,
+      onStatus: callbacks.onStatus,
+    });
 }
 
 /** Plain Ctrl+letter: a control character to the shell (^C, ^W, ^D …). */
@@ -314,8 +385,28 @@ export interface Callbacks {
   onData: (data: string) => void;
   /** Legacy mouse reports contain byte coordinates, not UTF-8 text. */
   onBinary?: (data: Uint8Array) => void;
+  /**
+   * The shell announced a different working directory (OSC 7 / 1337 / 9;9).
+   * Fires only on an actual change, so a prompt that repeats its report at
+   * every keystroke does not sit in the Filer's path.
+   */
+  onReportedCwd?: (cwd: ReportedCwd) => void;
+  /**
+   * A file path printed by a command was Ctrl+clicked. `cwd` is the directory
+   * the line was printed in (null for an absolute path); opening the file,
+   * falling back to the session's current directory and reporting failures
+   * belong to the owner.
+   */
+  onFileLink?: (path: string, line: number | undefined, cwd: string | null) => void;
   onResize: (cols: number, rows: number) => void;
   onStatus: (message: string, error?: boolean) => void;
+  /**
+   * The session behind this terminal, read at click time so a reconnect's new
+   * state is seen. A link in a connected SSH session to the server's own
+   * loopback opens through a temporary tunnel (see `openTerminalWebLink`);
+   * without this, every link opens as written.
+   */
+  linkSession?: () => TerminalLinkSession | null;
   /**
    * Enter pressed while the session is dead and the terminal locked: the
    * one keystroke a dead session still answers, reconnecting it the way

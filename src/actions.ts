@@ -1,5 +1,6 @@
 import * as api from "./api";
 import { errorText } from "./errorInfo";
+import { openFileEditor } from "./fileEditor";
 import { fontStack } from "./fonts";
 import { commandHistory } from "./history";
 import { t } from "./i18n";
@@ -108,6 +109,12 @@ export async function ensureController(id: string): Promise<TerminalController> 
     {
       onData: (data) => void api.writeSession(id, data).catch(() => undefined),
       onBinary: (data) => void api.writeSessionBytes(id, data).catch(() => undefined),
+      // Read at click time: a reconnect replaces the tab's state, and a link
+      // in a dead session must not open a tunnel that has no transport.
+      linkSession: () => {
+        const tab = useStore.getState().tabs.find((item) => item.info.id === id);
+        return tab ? { id, kind: tab.info.kind, connected: tab.state === "connected" } : null;
+      },
       // Enter on the dead session reconnects it; the host key dialog owns
       // the next connection attempt while it is open.
       onReconnect: () => {
@@ -115,6 +122,13 @@ export async function ensureController(id: string): Promise<TerminalController> 
         if (store.hostKeyPrompt?.sessionId === id) return;
         void reconnectSession(id);
       },
+      // The Filer's follow mode consumes these: a shell that announced a new
+      // directory moves an on-screen Filer to it, after the report burst
+      // settles. Nothing here queries the server.
+      onReportedCwd: (cwd) => useStore.getState().terminalCwdReported(id, cwd.path, cwd.host),
+      // A Ctrl+clicked path from the output: open it in the built-in editor at
+      // the printed line, through this session's own file system.
+      onFileLink: (path, line, cwd) => void openTerminalFileLink(id, path, line, cwd),
       onCommand: (command) => commandHistory.record(command, historyHost(id)),
       onCommandState: (state, kind) => {
         const store = useStore.getState();
@@ -526,6 +540,54 @@ async function shellCwd(tab: Tab): Promise<string> {
       return localPathFromUrlPath(reported.path);
     }
     throw error;
+  }
+}
+
+/** Joins a relative path printed in the terminal onto a directory. */
+function joinPrintedPath(dir: string, path: string): string {
+  const separator = dir.includes("\\") && !dir.includes("/") ? "\\" : "/";
+  return `${dir.replace(/[\\/]+$/, "")}${separator}${path}`;
+}
+
+/**
+ * Opens a file path printed by a command in the built-in editor, at the line
+ * the output named. The path belongs to the directory the shell was in when
+ * that line was printed; when no report covered it (or it is stale), the
+ * session's current directory is tried next, so a click still opens the file
+ * the user meant instead of asking a question first. The editor's own read is
+ * the existence check — nothing is read until the click.
+ */
+async function openTerminalFileLink(
+  sessionId: string,
+  path: string,
+  line: number | undefined,
+  cwd: string | null,
+): Promise<void> {
+  const candidates: string[] = [];
+  if (path.startsWith("/")) {
+    candidates.push(path);
+  } else {
+    if (cwd) candidates.push(joinPrintedPath(cwd, path));
+    const tab = useStore.getState().tabs.find((item) => item.info.id === sessionId);
+    if (tab) {
+      try {
+        candidates.push(joinPrintedPath(await shellCwd(tab), path));
+      } catch {
+        // A disconnected session or a shell that cannot be asked; the
+        // attributed directory above is still worth a try.
+      }
+    }
+  }
+  for (const candidate of [...new Set(candidates)]) {
+    if (await openFileEditor(sessionId, candidate, { line })) {
+      // An earlier candidate may have failed and left its reason on the status
+      // line; opening the file is the outcome the user needs to see.
+      useStore.getState().setStatus(t("status.fileLinkOpened", { path: candidate }));
+      return;
+    }
+  }
+  if (candidates.length === 0) {
+    useStore.getState().setStatus(t("status.linkNoDirectory", { path }));
   }
 }
 

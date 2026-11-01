@@ -1,4 +1,10 @@
-import { closeFileEditor, reloadFileEditor, saveFileEditor, useFileEditor } from "../fileEditor";
+import {
+  clearRevealLine,
+  closeFileEditor,
+  reloadFileEditor,
+  saveFileEditor,
+  useFileEditor,
+} from "../fileEditor";
 import { CodeEditor } from "../editor/CodeEditor";
 import { useStore } from "../store";
 import { isLightTheme } from "../types";
@@ -33,12 +39,12 @@ export function FileEditorDialog() {
         <CodeEditor
           key={target.id}
           remember={false}
-          doc={{ id: target.id, path: target.path, content, revealLine: null }}
+          doc={{ id: target.id, path: target.path, content, revealLine: target.line }}
           dark={!isLightTheme(theme)}
           fontSize={fontSize}
           onChange={(content) => useFileEditor.setState({ content, saved: false })}
           onSave={() => void saveFileEditor()}
-          onRevealed={() => {}}
+          onRevealed={clearRevealLine}
         />
       )}
       {!file && (

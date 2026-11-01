@@ -22,6 +22,7 @@ mod port_forward;
 // runs the Rust tests on Linux.
 #[cfg(any(target_os = "linux", all(test, unix)))]
 mod nvidia_quirk;
+mod preview;
 mod project;
 mod remote_edit;
 mod resource_monitor;
@@ -38,6 +39,8 @@ mod window_state;
 
 #[cfg(test)]
 mod feature_ipc_tests;
+#[cfg(test)]
+mod preview_tests;
 #[cfg(test)]
 mod tests;
 
@@ -401,6 +404,7 @@ pub fn run() {
             port_forwards: Default::default(),
             ssh_transports: Default::default(),
         })
+        .manage(crate::preview::Previews::default())
         .on_window_event(|window, event| {
             let Some(memory) = window.try_state::<WindowMemory>() else {
                 return;
@@ -471,6 +475,9 @@ pub fn run() {
             commands::remove_port_forward,
             commands::discover_listening_ports,
             commands::cancel_port_discovery,
+            commands::preview_start,
+            commands::preview_stop,
+            commands::preview_list,
             commands::cancel_resource_sample,
             commands::cancel_file_diff,
             commands::sftp_list,

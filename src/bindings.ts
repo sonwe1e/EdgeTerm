@@ -214,6 +214,16 @@ export const commands = {
 	listPortForwards: () => __TAURI_INVOKE<PortForward[]>("list_port_forwards"),
 	stopPortForward: (id: string) => __TAURI_INVOKE<null>("stop_port_forward", { id }),
 	removePortForward: (id: string) => __TAURI_INVOKE<null>("remove_port_forward", { id }),
+	/**
+	 *  Opens a read-only preview of one remote HTML report. `path` is the report
+	 *  itself: its directory becomes the only tree the preview can read and the
+	 *  returned URL names the file, so relative resources beside it load too.
+	 */
+	previewStart: (sessionId: string, path: string) => __TAURI_INVOKE<PreviewSession>("preview_start", { sessionId, path }),
+	/**  Stops one preview and waits for its port to be released. */
+	previewStop: (id: string) => __TAURI_INVOKE<null>("preview_stop", { id }),
+	/**  The previews still serving, for a panel that wants to reopen or stop one. */
+	previewList: () => __TAURI_INVOKE<PreviewSession[]>("preview_list"),
 	discoverListeningPorts: (id: string, requestId: string) => __TAURI_INVOKE<PortDiscovery>("discover_listening_ports", { id, requestId }),
 	cancelPortDiscovery: (requestId: string) => __TAURI_INVOKE<void>("cancel_port_discovery", { requestId }),
 	compareFiles: (id: string, requestId: string, local: string, remote: string) => __TAURI_INVOKE<FileComparison>("compare_files", { id, requestId, local, remote }),
@@ -1108,6 +1118,16 @@ export type PortForwardSpec = {
 	 */
 	targetHost?: string | null,
 	targetPort?: number | null,
+};
+
+/**  One live preview, as the front end sees it. */
+export type PreviewSession = {
+	id: string,
+	/**  The address to open in the system browser: it names the report file. */
+	url: string,
+	/**  The remote directory a preview may read from, and the only one. */
+	root: string,
+	port: number,
 };
 
 /**

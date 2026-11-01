@@ -11,6 +11,8 @@ export interface FileEditorTarget {
   sessionId: string | null;
   path: string;
   label: string;
+  /** 1-based line to reveal when the file opens; cleared once revealed. */
+  line: number | null;
 }
 interface State {
   target: FileEditorTarget | null;
@@ -50,23 +52,58 @@ export async function closeFileEditor(): Promise<boolean> {
   }
 }
 
-export async function openFileEditor(sessionId: string | null, path: string) {
-  if (useFileEditor.getState().target && !(await closeFileEditor())) return;
+/** Keeps a printed line number inside the editor's own range. */
+const revealLineOf = (line: number | undefined): number | null =>
+  line !== undefined && Number.isFinite(line) && line >= 1 ? Math.floor(line) : null;
+
+/**
+ * Opens one file in the built-in editor.
+ *
+ * The file is read before the dialog is shown, so a missing, unreadable,
+ * oversized or binary file reports in the status bar instead of opening an
+ * empty editor shell; the read doubles as the existence check for a path a
+ * terminal link printed. Returns whether the editor opened, which lets the
+ * caller try the next candidate directory for a relative path.
+ */
+export async function openFileEditor(
+  sessionId: string | null,
+  path: string,
+  options: { line?: number } = {},
+): Promise<boolean> {
+  if (useFileEditor.getState().target && !(await closeFileEditor())) return false;
   const tab = useStore.getState().tabs.find((item) => item.info.id === sessionId);
-  const target = {
+  const target: FileEditorTarget = {
     id: crypto.randomUUID(),
     sessionId,
     path,
     label: tab
       ? `${tab.info.name} · ${tab.info.address}`
       : t(sessionId ? "fileEditor.remote" : "fileEditor.local"),
+    line: revealLineOf(options.line),
   };
-  useFileEditor.setState({ ...empty, target });
   if (tab?.info.kind === "ftp") {
-    useFileEditor.setState({ error: t("fileEditor.ftpUnsupported") });
-    return;
+    useFileEditor.setState({ ...empty, target, error: t("fileEditor.ftpUnsupported") });
+    return false;
   }
-  await reloadFileEditor();
+  let file: TextFile;
+  try {
+    file = await api.readText(sessionId, path);
+  } catch (error) {
+    useStore.getState().setStatus(t("status.linkOpenFailed", { path, error: errorText(error) }));
+    return false;
+  }
+  // A different open may have finished while this read was in flight; that
+  // target is the newer one and must not be replaced by this stale result.
+  if (useFileEditor.getState().target) return false;
+  useFileEditor.setState({ ...empty, target, file, content: normalizeText(file.content) });
+  return true;
+}
+
+/** Drops the pending reveal line once the editor has scrolled to it. */
+export function clearRevealLine(): void {
+  const { target } = useFileEditor.getState();
+  if (!target || target.line === null) return;
+  useFileEditor.setState({ target: { ...target, line: null } });
 }
 
 export async function reloadFileEditor() {

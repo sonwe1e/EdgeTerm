@@ -96,6 +96,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
   authPrompts: [],
   closePrompt: null,
   filerTarget: null,
+  filerFollow: {},
   senderLibraryVersion: 0,
 
   panes: [{ id: ROOT_PANE_ID, activeTabId: null }],

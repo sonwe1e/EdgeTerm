@@ -1,3 +1,4 @@
+import { type FollowMode } from "./filerFollow";
 import { type FileSort } from "./fileSort";
 import { type Language } from "./i18n";
 import { type LayoutNode, type Side } from "./layout";
@@ -262,6 +263,13 @@ export interface AppStore {
    */
   filerTarget: { sessionId: string; path: string; token: number } | null;
   /**
+   * Whether the Filer follows each session's shell directory; a session that
+   * is absent is off. Runtime only and per session: following a shell is a
+   * decision about this window, not a preference the saved profile carries
+   * into every other window that opens the same host. See filerFollow.ts.
+   */
+  filerFollow: Record<string, FollowMode>;
+  /**
    * Bumped whenever saved Sender tags change outside the Sender panel (a data
    * import, a deleted profile or group moving their scoped commands), so the
    * panel reloads its library.
@@ -395,4 +403,28 @@ export interface AppStore {
   clearAuthPrompt: (id: string) => void;
   /** Points the Filer at `path` for `sessionId`, showing the panel if hidden. */
   revealInFiler: (sessionId: string, path: string) => void;
+  /**
+   * Turns directory following on for a session — from off or paused — and
+   * navigates the Filer to the shell's current directory when there is one to
+   * follow. Says why in the status line otherwise.
+   */
+  startFilerFollow: (sessionId: string) => void;
+  /** Stops following a session and drops a report still waiting to be shown. */
+  stopFilerFollow: (sessionId: string) => void;
+  /** Pauses a followed session because the user browsed the Filer by hand. */
+  pauseFilerFollow: (sessionId: string) => void;
+  /**
+   * Feeds one shell directory report in. Does nothing unless that session is
+   * followed and the Filer is on screen showing it; a burst of reports is
+   * debounced, so consecutive `cd`s land on the last directory only.
+   */
+  terminalCwdReported: (sessionId: string, path: string, host?: string) => void;
+  /**
+   * The directory a followed Filer should show for a session right now, read
+   * from the terminal's own latest report: null when following is off, the
+   * panel is not showing that session, or the shell has never reported one.
+   * Used when the panel starts showing the session again, because reports
+   * that arrived while it was away were deliberately not acted on.
+   */
+  resolveFilerFollow: (sessionId: string) => Promise<string | null>;
 }

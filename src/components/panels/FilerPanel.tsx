@@ -45,6 +45,7 @@ import {
   NAME_MAX_PX,
   type FilerColumns,
 } from "../../filerColumns";
+import { followMode } from "../../filerFollow";
 import { sortFileEntries, toggleFileSort, type SortKey } from "../../fileSort";
 import { typeToSelect, type TypeRun } from "../../fileTypeSelect";
 import { IS_MAC } from "../../platform";
@@ -115,6 +116,30 @@ function FilerPanelBase() {
   const canReveal = Boolean(
     tab && (tab.info.kind === "local" || tab.info.kind === "ssh") && tab.state === "connected",
   );
+  // "Follow terminal" has three states. The label says which one the button is
+  // in, the title what a click will do, and aria-pressed carries the follow
+  // being armed at all (paused included) to a screen reader.
+  const follow = useStore((s) => (tab ? followMode(s.filerFollow, tab.info.id) : "off"));
+  const startFilerFollow = useStore((s) => s.startFilerFollow);
+  const stopFilerFollow = useStore((s) => s.stopFilerFollow);
+  const followTitle =
+    follow === "following"
+      ? t("filer.followStop")
+      : follow === "paused"
+        ? t("filer.followResume")
+        : t("filer.followToggle");
+  const followLabel =
+    follow === "following"
+      ? t("filer.following")
+      : follow === "paused"
+        ? t("filer.followPaused")
+        : t("filer.followOff");
+  const toggleFollow = () => {
+    if (!tab) return;
+    // Paused resumes, following stops, off starts: one button, one next step.
+    if (follow === "following") stopFilerFollow(tab.info.id);
+    else startFilerFollow(tab.info.id);
+  };
 
   const [path, setPath] = useState("");
   const atDrivesRoot = !remoteId && path === api.LOCAL_DRIVES_ROOT;
@@ -993,6 +1018,16 @@ function FilerPanelBase() {
           disabled={busy || !canReveal}
         >
           <Icon name="target" />
+        </button>
+        <button
+          className={`panel-action filer-action${follow === "following" ? " is-open" : ""}`}
+          onClick={toggleFollow}
+          title={followTitle}
+          aria-label={followLabel}
+          aria-pressed={follow !== "off"}
+          disabled={!canReveal}
+        >
+          <Icon name={follow === "paused" ? "debug-pause" : "pin"} />
         </button>
         <input
           value={draft}

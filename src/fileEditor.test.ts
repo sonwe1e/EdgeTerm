@@ -1,5 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import {
+  clearRevealLine,
   closeFileEditor,
   hasUnsavedFile,
   openFileEditor,
@@ -9,6 +10,7 @@ import {
 } from "./fileEditor";
 import * as api from "./editor/textFile";
 import { ask } from "./nativeDialog";
+import { useStore } from "./store";
 
 vi.mock("./editor/textFile", () => ({ readText: vi.fn(), writeText: vi.fn() }));
 vi.mock("./nativeDialog", () => ({ ask: vi.fn() }));
@@ -33,6 +35,7 @@ it("does not replace edits typed while a reload is in flight", async () => {
 });
 beforeEach(() => {
   useFileEditor.setState(original, true);
+  useStore.getState().setLanguage("en");
   vi.resetAllMocks();
   vi.mocked(api.readText).mockResolvedValue({
     path: "/resolved/config.txt",
@@ -113,6 +116,39 @@ it("retains the draft after a conflict and after declining close", async () => {
   vi.mocked(ask).mockResolvedValue(true);
   expect(await closeFileEditor()).toBe(true);
   expect(useFileEditor.getState().target).toBeNull();
+});
+
+it("opens a file link at the line it printed, reading it before showing the editor", async () => {
+  const opened = await openFileEditor("server-1", "/srv/train.py", { line: 238 });
+  expect(opened).toBe(true);
+  expect(api.readText).toHaveBeenCalledWith("server-1", "/srv/train.py");
+  expect(useFileEditor.getState().target).toMatchObject({ path: "/srv/train.py", line: 238 });
+  expect(useFileEditor.getState().content).toBe("before\n");
+});
+
+it("does not open an empty editor when the file cannot be read", async () => {
+  vi.mocked(api.readText).mockRejectedValue({
+    code: "notFound",
+    message: "no such file: /srv/gone.py",
+  });
+  const opened = await openFileEditor("server-1", "/srv/gone.py", { line: 12 });
+  expect(opened).toBe(false);
+  expect(useFileEditor.getState().target).toBeNull();
+  expect(useFileEditor.getState().file).toBeNull();
+  expect(useStore.getState().status).toBe("Cannot open /srv/gone.py: no such file: /srv/gone.py");
+});
+
+it("clears the reveal line once the editor scrolled to it", async () => {
+  await openFileEditor(null, "C:/config.txt", { line: 12 });
+  expect(useFileEditor.getState().target?.line).toBe(12);
+  clearRevealLine();
+  expect(useFileEditor.getState().target?.line).toBeNull();
+  expect(useFileEditor.getState().file?.hash).toBe("original");
+});
+
+it("ignores a line number that cannot be revealed", async () => {
+  await openFileEditor(null, "C:/config.txt", { line: 0 });
+  expect(useFileEditor.getState().target?.line).toBeNull();
 });
 
 it("does not report an uncertain remote write as saved", async () => {

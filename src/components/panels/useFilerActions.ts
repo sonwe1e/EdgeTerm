@@ -1,5 +1,7 @@
 import type { useFileSelection } from "../../useFileSelection";
 import { openFileEditor } from "../../fileEditor";
+import { isPreviewRunning, previewReport, stopReportPreview } from "../../previewActions";
+import { useStore } from "../../store";
 import { errorText } from "../../errorInfo";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import { type MouseEvent } from "react";
@@ -200,6 +202,34 @@ export function useFilerActions({
     if (typeof picked === "string") await openEntry(entry, picked);
   };
 
+  /**
+   * A remote HTML report opens in the system browser through the session's own
+   * SSH connection: the preview server reads the report's directory, so unlike
+   * a downloaded file the scripts and data beside it still load, and a refresh
+   * picks up what a training run has written since.
+   */
+  const canPreviewReport = (entry: FileEntry): boolean =>
+    remoteId !== null &&
+    !entry.isDir &&
+    /\.html?$/i.test(entry.name) &&
+    useStore.getState().tabs.find((tab) => tab.info.id === remoteId)?.info.kind === "ssh";
+
+  const previewMenuItem = (entry: FileEntry): MenuItem => {
+    const id = remoteId as string;
+    return isPreviewRunning(id, entry.path)
+      ? {
+          label: t("filer.previewStop"),
+          icon: "close",
+          action: () => void stopReportPreview(id, entry.path),
+        }
+      : {
+          label: t("filer.previewInBrowser"),
+          icon: "link-external",
+          disabled: busy,
+          action: () => void previewReport(id, entry.path),
+        };
+  };
+
   const openMenu = (event: MouseEvent, items: MenuItem[]) => {
     event.preventDefault();
     event.stopPropagation();
@@ -253,6 +283,7 @@ export function useFilerActions({
                   disabled: busy,
                   action: () => void openFileEditor(remoteId, entry.path),
                 },
+                ...(canPreviewReport(entry) ? [previewMenuItem(entry)] : []),
                 openWithMenu(entry),
               ]),
           {

@@ -2,7 +2,9 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
+
 import { TerminalClipboard } from "./terminalClipboard";
+import { CwdAttribution, createFileLinkProvider } from "./terminalFileLinks";
 import { TerminalCommands } from "./terminalCommands";
 import { TerminalGpuRenderer } from "./terminalGpuRenderer";
 import { TerminalKeyboard } from "./terminalKeyboard";
@@ -16,11 +18,11 @@ import {
   ReportedCwd,
   RightClickAction,
   XTERM_THEMES,
-  openTerminalWebLink,
   parseOsc1337,
   parseOsc7,
   parseOsc9,
 } from "./terminalShared";
+import { terminalWebLinkHandler } from "./terminalShared";
 import { TerminalViewport } from "./terminalViewport";
 export { parseOsc1337, parseOsc7, parseOsc9 } from "./terminalShared";
 export type { CursorStyle, GutterMode, ReportedCwd, RightClickAction } from "./terminalShared";
@@ -226,6 +228,11 @@ export class TerminalController {
   private lastCols = 0;
   /** The shell's latest OSC directory report; see `reportedCwd`. */
   private reported: ReportedCwd | null = null;
+  /**
+   * Which directory was in effect for which line of output, for the file links
+   * printed by commands; see CwdAttribution and contentLine below.
+   */
+  private readonly cwdLines = new CwdAttribution();
   private disposed = false;
   /** True while the pane is on screen; see setVisible. */
   private visible = false;
@@ -262,6 +269,11 @@ export class TerminalController {
       minimumContrastRatio: 4.5,
       drawBoldTextInBrightColors: true,
       macOptionIsMeta: true,
+      // xterm's default, stated so a future upstream change cannot quietly
+      // take Alt+click away: on mouseup it walks the shell's cursor to the
+      // clicked cell with arrow-key sequences (wide characters and wrapped
+      // lines included), and leaves programs that track the mouse alone.
+      altClickMovesCursor: true,
       // Kept in step with the right-click setting by setRightClickAction:
       // only the menu mode wants the word under the pointer selected first.
       rightClickSelectsWord: true,
@@ -495,7 +507,23 @@ export class TerminalController {
     this.zmodem = new ZmodemController(sessionId, transferCallbacks);
 
     this.term.loadAddon(this.fitAddon);
-    this.term.loadAddon(new WebLinksAddon(openTerminalWebLink));
+    // The handler carries the session into the click: an SSH terminal's
+    // loopback link is opened through a tunnel to that server, not to this
+    // machine's own localhost.
+    this.term.loadAddon(new WebLinksAddon(terminalWebLinkHandler(this.callbacks)));
+    // File paths printed by commands, opened in the built-in editor on
+    // Ctrl+click. A relative path belongs to the directory the shell was in
+    // when that line was printed, which is why the reports are kept per line
+    // rather than read as "the current directory" at click time.
+    this.term.registerLinkProvider(
+      createFileLinkProvider({
+        terminal: this.term,
+        getCwdForLine: (bufferLineNumber) =>
+          this.cwdLines.resolve(this.contentLine(bufferLineNumber - 1)),
+        openLink: (target) => this.callbacks.onFileLink?.(target.path, target.line, target.cwd),
+        isMouseTracking: () => this.clipboard.isMouseTracked(),
+      }),
+    );
     const unicode = new Unicode11Addon();
     this.term.loadAddon(unicode);
     this.term.unicode.activeVersion = "11";
@@ -517,7 +545,19 @@ export class TerminalController {
     const report = (parse: (data: string) => ReportedCwd | null) => (data: string) => {
       const cwd = parse(data);
       if (cwd) {
+        const changed = this.reported?.path !== cwd.path || this.reported?.host !== cwd.host;
         this.reported = cwd;
+        // A report is printed at the prompt, so it covers the output above it
+        // that was already written: record the line the prompt sits on. A
+        // full-screen program's buffer has no lines to attribute.
+        const buffer = this.term.buffer.active;
+        if (buffer.type === "normal") {
+          this.cwdLines.record(this.contentLine(buffer.baseY + buffer.cursorY), cwd.path);
+        }
+        // Followers (the Filer's terminal follow) only want real moves: a
+        // prompt that reports the same directory on every Enter must not
+        // reload the listing.
+        if (changed) this.callbacks.onReportedCwd?.(cwd);
         // These reports are conventionally emitted by a prompt hook. They
         // also cover visually empty/custom prompts that cannot be matched
         // from buffer text alone.
@@ -860,6 +900,17 @@ export class TerminalController {
   }
 
   /**
+   * One buffer line in the coordinate the file-link attribution records in.
+   * xterm renumbers every line when the scrollback drops its oldest, and the
+   * gutter's first line number already counts those drops, so the same
+   * coordinate survives trimming; the erases that restart the numbering reset
+   * the attribution instead (see scrollbackErased/resetLineMetadata).
+   */
+  private contentLine(bufferIndex: number): number {
+    return this.lineGutter.firstLineNumber + bufferIndex;
+  }
+
+  /**
    * The working directory the shell last announced through OSC 7 / 1337 /
    * 9;9, or null when it never has (or the session ended since).
    */
@@ -947,6 +998,9 @@ export class TerminalController {
     this.lineGutter.dropLeadingLines(dropped);
     this.lineGutter.resetTrimMarker();
     this.lineGutter.firstLineNumber = 1;
+    // The screen's own lines are renumbered from 1 here, so every recorded
+    // line number means nothing now.
+    this.cwdLines.reset();
     // `clear` on Linux erases the screen first, so its rows are among the
     // ones just dropped; the prompt that follows lands on line 1.
     if (this.lineGutter.lineCount === 0) this.lineGutter.setLineTimes([Date.now()]);
@@ -962,6 +1016,7 @@ export class TerminalController {
   }
 
   private resetLineMetadata() {
+    this.cwdLines.reset();
     this.lineGutter.setLineTimes([Date.now()]);
     this.lineGutter.firstLineNumber = 1;
     this.lineGutter.resetOutputTracking();
