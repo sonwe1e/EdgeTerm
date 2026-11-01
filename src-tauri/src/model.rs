@@ -621,6 +621,35 @@ pub fn split_command_line(line: &str, windows: bool) -> std::result::Result<Vec<
     Ok(words)
 }
 
+/// The words to spawn for the Shell field.
+///
+/// split_command_line reads the field as a command line. A shell chooser, or a
+/// person pasting the path of the shell, hands over a bare path, and that used
+/// to split at its first space: "C:\Program Files\PowerShell\7\pwsh.exe"
+/// became a program called "C:\Program" and failed with "the system cannot
+/// find the file specified". A value with no quotes that names an existing
+/// file is therefore one program; everything else still splits, so arguments
+/// keep working.
+///
+/// is_file keeps the decision testable: the caller passes the file system
+/// check, the tests pass a set of paths.
+pub fn shell_words(
+    line: &str,
+    windows: bool,
+    is_file: impl Fn(&str) -> bool,
+) -> std::result::Result<Vec<String>, String> {
+    let trimmed = line.trim();
+    if windows
+        && !trimmed.is_empty()
+        && !trimmed.contains('"')
+        && !trimmed.contains('\'')
+        && is_file(trimmed)
+    {
+        return Ok(vec![trimmed.to_string()]);
+    }
+    split_command_line(line, windows)
+}
+
 pub fn default_shell() -> String {
     #[cfg(windows)]
     {

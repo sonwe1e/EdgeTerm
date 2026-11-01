@@ -422,6 +422,8 @@ export const zhCN: Catalog = {
   "session.connect": "连接",
   "session.saveConnect": "保存并连接",
   "session.connectionHelp": "连接未成功，请检查地址、端口、网络和认证信息。",
+  "session.localStartHelp":
+    "本地 shell 未启动。请检查本会话的 Shell 字段：它必须指向一个存在的程序；路径后面还要跟参数时，请用引号把路径括起来。",
   "session.retryHint": "连接配置已保存，重试会更新本次连接并沿用原标签。",
   "session.errorDetails": "技术详情",
   "fileEditor.title": "在内置编辑器中编辑",

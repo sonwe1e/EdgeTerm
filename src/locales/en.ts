@@ -468,6 +468,8 @@ export const en = {
   "session.connect": "Connect",
   "session.saveConnect": "Save & connect",
   "session.connectionHelp": "Could not connect. Check the address, port, network and credentials.",
+  "session.localStartHelp":
+    "The local shell did not start. Check this session's Shell field: it has to name a program that exists, and a path followed by arguments needs quotes.",
   "session.retryHint":
     "The connection settings are saved. Retrying updates this attempt in the same tab.",
   "session.errorDetails": "Technical details",

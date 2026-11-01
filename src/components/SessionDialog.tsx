@@ -1530,7 +1530,9 @@ export function SessionDialog({ initial, onClose, onSaved, sshOnly = false }: Pr
           <Icon name="error" />
           {connectionError ? (
             <div>
-              <strong>{t("session.connectionHelp")}</strong>
+              <strong>
+                {t(profile.kind === "local" ? "session.localStartHelp" : "session.connectionHelp")}
+              </strong>
               <div>{t("session.retryHint")}</div>
               <details>
                 <summary>{t("session.errorDetails")}</summary>

@@ -9,7 +9,8 @@ use crate::credentials::{
 use crate::error::ErrorCode;
 use crate::fs_local;
 use crate::model::{
-    split_command_line, AppData, AuthKind, CommandScope, FileEntry, LineEnding, SavedCommand,
+    shell_words, split_command_line, AppData, AuthKind, CommandScope, FileEntry, LineEnding,
+    SavedCommand,
     SessionGroup, SessionKind, SessionProfile, Theme, APP_DATA_APP, APP_DATA_EXTENSION,
     APP_DATA_FORMAT,
 };
@@ -470,6 +471,42 @@ fn windows_shell_command_line_keeps_backslashes_and_single_quotes() {
     assert_eq!(words(r"cmd /k cd C:\"), ["cmd", "/k", "cd", r"C:\"]);
     assert!(split_command_line(r#"pwsh "unterminated"#, true).is_err());
 }
+
+#[test]
+fn a_shell_path_pasted_without_quotes_is_one_program() {
+    // A shell chooser, or a person pasting the path, hands over the value
+    // unquoted. Splitting it at the first space made Windows try to run
+    // "C:\Program" and report os error 2 for a shell that exists.
+    let forever = |path: &str| path == r"C:\Program Files\PowerShell\7\pwsh.exe";
+    let words = |line: &str| shell_words(line, true, forever).unwrap();
+    // The previous behaviour, kept as the defect's own evidence: the value is
+    // a command line, so it split at the first space and Windows looked for
+    // "C:\Program" (os error 2) instead of the shell that exists.
+    assert_eq!(
+        split_command_line(r"C:\Program Files\PowerShell\7\pwsh.exe", true).unwrap(),
+        [r"C:\Program", r"Files\PowerShell\7\pwsh.exe"]
+    );
+
+    assert_eq!(
+        words(r"C:\Program Files\PowerShell\7\pwsh.exe"),
+        [r"C:\Program Files\PowerShell\7\pwsh.exe"]
+    );
+    // Arguments still split, quoted or not, and a value that names no existing
+    // file keeps the old behaviour so a typo still reports a missing program.
+    assert_eq!(words("pwsh -NoLogo"), ["pwsh", "-NoLogo"]);
+    assert_eq!(
+        words(r#""C:\Program Files\PowerShell\7\pwsh.exe" -NoLogo"#),
+        [r"C:\Program Files\PowerShell\7\pwsh.exe", "-NoLogo"]
+    );
+    assert_eq!(
+        words(r"C:\Missing Shell\x.exe"),
+        [r"C:\Missing", r"Shell\x.exe"]
+    );
+    // Off Windows the field stays a POSIX command line.
+    let posix = shell_words("/opt/my shell/bin/zsh", false, |_| true).unwrap();
+    assert_eq!(posix, ["/opt/my", "shell/bin/zsh"]);
+}
+
 
 #[test]
 fn store_duplicates_profiles_with_their_credentials() {

@@ -10,7 +10,7 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use super::recording::Recorder;
 use super::{cwd, emit_state, locale, reject_unsupported, OutputPump, SessionCommand};
 use crate::error::{err, Result};
-use crate::model::{split_command_line, SessionKind, SessionProfile};
+use crate::model::{shell_words, SessionKind, SessionProfile};
 
 /// Shells whose `-l` flag starts them as a login shell; see `login_flag`.
 const LOGIN_SHELLS: &[&str] = &[
@@ -68,7 +68,12 @@ pub fn spawn(
     // The Shell field is a command line, not just a program name, so a
     // profile can start `wsl.exe -d Ubuntu` or `pwsh -NoLogo`.
     let shell = profile.shell_command_line();
-    let mut argv = split_command_line(&shell, cfg!(windows)).map_err(err)?;
+    // A path picked or pasted without quotes is one program, not a program
+    // plus arguments; see shell_words.
+    let mut argv = shell_words(&shell, cfg!(windows), |program| {
+        std::path::Path::new(program).is_file()
+    })
+    .map_err(err)?;
     if let Some(flag) = login_flag(&argv, cfg!(target_os = "macos")) {
         argv.push(flag.to_string());
     }
