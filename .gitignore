@@ -1,6 +1,13 @@
 # Dependencies
 /node_modules/
 
+# Manual release artifacts (staging and hand-built packages land in the root)
+/portable-staging/
+/SHA256SUMS.txt
+/*.zip
+/*.exe
+/*.msi
+
 # Build outputs and caches
 /dist/
 /dist-ssr/
