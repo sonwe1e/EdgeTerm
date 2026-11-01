@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_TRANSFER_OPTIONS,
   readTransferOptions,
@@ -90,6 +90,20 @@ describe("transfer option preferences", () => {
       const read = readTransferOptions();
       expect(read.rateLimitBps).toBe(0);
       expect(read.requests).toBe(DEFAULT_TRANSFER_OPTIONS.requests);
+    }
+  });
+
+  it("does not throw when the preference store refuses the write", () => {
+    // Every other preference save survives an unavailable or full store so a
+    // settings change keeps applying for this run; this one used to let the
+    // exception reach the input's change handler.
+    const spy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("quota", "QuotaExceededError");
+    });
+    try {
+      expect(() => saveTransferOptions(DEFAULT_TRANSFER_OPTIONS)).not.toThrow();
+    } finally {
+      spy.mockRestore();
     }
   });
 

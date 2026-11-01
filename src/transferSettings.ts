@@ -59,5 +59,9 @@ export function readTransferOptions(): TransferOptions {
 }
 
 export function saveTransferOptions(options: TransferOptions): void {
-  localStorage.setItem(KEY, JSON.stringify(options));
+  try {
+    localStorage.setItem(KEY, JSON.stringify(options));
+  } catch {
+    /* The choice still applies for this run when storage is unavailable. */
+  }
 }
