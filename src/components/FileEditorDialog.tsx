@@ -1,5 +1,5 @@
 import { closeFileEditor, reloadFileEditor, saveFileEditor, useFileEditor } from "../fileEditor";
-import { CodeEditor } from "../workbench/CodeEditor";
+import { CodeEditor } from "../editor/CodeEditor";
 import { useStore } from "../store";
 import { isLightTheme } from "../types";
 import { useT } from "../useT";
@@ -42,7 +42,7 @@ export function FileEditorDialog() {
         />
       )}
       {!file && (
-        <p className="file-editor-empty">{t(busy ? "wb.loading" : "fileEditor.textOnly")}</p>
+        <p className="file-editor-empty">{t(busy ? "common.loading" : "fileEditor.textOnly")}</p>
       )}
       {error && (
         <div className="dialog-error" role="alert">
@@ -53,7 +53,7 @@ export function FileEditorDialog() {
       <div className="dialog-footer">
         <span role="status">
           {busy
-            ? t("wb.loading")
+            ? t("common.loading")
             : dirty
               ? t("fileEditor.unsaved")
               : saved

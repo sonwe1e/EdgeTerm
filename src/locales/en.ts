@@ -6,6 +6,7 @@ export const en = {
   "common.delete": "Delete",
   "common.save": "Save",
   "common.enabled": "Enabled",
+  "common.loading": "Loading…",
 
   // --- menu bar -------------------------------------------------------------
   "menu.session": "Session",

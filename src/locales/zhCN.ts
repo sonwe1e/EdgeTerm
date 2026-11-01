@@ -7,6 +7,7 @@ export const zhCN: Catalog = {
   "common.delete": "删除",
   "common.save": "保存",
   "common.enabled": "启用",
+  "common.loading": "加载中…",
 
   "menu.session": "会话",
   "menu.edit": "编辑",

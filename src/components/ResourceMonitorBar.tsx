@@ -9,7 +9,7 @@ import { Icon } from "./icons";
 import { StatusPopover } from "./StatusPopover";
 import { usePopoverDismiss } from "./usePopoverDismiss";
 import { useT } from "../useT";
-import { Sparkline } from "../workbench/Sparkline";
+import { Sparkline } from "../monitor/Sparkline";
 import {
   peakUtilization,
   pressureOf,
@@ -18,7 +18,7 @@ import {
   trendPointFrom,
   type Pressure,
   type TrendPoint,
-} from "../workbench/resourceTrend";
+} from "../monitor/resourceTrend";
 
 const percent = (value: number | null | undefined): string =>
   value === null || value === undefined || !Number.isFinite(value) ? "—" : `${value.toFixed(1)}%`;

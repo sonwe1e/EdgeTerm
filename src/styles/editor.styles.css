@@ -1,0 +1,30 @@
+/* The built-in editor: one CodeMirror view hosted by the Filer's single-file
+   editor dialog. The workbench's richer editor chrome is gone; what is left is
+   the host, the mount point and the loading notice. Every colour comes from a
+   semantic token, so all four themes hold without a hex value here. */
+
+.editor-host {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: var(--bg-terminal);
+}
+
+.editor-mount {
+  position: absolute;
+  inset: 0;
+}
+
+.editor-mount .cm-editor {
+  height: 100%;
+}
+
+.editor-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-dim);
+  background: var(--bg-terminal);
+}

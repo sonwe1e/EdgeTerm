@@ -7,10 +7,10 @@ import {
   saveFileEditor,
   useFileEditor,
 } from "./fileEditor";
-import * as api from "./workbench/api";
+import * as api from "./editor/textFile";
 import { ask } from "./nativeDialog";
 
-vi.mock("./workbench/api", () => ({ readText: vi.fn(), writeText: vi.fn() }));
+vi.mock("./editor/textFile", () => ({ readText: vi.fn(), writeText: vi.fn() }));
 vi.mock("./nativeDialog", () => ({ ask: vi.fn() }));
 const original = useFileEditor.getState();
 

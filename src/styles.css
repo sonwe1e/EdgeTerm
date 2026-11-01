@@ -8,9 +8,9 @@
 @import "./styles/sender.styles.css";
 @import "./styles/status.styles.css";
 @import "./styles/dialogs.styles.css";
+@import "./styles/editor.styles.css";
 @import "./styles/filer.styles.css";
 @import "./styles/popover.styles.css";
 @import "./styles/monitor.styles.css";
 @import "./styles/transfer.styles.css";
 @import "./styles/forward.styles.css";
-@import "./styles/workbench.styles.css";

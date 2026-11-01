@@ -487,8 +487,6 @@ body {
    <html> by setCurrentLanguage. */
 :lang(zh) .panel-title,
 :lang(zh) .panel-badge,
-:lang(zh) .wb-sidebar-heading,
-:lang(zh) .wb-hosts-label,
 :lang(zh) .filer-columns,
 :lang(zh) .menu-shortcut,
 :lang(zh) .menu-heading,
@@ -549,8 +547,8 @@ textarea {
 /* A text field's focus indicator is the soft ring, not an outline: the ring
    is drawn outside the border so nothing in the layout shifts, and an outline
    on top of it would read as two rings. Domain files that used to draw their
-   own field ring (`.session-field`, the workbench fields, the Sender's search)
-   drop it for the same reason — this rule is the one definition. */
+   own field ring (`.session-field`, the Sender's search) drop it for the same
+   reason — this rule is the one definition. */
 input:focus,
 select:focus,
 textarea:focus {
@@ -579,4 +577,13 @@ textarea:focus-visible {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
   background-clip: content-box;
+}
+
+/* The quiet pulse shared by the Sender's sending tag and the panel button that
+   reports live work. One keyframe, one duration: a caller only sets the
+   animation. */
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
 }

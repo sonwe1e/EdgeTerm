@@ -108,8 +108,7 @@
 
 /* A transfer in progress, named in the panel's own title bar: the accent tint
    separates "something is moving" from the protocol badge beside it. The tint
-   drops to 12% and the word takes the accent ink, the same pair the workbench
-   badges and the tab workspace pill use. */
+   drops to 12% and the word takes the accent ink. */
 .panel-badge.is-transfer {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: var(--accent-ink);
@@ -137,8 +136,7 @@
 }
 
 /* Press feedback: the same selection tint every chrome control answers a
-   press with (see the :active rules on .btn, .sender-quick-button and
-   .wb-icon-button). */
+   press with (see the :active rules on .btn and .sender-quick-button). */
 .panel-action:active:not(:disabled) {
   color: var(--fg);
   background: var(--bg-active);
@@ -164,11 +162,11 @@
 /* A connection in flight is the one disabled state that must not look dead:
    the button keeps full weight and pulses in the "connecting" yellow, so
    "working" reads without the user having to guess why it is inert. The
-   `wb-pulse` keyframe lives in workbench.styles.css and is shared by the
-   workbench run dot, this button and the Sender's sending tag. */
+   `pulse` keyframe lives in foundation.styles.css and is shared by the
+   this button and the Sender's sending tag. */
 .panel-power.is-connecting {
   color: var(--yellow);
-  animation: wb-pulse 1.4s ease-in-out infinite;
+  animation: pulse 1.4s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

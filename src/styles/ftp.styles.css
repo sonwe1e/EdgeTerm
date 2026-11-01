@@ -26,7 +26,7 @@
 }
 
 /* The dual-pane workspace's own hero empty state: the title scales with the
-   panel font setting like the terminal's and the workbench's. */
+   panel font setting like the terminal's. */
 .ftp-session-state strong {
   color: var(--fg);
   font-size: calc(var(--panel-font-size) + 6px);
@@ -925,9 +925,9 @@
   font-size: var(--fs-sm);
 }
 
-/* fix: PD-05 — the first-run empty state names the file panel, Sender and
-   workbench alongside the primary action. Quiet cards keep the primary
-   action as the only accent; each carries a label, chord and explanation. */
+/* fix: PD-05 — the first-run empty state names the file panel and the
+   Sender alongside the primary action. Quiet cards keep the primary action
+   as the only accent; each carries a label, chord and explanation. */
 .term-empty-entries {
   display: flex;
   min-width: 0;

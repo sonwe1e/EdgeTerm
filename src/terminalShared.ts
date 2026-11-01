@@ -229,8 +229,8 @@ export const XTERM_THEMES: Record<ThemeMode, ITheme> = {
     brightWhite: "#a5a5a5",
   },
   // serialX's own terminal palettes (its TerminalPalette::DARK / ::LIGHT).
-  // Its plain red, green and yellow are the workbench's danger, success and
-  // warning, so device colours and chrome agree; on white "bright" cannot
+  // Its plain red, green and yellow are the danger, success and warning inks,
+  // so device colours and chrome agree; on white "bright" cannot
   // mean lighter or it would vanish, so the bright eight are the plain ones
   // lifted a little instead.
   "serialx-dark": {

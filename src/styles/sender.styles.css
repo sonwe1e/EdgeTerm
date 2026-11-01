@@ -94,8 +94,8 @@
   background: var(--bg-hover);
 }
 
-/* Press feedback: the selection tint, the same one .panel-action and
-   .wb-icon-button answer a press with. A filled control is left out — pressing
+/* Press feedback: the selection tint, the same one .panel-action answers a
+   press with. A filled control is left out — pressing
    it darkens its own fill instead (see .is-primary below), because the
    list-selection tint would read as a different button entirely. */
 .sender-quick-button:active:not(:disabled):not(.is-primary) {
@@ -809,8 +809,8 @@
 
 /* A command in flight. The load button is unavailable for the whole send,
    which on its own says nothing about *which* command is going; the pulsing
-   green rail on the tag's leading edge names it, and it is the same wb-pulse
-   the workbench run dot and the power button use. */
+   green rail on the tag's leading edge names it, and it is the same pulse
+   the power button uses. */
 .sender-quick-tag.is-sending .sender-command-load {
   position: relative;
 }
@@ -823,7 +823,7 @@
   bottom: 0;
   width: 2px;
   background: var(--green);
-  animation: wb-pulse 1.4s ease-in-out infinite;
+  animation: pulse 1.4s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

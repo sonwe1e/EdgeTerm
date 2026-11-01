@@ -678,10 +678,8 @@ dialog.dialog-backdrop.is-fallback[open] {
   background: var(--bg-hover);
 }
 
-/* Press feedback: the selection tint, the same one .panel-action,
-   .sender-quick-button and .wb-icon-button answer a press with. */
-/* Press feedback: the selection tint, the same one .panel-action,
-   .sender-quick-button and .wb-icon-button answer a press with. The filled
+/* Press feedback: the selection tint, the same one .panel-action and
+   .sender-quick-button answer a press with. The filled
    variants are left out — pressing them darkens their own fill instead (see
    below), because the list-selection tint would read as a different button
    entirely, and on .is-danger it would turn a red button navy. */

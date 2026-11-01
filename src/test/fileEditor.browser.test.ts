@@ -5,10 +5,10 @@ import { mount, browserAfterEach } from "./browserHarness";
 import { FileEditorDialog } from "../components/FileEditorDialog";
 import { openFileEditor, useFileEditor } from "../fileEditor";
 import { useStore } from "../store";
-import * as api from "../workbench/api";
+import * as api from "../editor/textFile";
 import "../styles.css";
 
-vi.mock("../workbench/api", () => ({
+vi.mock("../editor/textFile", () => ({
   readText: vi.fn(async () => ({
     path: "/etc/example.conf",
     content: "enabled=true\n",

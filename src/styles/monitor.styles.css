@@ -65,6 +65,60 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* --- resource trend sparklines -------------------------------------------
+   Shared by the status-bar resource monitor and the body of its popover. They
+   live in this sheet because it is the one the monitor UI owns; the colour
+   always comes from the semantic tokens, so all four themes hold and no hex
+   value is hard-coded here. The SVG is decorative — the number beside it is
+   the accessible value — so these rules only draw, and never carry meaning the
+   text does not already state. */
+
+.spark {
+  display: inline-block;
+  flex: none;
+  margin-left: var(--sp-6);
+  vertical-align: middle;
+  overflow: visible;
+  /* One tone colour feeds both the line and the fill, so the two can never
+     drift apart and a caller restyles the pair by setting `color`. */
+  color: var(--green);
+}
+
+/* Not enough samples yet (the first delta reading): a faint baseline reads as
+   "warming up" rather than a broken widget. */
+.spark.is-empty {
+  border-bottom: 1px dashed color-mix(in srgb, var(--fg-faint) 45%, transparent);
+}
+
+.spark-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.spark-area {
+  stroke: none;
+  fill: currentColor;
+  opacity: 0.15;
+}
+
+/* The hairline the area closes to: quieter than a border, so it reads as an
+   axis rather than the edge of a box. */
+.spark-base {
+  stroke: color-mix(in srgb, var(--fg-faint) 30%, transparent);
+  stroke-width: 1;
+}
+
+.spark.tone-warn {
+  color: var(--yellow);
+}
+
+.spark.tone-crit {
+  color: var(--red);
+}
+
 /* A 12px trend: enough to show a direction, thin enough to leave the reading
    the loudest thing in the cluster. */
 .spark-mini {

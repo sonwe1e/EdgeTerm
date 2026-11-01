@@ -3,8 +3,8 @@ import { errorInfo, errorText } from "./errorInfo";
 import { t } from "./i18n";
 import { ask } from "./nativeDialog";
 import { useStore } from "./store";
-import * as api from "./workbench/api";
-import type { TextFile } from "./workbench/types";
+import * as api from "./editor/textFile";
+import type { TextFile } from "./editor/editorTypes";
 
 export interface FileEditorTarget {
   id: string;

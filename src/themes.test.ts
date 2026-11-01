@@ -94,7 +94,7 @@ describe("every theme", () => {
 
   // The selected row is the one place a theme either carries a choice or loses
   // it: --bg-active sits under the session list, the sender list, the
-  // workbench tree, the CodeMirror selection and the expanded status button.
+  // editor selection and the expanded status button.
   // The dark half selects with a saturated blue at about 1.48:1 against its
   // panel; the light halves used to use a gray a few per cent away from theirs
   // (1.19:1), which read as a seam. 1.25:1 is the floor below which a
@@ -145,8 +145,8 @@ describe("pill inks", () => {
     { ink: "--panel-filer-ink", tint: "--panel-filer" },
   ] as const;
 
-  // Both strengths the rules use (the transfer pills hold 10%, the badges and
-  // the tab workspace pill 12%), because the weaker tint is the harder case on
+  // Both strengths the rules use (the transfer pills hold 10%, the badges
+  // 12%), because the weaker tint is the harder case on
   // the light canvases and the stronger one is the harder case on the dark.
   // --bg-app is the base: it is the worse of the two surfaces a pill sits on in
   // every palette — the tab strip paints the accent pill on it, and it is
