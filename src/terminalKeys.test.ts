@@ -196,6 +196,32 @@ describe("copy, paste and select all keys", () => {
   });
 });
 
+describe("configured keys take precedence over shell compatibility mappings", () => {
+  it("leaves an Alt+arrow app shortcut to the window handler", () => {
+    bind({ nextTab: chord("ArrowRight", { alt: true }) });
+    const controller = createController();
+    const input = vi.spyOn(controller.term, "input");
+    const event = press("ArrowRight", { altKey: true });
+
+    expect(filter(controller, event)).toBe(false);
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(input).not.toHaveBeenCalled();
+  });
+
+  it("uses a rebound Alt+Backspace paste key even with the control-H profile", () => {
+    bind({ paste: chord("Backspace", { alt: true }) });
+    const controller = createController();
+    controller.setBackspace("controlH");
+    const input = vi.spyOn(controller.term, "input");
+    const event = press("Backspace", { altKey: true });
+
+    expect(filter(controller, event)).toBe(false);
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(clipboard(controller).pasteFromClipboard).toHaveBeenCalledTimes(1);
+    expect(input).not.toHaveBeenCalled();
+  });
+});
+
 describe("Backspace", () => {
   it("is left to xterm's ^? unless the profile asks for ^H", () => {
     const controller = createController();

@@ -125,6 +125,18 @@ it.skipIf(IS_MAC)(
   },
 );
 
+it("honors a user-bound Alt+arrow tab shortcut from the real terminal", async () => {
+  await fixture();
+  useStore.getState().setShortcuts({
+    ...defaultShortcuts(),
+    nextTab: { ctrl: false, alt: true, shift: false, meta: false, code: "ArrowRight" },
+  });
+  await userEvent.keyboard("{Alt>}{ArrowRight}{/Alt}");
+  expect(useStore.getState().activeId).toBe(ids[1]);
+  expect(writes).toEqual([]);
+  expect(document.querySelector(".menu-dropdown")).toBeNull();
+});
+
 it("keeps Alt+Delete in the terminal, including repeated Alt keydown, and still opens the menu on bare Alt", async () => {
   const controller = await fixture();
   await userEvent.keyboard("{Alt>}{Delete}{/Alt}");

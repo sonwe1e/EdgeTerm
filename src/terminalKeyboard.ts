@@ -107,6 +107,36 @@ export class TerminalKeyboard {
       return false;
     }
 
+    // The shortcut table, copy / paste / select all included (#47). Those
+    // three are the terminal's own and run right here; every other match
+    // is left unhandled — not cancelled — so the window-level handler
+    // receives it instead of xterm turning it into input. User bindings
+    // take precedence over the shell compatibility mappings below.
+    const shortcut = matchAppShortcut(event);
+    if (shortcut) {
+      switch (shortcut.kind) {
+        case "copy":
+          // A copy key that is plain Ctrl+letter is a shell key as well
+          // (Ctrl+C interrupts), so with nothing selected it goes on to the
+          // shell, as in Windows Terminal. Any other chord is consumed even
+          // then: Ctrl+Shift+C would otherwise arrive as a stray ^C.
+          if (!this.context.term.hasSelection() && isControlLetter(event)) return true;
+          event.preventDefault();
+          this.context.clipboard.copySelection();
+          return false;
+        case "paste":
+          event.preventDefault();
+          this.context.clipboard.pasteFromClipboard();
+          return false;
+        case "selectAll":
+          event.preventDefault();
+          this.context.term.selectAll();
+          return false;
+        default:
+          return false;
+      }
+    }
+
     // Alt+arrow word jumps. xterm 5 rewrote Alt+←/→ into the readline
     // word-motion keys (ESC b / ESC f on macOS, Ctrl+arrow elsewhere) and
     // Alt+↑/↓ into Ctrl+↑/↓ off macOS; xterm 6 dropped that (#5346) and
@@ -137,38 +167,6 @@ export class TerminalKeyboard {
         true,
       );
       return false;
-    }
-
-    // The shortcut table, copy / paste / select all included (#47). Those
-    // three are the terminal's own and run right here; every other match
-    // is left unhandled — not cancelled — so the window-level handler
-    // receives it instead of xterm turning it into input. Plain
-    // Ctrl+letter and Alt+letter are never matched unless the user bound
-    // them: they are the shell's control characters and readline's Meta
-    // layer.
-    const shortcut = matchAppShortcut(event);
-    if (shortcut) {
-      switch (shortcut.kind) {
-        case "copy":
-          // A copy key that is plain Ctrl+letter is a shell key as well
-          // (Ctrl+C interrupts), so with nothing selected it goes on to the
-          // shell, as in Windows Terminal. Any other chord is consumed even
-          // then: Ctrl+Shift+C would otherwise arrive as a stray ^C.
-          if (!this.context.term.hasSelection() && isControlLetter(event)) return true;
-          event.preventDefault();
-          this.context.clipboard.copySelection();
-          return false;
-        case "paste":
-          event.preventDefault();
-          this.context.clipboard.pasteFromClipboard();
-          return false;
-        case "selectAll":
-          event.preventDefault();
-          this.context.term.selectAll();
-          return false;
-        default:
-          return false;
-      }
     }
 
     // WebKit answers plain ⌘C / ⌘V itself (its copy and paste editing
