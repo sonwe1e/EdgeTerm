@@ -149,3 +149,18 @@ Lead 负责 `src/terminal.ts`、`src/actions.ts`、`src/locales/*`、`src/test/*
 - 真实隧道端到端：应用窗口内点 `http://localhost:6006/` 建转发并在系统浏览器打开（后端转发与前端分类各自有测试，但没在窗口里串起来验过）。
 - 高输出下的链接识别/跟随性能走查（本轮未做基准测量）。
 - 8 路并发/512 MiB 上限/客户端中途断开的资源回收；macOS 与 Linux 构建。
+
+## 1.6.0 打包产物（2026-11-02）
+
+- 版本从 1.5.1 提升到 1.6.0（兼容性新功能，minor），四个版本文件由 `npm run version:set 1.6.0` 同步，`version:check` 通过；提交 `57cd22d`。
+- 在 Windows x64 上用受管 runner 执行 `./dev.ps1 tauri:build --bundles nsis`（Node 24.19.0 + 当前 rustup 工具链 + 已预置的 NSIS），release 构建 3m20s；`edgeterm.exe` 与安装器的文件版本均为 1.6.0。
+- 产物在 `artifacts/release-1.6.0/`（本地验证产物，未发布、未推送、未签名）：
+
+| 附件 | 字节 | SHA-256 |
+| --- | --- | --- |
+| EdgeTerm_1.6.0_x64-setup.exe | 4,097,661 | `745792c1a7054eadce5309561811aa379fc61d247786a581a2c2f21982b5fdd5` |
+| EdgeTerm_1.6.0_x64-portable.zip | 5,097,433 | `2c9201c2d950efc0b9793ae2d1c641d3feecbfcfa7ecdcd1af09e3e8fcb32556` |
+| EdgeTerm_1.6.0_windows-diagnostics.zip | 5,471 | `e2e841260726ca0705dc400dcdce1303ec5490bd621e8690ae48733e7eaef0bc` |
+
+- `npm run release:package -- --check` 三个附件与 `SHA256SUMS.txt` 全部匹配。
+- 未验证：安装、卸载、升级覆盖与数字签名；未在干净机器上运行安装器；未发布到 GitHub（本 fork 的自动更新流程仍停用）。
