@@ -26,6 +26,14 @@ interface Props {
    * the DOM. Not called for keyboard resizing or an unmount.
    */
   onEnd?: (committed: boolean) => void;
+  /**
+   * The size the drag is heading for, in pixels, shown beside the pointer
+   * while the drag lasts. Read through a getter because the number changes
+   * every frame while the splitter itself does not re-render.
+   */
+  readout?: () => number | null;
+  /** A double-click: restore the size this splitter started from. */
+  onReset?: () => void;
 }
 
 interface Drag {
@@ -35,7 +43,7 @@ interface Drag {
   removeListeners: () => void;
 }
 
-export function Splitter({ orientation, onResize, onDragStart, onEnd }: Props) {
+export function Splitter({ orientation, onResize, onDragStart, onEnd, readout, onReset }: Props) {
   const t = useT();
   const [dragging, setDragging] = useState(false);
   const drag = useRef<Drag | null>(null);
@@ -52,10 +60,27 @@ export function Splitter({ orientation, onResize, onDragStart, onEnd }: Props) {
   began.current = onDragStart;
   const ended = useRef(onEnd);
   ended.current = onEnd;
+  const sizeNow = useRef(readout);
+  sizeNow.current = readout;
+  const hint = useRef<HTMLDivElement | null>(null);
   const batch = useRef<ReturnType<typeof createFrameBatch> | null>(null);
   if (batch.current === null) {
     batch.current = createFrameBatch((delta) => latest.current(delta));
   }
+
+  // The size readout rides the pointer instead of the React tree: a drag is a
+  // burst of frames, the number changes every frame, and nothing else on the
+  // screen does. Writing textContent and one transform keeps the panel out of
+  // it. Positioned from the pointer rather than from the splitter so the label
+  // sits beside the hand, not beside the old boundary.
+  const placeReadout = useCallback((x: number, y: number) => {
+    const element = hint.current;
+    if (!element) return;
+    const value = sizeNow.current?.() ?? null;
+    if (value === null) return;
+    element.textContent = `${Math.round(value)}px`;
+    element.style.transform = `translate(${Math.round(x + 14)}px, ${Math.round(y + 14)}px)`;
+  }, []);
 
   const finish = useCallback((commit: boolean, updateState = true) => {
     const active = drag.current;
@@ -134,8 +159,9 @@ export function Splitter({ orientation, onResize, onDragStart, onEnd }: Props) {
       document.addEventListener("visibilitychange", visibility);
       began.current?.(target);
       setDragging(true);
+      placeReadout(event.clientX, event.clientY);
     },
-    [finish, orientation],
+    [finish, orientation, placeReadout],
   );
 
   const handleMove = useCallback(
@@ -151,9 +177,10 @@ export function Splitter({ orientation, onResize, onDragStart, onEnd }: Props) {
       if (delta !== 0) {
         active.last = current;
         batch.current!.push(delta);
+        placeReadout(event.clientX, event.clientY);
       }
     },
-    [finish, orientation],
+    [finish, orientation, placeReadout],
   );
 
   const handleLostCapture = useCallback(
@@ -181,16 +208,29 @@ export function Splitter({ orientation, onResize, onDragStart, onEnd }: Props) {
   );
 
   return (
-    <div
-      className={`splitter is-${orientation}${dragging ? " is-dragging" : ""}`}
-      role="separator"
-      aria-orientation={orientation}
-      aria-label={t("splitter.resize")}
-      tabIndex={0}
-      onKeyDown={handleKeyDown}
-      onPointerDown={handleDown}
-      onPointerMove={handleMove}
-      onLostPointerCapture={handleLostCapture}
-    />
+    <>
+      <div
+        className={`splitter is-${orientation}${dragging ? " is-dragging" : ""}`}
+        role="separator"
+        aria-orientation={orientation}
+        aria-label={t("splitter.resize")}
+        tabIndex={0}
+        onKeyDown={handleKeyDown}
+        onPointerDown={handleDown}
+        onPointerMove={handleMove}
+        onLostPointerCapture={handleLostCapture}
+        onDoubleClick={
+          onReset
+            ? (event) => {
+                event.preventDefault();
+                onReset();
+              }
+            : undefined
+        }
+      />
+      {dragging && readout ? (
+        <div ref={hint} className="splitter-readout" aria-hidden="true" />
+      ) : null}
+    </>
   );
 }

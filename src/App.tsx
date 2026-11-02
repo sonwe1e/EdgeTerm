@@ -47,6 +47,7 @@ import { matchAppShortcut } from "./shortcuts";
 import {
   clampBottom,
   clampSide,
+  DEFAULT_PANEL_SIZING,
   fitSides,
   loadPanelSizing,
   loadPanelSizingPreference,
@@ -648,6 +649,19 @@ export default function App() {
     else setRightWidth(width);
   };
 
+  // A double-click on a side dock's splitter gives that dock its default
+  // width back. The same clamp the pointer meets decides what the default is
+  // on this window, so a narrow window cannot restore a width that would
+  // squeeze the terminal away.
+  const resetSide = (side: "left" | "right") => {
+    const width = clampSide(DEFAULT_PANEL_SIZING[side], window.innerWidth, otherShownSide(side));
+    mainRef.current?.style.setProperty(
+      side === "left" ? "--dock-left-w" : "--dock-right-w",
+      `${width}px`,
+    );
+    commitSide(side, width);
+  };
+
   const beginSideDrag = (side: "left" | "right", target: HTMLDivElement) => {
     target.dataset.preview = "";
     sideDrag.current = {
@@ -754,6 +768,8 @@ export default function App() {
                 onDragStart={(target) => beginSideDrag("left", target)}
                 onResize={(delta) => applySideFrame("left", delta)}
                 onEnd={() => endSideDrag()}
+                readout={() => sideDrag.current?.shown ?? null}
+                onReset={() => resetSide("left")}
               />
             </>
           )}
@@ -770,6 +786,8 @@ export default function App() {
                 onDragStart={(target) => beginSideDrag("right", target)}
                 onResize={(delta) => applySideFrame("right", delta)}
                 onEnd={() => endSideDrag()}
+                readout={() => sideDrag.current?.shown ?? null}
+                onReset={() => resetSide("right")}
               />
               <DockArea dock="right" panels={right} size={rightWidth} render={renderPanel} />
             </>

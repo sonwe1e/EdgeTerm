@@ -10,6 +10,15 @@ import {
 } from "react";
 import { create } from "zustand";
 
+import {
+  type DockWeights,
+  equalWeights,
+  loadDockWeights,
+  panelSize,
+  previewSplit,
+  saveDockWeights,
+  weightOf,
+} from "../dockSplits";
 import { DOCK_NAMES, dockLabels, dockOf, panelLabels, type PanelDock } from "../panelDock";
 import { type PanelName, useStore } from "../store";
 import { useT } from "../useT";
@@ -25,8 +34,6 @@ import { Splitter } from "./Splitter";
 const DRAG_THRESHOLD = 4;
 /** Share of the app body, from an edge inward, that docks to that edge. */
 const EDGE_BAND = 0.25;
-/** Smallest share a panel keeps when a splitter divides a dock. */
-const MIN_SLOT_PX = 72;
 const INTERACTIVE = "button, input, select, textarea, label, a";
 
 interface Rect {
@@ -244,30 +251,89 @@ export function DockArea({ dock, panels, size, render }: DockAreaProps) {
   const dragging = usePanelDrag((s) => s.panel);
 
   // Splitters between panels share the dock out by weight (flex-grow), so
-  // the split survives the dock being resized.
-  const [weights, setWeights] = useState<Partial<Record<PanelName, number>>>({});
-  const resize = (a: PanelName, b: PanelName, delta: number) => {
+  // the split survives the dock being resized. The arrangement is stored per
+  // dock: a panel moved to another dock brings its share with it, and the
+  // split a user settled on is still there at the next launch.
+  const [weights, setWeights] = useState<DockWeights>(() => loadDockWeights(dock, panels));
+
+  // A splitter drag previews; the panels take their new shares on release.
+  // Re-rendering both panels per frame would rebuild two lists for a gesture
+  // that changes nothing until it ends, so the drag moves one guide and
+  // nothing else; the same model the side docks' own edge follows.
+  const splitDrag = useRef<{
+    from: PanelName;
+    to: PanelName;
+    start: DockWeights;
+    total: number;
+    target: HTMLDivElement;
+    extent: number;
+    next: DockWeights;
+    shownFrom: number;
+    shownTo: number;
+  } | null>(null);
+
+  const beginSplitDrag = (from: PanelName, to: PanelName, target: HTMLDivElement) => {
     const element = ref.current;
     if (!element) return;
-    // The extent is read here, outside the updater: a state updater must be
-    // pure, and reading layout inside one forces a synchronous reflow that
-    // React may repeat on every invocation of the updater — once per render
-    // pass, not once per drag frame.
     const extent = side ? element.clientHeight : element.clientWidth;
     if (extent <= 0) return;
-    setWeights((current) => {
-      const weight = (panel: PanelName) => current[panel] ?? 1;
-      const total = panels.reduce((sum, panel) => sum + weight(panel), 0);
-      const perWeight = extent / total;
-      const min = MIN_SLOT_PX / perWeight;
-      const wa = weight(a);
-      const wb = weight(b);
-      const change = Math.min(Math.max(delta / perWeight, min - wa), wb - min);
-      if (change === 0 || wa + change < min || wb - change < min) {
-        return current;
-      }
-      return { ...current, [a]: wa + change, [b]: wb - change };
+    target.dataset.preview = "";
+    splitDrag.current = {
+      from,
+      to,
+      start: weights,
+      total: 0,
+      target,
+      extent,
+      next: weights,
+      shownFrom: panelSize(panels, weights, from, extent),
+      shownTo: panelSize(panels, weights, to, extent),
+    };
+  };
+
+  const applySplitFrame = (delta: number) => {
+    const live = splitDrag.current;
+    if (!live) return;
+    live.total += delta;
+    const preview = previewSplit({
+      panels,
+      weights: live.start,
+      from: live.from,
+      to: live.to,
+      delta: live.total,
+      extent: live.extent,
     });
+    if (!preview) return;
+    live.next = preview.weights;
+    live.shownFrom = preview.fromSize;
+    live.shownTo = preview.toSize;
+    // A side dock stacks its panels, so its splitters are horizontal and the
+    // guide travels in Y; the bottom dock lays them side by side and the
+    // guide travels in X.
+    live.target.style.setProperty(
+      side ? "--splitter-preview-y" : "--splitter-preview-x",
+      `${preview.offset}px`,
+    );
+  };
+
+  const endSplitDrag = () => {
+    const live = splitDrag.current;
+    if (!live) return;
+    splitDrag.current = null;
+    live.target.removeAttribute("data-preview");
+    live.target.style.removeProperty("--splitter-preview-x");
+    live.target.style.removeProperty("--splitter-preview-y");
+    // A release and an interruption alike keep the last guide position, the
+    // contract the side docks' edge splitter already has.
+    setWeights(live.next);
+    saveDockWeights(dock, panels, live.next);
+  };
+
+  // Double-click: back to the even split, the arrangement the dock opened on.
+  const resetSplit = () => {
+    const next = equalWeights(panels);
+    setWeights(next);
+    saveDockWeights(dock, panels, next);
   };
 
   const drag = useRef<Pending | null>(null);
@@ -390,7 +456,14 @@ export function DockArea({ dock, panels, size, render }: DockAreaProps) {
           {index > 0 && (
             <Splitter
               orientation={side ? "horizontal" : "vertical"}
-              onResize={(delta) => resize(panels[index - 1], panel, delta)}
+              onDragStart={(target) => beginSplitDrag(panels[index - 1], panel, target)}
+              onResize={(delta) => applySplitFrame(delta)}
+              onEnd={() => endSplitDrag()}
+              readout={() => {
+                const live = splitDrag.current;
+                return live ? live.shownFrom : null;
+              }}
+              onReset={resetSplit}
             />
           )}
           <div
@@ -398,7 +471,7 @@ export function DockArea({ dock, panels, size, render }: DockAreaProps) {
             data-panel={panel}
             data-focus-region="panel"
             tabIndex={-1}
-            style={{ flex: `${weights[panel] ?? 1} 1 0px` }}
+            style={{ flex: `${weightOf(weights, panel)} 1 0px` }}
             onPointerDown={(event) => onPointerDown(panel, event)}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerEnd}

@@ -26,11 +26,18 @@ export const SENDER_SAVE_LEVEL_KEY = "edgeterm.senderSaveLevel";
 /** Applications files were last opened with; see the Filer panel. */
 export const FILER_OPEN_WITH_KEY = "edgeterm.filerOpenWith";
 
-/** Dragged widths of the Filer's columns; see filerColumns.ts. */
+/**
+ * Dragged widths of the docked Filer's old table columns. The dock is a list
+ * now, so nothing reads or writes this; the key stays registered so an older
+ * settings export still imports cleanly and "restore defaults" still clears it.
+ */
 export const FILER_COLUMNS_KEY = "edgeterm.filerColumns";
 
 /** Whether the Filer shows its size column; see filerColumns.ts. */
 export const FILER_SIZE_VISIBLE_KEY = "edgeterm.filerSizeVisible";
+
+/** How panels sharing one dock divide it; see dockSplits.ts. */
+export const DOCK_SPLITS_KEY = "edgeterm.dockSplits";
 
 /** Concurrency and durability of file transfers; see transferSettings.ts. */
 export const TRANSFER_OPTIONS_KEY = "edgeterm.transfer-options";
@@ -49,6 +56,7 @@ export const PANEL_PREFERENCE_KEYS: readonly string[] = [
   FILER_OPEN_WITH_KEY,
   FILER_COLUMNS_KEY,
   FILER_SIZE_VISIBLE_KEY,
+  DOCK_SPLITS_KEY,
   TRANSFER_OPTIONS_KEY,
   RESOURCE_MONITOR_KEY,
 ];

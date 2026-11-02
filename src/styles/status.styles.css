@@ -182,7 +182,7 @@ button.status-item:focus-visible {
 /* --- splitters ------------------------------------------------------------ */
 
 /* The splitter is the 1px divider itself; an 11px hit area (`::after`)
-   straddles it, and a 3px accent line (`::before`) lights up as soon as the
+   straddles it, and a 4px accent line (`::before`) lights up as soon as the
    pointer enters that area.
 
    Two details keep the boundary from feeling dead. The resize cursor sits on
@@ -201,7 +201,7 @@ button.status-item:focus-visible {
   background: var(--border-strong);
 }
 
-/* Keyboard focus is shown by the same 3px accent line the pointer gets, so
+/* Keyboard focus is shown by the same accent line the pointer gets, so
    the browser's default ring (which would trace a 1px-wide strip) is off. */
 .splitter:focus-visible {
   outline: none;
@@ -247,11 +247,13 @@ button.status-item:focus-visible {
 .splitter.is-vertical::before {
   top: 0;
   bottom: 0;
-  left: -1px;
-  width: 3px;
+  left: -1.5px;
+  width: 4px;
 }
 
-/* The guide moves during a side-dock drag; the dock itself moves on release. */
+/* The guide moves during a dock drag; the dock itself moves on release. A side
+   dock's own edge is vertical and travels in X; the splitters that divide a
+   side dock are horizontal and travel in Y, so both carry the same line. */
 .splitter.is-vertical[data-preview]::before {
   transform: translateX(var(--splitter-preview-x, 0px));
 }
@@ -259,8 +261,32 @@ button.status-item:focus-visible {
 .splitter.is-horizontal::before {
   left: 0;
   right: 0;
-  top: -1px;
-  height: 3px;
+  top: -1.5px;
+  height: 4px;
+}
+
+.splitter.is-horizontal[data-preview]::before {
+  transform: translateY(var(--splitter-preview-y, 0px));
+}
+
+/* The size the drag is heading for, beside the pointer. Positioned by the
+   splitter itself (fixed, translated per frame); pointer-events off so it can
+   never swallow the movement it is describing. */
+.splitter-readout {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 200;
+  padding: 2px var(--sp-6);
+  border: 1px solid var(--border-menu);
+  border-radius: var(--radius-sm);
+  background: var(--bg-menu);
+  box-shadow: var(--shadow-pop);
+  color: var(--fg);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .splitter:hover::before,
