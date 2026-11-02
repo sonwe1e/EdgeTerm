@@ -1,6 +1,6 @@
 import { createElement as h } from "react";
 import { afterEach, expect, it } from "vitest";
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import App from "../App";
 import { useStore, type Tab } from "../store";
 import { disposeController, getController } from "../terminalRegistry";
@@ -134,6 +134,34 @@ it("walks the shell cursor left with Alt+click and keeps the click in the normal
   expect(sent()).toBe("\x1b[D".repeat(18));
   expect(controller.term.hasSelection()).toBe(false);
   expect(controller.term.buffer.active.cursorX).toBe(cursorBefore);
+});
+
+it("keeps Alt+click in the terminal and still opens the menubar on bare Alt", async () => {
+  const controller = await fixture();
+  await output("user@edge:~$ echo hi");
+  expect(controller.term.buffer.active.cursorX).toBe(20);
+  const { x, y } = cellPoint(2, 0);
+  // The ALT bit on mouse.press marks only the pointer events; it raises no
+  // keyboard events, so Alt's own keydown and keyup must come from the
+  // keyboard. That is the real Alt+click order: hold Alt, click, release.
+  await userEvent.keyboard("{Alt>}");
+  await mouse.press(x, y, ALT);
+  await mouse.release(x, y, ALT);
+  await userEvent.keyboard("{/Alt}");
+  await twoFrames();
+  // The pointer spent the Alt, so releasing it must not open the menubar.
+  expect(document.querySelector(".menu-dropdown")).toBeNull();
+  // The click itself is untouched: 20 → 2 is 18 cells left (CSI D).
+  expect(sent()).toBe("\x1b[D".repeat(18));
+
+  // A bare Alt afterwards still opens the menubar.
+  await userEvent.keyboard("{Alt}");
+  await twoFrames();
+  expect(document.querySelector(".menu-dropdown") !== null).toBe(true);
+  // Close it again so no menu state leaks past this case.
+  await userEvent.keyboard("{Escape}");
+  await twoFrames();
+  expect(document.querySelector(".menu-dropdown")).toBeNull();
 });
 
 it("counts wide characters once per cell so a CJK command line lands where it was clicked", async () => {

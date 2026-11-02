@@ -888,8 +888,10 @@ export function MenuBar(props: Props) {
 
   // Alt / F10 reach the menubar from wherever focus is. Alt counts only when
   // it is pressed and released on its own: Alt+F4 / Alt+letter belong to the
-  // window and the shell. F10 is left to a handler that already claimed it
-  // (the terminal takes its function keys on keydown).
+  // window and the shell, and any pointer press during the hold (Alt+click
+  // cursor moves, Alt+drag block selection) belongs to the terminal as well.
+  // F10 is left to a handler that already claimed it (the terminal takes its
+  // function keys on keydown).
   const firstTitle = menus[0]?.title ?? null;
   useEffect(() => {
     let altDown = false;
@@ -923,6 +925,13 @@ export function MenuBar(props: Props) {
       } else if (altDown) {
         altChord = true;
       }
+    };
+    // Pointer input is invisible to that tracker, so a press while Alt is
+    // held is counted here: the Alt has been used by the pointer (Alt+click
+    // cursor moves, Alt+drag block selection), not pressed on its own.
+    // Capture, like trackAlt, before a target can stop the propagation.
+    const onPointerDown = () => {
+      if (altDown) altChord = true;
     };
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target;
@@ -960,11 +969,13 @@ export function MenuBar(props: Props) {
       altChord = false;
     };
     document.addEventListener("keydown", trackAlt, true);
+    document.addEventListener("pointerdown", onPointerDown, true);
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("keyup", onKeyUp);
     window.addEventListener("blur", reset);
     return () => {
       document.removeEventListener("keydown", trackAlt, true);
+      document.removeEventListener("pointerdown", onPointerDown, true);
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("blur", reset);
