@@ -123,8 +123,19 @@ async function dragSelection(fromCol: number, toCol: number, row: number) {
   await twoFrames();
 }
 
+/**
+ * The bytes a pure delete sends: the walk left, the forward deletes, then the
+ * walk right that puts the shell cursor back where it began.
+ */
 const walkDelete = (walkLeft: number, deletes: number) =>
+  "\x1b[D".repeat(walkLeft) + "\x1b[3~".repeat(deletes) + "\x1b[C".repeat(walkLeft - deletes);
+
+/** The same walk and delete without the walk back: a replacement's first half. */
+const walkAndDelete = (walkLeft: number, deletes: number) =>
   "\x1b[D".repeat(walkLeft) + "\x1b[3~".repeat(deletes);
+
+/** Waits until a replacement's walk back has reached the session. */
+const settleRestore = () => new Promise<void>((resolve) => setTimeout(resolve, 20));
 
 afterEach(async () => {
   await browserAfterEach();
@@ -159,8 +170,31 @@ it("replaces a dragged selection when a character is typed, delete first", async
 
   await userEvent.keyboard("X");
   await twoFrames();
-  expect(sent()).toBe(walkDelete(7, 4) + "X");
+  await settleRestore();
+  expect(sent()).toBe(walkAndDelete(7, 4) + "X" + "\x1b[C".repeat(3));
   expect(controller.term.hasSelection()).toBe(false);
+});
+
+it("deletes a second selection after the shell has redrawn the line", async () => {
+  const controller = await fixture();
+  await output("user@edge:~$ echo hi");
+  await dragSelection(13, 17, 0);
+  await userEvent.keyboard("{Delete}");
+  await twoFrames();
+  // "echo" (walk 7, delete 4) and the three characters " hi" walked back over.
+  expect(sent()).toBe(walkDelete(7, 4));
+
+  // The shell redraws the shortened line and erases the stale tail; its
+  // cursor is back at the end, where the first edit started.
+  await output("\ruser@edge:~$  hi\x1b[K");
+  expect(controller.term.buffer.active.cursorX).toBe(16);
+  await dragSelection(14, 16, 0);
+  await userEvent.keyboard("{Delete}");
+  await twoFrames();
+  // The second selection is editable again: walk 2, delete 2, nothing to walk
+  // back over. Before the fix the cursor sat at column 13 and this reached
+  // past it, so a single Delete went out instead.
+  expect(sent()).toBe(walkDelete(2, 2));
 });
 
 it("keeps Delete on an output-line selection exactly as before", async () => {

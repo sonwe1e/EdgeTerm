@@ -3,7 +3,7 @@ import { readClipboardText, writeClipboardText } from "./api";
 import { type ProgramClipboardMode } from "./osc52";
 import { IS_MAC, IS_WINDOWS } from "./platform";
 import { needsPasteWarning } from "./terminalPaste";
-import { selectionDeleteSequence } from "./terminalSelectionEdit";
+import { scheduleSelectionRestore, selectionEdit } from "./terminalSelectionEdit";
 import { RightClickAction } from "./terminalShared";
 import { errorMessage, type TransferNoticeKind } from "./terminalTransfer";
 
@@ -158,20 +158,23 @@ export class TerminalClipboard {
   /**
    * Pastes without asking — what the confirmation dialog calls back once
    * the user has said yes, and the only path that may skip the check.
-   * A paste replaces an editable selection, as in every editor: the
-   * delete sequence is sent first so the shell sees [delete, paste].
+   * A paste replaces an editable selection, as in every editor: the delete
+   * sequence is sent first so the shell sees [delete, paste, walk back]. The
+   * walk back is what lets the selection after the paste be edited again; it
+   * rides a task boundary because `term.paste` has already sent synchronously.
    */
   writePaste(text: string) {
     if (this.context.disposed || this.context.locked) return;
-    const sequence = selectionDeleteSequence(this.context.term, {
+    const edit = selectionEdit(this.context.term, {
       commandRunning: this.context.commandRunning,
       locked: this.context.locked,
     });
-    if (sequence !== null) {
-      this.context.term.input(sequence, true);
+    if (edit !== null) {
+      this.context.term.input(edit.deleteSequence, true);
       this.context.term.clearSelection();
     }
     this.context.term.paste(text);
+    if (edit !== null) scheduleSelectionRestore(this.context.term, edit.restore);
   }
 
   /** Edit → Warn Before Multi-line Paste. */

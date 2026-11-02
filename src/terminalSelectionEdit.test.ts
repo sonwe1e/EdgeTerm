@@ -72,9 +72,20 @@ const filter = (controller: TerminalController, event: KeyboardEvent) =>
 const select = (controller: TerminalController, col: number, row: number, length: number) =>
   controller.term.select(col, row, length);
 
-/** "\x1b[D" × walk + "\x1b[3~" × deletes — the sequence the shell receives. */
+/**
+ * "\x1b[D" × walk + "\x1b[3~" × deletes + "\x1b[C" × (walk − deletes) — a
+ * pure delete walks the shell cursor back to where it began, so the text after
+ * the selection is input again and the next selection can be edited.
+ */
 const walkDelete = (walkLeft: number, deletes: number) =>
+  "\x1b[D".repeat(walkLeft) + "\x1b[3~".repeat(deletes) + "\x1b[C".repeat(walkLeft - deletes);
+
+/** The same walk and delete without the walk back: what a replacement sends first. */
+const walkAndDelete = (walkLeft: number, deletes: number) =>
   "\x1b[D".repeat(walkLeft) + "\x1b[3~".repeat(deletes);
+
+/** Lets the task that carries a replacement's walk back run. */
+const settleRestore = () => new Promise<void>((resolve) => setTimeout(resolve, 5));
 
 afterEach(() => {
   for (const controller of controllers.splice(0)) controller.dispose();
@@ -151,26 +162,64 @@ describe("deleting and replacing a selection on the input line", () => {
     expect(data).toHaveBeenCalledWith(walkDelete(11, 5));
   });
 
+  it("deletes a second selection after the shell redraws the shortened line", async () => {
+    const { controller, data } = fixture();
+    // The reported defect: the first edit used to leave the shell's cursor at
+    // the selection's start, so a second selection ending to its right was
+    // refused and only a single Delete at the cursor went out.
+    await write(controller, "$ echo hello world");
+    select(controller, 7, 0, 5);
+    expect(filter(controller, press("Delete"))).toBe(false);
+    expect(data).toHaveBeenLastCalledWith(walkDelete(11, 5));
+
+    // The shell redraws the shortened line, erases the stale tail and leaves
+    // its cursor at the end: the state the real session ends up in.
+    await write(controller, "\r$ echo  world\x1b[K");
+    expect(controller.term.buffer.active.cursorX).toBe(13);
+    select(controller, 8, 0, 5);
+    data.mockClear();
+
+    expect(filter(controller, press("Delete"))).toBe(false);
+    expect(data).toHaveBeenLastCalledWith(walkDelete(5, 5));
+  });
+
+  it("counts an astral character as one step", async () => {
+    const { controller, data } = fixture();
+    // "$ 😀ab": the emoji occupies cells 2-3, so the cursor is at 6 and the
+    // three characters to its left are 😀, a and b — not four UTF-16 units.
+    await write(controller, "$ 😀ab");
+    select(controller, 2, 0, 2);
+
+    expect(filter(controller, press("Delete"))).toBe(false);
+    expect(data).toHaveBeenLastCalledWith(walkDelete(3, 1));
+  });
+
   it("sends the delete before a printable key and lets xterm type the character", async () => {
     const { controller, data } = fixture();
     await write(controller, "$ echo hello world");
     select(controller, 7, 0, 5);
 
     // True hands the key to xterm, whose keypress sends the character after
-    // the synchronous term.input above — replace, not delete-then-type.
+    // the synchronous term.input above — replace, not delete-then-type. The
+    // walk back follows the character so it cannot land in the hole.
     expect(filter(controller, press("KeyX"))).toBe(true);
     expect(data).toHaveBeenCalledTimes(1);
-    expect(data).toHaveBeenCalledWith(walkDelete(11, 5));
+    expect(data).toHaveBeenCalledWith(walkAndDelete(11, 5));
     expect(controller.term.hasSelection()).toBe(false);
+
+    await settleRestore();
+    expect(data).toHaveBeenLastCalledWith("\x1b[C".repeat(6));
   });
 
-  it("replaces with a shifted printable key", async () => {
+  it("replaces with a shifted printable key and walks back after it", async () => {
     const { controller, data } = fixture();
     await write(controller, "$ echo hello world");
     select(controller, 7, 0, 5);
 
     expect(filter(controller, press("KeyX", { shiftKey: true }, "X"))).toBe(true);
-    expect(data).toHaveBeenCalledWith(walkDelete(11, 5));
+    expect(data).toHaveBeenCalledWith(walkAndDelete(11, 5));
+    await settleRestore();
+    expect(data).toHaveBeenLastCalledWith("\x1b[C".repeat(6));
   });
 
   it("counts characters, not cells, across wide characters", async () => {
@@ -325,8 +374,24 @@ describe("paste and composition replace a selection", () => {
     select(controller, 7, 0, 5);
 
     controller.writePaste("bye");
-    expect(data.mock.calls.map(([text]) => text)).toEqual([walkDelete(5, 5), "bye"]);
+    await settleRestore();
+    // The selection ended at the cursor, so there is nothing to walk back over.
+    expect(data.mock.calls.map(([text]) => text)).toEqual([walkAndDelete(5, 5), "bye"]);
     expect(controller.term.hasSelection()).toBe(false);
+  });
+
+  it("walks back after a paste that replaced a mid-line selection", async () => {
+    const { controller, data } = fixture();
+    await write(controller, "$ echo hello world");
+    select(controller, 7, 0, 5);
+
+    controller.writePaste("bye");
+    await settleRestore();
+    expect(data.mock.calls.map(([text]) => text)).toEqual([
+      walkAndDelete(11, 5),
+      "bye",
+      "\x1b[C".repeat(6),
+    ]);
   });
 
   it("pastes unchanged when the selection is not editable", async () => {
@@ -347,8 +412,28 @@ describe("paste and composition replace a selection", () => {
 
     textarea!.dispatchEvent(new CompositionEvent("compositionstart"));
     expect(data).toHaveBeenCalledTimes(1);
-    expect(data).toHaveBeenCalledWith(walkDelete(5, 5));
+    expect(data).toHaveBeenCalledWith(walkAndDelete(5, 5));
     expect(controller.term.hasSelection()).toBe(false);
+  });
+
+  it("walks back after the IME's committed text, not before it", async () => {
+    const { controller, data } = fixture();
+    await write(controller, "$ echo hello world");
+    select(controller, 7, 0, 5);
+    const textarea = controller.term.textarea!;
+
+    textarea.dispatchEvent(new CompositionEvent("compositionstart"));
+    expect(data).toHaveBeenLastCalledWith(walkAndDelete(11, 5));
+    // What the browser does before compositionend: the committed text lands
+    // in the textarea, and the IME patch reads it on the next task.
+    textarea.value = "bye";
+    textarea.dispatchEvent(new CompositionEvent("compositionend"));
+    await new Promise<void>((resolve) => setTimeout(resolve, 30));
+    expect(data.mock.calls.map(([text]) => text)).toEqual([
+      walkAndDelete(11, 5),
+      "bye",
+      "\x1b[C".repeat(6),
+    ]);
   });
 
   it("starts a composition unchanged when the selection is not editable", async () => {

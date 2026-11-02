@@ -33,7 +33,7 @@ import { t as translate } from "./i18n";
 import { patchImeInput } from "./imePatch";
 import { parseOsc52, type ProgramClipboardMode } from "./osc52";
 import { setSemanticColorTheme } from "./semanticColors";
-import { selectionDeleteSequence } from "./terminalSelectionEdit";
+import { selectionEdit } from "./terminalSelectionEdit";
 import { DEFAULT_FIND_OPTIONS, type FindOptions, type SearchResults } from "./terminalSearch";
 import { type TransferNoticeKind } from "./terminalTransfer";
 import type { BackspaceKey, ThemeMode } from "./types";
@@ -764,7 +764,7 @@ export class TerminalController {
     this.viewport.observeDisplayChanges();
     // IME text takes the exactly-once path in imePatch.ts. It hooks the
     // composition helper xterm creates in open(), so it goes right after.
-    patchImeInput(this.term);
+    patchImeInput(this.term, () => this.flushSelectionRestore());
     // Composition is the third way to replace a selection: deleting it
     // here lets the committed text land in the hole (Chinese input, the
     // user's daily path). The listener rides the textarea xterm just
@@ -786,24 +786,56 @@ export class TerminalController {
 
   /**
    * Deletes an editable selection when an IME composition starts on it, so
-   * the text the input method commits replaces it. Everything else — the
-   * exactly-once delivery of the composed text — stays in imePatch.ts; the
-   * delete goes out here, before any of the IME's events can send text,
-   * because compositionstart is the first event of a composition.
+   * the text the input method commits replaces it, and walks the shell cursor
+   * back once that text has gone out. Everything else — the exactly-once
+   * delivery of the composed text — stays in imePatch.ts; the delete goes out
+   * here, before any of the IME's events can send text, because
+   * compositionstart is the first event of a composition. The walk back waits
+   * for the commit: sending it now would put it in the hole before the text.
    */
   private attachSelectionCompositionEdit() {
     const textarea = this.term.textarea;
     if (!textarea) return;
     textarea.addEventListener("compositionstart", () => {
-      const sequence = selectionDeleteSequence(this.term, {
+      const edit = selectionEdit(this.term, {
         commandRunning: this.commands.commandRunning,
         locked: this.locked,
       });
-      if (sequence !== null) {
-        this.term.input(sequence, true);
+      if (edit !== null) {
+        this.term.input(edit.deleteSequence, true);
         this.term.clearSelection();
+        this.queueSelectionRestore(edit.restore);
       }
     });
+  }
+
+  /** One edit's pending walk back, waiting for its committed text. */
+  private pendingSelectionRestore: { restore: string; timer: number } | null = null;
+
+  private queueSelectionRestore(restore: string) {
+    this.clearSelectionRestore();
+    if (!restore) return;
+    const pending = { restore, timer: 0 };
+    // The IME's commit arrives on a task boundary of its own; this fallback
+    // only exists so a composition that commits nothing cannot leave the walk
+    // queued to fire after some later keystroke.
+    pending.timer = window.setTimeout(() => {
+      if (this.pendingSelectionRestore === pending) this.flushSelectionRestore();
+    }, 150);
+    this.pendingSelectionRestore = pending;
+  }
+
+  private clearSelectionRestore() {
+    if (!this.pendingSelectionRestore) return;
+    window.clearTimeout(this.pendingSelectionRestore.timer);
+    this.pendingSelectionRestore = null;
+  }
+
+  private flushSelectionRestore() {
+    const pending = this.pendingSelectionRestore;
+    this.clearSelectionRestore();
+    if (!pending || this.disposed) return;
+    this.term.input(pending.restore, true);
   }
 
   /**
@@ -1160,6 +1192,7 @@ export class TerminalController {
       window.clearTimeout(this.transferNoticeTimer);
       this.transferNoticeTimer = null;
     }
+    this.clearSelectionRestore();
     this.viewport.dispose();
     this.hostResize?.disconnect();
     this.hostResize = null;

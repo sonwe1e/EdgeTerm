@@ -94,6 +94,8 @@ class ImeInput implements CompositionHelperLike {
     private readonly term: Terminal,
     private readonly textarea: HTMLTextAreaElement,
     private readonly view: HTMLElement,
+    /** Called after every send, so a caller can sequence bytes behind the IME's text. */
+    private readonly onSend?: () => void,
   ) {}
 
   get isComposing() {
@@ -249,6 +251,7 @@ class ImeInput implements CompositionHelperLike {
 
   private send(text: string) {
     this.term.input(text, true);
+    this.onSend?.();
   }
 
   private clearTextarea() {
@@ -263,7 +266,7 @@ class ImeInput implements CompositionHelperLike {
  * false, leaving the terminal untouched, when xterm's internals are not the
  * ones this patch was written against.
  */
-export function patchImeInput(term: Terminal): boolean {
+export function patchImeInput(term: Terminal, onSend?: () => void): boolean {
   const core = (term as unknown as { _core?: CoreLike })._core;
   const missing = (() => {
     if (!core) return "_core";
@@ -286,7 +289,7 @@ export function patchImeInput(term: Terminal): boolean {
     return false;
   }
 
-  const ime = new ImeInput(term, term.textarea!, core._compositionView!);
+  const ime = new ImeInput(term, term.textarea!, core._compositionView!, onSend);
   core._compositionHelper = ime;
   core._inputEvent = (ev) => {
     const sent = ime.inputEvent(ev);
