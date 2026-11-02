@@ -3,6 +3,7 @@ import { readClipboardText, writeClipboardText } from "./api";
 import { type ProgramClipboardMode } from "./osc52";
 import { IS_MAC, IS_WINDOWS } from "./platform";
 import { needsPasteWarning } from "./terminalPaste";
+import { selectionDeleteSequence } from "./terminalSelectionEdit";
 import { RightClickAction } from "./terminalShared";
 import { errorMessage, type TransferNoticeKind } from "./terminalTransfer";
 
@@ -10,6 +11,8 @@ interface Context {
   readonly host: HTMLElement | null;
   readonly disposed: boolean;
   readonly locked: boolean;
+  /** A running command owns the input line; a selection is not editable. */
+  readonly commandRunning: boolean;
   readonly term: Terminal;
   readonly showTransferNotice: (message: string, kind: TransferNoticeKind) => void;
 }
@@ -153,11 +156,21 @@ export class TerminalClipboard {
   }
 
   /**
-   * Pastes without asking — what the confirmation dialog calls once the user
-   * has said yes, and the only path that may skip the check.
+   * Pastes without asking — what the confirmation dialog calls back once
+   * the user has said yes, and the only path that may skip the check.
+   * A paste replaces an editable selection, as in every editor: the
+   * delete sequence is sent first so the shell sees [delete, paste].
    */
   writePaste(text: string) {
     if (this.context.disposed || this.context.locked) return;
+    const sequence = selectionDeleteSequence(this.context.term, {
+      commandRunning: this.context.commandRunning,
+      locked: this.context.locked,
+    });
+    if (sequence !== null) {
+      this.context.term.input(sequence, true);
+      this.context.term.clearSelection();
+    }
     this.context.term.paste(text);
   }
 

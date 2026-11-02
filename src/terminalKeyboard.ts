@@ -5,6 +5,7 @@ import { TerminalClipboard } from "./terminalClipboard";
 import { TerminalCommands } from "./terminalCommands";
 import { closeFindBox } from "./terminalSearch";
 import { ALT_ARROW_SEQUENCES, isControlLetter } from "./terminalShared";
+import { selectionDeleteSequence } from "./terminalSelectionEdit";
 
 interface Context {
   readonly commands: Pick<
@@ -17,9 +18,11 @@ interface Context {
     | "hidePopup"
     | "setPopupIndex"
     | "acceptSuggestion"
+    | "commandRunning"
   >;
   readonly term: Terminal;
   readonly erase: string;
+  readonly locked: boolean;
   readonly clipboard: Pick<TerminalClipboard, "copySelection" | "pasteFromClipboard">;
 }
 
@@ -134,6 +137,54 @@ export class TerminalKeyboard {
           return false;
         default:
           return false;
+      }
+    }
+
+    // Editing a mouse selection on the shell's input line, as every desktop
+    // editor answers a selection: a bare Delete or Backspace deletes it, a
+    // printable key replaces it. The edit goes to the shell as the key
+    // sequences it would answer on the keyboard (see
+    // selectionDeleteSequence), so the shell stays the owner of the line —
+    // local and SSH behave the same. Anything the shell must judge (paste,
+    // IME) repeats the check at its own entry point. User bindings above
+    // have already had their say; Alt+Delete and friends still reach the
+    // shell because the modifiers keep them out of this branch.
+    if (this.context.term.hasSelection()) {
+      const sequence = selectionDeleteSequence(this.context.term, {
+        commandRunning: this.context.commands.commandRunning,
+        locked: this.context.locked,
+      });
+      if (sequence !== null) {
+        if (
+          (key === "delete" || key === "backspace") &&
+          !event.ctrlKey &&
+          !event.altKey &&
+          !event.metaKey &&
+          !event.shiftKey &&
+          !event.isComposing
+        ) {
+          // Consumed here so xterm does not also send a single Delete for
+          // the key that asked for the whole selection to go.
+          event.preventDefault();
+          this.context.term.input(sequence, true);
+          this.context.term.clearSelection();
+          return false;
+        }
+        if (
+          event.key.length === 1 &&
+          !event.ctrlKey &&
+          !event.altKey &&
+          !event.metaKey &&
+          !event.isComposing
+        ) {
+          // The replacement character itself is left to xterm: the delete
+          // sequence is sent synchronously first, so the shell sees
+          // [delete, character] in that order and the typed key replaces
+          // the selection. Shift stays allowed (uppercase and symbols).
+          this.context.term.input(sequence, true);
+          this.context.term.clearSelection();
+          return true;
+        }
       }
     }
 

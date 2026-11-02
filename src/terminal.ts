@@ -33,6 +33,7 @@ import { t as translate } from "./i18n";
 import { patchImeInput } from "./imePatch";
 import { parseOsc52, type ProgramClipboardMode } from "./osc52";
 import { setSemanticColorTheme } from "./semanticColors";
+import { selectionDeleteSequence } from "./terminalSelectionEdit";
 import { DEFAULT_FIND_OPTIONS, type FindOptions, type SearchResults } from "./terminalSearch";
 import { type TransferNoticeKind } from "./terminalTransfer";
 import type { BackspaceKey, ThemeMode } from "./types";
@@ -291,6 +292,10 @@ export class TerminalController {
         return owner.erase;
       },
 
+      get locked() {
+        return owner.locked;
+      },
+
       get clipboard() {
         return owner.clipboard;
       },
@@ -317,6 +322,10 @@ export class TerminalController {
 
       get locked() {
         return owner.locked;
+      },
+
+      get commandRunning() {
+        return owner.commands.commandRunning;
       },
 
       get term() {
@@ -756,6 +765,12 @@ export class TerminalController {
     // IME text takes the exactly-once path in imePatch.ts. It hooks the
     // composition helper xterm creates in open(), so it goes right after.
     patchImeInput(this.term);
+    // Composition is the third way to replace a selection: deleting it
+    // here lets the committed text land in the hole (Chinese input, the
+    // user's daily path). The listener rides the textarea xterm just
+    // created; the re-parenting branch above returns before this point,
+    // so it is attached exactly once per terminal.
+    this.attachSelectionCompositionEdit();
     // Inside the host (not the root) so the completion popup positions
     // against the terminal content, past the gutter, and survives
     // re-parenting above.
@@ -767,6 +782,28 @@ export class TerminalController {
 
     this.viewport.fit();
     this.lineGutter.applyGutterMode();
+  }
+
+  /**
+   * Deletes an editable selection when an IME composition starts on it, so
+   * the text the input method commits replaces it. Everything else — the
+   * exactly-once delivery of the composed text — stays in imePatch.ts; the
+   * delete goes out here, before any of the IME's events can send text,
+   * because compositionstart is the first event of a composition.
+   */
+  private attachSelectionCompositionEdit() {
+    const textarea = this.term.textarea;
+    if (!textarea) return;
+    textarea.addEventListener("compositionstart", () => {
+      const sequence = selectionDeleteSequence(this.term, {
+        commandRunning: this.commands.commandRunning,
+        locked: this.locked,
+      });
+      if (sequence !== null) {
+        this.term.input(sequence, true);
+        this.term.clearSelection();
+      }
+    });
   }
 
   /**
