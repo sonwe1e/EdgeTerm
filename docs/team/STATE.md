@@ -182,3 +182,6 @@ Lead 负责 `src/terminal.ts`、`src/actions.ts`、`src/locales/*`、`src/test/*
 
 - 便携包内 `EdgeTerm.exe` 为 10,058,752 字节，SHA-256 `fb6ebe9d8e56165676bc96b7977592671c316039347c6c0973305ca10d3454ef`，另含 `data/` 与 `README.txt`。
 - Windows 本地检查：111 个前端单元测试文件 / 1051 项、30 个浏览器测试文件 / 160 项（真实 Edge，含 Alt+点击 5 项、终端输入 5 项、选区编辑 3 项）、typecheck、Biome 格式、lint（保留生成绑定两条既有 `any` 警告）与前端生产构建通过；`79a6b64` 与 `fce6752` 两条提交已逐个独立验证（fix 提交独立通过 typecheck 与自身浏览器套件）。
+- 发布源码固定为 `fe8976be5fb486fec27e9104aa19562e1b2d762f`（`v1.6.1` 标签解引用），构建与打包在其干净工作区完成。2026-11-02 14:38（北京时间）公开为 latest（非草稿、非预发布）：https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.6.1 。发布后回下载四个附件逐个计算 SHA-256 与本地一致，远端标签解引用确认。
+- GitHub CI（push 到 main）：run [41401149489](https://github.com/sonwe1e/EdgeTerm/actions/runs/41401149489) 通过。
+- 未验证：安装、卸载、覆盖升级与数字签名；未在干净机器上运行安装器；未在真实 Tauri/WebView2 窗口内验收 Alt+点击、选区编辑与 IME 组合态。
