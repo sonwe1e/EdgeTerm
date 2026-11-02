@@ -101,11 +101,6 @@ window.__appFontChain = {
   calls,
   unknown,
   async font(size) { flushSync(() => useStore.getState().setPanelFontSize(size)); await frames(); },
-  async columns(end) {
-    const list = document.querySelector(".filer-list");
-    list.scrollLeft = end ? list.scrollWidth : 0;
-    await frames();
-  },
   sample() {
     const list = document.querySelector(".filer-list");
     const rows = [...list.querySelectorAll(".filer-entry")];
@@ -115,31 +110,35 @@ window.__appFontChain = {
       delta: indices[i + 1] - indices[i],
     })).filter((pair) => pair.delta === 1);
     const app = document.querySelector(".app");
-    const dateFont = rows[0]?.querySelector(".filer-col-date");
-    const namesFit = rows.every((row) => {
-      const label = row.querySelector(".row-label");
-      return label && label.scrollWidth <= label.clientWidth + 1 &&
-        label.getBoundingClientRect().right <= list.getBoundingClientRect().left + list.clientWidth + 0.5;
-    });
-    const datesFit = rows.every((row) => {
-      const date = row.querySelector(".filer-col-date");
-      if (!date?.textContent) return true;
+    const dateFont = rows[0]?.querySelector(".filer-meta-date");
+    // The docked Filer is a list: no column captions, no sideways scrolling.
+    // What the gate can still prove is that the metadata cluster stays inside
+    // its row at every panel font, that the date prints in full, and that the
+    // name keeps a usable box instead of being squeezed to nothing.
+    const viewport = list.getBoundingClientRect();
+    const metaFits = rows.every((row) => {
+      const cluster = row.querySelector(".filer-row-meta");
+      const date = row.querySelector(".filer-meta-date");
+      if (!cluster || !date) return false;
+      const rowBox = row.getBoundingClientRect();
+      const clusterBox = cluster.getBoundingClientRect();
       const range = document.createRange();
       range.selectNodeContents(date);
       const text = range.getBoundingClientRect();
-      const cell = date.getBoundingClientRect();
-      const viewport = list.getBoundingClientRect();
-      return text.width > 0 && text.left >= cell.left - 0.5 &&
-        text.right <= cell.right + 0.5 && text.left >= viewport.left - 0.5 &&
-        text.right <= viewport.left + list.clientWidth + 0.5;
+      return clusterBox.right <= rowBox.right + 0.5 &&
+        text.width > 0 && text.right <= clusterBox.right + 0.5 &&
+        text.left >= viewport.left - 0.5 && text.right <= viewport.left + list.clientWidth + 0.5;
     });
+    const listFits = list.scrollWidth <= list.clientWidth + 1;
+    const nameWidth = rows[0]?.querySelector(".row-label")?.getBoundingClientRect().width ?? 0;
     return {
       fontCss: getComputedStyle(app).getPropertyValue("--panel-font-size"),
       rowPitch: pairs.map((pair) => pair.gap),
       entryHeight: rows[0]?.getBoundingClientRect().height ?? null,
-      dateFont: dateFont ? getComputedStyle(dateFont).fontSize : null,
-      namesFit,
-      datesFit,
+      metaFont: dateFont ? getComputedStyle(dateFont).fontSize : null,
+      metaFits,
+      listFits,
+      nameWidth,
       mountedRows: rows.length,
       listHeight: list.clientHeight,
       scrollHeight: list.scrollHeight,
@@ -268,20 +267,25 @@ try {
   // values re-derived from the code under test.
   const failures = [];
   const expectState = async (name, font, pitch, innerHeight, supportedWindow) => {
-    await invoke("columns", false);
     const value = await sample();
-    await invoke("columns", true);
-    const atEnd = await sample();
-    await invoke("columns", false);
     const checks = {
       appVariable: value.fontCss === `${font}px`,
       pitch:
         value.rowPitch.length > 1 && value.rowPitch.every((gap) => Math.abs(gap - pitch) < 0.1),
       innerHeight: value.entryHeight !== null && Math.abs(value.entryHeight - innerHeight) < 0.1,
-      dateFont: value.dateFont === `${font - 2}px`,
-      // Names must be identifiable at the initial scroll position, and full
-      // dates must be reachable when the user reveals the counted columns.
-      ...(supportedWindow ? { namesFit: value.namesFit, datesReachable: atEnd.datesFit } : {}),
+      // The panel's smallest type still grows with the panel font (font - 2).
+      metaFont: value.metaFont === `${font - 2}px`,
+      // At a supported size the cluster stays inside its row, the list never
+      // scrolls sideways, and the name keeps a usable box. Below the desktop
+      // minimum these are observations, not gates: the dock is squeezed there
+      // on purpose and a clipped name is the honest consequence.
+      ...(supportedWindow
+        ? {
+            metaFits: value.metaFits,
+            listFits: value.listFits,
+            nameReadable: value.nameWidth >= 48,
+          }
+        : {}),
       windowed: value.mountedRows < 100 && value.mountedRows > 1,
     };
     const failed = Object.entries(checks)
@@ -295,7 +299,7 @@ try {
       supportedWindow,
       passed,
       failedChecks: failed,
-      sample: { ...value, datesReachable: atEnd.datesFit },
+      sample: value,
     });
     if (!passed) failures.push({ name, failedChecks: failed, sample: value });
   };
@@ -320,11 +324,15 @@ try {
 
   const unknownIpc = await page.evaluate(() => window.__appFontChain.unknown);
   const passedAll = results.every((entry) => entry.passed);
+  // Below the desktop minimum the measurements still run, but they are
+  // observations rather than gates: the dock keeps its width and the list is
+  // measured anyway, so a squeezed window cannot be mistaken for a supported
+  // one.
   const boundaryFindings = results
-    .filter((entry) => !entry.supportedWindow && !entry.sample.datesFit)
+    .filter((entry) => !entry.supportedWindow)
     .map((entry) => ({
       name: entry.name,
-      finding: "date requires horizontal scrolling below the desktop minimum",
+      finding: "measured below the desktop minimum; not a supported size",
       minimum,
     }));
   const report = {
@@ -333,7 +341,7 @@ try {
     channel,
     subjectRoot,
     scope:
-      "Production build (real vite.config). Real App → store.setPanelFontSize → App-owned --panel-font-size → FilerPanel rowHeight + real CSS row height → virtual rows; 10k synthetic entries; consecutive-row pitch within 0.1px of 26/30; names fit initially and full dates are reachable by horizontal scrolling at supported desktop sizes; 760px date scrolling reported as a boundary finding; mounted rows < 100 (windowed); unexpected IPC recorded and gated.",
+      "Production build (real vite.config). Real App → store.setPanelFontSize → App-owned --panel-font-size → FilerPanel rowHeight + real CSS row height → virtual rows; 10k synthetic entries; consecutive-row pitch within 0.1px of 26/30; the metadata cluster's font tracks the panel font and its date prints inside the row at supported desktop sizes; the list never scrolls sideways; mounted rows < 100 (windowed); unexpected IPC recorded and gated.",
     minimum,
     boundaryFindings,
     passedAll,

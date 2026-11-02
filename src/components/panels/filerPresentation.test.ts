@@ -66,17 +66,17 @@ describe("formatDate", () => {
   // a bare `14:32` is the same shape as the `10-20` on the rows beside it.
   // Everything else is numbers, in every language, so the column stays one
   // width — which is what makes a fixed track possible at all.
-  it("names today and reduces the rest of the year to a day and a time", () => {
-    expect(formatDate(at(2025, 10, 20, 9, 5), "en-US", NOW)).toBe("Today 09:05");
-    expect(formatDate(at(2025, 10, 20, 23, 59), "en-US", NOW)).toBe("Today 23:59");
+  it("prints one shape inside the current year, whatever the day", () => {
+    expect(formatDate(at(2025, 10, 20, 9, 5), "en-US", NOW)).toBe("10-20 09:05");
+    expect(formatDate(at(2025, 10, 20, 23, 59), "en-US", NOW)).toBe("10-20 23:59");
     expect(formatDate(at(2025, 10, 19, 22, 30), "en-US", NOW)).toBe("10-19 22:30");
     expect(formatDate(at(2025, 10, 19, 0, 1), "zh-CN", NOW)).toBe("10-19 00:01");
     expect(formatDate(at(2025, 1, 5, 8), "en-US", NOW)).toBe("01-05 08:00");
   });
 
-  it("splits today's cell so the clock time can take the fainter ink", () => {
+  it("splits the day from the clock time without grading either", () => {
     expect(formatDateParts(at(2025, 10, 20, 9, 5), "en-US", NOW)).toEqual({
-      value: "Today",
+      value: "10-20",
       time: "09:05",
     });
     // A date old enough to name its year has no time to split off.
@@ -91,12 +91,11 @@ describe("formatDate", () => {
     expect(formatDate(at(2023, 12, 31, 23, 59), "zh-CN", NOW)).toBe("2023-12-31");
   });
 
-  // A missing time is not the epoch, and it is not an empty cell either:
-  // the listing was asked for a moment and did not give one, which is worth
-  // one word. A folder's size is the other case — absent by category — and it
-  // gets nothing at all.
-  it("separates an unknown time from the epoch itself", () => {
-    expect(formatDate(null, "en-US", NOW)).toBe("Unknown");
+  // The cell prints nothing for a moment the listing could not report; the
+  // row's tooltip is where "unknown" is said out loud. Epoch 0 is a real
+  // moment, 1970, and is shown as one.
+  it("leaves an unknown moment empty and keeps the epoch", () => {
+    expect(formatDate(null, "en-US", NOW)).toBe("");
     expect(formatDate(0, "en-US", NOW)).toBe("1970-01-01");
   });
 
@@ -105,6 +104,8 @@ describe("formatDate", () => {
   // and they keep the year off so the column stays one width.
   it("dates a file whose server clock runs ahead as a plain day", () => {
     expect(formatDate(at(2025, 10, 22, 8), "en-US", NOW)).toBe("10-22 08:00");
+    // The next year is not the year on screen, so it names itself.
+    expect(formatDate(at(2026, 1, 2, 8), "en-US", NOW)).toBe("2026-01-02");
   });
 
   // The column is a fixed width and that is the whole point of the numbers:

@@ -156,7 +156,11 @@ it("keeps browsing and submitting uploads while previous uploads are pending", a
     );
     await userEvent.click(page.getByRole("menuitem", { name: "Upload Files…", exact: true }));
     await expect.poll(() => vi.mocked(api.transferFiles).mock.calls.length).toBe(index + 1);
-    expect(page.getByRole("button", { name: "Refresh", exact: true }).element()).not.toBeDisabled();
+    await userEvent.click(page.getByRole("button", { name: "More actions", exact: true }));
+    expect(
+      page.getByRole("menuitem", { name: "Refresh", exact: true }).element(),
+    ).not.toBeDisabled();
+    await userEvent.keyboard("{Escape}");
   }
   const destination = vi.mocked(api.transferFiles).mock.calls[0][1][0].remote;
   await userEvent.click(page.getByRole("button", { name: "Parent folder", exact: true }));
@@ -233,7 +237,9 @@ it("keeps overwrite refusal and cancellation quiet while failures remain visible
   const failed = [...fixture.pending.keys()][1];
   fixture.pending.get(failed)!.reject(Error("connection lost"));
   await expect.poll(() => useStore.getState().error).toContain("connection lost");
-  expect(page.getByRole("button", { name: "Refresh", exact: true }).element()).not.toBeDisabled();
+  await userEvent.click(page.getByRole("button", { name: "More actions", exact: true }));
+  expect(page.getByRole("menuitem", { name: "Refresh", exact: true }).element()).not.toBeDisabled();
+  await userEvent.keyboard("{Escape}");
 });
 
 for (const [width, height] of [
@@ -279,7 +285,10 @@ for (const [width, height] of [
     expect(document.querySelector("#transfer-dock .is-pinned")).not.toBeNull();
     await userEvent.click(page.getByRole("button", { name: "Unpin", exact: true }));
     expect(document.querySelector("#transfer-dock")!.children.length).toBe(0);
-    await userEvent.click(page.getByRole("button", { name: "Refresh", exact: true }));
+    // Refresh lives in the view menu; opening the menu already dismisses the
+    // popover, and the refresh itself must leave it closed.
+    await userEvent.click(page.getByRole("button", { name: "More actions", exact: true }));
+    await userEvent.click(page.getByRole("menuitem", { name: "Refresh", exact: true }));
     expect(document.querySelector(".transfer-center-popover")).toBeNull();
   });
 }

@@ -140,7 +140,8 @@ it("preserves a group during native drag and confirms every selected deletion", 
     expect.any(Function),
   );
   expect(selected()).toEqual(["file0.txt", "file2.txt"]);
-  await userEvent.click(page.getByRole("button", { name: "Delete", exact: true }));
+  await userEvent.click(page.getByRole("button", { name: "More actions", exact: true }));
+  await userEvent.click(page.getByRole("menuitem", { name: "Delete", exact: true }));
   const dialog = page.getByRole("alertdialog");
   expect(dialog.element().textContent).toContain("2 selected items");
   await userEvent.click(dialog.getByRole("button", { name: "Delete", exact: true }));

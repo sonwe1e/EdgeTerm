@@ -53,8 +53,6 @@ interface Options {
   uploadFolder: () => Promise<void>;
   creating: NewEntryDraft | null;
   entries: FileEntry[];
-  /** Puts the three columns back to the layout nobody arranged; owned by the panel. */
-  resetColumns: () => void;
 }
 
 export function useFilerActions({
@@ -90,7 +88,6 @@ export function useFilerActions({
   uploadFolder,
   creating,
   entries,
-  resetColumns,
 }: Options) {
   const removeEntries = async (chosen: readonly FileEntry[]) => {
     setPendingDelete(null);
@@ -367,12 +364,6 @@ export function useFilerActions({
       icon: "refresh",
       disabled: busy,
       action: () => void load(path),
-    },
-    "separator",
-    {
-      label: t("filer.resetColumns"),
-      icon: "discard",
-      action: resetColumns,
     },
   ];
 

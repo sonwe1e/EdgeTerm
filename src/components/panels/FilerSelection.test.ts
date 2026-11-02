@@ -80,8 +80,29 @@ const press = (name: string, options: MouseEventInit = {}) =>
   act(() => {
     row(name).dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0, ...options }));
   });
+/** A control in the panel's own chrome: the title bar or the path bar. */
 const toolbar = (label: string) =>
-  host.querySelector<HTMLButtonElement>(`.filer-toolbar [aria-label="${label}"]`)!;
+  host.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!;
+
+const MENU_ITEM = '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]';
+const viewMenuButton = () => host.querySelector<HTMLButtonElement>('[aria-label="More actions"]')!;
+/** Opens the one menu the panel owns, unless a menu is already standing. */
+const openViewMenu = () => {
+  if (document.querySelector(MENU_ITEM)) return;
+  act(() => viewMenuButton().click());
+};
+/** An entry of that menu, found by the label it starts with. */
+const viewMenuItem = (label: string) => {
+  openViewMenu();
+  return [...document.querySelectorAll<HTMLButtonElement>(MENU_ITEM)].find((element) =>
+    element.textContent?.trim().startsWith(label),
+  )!;
+};
+/** Runs one menu entry: the actions that are not on the title bar live here. */
+const runViewMenu = (label: string) => {
+  openViewMenu();
+  act(() => viewMenuItem(label).click());
+};
 const context = (name: string) =>
   act(() => {
     row(name).dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 2 }));
@@ -93,10 +114,7 @@ const menuItem = (label: string) =>
   )!;
 /** Rename surfaces print the message key until the locales carry it. */
 const RENAME_LABELS = ["filer.rename", "Rename"];
-const renameButton = () =>
-  [...host.querySelectorAll<HTMLButtonElement>(".filer-toolbar button")].find((button) =>
-    RENAME_LABELS.includes(button.getAttribute("aria-label") ?? ""),
-  )!;
+const renameButton = () => viewMenuItem(RENAME_LABELS[1]);
 const renameMenuItem = () =>
   [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((element) =>
     RENAME_LABELS.includes(element.textContent?.trim() ?? ""),
@@ -235,7 +253,7 @@ describe("Filer multiple selection at the real panel entry", () => {
     expect(chosen()).toEqual(["file2.txt"]);
     press("file2.txt", { ctrlKey: true });
     expect(chosen()).toEqual([]);
-    expect(toolbar("Delete").disabled).toBe(true);
+    expect(viewMenuItem("Delete").disabled).toBe(true);
   });
 
   it("uses displayed order for Shift ranges and keeps paths selected after sorting", async () => {
@@ -273,7 +291,8 @@ describe("Filer multiple selection at the real panel entry", () => {
     expect(chosen()).toEqual([]);
     press("file10.txt");
     press("file3.txt", { ctrlKey: true });
-    await act(async () => toolbar("Refresh").click());
+    runViewMenu("Refresh");
+    await act(async () => {});
     expect(chosen()).toEqual([]);
   });
 
@@ -300,7 +319,7 @@ describe("Filer multiple selection at the real panel entry", () => {
       await mount();
       press("file10.txt");
       press("folder", { ctrlKey: true });
-      act(() => toolbar("Delete").click());
+      runViewMenu("Delete");
       const dialog = host.querySelector<HTMLElement>('[role="alertdialog"]')!;
       expect(dialog.textContent).toContain("2 selected items");
       expect(dialog.textContent).toContain("/selection/file10.txt");
@@ -325,7 +344,7 @@ describe("Filer multiple selection at the real panel entry", () => {
   it("says a folder goes with its contents and asks the backend to delete recursively", async () => {
     await mount();
     press("folder");
-    act(() => toolbar("Delete").click());
+    runViewMenu("Delete");
     const dialog = host.querySelector<HTMLElement>('[role="alertdialog"]')!;
     expect(dialog.textContent).toContain("Delete Folder");
     expect(dialog.textContent).toContain("everything inside it");
@@ -343,7 +362,7 @@ describe("Filer multiple selection at the real panel entry", () => {
   it("deletes a single file without the recursive flag", async () => {
     await mount();
     press("file2.txt");
-    act(() => toolbar("Delete").click());
+    runViewMenu("Delete");
     const dialog = host.querySelector<HTMLElement>('[role="alertdialog"]')!;
     expect(dialog.textContent).not.toContain("everything inside it");
     const danger = dialog.querySelector<HTMLButtonElement>(".is-danger")!;
@@ -365,7 +384,7 @@ describe("Filer multiple selection at the real panel entry", () => {
     await mount();
     press("file10.txt");
     press("file2.txt", { shiftKey: true });
-    act(() => toolbar("Delete").click());
+    runViewMenu("Delete");
     await act(async () =>
       host.querySelector<HTMLButtonElement>(".confirm-dialog .is-danger")!.click(),
     );
@@ -378,14 +397,14 @@ describe("Filer multiple selection at the real panel entry", () => {
     await mount();
     press("file10.txt");
     press("file3.txt", { ctrlKey: true });
-    act(() => toolbar("Delete").click());
+    runViewMenu("Delete");
     await act(async () =>
       [...host.querySelectorAll<HTMLButtonElement>(".confirm-dialog button")]
         .find((button) => button.textContent === "Cancel")!
         .click(),
     );
     expect(api.localRemove).not.toHaveBeenCalled();
-    act(() => toolbar("Delete").click());
+    runViewMenu("Delete");
     await act(async () => useRemote());
     expect(host.querySelector('[role="alertdialog"]')).toBeNull();
     expect(chosen()).toEqual([]);
@@ -699,7 +718,7 @@ describe("Filer multiple selection at the real panel entry", () => {
       await mount();
       await startUpload();
       expect(useStore.getState().error).toContain("connection lost");
-      expect(toolbar("Refresh").disabled).toBe(false);
+      expect(viewMenuItem("Refresh").disabled).toBe(false);
       expect(host.querySelector(".filer-transfer-summary")!.textContent).toContain("1 failed");
       await act(async () =>
         host.querySelector<HTMLButtonElement>(".filer-transfer-summary button")!.click(),
@@ -736,30 +755,30 @@ describe("Filer multiple selection at the real panel entry", () => {
     });
   });
   describe("Filer browsing surfaces", () => {
-    it("shows a size column and sorts by it the way the dual-pane rows do", async () => {
+    it("shows the size beside the name and sorts by it from the view menu", async () => {
       const sized = entries.map((entry, index) => ({ ...entry, size: [30, 10, 20, 0][index] }));
       vi.mocked(api.localList).mockResolvedValue({ path: "/selection", entries: sized });
       await mount();
       await act(async () => {});
-      const size = (name: string) => row(name).querySelector(".filer-col-size")!.textContent;
+      const size = (name: string) => row(name).querySelector(".filer-meta-size")?.textContent ?? "";
       expect(size("file10.txt")).toBe("30 B");
-      // A folder has no size of its own, and an empty cell is read as nothing,
-      // which is what an absent size is. A dash would read as a small number.
+      // A folder has no size of its own, so the slot is absent rather than a
+      // dash that would read as a small number.
       expect(size("folder")).toBe("");
-      // Captions carry no aria-label: their own text is their accessible name
-      // now, the state travels as aria-sort, and data-sort-key is the handle.
-      const caption = host.querySelector<HTMLButtonElement>(
-        '.filer-columns [data-sort-key="size"]',
-      )!;
-      expect(caption.getAttribute("aria-sort")).toBe("none");
-      await act(async () => {
-        caption.click();
-      });
-      expect(caption.getAttribute("aria-sort")).toBe("ascending");
-      await act(async () => {
-        caption.click();
-      });
-      expect(caption.getAttribute("aria-sort")).toBe("descending");
+      // The list has no column captions; the sort is one of the view menu's
+      // choices, and the checked entry carries the direction it is in.
+      runViewMenu("Sort by size");
+      await act(async () => {});
+      expect(viewMenuItem("Sort by size").textContent).toContain("↑");
+      expect(rows().map((element) => element.querySelector(".row-label")!.textContent)).toEqual([
+        "folder",
+        "file2.txt",
+        "file3.txt",
+        "file10.txt",
+      ]);
+      runViewMenu("Sort by size");
+      await act(async () => {});
+      expect(viewMenuItem("Sort by size").textContent).toContain("↓");
       expect(rows().map((element) => element.querySelector(".row-label")!.textContent)).toEqual([
         "folder",
         "file10.txt",
@@ -782,7 +801,11 @@ describe("Filer multiple selection at the real panel entry", () => {
       });
       await act(async () => {});
       expect(listed[listed.length - 1]).toBe("/home/tester");
-      expect(host.querySelector<HTMLInputElement>(".filer-path input")!.value).toBe("/home/tester");
+      // The path bar is a trail until asked to become a field, so the folder
+      // on screen is read from the current crumb.
+      expect(host.querySelector('.filer-crumb[aria-current="location"]')!.textContent).toBe(
+        "tester",
+      );
     });
 
     it("offers every ancestor of the open folder and navigates to the clicked one", async () => {
@@ -808,7 +831,10 @@ describe("Filer multiple selection at the real panel entry", () => {
       vi.mocked(api.localList).mockImplementation(async (path) => ({ path, entries }));
       await mount();
       await act(async () => {});
-      const input = host.querySelector<HTMLInputElement>(".filer-path input")!;
+      await act(async () => {
+        host.querySelector<HTMLButtonElement>('[aria-label="Edit path"]')!.click();
+      });
+      const input = host.querySelector<HTMLInputElement>(".filer-path-edit")!;
       type(input, "C:\\Users\\me");
       await act(async () =>
         input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })),
@@ -827,7 +853,7 @@ describe("Filer multiple selection at the real panel entry", () => {
       vi.mocked(api.localHome).mockResolvedValue(api.LOCAL_DRIVES_ROOT);
       await mount();
       await act(async () => {});
-      expect(host.querySelector(".filer-breadcrumbs")).toBeNull();
+      expect(host.querySelectorAll(".filer-crumb")).toHaveLength(0);
       press("file10.txt");
       act(() =>
         host
@@ -1008,7 +1034,7 @@ describe("Filer multiple selection at the real panel entry", () => {
       await mount();
       press("file10.txt");
       press("folder", { ctrlKey: true });
-      act(() => toolbar("Delete").click());
+      runViewMenu("Delete");
       await act(async () => {
         host.querySelector<HTMLButtonElement>(".confirm-dialog .is-danger")!.click();
       });
@@ -1059,7 +1085,9 @@ describe("Filer multiple selection at the real panel entry", () => {
       });
       await act(async () => {});
       expect(host.querySelector(".filer-new-entry")).toBeNull();
-      expect(host.querySelector<HTMLInputElement>(".filer-path input")!.value).toBe("/home/tester");
+      expect(host.querySelector('.filer-crumb[aria-current="location"]')!.textContent).toBe(
+        "tester",
+      );
     });
   });
 });

@@ -16,11 +16,9 @@ import {
   FilerEntryIcon,
   FilerRow,
   formatBytes,
-  formatDate,
   formatEntrySummary,
   loadOpenWithApps,
   pathSegments,
-  rowLocale,
 } from "./filerPresentation";
 import { MenuState, NewEntryDraft, type RenameDraft } from "./filerTypes";
 import { useFilerActions } from "./useFilerActions";
@@ -32,19 +30,7 @@ export { sameListing } from "./filerDirectoryCache";
 
 import { reconnectSession, revealCwdInFiler } from "../../actions";
 import * as api from "../../api";
-import {
-  clampColumnWidth,
-  loadFilerColumns,
-  loadFilerSizeVisible,
-  measureCssLength,
-  saveFilerColumns,
-  saveFilerSizeVisible,
-  suggestColumnWidth,
-  COLUMN_MAX_PX,
-  DEFAULT_FILER_COLUMNS,
-  NAME_MAX_PX,
-  type FilerColumns,
-} from "../../filerColumns";
+import { loadFilerSizeVisible, saveFilerSizeVisible } from "../../filerColumns";
 import { followMode } from "../../filerFollow";
 import { sortFileEntries, toggleFileSort, type SortKey } from "../../fileSort";
 import { typeToSelect, type TypeRun } from "../../fileTypeSelect";
@@ -56,12 +42,10 @@ import { useFilerDownloads } from "../../useFilerDownloads";
 import { useFileSelection } from "../../useFileSelection";
 import { useStableCallback } from "../../useStableCallback";
 import { useT } from "../../useT";
-import { ContextMenu } from "../ContextMenu";
+import { ContextMenu, type MenuItem } from "../ContextMenu";
 import { DeleteEntryDialog } from "../DeleteEntryDialog";
-import { FilerColumnResizer } from "./FilerColumnResizer";
 import { FilerTransferSummary } from "../FilerTransferSummary";
 import { Icon } from "../icons";
-import { SortIndicator } from "../SortIndicator";
 import { VirtualFileRows } from "../VirtualFileRows";
 
 /**
@@ -83,13 +67,6 @@ const revealBehavior = (): ScrollBehavior =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches
     ? "auto"
     : "smooth";
-
-/**
- * How many entries a double-click fit measures. Text measurement is cheap —
- * one canvas, one pass, no layout — but no listing is infinite either, so a
- * folder of tens of thousands of names still answers within a frame.
- */
-const FIT_SAMPLE_LIMIT = 2000;
 
 function FilerPanelBase() {
   const t = useT();
@@ -122,12 +99,6 @@ function FilerPanelBase() {
   const follow = useStore((s) => (tab ? followMode(s.filerFollow, tab.info.id) : "off"));
   const startFilerFollow = useStore((s) => s.startFilerFollow);
   const stopFilerFollow = useStore((s) => s.stopFilerFollow);
-  const followTitle =
-    follow === "following"
-      ? t("filer.followStop")
-      : follow === "paused"
-        ? t("filer.followResume")
-        : t("filer.followToggle");
   const followLabel =
     follow === "following"
       ? t("filer.following")
@@ -151,20 +122,17 @@ function FilerPanelBase() {
   const sort = useStore((s) => s.filerSort);
   const setFilerSort = useStore((s) => s.setFilerSort);
   const sortedEntries = useMemo(() => sortFileEntries(entries, sort), [entries, sort]);
-  // Name takes the space left by the visible metadata columns unless pinned.
-  const [columns, setColumns] = useState<FilerColumns>(loadFilerColumns);
+  // The size column is a view choice, not a column width: the list gives the
+  // name whatever the metadata does not need, so hiding the size returns that
+  // room to the name instead of leaving a hole.
   const [sizeVisible, setSizeVisible] = useState(loadFilerSizeVisible);
+  // The path bar shows a trail until the user asks to type a path; then the
+  // same 36px band becomes the field.
+  const [editingPath, setEditingPath] = useState(false);
   const preferencesRevision = useStore((s) => s.panelPreferencesRevision);
   useEffect(() => {
-    setColumns(loadFilerColumns());
     setSizeVisible(loadFilerSizeVisible());
   }, [preferencesRevision]);
-  // Debounced like the dock sizing: a drag writes a width per frame, and the
-  // stored value only has to be right when the drag ends.
-  useEffect(() => {
-    const timer = window.setTimeout(() => saveFilerColumns(columns), 250);
-    return () => window.clearTimeout(timer);
-  }, [columns]);
   useEffect(() => {
     saveFilerSizeVisible(sizeVisible);
   }, [sizeVisible]);
@@ -214,14 +182,17 @@ function FilerPanelBase() {
   useEffect(() => {
     setRenaming(null);
     setCreating(null);
+    setEditingPath(false);
   }, [remoteId, path]);
   const [uploadMenu, setUploadMenu] = useState<{ x: number; y: number } | null>(null);
   // ContextMenu closes itself on any outside mousedown, so by the time the
   // upload button's click fires the menu is already gone; remember whether it
   // was open so the button toggles instead of reopening.
   const uploadMenuWasOpen = useRef(false);
-  const [columnsMenu, setColumnsMenu] = useState<{ x: number; y: number } | null>(null);
-  const columnsMenuWasOpen = useRef(false);
+  // One menu owns the actions that are not on the title bar and the two view
+  // choices the list has, the way an Explorer's "..." menu does.
+  const [viewMenu, setViewMenu] = useState<{ x: number; y: number } | null>(null);
+  const viewMenuWasOpen = useRef(false);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [pendingDelete, setPendingDelete] = useState<readonly FileEntry[] | null>(null);
   useEffect(() => setPendingDelete(null), [remoteId, path]);
@@ -233,142 +204,7 @@ function FilerPanelBase() {
   const busyRef = useRef(busy);
   /** The listbox: the rows' scroll container and the single Tab stop. */
   const listRef = useRef<HTMLDivElement>(null);
-  const columnsRef = useRef<HTMLDivElement>(null);
-  const [columnOverflow, setColumnOverflow] = useState(false);
-  const [columnsAtEnd, setColumnsAtEnd] = useState(false);
-  // The caption row is a sibling of the scroll container, not a child of it,
-  // so nothing tells it how wide the list's scrollbar is and its columns sat
-  // a scrollbar to the right of the ones they named. Measured rather than
-  // assumed: the width is a platform decision, and it is 0 where the platform
-  // draws overlay scrollbars — there is nothing to compensate for there. Watched
-  // with an observer rather than on window resize, because everything that can
-  // change it is not the window: the splitter, a font-size change, the listing
-  // itself growing past the fold. Deps are what VirtualFileRows re-measures on
-  // for the same reason; the observer covers the rest.
-  useLayoutEffect(() => {
-    const list = listRef.current;
-    const columns = columnsRef.current;
-    if (!list || !columns) return;
-    let seen = "";
-    const measure = () => {
-      const next = `${Math.max(0, list.offsetWidth - list.clientWidth)}px`;
-      if (next === seen) return;
-      seen = next;
-      columns.style.setProperty("--filer-sb-w", next);
-    };
-    const resize = new ResizeObserver(measure);
-    resize.observe(list);
-    measure();
-    return () => resize.disconnect();
-  }, [entries.length]);
 
-  // Overlay scrollbars can disappear at rest. Offer a visible, keyboardable
-  // way to reach columns when the current font or a saved width overflows.
-  useLayoutEffect(() => {
-    const list = listRef.current;
-    const header = columnsRef.current;
-    if (!list || !header) return;
-    let frame = 0;
-    const measure = () => {
-      frame = 0;
-      const maximum = Math.max(0, list.scrollWidth - list.clientWidth);
-      setColumnOverflow(maximum > 1);
-      setColumnsAtEnd(maximum > 1 && list.scrollLeft >= maximum - 1);
-    };
-    const schedule = () => {
-      if (!frame) frame = requestAnimationFrame(measure);
-    };
-    const resize = new ResizeObserver(schedule);
-    resize.observe(list);
-    resize.observe(header);
-    list.addEventListener("scroll", schedule, { passive: true });
-    schedule();
-    return () => {
-      if (frame) cancelAnimationFrame(frame);
-      resize.disconnect();
-      list.removeEventListener("scroll", schedule);
-    };
-  }, [entries.length, panelFontSize, sizeVisible]);
-
-  // When the name reserve or an explicit width makes the listing wider than
-  // the panel, the rows scroll sideways inside the list, and the
-  // caption row above the scroller has to follow: both draw one grid, and it
-  // is only honest while every track sits at the same x. A transform, not a
-  // scroll position: the caption row is not a scroller, and translating it
-  // keeps it out of the tab order and the scrollbar's accounting.
-  useLayoutEffect(() => {
-    const list = listRef.current;
-    const columns = columnsRef.current;
-    if (!list || !columns) return;
-    const sync = () => {
-      columns.style.transform = list.scrollLeft > 0 ? `translateX(${-list.scrollLeft}px)` : "";
-    };
-    list.addEventListener("scroll", sync, { passive: true });
-    sync();
-    return () => {
-      list.removeEventListener("scroll", sync);
-      columns.style.transform = "";
-    };
-  }, []);
-
-  // A double-click on a column's handle fits that column to its content: the
-  // widest of its caption and its printed values, measured with the fonts the
-  // cells render in (see `suggestColumnWidth`). Only the one column is
-  // measured, and no row is relaid out to find out, so a fit stays cheap on a
-  // listing of any size; the cap keeps one long filename from taking the
-  // whole panel.
-  const fitColumn = (kind: "name" | "size" | "date") => {
-    const host = columnsRef.current;
-    const panel = panelRef.current;
-    if (!host || !panel) return;
-    const captionButton = host.querySelector<HTMLElement>(
-      `[data-sort-key="${kind === "date" ? "modified" : kind}"]`,
-    );
-    const cellFont = getComputedStyle(host).font;
-    if (!captionButton || !cellFont) return;
-    // The listing the fit answers for: the values on screen, capped so a
-    // listing of ten thousand names still measures in one pass of text, not
-    // one pass of layout.
-    const shown = sortedEntries.slice(0, FIT_SAMPLE_LIMIT);
-    const locale = rowLocale();
-    const values =
-      kind === "name"
-        ? shown.map((entry) => entry.name)
-        : kind === "size"
-          ? shown.map((entry) => (entry.isDir ? "" : formatBytes(entry.size)))
-          : shown.map((entry) => formatDate(entry.modified, locale));
-    // The name column prints in the row's own font, not the counted columns'
-    // mono face: a probe that wears the row's classes carries that font.
-    let valueFont = cellFont;
-    if (kind === "name") {
-      const probe = document.createElement("span");
-      probe.className = "row-label";
-      const row = document.createElement("div");
-      row.className = "row filer-entry";
-      row.setAttribute("aria-hidden", "true");
-      row.appendChild(probe);
-      panel.appendChild(row);
-      try {
-        valueFont = getComputedStyle(probe).font || cellFont;
-      } finally {
-        row.remove();
-      }
-    }
-    const captionText =
-      kind === "name" ? t("session.name") : kind === "size" ? t("filer.size") : t("filer.modified");
-    const fit = suggestColumnWidth({
-      host,
-      caption: { text: captionText, font: getComputedStyle(captionButton).font, arrow: 16 },
-      values,
-      valueFont,
-      min: measureCssLength(host, `var(--filer-${kind}-min)`),
-      max: kind === "name" ? NAME_MAX_PX : COLUMN_MAX_PX,
-    });
-    if (fit !== null) setColumns((current) => ({ ...current, [kind]: fit }));
-  };
-
-  /** Back to the layout nobody arranged: names flexible, counted columns at their content widths. */
-  const resetColumns = () => setColumns(DEFAULT_FILER_COLUMNS);
   /**
    * The row the keyboard acts on. It rides alongside the selection instead of
    * replacing it, so Ctrl/Cmd+Arrow can move without changing the choice.
@@ -487,7 +323,6 @@ function FilerPanelBase() {
       uploadFolder,
       creating,
       entries,
-      resetColumns,
     });
 
   const remoteTitle = (label: string) => (remote ? label : `${label}${t("filer.sshOnly")}`);
@@ -803,36 +638,145 @@ function FilerPanelBase() {
     }
   };
 
+  /** The path bar's editable mode: the trail becomes the field in place. */
+  const startPathEdit = () => {
+    if (busy || offline) return;
+    setDraft(path);
+    setEditingPath(true);
+  };
+  const cancelPathEdit = () => {
+    setEditingPath(false);
+    setDraft(path);
+  };
+  const commitPathEdit = () => {
+    const next = draft.trim();
+    setEditingPath(false);
+    if (next && next !== path) void load(next);
+    else setDraft(path);
+  };
+
+  const selectedOne = selectedEntries.length === 1 ? selectedEntries[0] : undefined;
+  const canCreate = !busy && Boolean(path) && !atDrivesRoot;
+  // The checked sort entry carries its direction, so the menu says both what
+  // the list is ordered by and which way, and clicking it flips the direction
+  // the way a column caption would.
+  const sortCaption = (key: SortKey, label: string) =>
+    sort.key === key ? `${label} ${sort.direction === "asc" ? "↑" : "↓"}` : label;
+  const revealTitle = revealKey
+    ? `${t("filer.terminalFolder")} (${revealKey})`
+    : t("filer.terminalFolder");
+  // One menu for the actions that are not on the title bar and the two view
+  // choices the list has: which metadata it shows and how it is ordered.
+  // Explorer's "..." view menu is the model.
+  const viewItems: MenuItem[] = [
+    {
+      label: t("filer.newFileBtn"),
+      icon: "new-file",
+      disabled: !canCreate,
+      action: () => setCreating({ kind: "file", name: "" }),
+    },
+    {
+      label: t("filer.newFolderBtn"),
+      icon: "new-folder",
+      disabled: !canCreate,
+      action: () => setCreating({ kind: "folder", name: "" }),
+    },
+    {
+      label: t("filer.uploadFiles"),
+      icon: "cloud-upload",
+      disabled: !remote || busy || !path || choosingUpload,
+      action: () => void upload(),
+    },
+    {
+      label: t("filer.uploadFolder"),
+      icon: "cloud-upload",
+      disabled: !remote || busy || !path || choosingUpload,
+      action: () => void uploadFolder(),
+    },
+    {
+      label: t("filer.downloadFileOrFolder"),
+      icon: "cloud-download",
+      disabled: !remote || selectedEntries.length === 0 || busy || choosingDownload,
+      action: () => void downloadEntries(selectedEntries),
+    },
+    "separator",
+    {
+      label: t("filer.rename"),
+      icon: "edit",
+      disabled: !selectedOne || busy || atDrivesRoot,
+      action: () => {
+        if (selectedOne) startRename(selectedOne);
+      },
+    },
+    {
+      label: t("common.delete"),
+      icon: "trash",
+      danger: true,
+      disabled: selectedEntries.length === 0 || busy || atDrivesRoot,
+      action: () => setPendingDelete(selectedEntries),
+    },
+    {
+      label: t("filer.refresh"),
+      icon: "refresh",
+      disabled: busy || offline,
+      action: () => void load(path),
+    },
+    "separator",
+    {
+      label: revealTitle,
+      icon: "target",
+      disabled: busy || !canReveal,
+      action: () => {
+        if (tab) void revealCwdInFiler(tab.info.id);
+      },
+    },
+    {
+      label: followLabel,
+      icon: follow === "paused" ? "debug-pause" : "pin",
+      checked: follow !== "off",
+      disabled: !canReveal,
+      action: toggleFollow,
+    },
+    "separator",
+    {
+      label: t("filer.showSize"),
+      checked: sizeVisible,
+      action: () => setSizeVisible((visible) => !visible),
+    },
+    {
+      label: sortCaption("name", t("filer.sortByName")),
+      mark: "radio",
+      checked: sort.key === "name",
+      action: () => sortBy("name"),
+    },
+    {
+      label: sortCaption("size", t("filer.sortBySize")),
+      mark: "radio",
+      checked: sort.key === "size",
+      action: () => sortBy("size"),
+    },
+    {
+      label: sortCaption("modified", t("filer.sortByModified")),
+      mark: "radio",
+      checked: sort.key === "modified",
+      action: () => sortBy("modified"),
+    },
+  ];
+
   return (
     <div
       ref={panelRef}
       className={`panel filer-panel${dragOver ? (dragOver.accept ? " is-drag-over" : dragOver.reason ? " is-drag-blocked" : "") : ""}`}
-      // Marks the grid as a fixed-width table the moment the name column
-      // holds a width of its own (see the max-content rule in
-      // filer.styles.css).
-      data-name-fixed={columns.name !== null ? "" : undefined}
       data-size-hidden={!sizeVisible ? "" : undefined}
-      // Two values the rows need and only this component can compute: the row
-      // height the stylesheet and the virtualiser both have to work from, and
-      // the width the list's scrollbar steals from its rows. Both are handed
-      // down as tokens so neither is derived twice. The dragged column widths
-      // ride along on the same element: the caption row and every row below it
-      // read them off this one ancestor, so the two grids cannot disagree.
-      style={
-        {
-          flex: 1,
-          "--filer-row-h": `${rowHeight - 2}px`,
-          ...(columns.name !== null ? { "--filer-name-user": `${columns.name}px` } : {}),
-          ...(columns.size !== null ? { "--filer-size-user": `${columns.size}px` } : {}),
-          ...(columns.date !== null ? { "--filer-date-user": `${columns.date}px` } : {}),
-        } as CSSProperties
-      }
+      // The one number the stylesheet and the virtualiser both have to work
+      // from: the row height. Handed down as a token so neither derives it.
+      style={{ flex: 1, "--filer-row-h": `${rowHeight - 2}px` } as CSSProperties}
     >
       <div className="panel-header">
         <div className="panel-title is-filer">
           <Icon name="folder" />
           {t("panel.filer")}
-          <span className="panel-badge">
+          <span className="panel-badge filer-badge-protocol">
             {remote || offline ? tab?.info.protocol : t("filer.local")}
           </span>
           {/* A transfer in flight is named in the panel's own title bar: the
@@ -845,50 +789,7 @@ function FilerPanelBase() {
           )}
         </div>
         <button
-          type="button"
-          className={`panel-action filer-columns-trigger${columnsMenu ? " is-open" : ""}`}
-          title={t("filer.columns")}
-          aria-label={t("filer.columns")}
-          aria-haspopup="menu"
-          aria-expanded={columnsMenu !== null}
-          onPointerDown={() => {
-            columnsMenuWasOpen.current = columnsMenu !== null;
-          }}
-          onClick={(event) => {
-            if (columnsMenuWasOpen.current) {
-              columnsMenuWasOpen.current = false;
-              return;
-            }
-            const rect = event.currentTarget.getBoundingClientRect();
-            setColumnsMenu({ x: rect.right, y: rect.bottom + 2 });
-          }}
-        >
-          {t("filer.columns")}
-        </button>
-      </div>
-
-      {columnsMenu && (
-        <ContextMenu
-          x={columnsMenu.x}
-          y={columnsMenu.y}
-          align="right"
-          items={[
-            {
-              label: t("filer.size"),
-              checked: sizeVisible,
-              action: () => setSizeVisible((visible) => !visible),
-            },
-            "separator",
-            { label: t("filer.resetColumns"), icon: "discard", action: resetColumns },
-          ]}
-          onClose={() => setColumnsMenu(null)}
-        />
-      )}
-
-      {/* Upload and download stay visible on local sessions, just disabled. */}
-      <div className="filer-toolbar" role="toolbar" aria-label={t("filer.fileActions")}>
-        <button
-          className="panel-action filer-action"
+          className="panel-action filer-action filer-title-secondary"
           onClick={() => setCreating({ kind: "file", name: "" })}
           title={t("filer.newFileBtn")}
           aria-label={t("filer.newFileBtn")}
@@ -897,7 +798,7 @@ function FilerPanelBase() {
           <Icon name="new-file" />
         </button>
         <button
-          className="panel-action filer-action"
+          className="panel-action filer-action filer-title-secondary"
           onClick={() => setCreating({ kind: "folder", name: "" })}
           title={t("filer.newFolderBtn")}
           aria-label={t("filer.newFolderBtn")}
@@ -906,7 +807,7 @@ function FilerPanelBase() {
           <Icon name="new-folder" />
         </button>
         <button
-          className={`panel-action filer-action${uploadMenu ? " is-open" : ""}${
+          className={`panel-action filer-action filer-title-primary${uploadMenu ? " is-open" : ""}${
             !remote ? " is-offline" : ""
           }`}
           onMouseDown={() => {
@@ -918,10 +819,6 @@ function FilerPanelBase() {
             setUploadMenu({ x: rect.left, y: rect.bottom + 2 });
           }}
           title={remoteTitle(t("filer.uploadFilesOrFolders"))}
-          // The same remoteTitle the tooltip carries: on a session without
-          // remote files the button is disabled, and the reason it is
-          // disabled ("connected SSH sessions only") must reach a screen
-          // reader too, not only the mouse.
           aria-label={remoteTitle(t("filer.uploadFilesOrFolders"))}
           aria-haspopup="menu"
           aria-expanded={uploadMenu !== null}
@@ -930,7 +827,7 @@ function FilerPanelBase() {
           <Icon name="cloud-upload" />
         </button>
         <button
-          className={`panel-action filer-action${!remote ? " is-offline" : ""}`}
+          className={`panel-action filer-action filer-title-primary${!remote ? " is-offline" : ""}`}
           onClick={() => void downloadEntries(selectedEntries)}
           title={remoteTitle(t("filer.downloadFileOrFolder"))}
           aria-label={remoteTitle(t("filer.downloadFileOrFolder"))}
@@ -939,36 +836,38 @@ function FilerPanelBase() {
           <Icon name="cloud-download" />
         </button>
         <button
-          className="panel-action filer-action"
-          onClick={() => void load(path)}
-          title={t("filer.refresh")}
-          aria-label={t("filer.refresh")}
-          disabled={busy || offline}
-        >
-          <Icon name="refresh" />
-        </button>
-        <button
-          className="panel-action filer-action"
-          onClick={() => {
-            const entry = selectedEntries[0];
-            if (entry) startRename(entry);
+          type="button"
+          className={`panel-action filer-action${viewMenu ? " is-open" : ""}`}
+          title={t("filer.moreActions")}
+          aria-label={t("filer.moreActions")}
+          aria-haspopup="menu"
+          aria-expanded={viewMenu !== null}
+          onPointerDown={() => {
+            viewMenuWasOpen.current = viewMenu !== null;
           }}
-          title={t("filer.rename")}
-          aria-label={t("filer.rename")}
-          disabled={selectedEntries.length !== 1 || busy || atDrivesRoot}
+          onClick={(event) => {
+            if (viewMenuWasOpen.current) {
+              viewMenuWasOpen.current = false;
+              return;
+            }
+            const rect = event.currentTarget.getBoundingClientRect();
+            setViewMenu({ x: rect.right, y: rect.bottom + 2 });
+          }}
         >
-          <Icon name="edit" />
-        </button>
-        <button
-          className="panel-action filer-action filer-action-danger"
-          onClick={() => setPendingDelete(selectedEntries)}
-          title={t("common.delete")}
-          aria-label={t("common.delete")}
-          disabled={selectedEntries.length === 0 || busy || atDrivesRoot}
-        >
-          <Icon name="trash" />
+          <Icon name="ellipsis" />
         </button>
       </div>
+
+      {viewMenu && (
+        <ContextMenu
+          x={viewMenu.x}
+          y={viewMenu.y}
+          align="right"
+          items={viewItems}
+          onClose={() => setViewMenu(null)}
+        />
+      )}
+
       {uploadMenu && (
         <ContextMenu
           x={uploadMenu.x}
@@ -989,7 +888,15 @@ function FilerPanelBase() {
         />
       )}
 
-      <div className="filer-path">
+      <div
+        className="filer-path"
+        // Clicking the empty stretch of the bar opens the path for editing —
+        // the address-bar idiom every file manager shares. The buttons, the
+        // crumbs and the field keep their own gestures.
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !busy && !offline) startPathEdit();
+        }}
+      >
         <button
           className="panel-action filer-action"
           onClick={goUp}
@@ -1008,194 +915,70 @@ function FilerPanelBase() {
         >
           <Icon name="home" />
         </button>
-        <button
-          className="panel-action filer-action"
-          onClick={() => tab && void revealCwdInFiler(tab.info.id)}
-          title={
-            revealKey ? `${t("filer.terminalFolder")} (${revealKey})` : t("filer.terminalFolder")
-          }
-          aria-label={t("filer.terminalFolder")}
-          disabled={busy || !canReveal}
-        >
-          <Icon name="target" />
-        </button>
-        <button
-          className={`panel-action filer-action${follow === "following" ? " is-open" : ""}`}
-          onClick={toggleFollow}
-          title={followTitle}
-          aria-label={followLabel}
-          aria-pressed={follow !== "off"}
-          disabled={!canReveal}
-        >
-          <Icon name={follow === "paused" ? "debug-pause" : "pin"} />
-        </button>
-        <input
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") void load(draft);
-            if (event.key === "Escape") setDraft(path);
-          }}
-        />
-      </div>
-
-      {breadcrumbs.length > 0 && (
-        <nav className="filer-breadcrumbs" aria-label={path}>
-          {breadcrumbs.flatMap((segment, index) => [
-            ...(index > 0
-              ? [
-                  <span
-                    key={`separator-${segment.target}`}
-                    className="filer-crumb-separator"
-                    aria-hidden="true"
-                  >
-                    ›
-                  </span>,
-                ]
-              : []),
-            <button
-              key={segment.target}
-              type="button"
-              className="filer-crumb"
-              // The full path rides along: a deep segment is ellipsised in a
-              // narrow panel, and its target is the one thing worth showing.
-              title={segment.target}
-              disabled={busy}
-              aria-current={index === breadcrumbs.length - 1 ? "location" : undefined}
-              onClick={() => void load(segment.target)}
-            >
-              {segment.label}
-            </button>,
-          ])}
-        </nav>
-      )}
-
-      {/* Sortable captions. None of them carries an `aria-label`: replacing the
-          name with an instruction meant a screen reader said "按大小排序" and
-          never "大小", so three columns were named by their verbs. The visible
-          text is the accessible name now, `aria-sort` carries the state, and
-          the sr-only line carries what a click will do. `data-sort-key` is the
-          stable handle the row contract selects a caption by.
-
-          Each caption sits in a cell of its own so a resize handle can straddle
-          the boundary to its right without leaving the grid: the cells occupy
-          the same tracks the rows below use, so a dragged width moves the
-          captions and the rows together.
-
-          Every column is resized from its own right edge and independently:
-          dragging the names widens the names and pushes the counted columns
-          along; dragging the size or the modified column moves only that
-          column's right boundary, and the one nobody is holding stays put.
-          Nothing needs to trade: while the name column follows the layout it
-          absorbs whatever the counted columns give up or take, and once it
-          holds a width of its own a listing wider than the panel scrolls
-          sideways instead of squeezing anyone. A double-click fits one column
-          to its content; the folder menu below resets all three. */}
-      <div className="filer-head">
-        {/* The border lives on the head, not on the grid inside it: the grid
-            is what the scroll sync below translates when the listing is
-            wider than the panel, and a translated border would leave the
-            panel's right edge unruled. */}
-        <div className="filer-columns" ref={columnsRef}>
-          <div className="filer-col-cell is-name">
-            <button
-              type="button"
-              className={`filer-col-name${sort.key === "name" ? " is-sorted" : ""}`}
-              data-sort-key="name"
-              onClick={() => sortBy("name")}
-              aria-sort={
-                sort.key === "name"
-                  ? sort.direction === "asc"
-                    ? "ascending"
-                    : "descending"
-                  : "none"
-              }
-            >
-              {t("session.name")}
-              <SortIndicator sort={sort} column="name" />
-              <span className="sr-only">{t("filer.sortByName")}</span>
-            </button>
-            <FilerColumnResizer
-              label={t("filer.resizeNameColumn")}
-              onStart={(startWidth) => {
-                // The name track follows the layout until someone drags it;
-                // pin it at the width it currently renders at, so the first
-                // frame of the drag moves the boundary instead of being
-                // absorbed by the flexible track.
-                setColumns((current) =>
-                  current.name === null
-                    ? { ...current, name: clampColumnWidth(startWidth, NAME_MAX_PX) }
-                    : current,
-                );
-              }}
-              onResize={(start, widenBy) =>
-                setColumns((current) => ({
-                  ...current,
-                  name: clampColumnWidth(start + widenBy, NAME_MAX_PX),
-                }))
-              }
-              onFit={() => fitColumn("name")}
-            />
-          </div>
-          <div className="filer-col-cell is-size">
-            <FilerColumnResizer
-              label={t("filer.resizeSizeColumn")}
-              onResize={(start, widenBy) =>
-                setColumns((current) => ({
-                  ...current,
-                  size: clampColumnWidth(start + widenBy),
-                }))
-              }
-              onFit={() => fitColumn("size")}
-            />
-            <button
-              type="button"
-              className={`filer-col-size${sort.key === "size" ? " is-sorted" : ""}`}
-              data-sort-key="size"
-              onClick={() => sortBy("size")}
-              aria-sort={
-                sort.key === "size"
-                  ? sort.direction === "asc"
-                    ? "ascending"
-                    : "descending"
-                  : "none"
-              }
-            >
-              {t("filer.size")}
-              <SortIndicator sort={sort} column="size" />
-              <span className="sr-only">{t("filer.sortBySize")}</span>
-            </button>
-          </div>
-          <div className="filer-col-cell is-date">
-            <FilerColumnResizer
-              label={t("filer.resizeDateColumn")}
-              onResize={(start, widenBy) =>
-                setColumns((current) => ({
-                  ...current,
-                  date: clampColumnWidth(start + widenBy),
-                }))
-              }
-              onFit={() => fitColumn("date")}
-            />
-            <button
-              type="button"
-              className={`filer-col-date${sort.key === "modified" ? " is-sorted" : ""}`}
-              data-sort-key="modified"
-              onClick={() => sortBy("modified")}
-              aria-sort={
-                sort.key === "modified"
-                  ? sort.direction === "asc"
-                    ? "ascending"
-                    : "descending"
-                  : "none"
-              }
-            >
-              {t("filer.modified")}
-              <SortIndicator sort={sort} column="modified" />
-              <span className="sr-only">{t("filer.sortByModified")}</span>
-            </button>
-          </div>
-        </div>
+        {editingPath ? (
+          <input
+            className="filer-path-edit"
+            autoFocus
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onBlur={cancelPathEdit}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") commitPathEdit();
+              if (event.key === "Escape") cancelPathEdit();
+            }}
+            aria-label={t("filer.editPath")}
+          />
+        ) : (
+          <nav
+            className="filer-crumbs"
+            aria-label={path || t("filer.local")}
+            onDoubleClick={startPathEdit}
+          >
+            {breadcrumbs.length > 0 ? (
+              breadcrumbs.flatMap((segment, index) => [
+                ...(index > 0
+                  ? [
+                      <span
+                        key={`separator-${segment.target}`}
+                        className="filer-crumb-separator"
+                        aria-hidden="true"
+                      >
+                        ›
+                      </span>,
+                    ]
+                  : []),
+                <button
+                  key={segment.target}
+                  type="button"
+                  className="filer-crumb"
+                  // The full path rides along: a deep segment is ellipsised in
+                  // a narrow panel, and its target is the one thing worth showing.
+                  title={segment.target}
+                  disabled={busy}
+                  aria-current={index === breadcrumbs.length - 1 ? "location" : undefined}
+                  onClick={() => void load(segment.target)}
+                >
+                  {segment.label}
+                </button>,
+              ])
+            ) : (
+              <span className="filer-path-placeholder" aria-current="location">
+                {path || t("filer.local")}
+              </span>
+            )}
+          </nav>
+        )}
+        {!editingPath && (
+          <button
+            className="panel-action filer-action"
+            onClick={startPathEdit}
+            title={t("filer.editPath")}
+            aria-label={t("filer.editPath")}
+            disabled={busy || offline}
+          >
+            <Icon name="edit" />
+          </button>
+        )}
       </div>
 
       <div
@@ -1411,7 +1194,6 @@ function FilerPanelBase() {
                 <button
                   type="button"
                   className="panel-action filer-action filer-transfer-retry"
-                  onClick={retryTransfer}
                   title={t("filer.retryName", { name: transfer.name })}
                   aria-label={t("filer.retryName", { name: transfer.name })}
                 >
@@ -1464,34 +1246,8 @@ function FilerPanelBase() {
             {selectedEntries.length > 0 && (
               <span>{t("filer.selectedCount", { count: selectedEntries.length })}</span>
             )}
-            {!sizeVisible && sort.key === "size" && (
-              <span
-                className="filer-hidden-sort"
-                title={t(sort.direction === "asc" ? "filer.sizeSortAsc" : "filer.sizeSortDesc")}
-              >
-                <span aria-hidden="true">
-                  {t("filer.size")} {sort.direction === "asc" ? "↑" : "↓"}
-                </span>
-                <span className="sr-only">
-                  {t(sort.direction === "asc" ? "filer.sizeSortAsc" : "filer.sizeSortDesc")}
-                </span>
-              </span>
-            )}
             {busy && <span>{t("filer.working")}</span>}
           </>
-        )}
-        {columnOverflow && (
-          <button
-            type="button"
-            className="filer-more-columns"
-            onClick={() => {
-              const list = listRef.current;
-              if (list) list.scrollLeft = columnsAtEnd ? 0 : list.scrollWidth;
-            }}
-          >
-            {t(columnsAtEnd ? "filer.showNames" : "filer.showMoreColumns")}
-            <Icon name={columnsAtEnd ? "arrow-left" : "arrow-right"} />
-          </button>
         )}
       </div>
     </div>

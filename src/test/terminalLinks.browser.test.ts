@@ -146,7 +146,19 @@ it("moves the Filer to the directory a followed shell reports", async () => {
   await fixture();
   // Turning following on syncs once; this shell has not reported a directory
   // yet, so the backend is asked exactly once for the current one.
-  await userEvent.click(document.querySelector('[aria-label="Follow terminal"]') as HTMLElement);
+  await userEvent.click(document.querySelector('[aria-label="More actions"]') as HTMLElement);
+  await expect
+    .poll(() =>
+      [...document.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]')].some((item) =>
+        item.textContent?.startsWith("Follow terminal"),
+      ),
+    )
+    .toBe(true);
+  (
+    [...document.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]')].find((item) =>
+      item.textContent?.startsWith("Follow terminal"),
+    ) as HTMLElement
+  ).click();
   await expect.poll(listedPath).toBe("/home/edge");
   expect(useStore.getState().filerFollow[id]).toBe("following");
 

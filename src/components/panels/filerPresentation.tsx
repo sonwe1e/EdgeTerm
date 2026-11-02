@@ -146,13 +146,20 @@ export const FilerRow = memo(function FilerRow({
           it is absolute so the grid gives it no track of its own. */}
       <span className="sr-only">{entryKindLabel(kind, t)}</span>
       <span className="row-label">{entry.name}</span>
-      {/* A folder has no size of its own, the way the dual-pane rows show it.
-          An empty cell is read as nothing, which is what an absent size is. */}
-      <span className="filer-col-size row-meta">
-        {entry.isDir ? "" : <FilerSize bytes={entry.size} />}
-      </span>
-      <span className="filer-col-date row-meta">
-        <FilerDate modified={entry.modified} />
+      {/* The metadata is one trailing cluster, not three columns: the name is
+          the row, and the size and the moment sit beside it in one quiet ink.
+          A folder has no size of its own, the way the dual-pane rows show it.
+          The cluster is hidden as a whole when the view menu turns the size
+          off — the date keeps the row's right edge. */}
+      <span className="filer-row-meta row-meta">
+        {!entry.isDir && (
+          <span className="filer-meta-size">
+            <FilerSize bytes={entry.size} />
+          </span>
+        )}
+        <span className="filer-meta-date">
+          <FilerDate modified={entry.modified} />
+        </span>
       </span>
     </div>
   );
@@ -352,6 +359,11 @@ export function entryTitle(entry: FileEntry, t: Translate = translateMsg): strin
     );
   }
   const stamp = entryDateStamp(entry.modified);
+  if (!stamp) {
+    // The cell prints nothing for a listing that gave no moment; the tooltip
+    // is where that absence is spoken, so it does not read as a broken row.
+    attributes.push(t("filer.tipModified", { value: t("filer.dateUnknown") }));
+  }
   return stamp
     ? `${entry.path}\n${attributes.join(" · ")}\n${stamp}`
     : `${entry.path}\n${attributes.join(" · ")}`;
@@ -421,16 +433,6 @@ function rowDateFormats(locale: string | undefined): RowDateFormats {
   return built;
 }
 
-/** Local midnight that a timestamp falls on, for comparing whole days. */
-function dayStart(value: Date): number {
-  return new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
-}
-
-/** Local midnight of today, or of the day `offset` days from it. */
-function dayOffset(now: Date, offset: number): number {
-  return dayStart(new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset));
-}
-
 const pad2 = (value: number): string => String(value).padStart(2, "0");
 
 /** `10-20`: the day on its own, which is all a date needs inside its year. */
@@ -447,20 +449,10 @@ function localOffset(date: Date): string {
 }
 
 /**
- * `未知` / `Unknown`, spoken rather than dashed: a dash says "no value the
- * way a folder has none", and this is not that — the listing was asked for a
- * moment and did not give one, which is worth saying out loud.
- */
-function unknownDate(): string {
-  return translateMsg("filer.dateUnknown");
-}
-
-/**
- * The two halves of a date cell: whatever leads it — today's word, the day,
- * the whole date — and the clock time trailing it, which only rows close
- * enough to care about carry. They are separate so the renderer can put them
- * in separate ink: lead `--fg-dim`, trailing time `--fg-faint`, so the newest
- * row in the column is not also the palest.
+ * The two halves a date cell is built from: its day and its clock time. The
+ * halves survive because `formatDate` joins them; nothing colours them apart
+ * any more — a list row is read as one string, and two inks in a 10px cell
+ * read as two different values.
  */
 export interface RowDateParts {
   value: string;
@@ -468,36 +460,25 @@ export interface RowDateParts {
 }
 
 /**
- * The date a row shows, graded so the recent past reads at a glance: the word
- * for today with its clock time, the day and time for the rest of this year,
- * and the bare date beyond that. The day and the year are hand-built, not
- * formatted, so every locale prints the same number of characters — the column
- * is a fixed width and has to read as one.
+ * The date a row shows, in one shape per case: `10-20 14:32` inside the
+ * current year, `2025-10-20` beyond it. The day and the year are hand-built,
+ * not formatted, so every locale prints the same number of characters and the
+ * metadata cluster keeps one width from row to row.
  *
- * A missing time (`null`) is unknown, not absent, and says so; epoch 0 does
- * not look missing either — it is a real moment, 1970, and is shown as one.
+ * A missing moment (`null`) prints nothing: the row's tooltip and accessible
+ * name say "unknown" out loud, where a dash would read like a folder's absent
+ * size. Epoch 0 is a real moment, 1970, and is shown as one.
  */
 export function formatDateParts(
   seconds: number | null,
   locale?: string,
   now: Date = new Date(),
 ): RowDateParts {
-  if (seconds === null || !Number.isFinite(seconds)) return { value: unknownDate(), time: "" };
+  if (seconds === null || !Number.isFinite(seconds)) return { value: "", time: "" };
   const date = new Date(seconds * 1000);
-  if (Number.isNaN(date.getTime())) return { value: unknownDate(), time: "" };
-  const time = rowDateFormats(locale).time.format(date);
-  const day = dayStart(date);
-  const today = dayOffset(now, 0);
-  // Today is the one day that earns a word: it is the row a user scans for,
-  // and a bare `14:32` is the same shape as the `10-20` on the rows beside it.
-  if (day === today) return { value: translateMsg("filer.dateToday"), time };
-  // A server whose clock runs ahead dates files in the future. Those fall back
-  // to a plain day rather than printing a moment that has not happened yet;
-  // the tooltip still carries the whole timestamp, zone and all.
-  if (day > today || date.getFullYear() === now.getFullYear()) {
-    return { value: isoDay(date), time };
-  }
-  return { value: isoDate(date), time: "" };
+  if (Number.isNaN(date.getTime())) return { value: "", time: "" };
+  if (date.getFullYear() !== now.getFullYear()) return { value: isoDate(date), time: "" };
+  return { value: isoDay(date), time: rowDateFormats(locale).time.format(date) };
 }
 
 export function formatDate(
@@ -529,17 +510,9 @@ export function entryDateStamp(seconds: number | null): string {
   });
 }
 
-/** One row's date, the leading part in one ink and the trailing time in another. */
+/** One row's moment, as one quiet string with nothing to decode. */
 const FilerDate = memo(function FilerDate({ modified }: { modified: number | null }) {
-  const parts = formatDateParts(modified, rowLocale());
-  return (
-    <>
-      <span className="filer-date-value">{parts.value}</span>
-      {/* Space before the time is inside the span so the cell is read aloud as
-          one string and not as two words run together. */}
-      {parts.time ? <span className="filer-date-time">{` ${parts.time}`}</span> : null}
-    </>
-  );
+  return <>{formatDate(modified, rowLocale())}</>;
 });
 
 /**

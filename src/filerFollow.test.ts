@@ -175,11 +175,30 @@ let root: Root;
 const fileRows = () => [...host.querySelectorAll<HTMLElement>(".filer-entry")];
 const rowNamed = (name: string) =>
   fileRows().find((element) => element.querySelector(".row-label")?.textContent === name);
-const pathField = () => host.querySelector<HTMLInputElement>(".filer-path input")!;
-/** The follow button is the directory bar's only aria-pressed control. */
+const MENU_ITEM = '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]';
+/** Opens the panel's one menu unless it is already standing. */
+const openFilerMenu = () => {
+  if (document.querySelector(MENU_ITEM)) return;
+  act(() => host.querySelector<HTMLButtonElement>('[aria-label="More actions"]')!.click());
+};
+/** A menu entry found by the label it starts with. */
+const menuEntry = (matches: (label: string) => boolean) => {
+  openFilerMenu();
+  return [...document.querySelectorAll<HTMLButtonElement>(MENU_ITEM)].find((item) =>
+    matches(item.textContent?.trim() ?? ""),
+  )!;
+};
+/** The open folder, as the last crumb's own target: the bar is a trail now. */
+const currentPath = () => {
+  const crumbs = host.querySelectorAll<HTMLElement>(".filer-crumb[title]");
+  return crumbs[crumbs.length - 1]?.getAttribute("title") ?? "";
+};
+/** Following is one of the panel menu's choices, beside "reveal". */
 const followButton = () =>
-  host.querySelector<HTMLButtonElement>(".filer-path button[aria-pressed]")!;
-const pressed = () => followButton().getAttribute("aria-pressed");
+  menuEntry((label) =>
+    ["Follow terminal", "Following", "Paused"].some((name) => label.startsWith(name)),
+  );
+const pressed = () => followButton().getAttribute("aria-checked");
 const mount = () => act(async () => root.render(h(FilerPanel)));
 /** Lets the async listing a click started finish under act. */
 const settle = async () => {
@@ -542,17 +561,15 @@ describe("the Filer's follow button and manual browsing", () => {
     await mount();
     await settle();
     expect(pressed()).toBe("false");
-    expect(followButton().getAttribute("aria-label")).toBe("Follow terminal");
-    expect(followButton().title).toBe("Follow the terminal's directory");
+    expect(followButton().textContent?.trim()).toBe("Follow terminal");
 
-    await act(async () => followButton().click());
+    followButton().click();
     await settle();
     expect(followMode(useStore.getState().filerFollow, "alpha")).toBe("following");
     expect(pressed()).toBe("true");
-    expect(followButton().getAttribute("aria-label")).toBe("Following");
-    expect(followButton().title).toBe("Stop following the terminal's directory");
+    expect(followButton().textContent?.trim()).toBe("Following");
 
-    await act(async () => followButton().click());
+    followButton().click();
     await settle();
     expect(followMode(useStore.getState().filerFollow, "alpha")).toBe("off");
     expect(pressed()).toBe("false");
@@ -563,12 +580,12 @@ describe("the Filer's follow button and manual browsing", () => {
     reportFromShell("alpha", "/work");
     await mount();
     await settle();
-    expect(pathField().value).toBe("/home/me");
+    expect(currentPath()).toBe("/home/me");
 
-    await act(async () => followButton().click());
+    followButton().click();
     await settle();
     expect(api.localList).toHaveBeenCalledWith("/work");
-    expect(pathField().value).toBe("/work");
+    expect(currentPath()).toBe("/work");
   });
 
   it("opens a followed session at the shell's directory, not the last browsed one", async () => {
@@ -579,7 +596,7 @@ describe("the Filer's follow button and manual browsing", () => {
     await settle();
     expect(api.localHome).not.toHaveBeenCalled();
     expect(api.localList).toHaveBeenCalledWith("/work");
-    expect(pathField().value).toBe("/work");
+    expect(currentPath()).toBe("/work");
   });
 
   it("pauses when a folder is opened by hand", async () => {
@@ -588,16 +605,16 @@ describe("the Filer's follow button and manual browsing", () => {
     follow("alpha");
     await mount();
     await settle();
-    expect(pathField().value).toBe("/work");
+    expect(currentPath()).toBe("/work");
 
     await act(async () => {
       rowNamed("sub")!.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
     });
     await settle();
-    expect(pathField().value).toBe("/work/sub");
+    expect(currentPath()).toBe("/work/sub");
     expect(followMode(useStore.getState().filerFollow, "alpha")).toBe("paused");
     expect(useStore.getState().status).toBe("Follow paused: you browsed away manually");
-    expect(followButton().getAttribute("aria-label")).toBe("Paused");
+    expect(followButton().textContent?.trim()).toBe("Paused");
   });
 
   it("resumes from paused at the shell's latest directory", async () => {
@@ -606,13 +623,12 @@ describe("the Filer's follow button and manual browsing", () => {
     useStore.setState({ filerFollow: { alpha: "paused" } });
     await mount();
     await settle();
-    expect(pathField().value).toBe("/home/me");
-    expect(followButton().getAttribute("aria-label")).toBe("Paused");
-    expect(followButton().title).toBe("Resume following the terminal's directory");
+    expect(currentPath()).toBe("/home/me");
+    expect(followButton().textContent?.trim()).toBe("Paused");
 
-    await act(async () => followButton().click());
+    followButton().click();
     await settle();
-    expect(pathField().value).toBe("/work");
+    expect(currentPath()).toBe("/work");
     expect(useStore.getState().status).toBe("Following again: /work");
   });
 
@@ -620,10 +636,8 @@ describe("the Filer's follow button and manual browsing", () => {
     showFiler([shellTab("alpha", "local")], "alpha");
     await mount();
     await settle();
-    const locate = host.querySelector<HTMLButtonElement>(
-      '.filer-path [aria-label="Terminal folder"]',
-    )!;
-    await act(async () => locate.click());
+    const locate = menuEntry((label) => label.startsWith("Terminal folder"));
+    locate.click();
     expect(revealCwdInFiler).toHaveBeenCalledWith("alpha");
   });
 });
