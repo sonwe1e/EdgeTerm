@@ -167,3 +167,18 @@ Lead 负责 `src/terminal.ts`、`src/actions.ts`、`src/locales/*`、`src/test/*
 - 2026-11-02 08:19（北京时间）公开为 latest（非草稿、非预发布）：https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.6.0 。发布后从该页回下载四个附件逐个计算 SHA-256，与本地 `SHA256SUMS.txt` 一致。
 - GitHub CI（push 到 main）：run [41366374494](https://github.com/sonwe1e/EdgeTerm/actions/runs/41366374494) 的 frontend 与 rust 两个 job 均通过。本轮之前的两条 main 推送是失败状态（`cargo fmt --check` 的既有偏差），本轮的 `d9d8b71` 修掉该偏差后转绿。
 - 未验证：安装、卸载、覆盖升级与数字签名；未在干净机器上运行安装器；未在真实 Tauri/WebView2 窗口内验收交互（见"未验证（真机项）"）。
+
+## 1.6.1 打包产物（2026-11-02）
+
+- 内容为 1.6.0 之后的兼容修复（Alt+点击后菜单栏误弹出）与一项兼容新能力（输入行选区删除/替换，`79a6b64`、`fce6752`）；按维护者决定使用补丁版本 1.6.1（先例 1.5.1），四个版本文件由 `npm run version:set 1.6.1` 同步，`version:check` 通过，`tauri.conf.json` 仍引用 `../package.json`。
+- 在 Windows x64 上用受管 runner 执行 `./dev.ps1 tauri:build --bundles nsis`（Node 24.19.0、rustc/cargo 1.99.1、MSVC 与 Windows SDK、已预置的 NSIS），release 构建 2m55s；`edgeterm.exe` 与安装器的文件版本均为 1.6.1。本轮未改 Rust 代码；`test:rust` 全量首跑有一条 `closing_a_pending_remote_forward_cancels_its_late_allocation` 在并行负载下断言 `stopping`≠`stopped` 失败，单独重跑与全量重跑（451 通过 / 28 ignored / 0 失败）均通过，判定为既有用例的时序抖动，不是本轮改动引入。
+- 产物在 `artifacts/release-1.6.1/`（git 忽略）；`npm run release:package -- --check` 三个附件与 `SHA256SUMS.txt` 匹配：
+
+| 附件 | 字节 | SHA-256 |
+| --- | ---: | --- |
+| EdgeTerm_1.6.1_x64-setup.exe | 4,098,396 | `9f7db9b83f9bd083f23a7521917c99f509b38829050266bdcef4f5c257f3c92e` |
+| EdgeTerm_1.6.1_x64-portable.zip | 5,092,743 | `fdc101d785a62e88ae5e01bf792e0082ecb332e2ca8d6901748080a3c4c10d6b` |
+| EdgeTerm_1.6.1_windows-diagnostics.zip | 5,471 | `d9ee8815b2282371791bdd84845ad4c97863ecd350955d479f4d06ad299cc55a` |
+
+- 便携包内 `EdgeTerm.exe` 为 10,058,752 字节，SHA-256 `fb6ebe9d8e56165676bc96b7977592671c316039347c6c0973305ca10d3454ef`，另含 `data/` 与 `README.txt`。
+- Windows 本地检查：111 个前端单元测试文件 / 1051 项、30 个浏览器测试文件 / 160 项（真实 Edge，含 Alt+点击 5 项、终端输入 5 项、选区编辑 3 项）、typecheck、Biome 格式、lint（保留生成绑定两条既有 `any` 警告）与前端生产构建通过；`79a6b64` 与 `fce6752` 两条提交已逐个独立验证（fix 提交独立通过 typecheck 与自身浏览器套件）。
