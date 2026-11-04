@@ -1,6 +1,6 @@
 import closeIcon from "@vscode/codicons/src/icons/close.svg?raw";
 import { Terminal, type IBufferLine, type IMarker } from "@xterm/xterm";
-import { isAiSessionCommand } from "./aiTools";
+import { aiSessionTool } from "./aiTools";
 import type { CommandSuggestion } from "./history";
 import { IS_MAC } from "./platform";
 import { shellPromptEnd } from "./semanticColors";
@@ -39,6 +39,7 @@ export class TerminalCommands {
 
   /** Set while an agentic CLI (see `aiTools.ts`) owns the terminal. */
   private aiSession = false;
+  aiTool: string | null = null;
 
   /** Open from the user's input until the assistant goes quiet again. */
   aiTurn = false;
@@ -150,7 +151,9 @@ export class TerminalCommands {
     this.commandPromptRecognized = isInputPrompt(prompt);
     this.commandOutputAdvanced = false;
     this.commandRunning = true;
-    this.aiSession = isAiSessionCommand(sent ?? this.submittedCommand(prompt));
+    this.aiTool = aiSessionTool(sent ?? this.submittedCommand(prompt));
+    this.aiSession = this.aiTool !== null;
+    this.context.callbacks.onAiSession?.(this.aiTool);
     // An agentic CLI runs until the user quits it, so reporting its whole
     // session as one running command would say nothing. The tab stays quiet
     // until the assistant itself is working.
@@ -296,6 +299,8 @@ export class TerminalCommands {
       this.aiQuietTimer = null;
     }
     this.aiSession = false;
+    if (this.aiTool) this.context.callbacks.onAiSession?.(null);
+    this.aiTool = null;
     this.aiTurn = false;
   }
 

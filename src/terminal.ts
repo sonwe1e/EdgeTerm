@@ -47,6 +47,11 @@ import { ZmodemController } from "./zmodem";
  * state, because it changes on every frame of scrolling output.
  */
 export class TerminalController {
+  /** Invalidates delayed UI input across disconnect/reconnect. */
+  connectionRevision = 0;
+  agentKeyPassthrough = false;
+  private outputBytes = 0;
+  private parseMs = 0;
   private readonly keyboard: TerminalKeyboard;
 
   private readonly searchController: TerminalSearchController;
@@ -280,6 +285,9 @@ export class TerminalController {
       rightClickSelectsWord: true,
     });
     this.keyboard = new TerminalKeyboard({
+      get agentKeyPassthrough() {
+        return owner.agentKeyPassthrough;
+      },
       get commands() {
         return owner.commands;
       },
@@ -713,6 +721,7 @@ export class TerminalController {
     this.term.attachCustomKeyEventHandler((event) => this.keyboard.filterKey(event));
     this.term.onSelectionChange(() => {
       this.clipboard.selectionChanged = true;
+      this.clipboard.captureAgentSelection();
     });
     // Copy on select (see `onSelectionMouseUp`). The buttons are watched
     // above the host: a selection drag routinely ends outside the terminal,
@@ -749,6 +758,7 @@ export class TerminalController {
 
     this.host = document.createElement("div");
     this.host.className = "term-host";
+    this.host.addEventListener("mousemove", this.clipboard.onSelectionMouseMove, true);
     this.hostResize = new ResizeObserver(() => {
       // The entry-level contract: a hidden terminal is never asked to fit
       // (the show path refits explicitly).
@@ -881,6 +891,7 @@ export class TerminalController {
       consumed?.();
       return;
     }
+    this.outputBytes += data.length;
     // Cheap enough for the byte path: one timestamp, only while a turn is
     // open, and the quiet timer reads it instead of being re-armed here.
     if (this.commands.aiTurn) this.commands.aiOutputAt = Date.now();
@@ -891,7 +902,11 @@ export class TerminalController {
     // whole chunk themselves. A barrier accounts for the ORIGINAL byte count
     // only after all synchronous terminal output from this chunk is parsed.
     // It also works on hidden terminals, without a render/rAF dependency.
-    if (consumed) this.term.write("", consumed);
+    const began = performance.now();
+    this.term.write("", () => {
+      this.parseMs = performance.now() - began;
+      consumed?.();
+    });
   }
 
   /**
@@ -940,9 +955,11 @@ export class TerminalController {
    */
   setLocked(locked: boolean) {
     if (this.locked === locked) return;
+    this.connectionRevision += 1;
     this.locked = locked;
     this.term.write(locked ? "\x1b[?25l" : "\x1b[?25h");
     if (locked) {
+      this.agentKeyPassthrough = false;
       this.clipboard.endSession();
       this.commands.hidePopup();
       this.commands.resetCommandTracking();
@@ -985,6 +1002,40 @@ export class TerminalController {
    */
   get reportedCwd(): ReportedCwd | null {
     return this.reported;
+  }
+
+  agentDiagnostics() {
+    return {
+      tool: this.commands.aiTool,
+      commandRunning: this.commands.commandRunning,
+      buffer: this.term.buffer.active.type,
+      mouse: this.term.modes.mouseTrackingMode,
+      bracketedPaste: this.term.modes.bracketedPasteMode,
+      cols: this.term.cols,
+      rows: this.term.rows,
+      historyRows: this.term.buffer.normal.baseY,
+      outputBytes: this.outputBytes,
+      parseMs: this.parseMs,
+    };
+  }
+
+  getAgentSelection(): string {
+    return this.clipboard.getAgentSelection();
+  }
+
+  /** An explicit composer action: bracketed paste, never an appended Enter. */
+  insertAgentPrompt(text: string, revision: number): boolean {
+    if (
+      revision !== this.connectionRevision ||
+      this.disposed ||
+      this.locked ||
+      this.isTransferActive() ||
+      !this.term.modes.bracketedPasteMode
+    )
+      return false;
+    if (text.length > 1024 * 1024 || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(text)) return false;
+    this.term.paste(text);
+    return true;
   }
 
   /** True while the ZMODEM sentry owns the byte stream. */
@@ -1185,6 +1236,7 @@ export class TerminalController {
     this.disposed = true;
     document.removeEventListener("mousedown", this.clipboard.onSelectionMouseDown);
     window.removeEventListener("mouseup", this.clipboard.onSelectionMouseUp);
+    this.host?.removeEventListener("mousemove", this.clipboard.onSelectionMouseMove, true);
     this.commands.dropAnchor();
     this.lineGutter.resetTrimMarker();
     this.commands.resetCommandTracking();

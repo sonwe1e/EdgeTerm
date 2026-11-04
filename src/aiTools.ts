@@ -17,6 +17,8 @@ const AI_CLIS = new Set([
   "copilot",
   "amp",
   "opencode",
+  "pi",
+  "pi-coding-agent",
   "crush",
   "goose",
   "qwen",
@@ -57,18 +59,7 @@ const RUNNERS: Record<string, string[]> = {
  * Flags that turn these tools into a one-shot run with no session to follow:
  * `claude -p "..."`, `aider --message ...`, `codex --version`.
  */
-const ONE_SHOT_FLAGS = new Set([
-  "-p",
-  "--print",
-  "--prompt",
-  "-m",
-  "--message",
-  "-h",
-  "--help",
-  "-v",
-  "-V",
-  "--version",
-]);
+const ONE_SHOT_FLAGS = new Set(["-h", "--help", "-v", "-V", "--version"]);
 
 /** First-argument subcommands that do not open a session. */
 const ONE_SHOT_SUBCOMMANDS = new Set([
@@ -106,14 +97,24 @@ function binaryName(token: string): string {
  * reading from a pipe is not driving the terminal.
  */
 export function isAiSessionCommand(command: string): boolean {
-  return command
-    .split(/&&|\|\||;/)
-    .filter((segment) => !segment.includes("|"))
-    .some(startsAiSession);
+  return aiSessionTool(command) !== null;
 }
 
-function startsAiSession(segment: string): boolean {
-  const tokens = segment.trim().split(/\s+/).filter(Boolean);
+/** Recognizes syntax only; never executes a command or expands shell variables. */
+export function aiSessionTool(command: string): string | null {
+  const segments = command.match(/(?:[^"';&|]|"[^"]*"|'[^']*')+|&&|\|\||[;|]/g) ?? [];
+  for (let at = 0; at < segments.length; at++) {
+    const segment = segments[at];
+    if (segment === "|" || segments[at - 1] === "|" || segments[at + 1] === "|") continue;
+    const tool = startsAiSession(segment);
+    if (tool) return tool;
+  }
+  return null;
+}
+
+function startsAiSession(segment: string): string | null {
+  const raw = segment.trim().match(/(?:[^\s"']|"[^"]*"|'[^']*')+/g) ?? [];
+  const tokens = raw.map((word) => word.replace(/^(["'])(.*)\1$/, "$2"));
   let index = 0;
   let prefixed = false;
   while (index < tokens.length) {
@@ -137,12 +138,36 @@ function startsAiSession(segment: string): boolean {
     break;
   }
 
-  if (!AI_CLIS.has(binaryName(tokens[index] ?? ""))) return false;
+  const tool = binaryName(tokens[index] ?? "");
+  if (!AI_CLIS.has(tool)) return null;
 
   const args = tokens.slice(index + 1);
-  if (args.some((arg) => ONE_SHOT_FLAGS.has(arg))) return false;
+  if (args.some((arg) => ONE_SHOT_FLAGS.has(arg))) return null;
+  // Flags belong to tools: -m is a model in Codex/OpenCode and a message in
+  // aider. OpenCode --prompt opens its TUI; Pi --mode rpc does not.
+  const flags =
+    tool === "aider"
+      ? ["-m", "--message"]
+      : tool === "opencode"
+        ? []
+        : tool === "codex"
+          ? []
+          : ["-p", "--print", "--prompt"];
+  if (args.some((arg) => flags.includes(arg.split("=", 1)[0]))) return null;
+  if (tool === "pi" || tool === "pi-coding-agent") {
+    const modeAt = args.indexOf("--mode");
+    const mode =
+      args.find((arg) => arg.startsWith("--mode="))?.slice(7) ??
+      (modeAt >= 0 ? args[modeAt + 1] : undefined);
+    if (mode && mode !== "interactive") return null;
+  }
   // Only the first positional word is a subcommand; a quoted opening prompt
   // (`codex "run the tests"`) keeps its quote and never looks like one.
-  const first = args.find((arg) => !arg.startsWith("-"));
-  return first === undefined || !ONE_SHOT_SUBCOMMANDS.has(first);
+  const first = args[0];
+  return first !== undefined &&
+    !raw[index + 1]?.startsWith('"') &&
+    !raw[index + 1]?.startsWith("'") &&
+    ONE_SHOT_SUBCOMMANDS.has(first)
+    ? null
+    : tool;
 }

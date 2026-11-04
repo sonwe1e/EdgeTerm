@@ -8,6 +8,7 @@ import { ALT_ARROW_SEQUENCES, isControlLetter } from "./terminalShared";
 import { scheduleSelectionRestore, selectionEdit } from "./terminalSelectionEdit";
 
 interface Context {
+  readonly agentKeyPassthrough?: boolean;
   readonly commands: Pick<
     TerminalCommands,
     | "popupIndex"
@@ -19,7 +20,7 @@ interface Context {
     | "setPopupIndex"
     | "acceptSuggestion"
     | "commandRunning"
-  >;
+  > & { readonly aiTool?: string | null };
   readonly term: Terminal;
   readonly erase: string;
   readonly locked: boolean;
@@ -35,6 +36,19 @@ export class TerminalKeyboard {
   filterKey(event: KeyboardEvent): boolean {
     if (event.type !== "keydown") return true;
     const key = event.key.toLowerCase();
+    if (
+      this.context.agentKeyPassthrough &&
+      key === "tab" &&
+      event.ctrlKey &&
+      !event.altKey &&
+      !event.metaKey &&
+      !event.isComposing
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.context.term.input(event.shiftKey ? "\x1b[9;6u" : "\x1b[9;5u", true);
+      return false;
+    }
 
     // IDE-style completion popup. While it is *passive* every key still
     // reaches the shell (so ↑ history, Tab completion and a remote shell's
@@ -198,7 +212,14 @@ export class TerminalKeyboard {
     // Alt+↑/↓ into Ctrl+↑/↓ off macOS; xterm 6 dropped that (#5346) and
     // sends the plain Alt-modified sequences, which zsh and bash leave
     // unbound. Kept here so the keys behave as they did in 0.6.x.
-    if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.isComposing) {
+    if (
+      event.altKey &&
+      !this.context.commands.aiTool &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.shiftKey &&
+      !event.isComposing
+    ) {
       const sequence = ALT_ARROW_SEQUENCES[key];
       if (sequence) {
         event.preventDefault();

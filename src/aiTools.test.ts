@@ -7,6 +7,12 @@ describe("recognising an agentic CLI session", () => {
     "claude",
     "codex",
     "codex --model gpt-5",
+    "codex -m gpt-5",
+    "pi",
+    "pi --session abc",
+    'opencode --prompt "review this project"',
+    'opencode mini -m provider/model --prompt "review"',
+    '& "C:/Program Files/agents/pi.cmd"',
     "claude --resume",
     'claude "fix the failing test"',
     "gemini",
@@ -38,6 +44,11 @@ describe("recognising an agentic CLI session", () => {
     "claude --version",
     "cat notes.md | claude",
     "npx create-react-app claude",
+    "pi -p 'review this'",
+    "pi --mode rpc",
+    "pi --mode=json",
+    "opencode run 'review'",
+    "aider -m 'fix this'",
   ])("rejects %s", (command) => {
     expect(isAiSessionCommand(command)).toBe(false);
   });

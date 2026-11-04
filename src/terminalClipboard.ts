@@ -3,6 +3,7 @@ import { readClipboardText, writeClipboardText } from "./api";
 import { type ProgramClipboardMode } from "./osc52";
 import { IS_MAC, IS_WINDOWS } from "./platform";
 import { needsPasteWarning } from "./terminalPaste";
+import { beginTerminalDrag } from "./terminalDragSelection";
 import { scheduleSelectionRestore, selectionEdit } from "./terminalSelectionEdit";
 import { RightClickAction } from "./terminalShared";
 import { errorMessage, type TransferNoticeKind } from "./terminalTransfer";
@@ -30,6 +31,21 @@ export class TerminalClipboard {
   /** The selection changed since that button went down. */
   selectionChanged = false;
 
+  // Keep the selected text across a TUI redraw or a composer-induced resize.
+  // This belongs to one terminal connection, never to the system clipboard.
+  private agentSelection = "";
+  private programDrag: ((event: MouseEvent) => string) | null = null;
+
+  captureAgentSelection() {
+    if (this.context.locked || this.context.disposed) return;
+    const text = this.context.term.getSelection();
+    if (text) this.agentSelection = text.length <= 1024 * 1024 ? text : "";
+  }
+
+  getAgentSelection(): string {
+    return this.context.locked || this.context.disposed ? "" : this.agentSelection;
+  }
+
   private confirmPaste: ((text: string) => void) | null = null;
 
   /** Reads begun by a connection must not paste into its replacement. */
@@ -54,6 +70,11 @@ export class TerminalClipboard {
       target instanceof Node &&
       this.context.host.contains(target);
     this.selectionChanged = false;
+    if (this.selecting) this.agentSelection = "";
+    this.programDrag =
+      this.selecting && !event.shiftKey && this.isMouseTracked() && !this.context.locked
+        ? beginTerminalDrag(this.context.term, event)
+        : null;
   };
 
   /**
@@ -69,12 +90,26 @@ export class TerminalClipboard {
    * it would replace the clipboard with the whole scrollback behind the
    * user's back.
    */
-  onSelectionMouseUp = () => {
+  onSelectionMouseUp = (event: MouseEvent) => {
     const made = this.selecting && this.selectionChanged;
+    if (made) this.captureAgentSelection();
+    else if (this.programDrag && !this.context.disposed && !this.context.locked) {
+      const text = this.programDrag(event);
+      this.agentSelection = text.length <= 1024 * 1024 ? text : "";
+    }
+    this.programDrag = null;
     this.selecting = false;
     this.selectionChanged = false;
     if (!made || !this.copyOnSelect || this.context.disposed) return;
     this.copySelection();
+  };
+
+  // In all-motion mode xterm sends even a hover as user input, which clears
+  // its native selection. Let a completed Shift selection survive the trip
+  // to Copy / Add selection; a new click or key still belongs to the program.
+  onSelectionMouseMove = (event: MouseEvent) => {
+    if (!event.buttons && this.isMouseTracked() && this.context.term.hasSelection())
+      event.stopPropagation();
   };
 
   hasSelection(): boolean {
@@ -97,6 +132,7 @@ export class TerminalClipboard {
   }
 
   clearSelection() {
+    this.agentSelection = "";
     this.context.term.clearSelection();
   }
 
@@ -195,6 +231,8 @@ export class TerminalClipboard {
 
   /** The terminal may keep its scrollback while the connection is replaced. */
   endSession() {
+    this.agentSelection = "";
+    this.programDrag = null;
     this.sessionRevision += 1;
     this.programClipboardAllowed = false;
   }

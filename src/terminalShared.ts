@@ -421,6 +421,8 @@ export interface Callbacks {
    * of an agentic CLI that holds the terminal for a whole session.
    */
   onCommandState: (state: "idle" | "running" | "complete", kind: "command" | "ai") => void;
+  /** Actual interactive CLI recognition, independent of its activity heuristic. */
+  onAiSession?: (tool: string | null) => void;
   /** Ranked history completions for the current input; [] when none. */
   suggest: (input: string) => CommandSuggestion[];
   /** Removes a command from the history behind `suggest`. */
