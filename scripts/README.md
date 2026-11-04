@@ -1,5 +1,26 @@
 # Validation and diagnostics
 
+`./dev.ps1 script scripts/check-native-codex-selection.mjs <new-dir-under-.tmp>`
+uses the installed Codex executable named by `EDGETERM_CODEX_EXE` in the same
+disposable CDP setup. It creates a separate `CODEX_HOME` and a loopback Responses
+fixture that returns text only, then tests actual Codex ordinary/Shift selection,
+highlight persistence, quote undo/redo and New command. It does not use account
+credentials or existing conversations. The current coordinate fixture targets
+Codex 0.166.0 with the default Chinese EdgeTerm UI; screenshots and assertions
+make layout/version mismatches visible. Never point it at a user's active app.
+
+`./dev.ps1 script scripts/check-native-agent-selection.mjs <new-dir-under-.tmp>`
+checks selected-text quoting in a disposable packaged Windows WebView2 app,
+using real ConPTY output and Playwright drag/click input. Set
+`EDGETERM_CDP_URL` and `EDGETERM_CDP_TARGET_ID` to that instance explicitly.
+The gate requires empty profiles/sessions, creates its own text-only terminal
+fixture, checks inline and dialog quoting, fullscreen Shift selection, Chinese
+multiline indentation and absence of unintended PTY input, and closes its own
+session. Screenshots and `result.json` stay in the new output directory. It
+does not access actual agent conversations or call a model. When the normal
+app is already running, build the disposable copy with a distinct Tauri
+identifier; a second copy with the same identifier only activates the first.
+
 Use the managed task entry for builds/tests and diagnostics. On Windows,
 `./dev.ps1 doctor` reports the selected Node/npm, Rust, MSVC, Windows SDK and
 resource budget even when the current shell has an incomplete PATH. Existing
