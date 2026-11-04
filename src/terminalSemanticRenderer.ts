@@ -62,9 +62,9 @@ export class TerminalSemanticRenderer {
     let last = -Infinity;
     let row = top;
     while (row <= bottom) {
-      const [lo, hi] = this.logicalLine(buf, row);
+      const [lo, hi, complete] = this.logicalLine(buf, row);
       row = hi + 1;
-      if (this.paintLogicalLine(buf, lo, hi)) {
+      if (this.paintLogicalLine(buf, lo, hi, complete)) {
         first = Math.min(first, lo);
         last = Math.max(last, hi);
       }
@@ -84,21 +84,28 @@ export class TerminalSemanticRenderer {
   }
 
   /** Rows [first, last] of the logical line through `row`, across soft wraps. */
-  private logicalLine(buf: IBuffer, row: number): [number, number] {
+  private logicalLine(buf: IBuffer, row: number): [number, number, boolean] {
+    // Bound work before collecting rows that the text-length guard would
+    // reject. A minified line can otherwise occupy the entire scrollback.
+    const limit = Math.ceil(4000 / Math.max(1, this.context.term.cols)) + 1;
     let first = row;
-    while (first > 0 && buf.getLine(first)?.isWrapped) first -= 1;
+    while (first > 0 && row - first < limit && buf.getLine(first)?.isWrapped) first -= 1;
     let last = row;
     // xterm 6's getLine delegates to a circular list without bounds checks.
     // If every retained row is wrapped, reading past length cycles forever.
-    while (last + 1 < buf.length && buf.getLine(last + 1)?.isWrapped) last += 1;
-    return [first, last];
+    while (last + 1 < buf.length && last - first < limit && buf.getLine(last + 1)?.isWrapped)
+      last += 1;
+    const complete =
+      (first === 0 || !buf.getLine(first)?.isWrapped) &&
+      (last + 1 === buf.length || !buf.getLine(last + 1)?.isWrapped);
+    return [first, last, complete];
   }
 
   /**
    * Recolors one logical line if any of its rows changed since it was last
    * colored; returns whether any cell changed.
    */
-  private paintLogicalLine(buf: IBuffer, first: number, last: number): boolean {
+  private paintLogicalLine(buf: IBuffer, first: number, last: number, complete = true): boolean {
     const lines: PaintLine[] = [];
     const cursor = buf.baseY + buf.cursorY;
     const onCursorLine = first <= cursor && cursor <= last;
@@ -123,7 +130,7 @@ export class TerminalSemanticRenderer {
     }
     // A live shell prompt has a stable prefix worth coloring. Other cursor
     // lines (echoed input, progress bars, full-screen redraws) stay plain.
-    const painted = this.colorLogicalLine(buf, first, last, lines, onCursorLine);
+    const painted = complete && this.colorLogicalLine(buf, first, last, lines, onCursorLine);
     for (const line of lines) {
       this.paintRecords.set(line, { signature: rowSignature(line), cursor: onCursorLine });
     }
@@ -277,8 +284,8 @@ export class TerminalSemanticRenderer {
     let first = Infinity;
     let last = -Infinity;
     while (row >= 0 && performance.now() < deadline) {
-      const [lo, hi] = this.logicalLine(buf, row);
-      if (this.paintLogicalLine(buf, lo, hi)) {
+      const [lo, hi, complete] = this.logicalLine(buf, row);
+      if (this.paintLogicalLine(buf, lo, hi, complete)) {
         first = Math.min(first, lo);
         last = Math.max(last, hi);
       }

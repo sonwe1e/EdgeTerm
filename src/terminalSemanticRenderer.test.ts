@@ -45,6 +45,31 @@ function guardBufferReads(buffer: Terminal["buffer"]["active"]) {
 }
 
 describe("semantic coloring at the end of xterm's circular buffer", () => {
+  it("keeps a viewport refresh bounded when one logical line fills a long history", async () => {
+    const term = new Terminal({ cols: 80, rows: 24, scrollback: 10000, allowProposedApi: true });
+    terminals.push(term);
+    await write(term, "x".repeat(800000));
+    const renderer = new TerminalSemanticRenderer({ term, visible: true, disposed: false });
+    renderers.push(renderer);
+    const reads = guardBufferReads(term.buffer.active);
+    const start = performance.now();
+    renderer.refreshSemanticColors();
+    const elapsed = performance.now() - start;
+    console.info(
+      `Long-line viewport: ${reads.mock.calls.length} row reads, ${elapsed.toFixed(2)} ms`,
+    );
+    expect(reads.mock.calls.length).toBeLessThan(5000);
+    expect(term.buffer.active.getLine(9999)?.translateToString(true)).toBe("x".repeat(80));
+    reads.mockRestore();
+    await write(term, "\r\n10.0.0.1\r\n");
+    renderer.refreshSemanticColors();
+    expect(
+      term.buffer.active
+        .getLine(term.buffer.active.baseY + term.buffer.active.cursorY - 1)
+        ?.getCell(0)
+        ?.getFgColor(),
+    ).toBe(0x5fd7c0);
+  });
   it.each([
     { name: "normal screen without scrollback", scrollback: 0, alternate: false },
     { name: "full normal scrollback", scrollback: 2, alternate: false },
