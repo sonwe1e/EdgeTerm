@@ -1,4 +1,5 @@
 import * as api from "./api";
+import { useAgents } from "./agents/model";
 import { errorText } from "./errorInfo";
 import { openFileEditor } from "./fileEditor";
 import { fontStack } from "./fonts";
@@ -130,6 +131,13 @@ export async function ensureController(id: string): Promise<TerminalController> 
       // the printed line, through this session's own file system.
       onFileLink: (path, line, cwd) => void openTerminalFileLink(id, path, line, cwd),
       onCommand: (command) => commandHistory.record(command, historyHost(id)),
+      onAiSession: (tool) => {
+        if (tool === null) {
+          const activeController = getController(id);
+          if (activeController) activeController.agentKeyPassthrough = false;
+        }
+        useAgents.setState((state) => ({ recognized: { ...state.recognized, [id]: tool } }));
+      },
       onCommandState: (state, kind) => {
         const store = useStore.getState();
         if (state === "running") store.markCommandStarted(id, kind);

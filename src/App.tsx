@@ -15,6 +15,7 @@ import { useShallow } from "zustand/react/shallow";
 
 import { acceptHostKey, revealCwdInFiler, sessionClosedNotice, splitSession } from "./actions";
 import * as api from "./api";
+import { useAgents } from "./agents/model";
 import { AuthPromptDialog } from "./components/AuthPromptDialog";
 import { ClipboardWriteDialog } from "./components/ClipboardWriteDialog";
 import { CloseChoiceDialog } from "./components/CloseChoiceDialog";
@@ -34,6 +35,7 @@ import { StatusBar } from "./components/StatusBar";
 import { UpdateDialog } from "./components/UpdateDialog";
 import { Workspace } from "./components/Workspace";
 import { FileEditorDialog } from "./components/FileEditorDialog";
+import { AgentDialog } from "./components/AgentDialog";
 import { closeFileEditor, hasUnsavedFile } from "./fileEditor";
 import { FilerPanel } from "./components/panels/FilerPanel";
 import { SenderPanel } from "./components/panels/SenderPanel";
@@ -200,6 +202,13 @@ export default function App() {
   const [rightWidth, setRightWidth] = useState(initialSizing.right);
   const [bottomHeight, setBottomHeight] = useState(initialSizing.bottom);
   const [senderExpanded, setSenderExpanded] = useState(initialSizing.senderExpanded);
+  const agentComposeRequest = useAgents((s) => s.composeRequest);
+  useEffect(() => {
+    if (!agentComposeRequest) return;
+    if (!useStore.getState().panels.sender) useStore.getState().togglePanel("sender");
+    setSenderExpanded(true);
+    setBottomHeight((height) => Math.max(height, 250));
+  }, [agentComposeRequest]);
   const panelPreferencesRevision = useStore((s) => s.panelPreferencesRevision);
   const widthRefs = useRef({ left: leftWidth, right: rightWidth });
   widthRefs.current = { left: leftWidth, right: rightWidth };
@@ -855,6 +864,7 @@ export default function App() {
       )}
 
       <FileEditorDialog />
+      <AgentDialog />
       {quitPromptOpen && (
         <QuitConfirmDialog
           onConfirm={() => {

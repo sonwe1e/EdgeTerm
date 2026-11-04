@@ -17,6 +17,7 @@ import { colorForSession } from "../types";
 import { useT } from "../useT";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { Icon } from "./icons";
+import { AgentTabActions } from "./AgentTabActions";
 import { useAccelerator } from "./TerminalPane";
 
 /** Pointer travel before a press on a tab turns into a drag. */
@@ -142,6 +143,9 @@ export function TabStrip({ paneId }: Props) {
   const tabs = useMemo(() => allTabs.filter((tab) => tab.paneId === paneId), [allTabs, paneId]);
   const pane = useStore((s) => s.panes.find((item) => item.id === paneId));
   const shownId = pane?.activeTabId ?? null;
+  const agentTab = tabs.find(
+    (tab) => tab.info.id === shownId && (tab.info.kind === "local" || tab.info.kind === "ssh"),
+  );
   const draggingTabId = useStore((s) => s.draggingTabId);
   const dropTarget = useStore((s) => s.dropTarget);
   const setActive = useStore((s) => s.setActive);
@@ -690,48 +694,53 @@ export function TabStrip({ paneId }: Props) {
         <div className="tab-drop-marker" aria-hidden="true" />
       )}
 
-      {(overflow.left || overflow.right) && (
+      {(overflow.left || overflow.right || agentTab) && (
         <div className="tabstrip-actions">
-          {/* Scrolling the strip is no reason to take the keyboard from the
+          {agentTab && <AgentTabActions id={agentTab.info.id} />}
+          {(overflow.left || overflow.right) && (
+            <>
+              {/* Scrolling the strip is no reason to take the keyboard from the
               session, which a pressed button does on WebView2. */}
-          <button
-            className="panel-action"
-            disabled={!overflow.left}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => scrollByTab("left")}
-            title={t("tab.scrollLeft")}
-            aria-label={t("tab.scrollLeft")}
-          >
-            <Icon name="chevron-left" />
-          </button>
-          <button
-            className="panel-action"
-            disabled={!overflow.right}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => scrollByTab("right")}
-            title={t("tab.scrollRight")}
-            aria-label={t("tab.scrollRight")}
-          >
-            <Icon name="chevron-right" />
-          </button>
-          <button
-            className={`panel-action tab-list-button${listMenu ? " is-open" : ""}`}
-            onMouseDown={() => {
-              listWasOpen.current = listMenu !== null;
-            }}
-            onClick={(event) => {
-              if (listWasOpen.current) return;
-              const rect = event.currentTarget.getBoundingClientRect();
-              setListMenu({ x: rect.right, y: rect.bottom + 2 });
-            }}
-            title={listButtonLabel}
-            aria-label={listButtonLabel}
-            aria-haspopup="menu"
-            aria-expanded={listMenu !== null}
-          >
-            <Icon name="chevron-down" />
-            {attentionCount > 0 && <span className="tab-list-attention" aria-hidden="true" />}
-          </button>
+              <button
+                className="panel-action"
+                disabled={!overflow.left}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => scrollByTab("left")}
+                title={t("tab.scrollLeft")}
+                aria-label={t("tab.scrollLeft")}
+              >
+                <Icon name="chevron-left" />
+              </button>
+              <button
+                className="panel-action"
+                disabled={!overflow.right}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => scrollByTab("right")}
+                title={t("tab.scrollRight")}
+                aria-label={t("tab.scrollRight")}
+              >
+                <Icon name="chevron-right" />
+              </button>
+              <button
+                className={`panel-action tab-list-button${listMenu ? " is-open" : ""}`}
+                onMouseDown={() => {
+                  listWasOpen.current = listMenu !== null;
+                }}
+                onClick={(event) => {
+                  if (listWasOpen.current) return;
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  setListMenu({ x: rect.right, y: rect.bottom + 2 });
+                }}
+                title={listButtonLabel}
+                aria-label={listButtonLabel}
+                aria-haspopup="menu"
+                aria-expanded={listMenu !== null}
+              >
+                <Icon name="chevron-down" />
+                {attentionCount > 0 && <span className="tab-list-attention" aria-hidden="true" />}
+              </button>
+            </>
+          )}
         </div>
       )}
 

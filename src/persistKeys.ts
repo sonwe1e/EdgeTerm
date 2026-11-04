@@ -42,6 +42,8 @@ export const DOCK_SPLITS_KEY = "edgeterm.dockSplits";
 /** Concurrency and durability of file transfers; see transferSettings.ts. */
 export const TRANSFER_OPTIONS_KEY = "edgeterm.transfer-options";
 export const RESOURCE_MONITOR_KEY = "edgeterm.resource-monitor";
+/** Legacy history/recovery metadata: retained only for export/reset cleanup. */
+export const AGENT_SETTINGS_KEY = "edgeterm.agents";
 
 /**
  * Panel preferences kept outside the app store. Their modules validate and
@@ -59,4 +61,5 @@ export const PANEL_PREFERENCE_KEYS: readonly string[] = [
   DOCK_SPLITS_KEY,
   TRANSFER_OPTIONS_KEY,
   RESOURCE_MONITOR_KEY,
+  AGENT_SETTINGS_KEY,
 ];

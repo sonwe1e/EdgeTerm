@@ -7,6 +7,7 @@ import { firstLine } from "../../senderUnits";
 import type { Tab } from "../../store";
 import { type LineEnding, type SavedCommand } from "../../types";
 import { Icon } from "../icons";
+import { showAgentComposer } from "../../agents/model";
 import { SenderCommandOptions } from "./SenderCommandOptions";
 import type { CommandContextMenu, Editing } from "./senderShared";
 import { Target } from "./senderShared";
@@ -195,6 +196,10 @@ export function SenderQuickbar({
       <button type="button" className="sender-quick-button is-primary" onClick={openComposer}>
         <Icon name="add" />
         {editing ? t("sender.continueEditing") : t("sender.new")}
+      </button>
+      <button type="button" className="sender-quick-button" onClick={showAgentComposer}>
+        <Icon name="edit" />
+        {t("agent.prompt")}
       </button>
       <button
         type="button"

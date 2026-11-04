@@ -9,6 +9,7 @@ import { Icon } from "./icons";
 import { TransferCenter } from "./TransferCenter";
 import { ResourceMonitorBar } from "./ResourceMonitorBar";
 import { ForwardCenter } from "./ForwardCenter";
+import { openAgentView } from "../agents/model";
 
 /** The folder half of a recording's path, for the Reveal click. */
 const parentDir = (path: string): string => path.replace(/[\\/][^\\/]*$/, "") || path;
@@ -103,6 +104,15 @@ function StatusBarBase() {
       </span>
       <ResourceMonitorBar tab={tab} />
       <ForwardCenter />
+      <button
+        type="button"
+        className="status-item status-agent"
+        title={t("agent.title")}
+        onClick={() => openAgentView("compose")}
+      >
+        <Icon name="terminal" />
+        {t("agent.title")}
+      </button>
       <TransferCenter />
       {tab && (
         /* The session's own details read as one cluster at the right end of

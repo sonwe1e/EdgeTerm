@@ -13,6 +13,8 @@ import { useSenderLibrary } from "./useSenderLibrary";
 import { useSenderSend } from "./useSenderSend";
 
 import { ask } from "../../nativeDialog";
+import { showAgentComposer, useAgents } from "../../agents/model";
+import { AgentComposer } from "./AgentComposer";
 import {
   SENDER_COLORS,
   senderColor,
@@ -33,6 +35,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
   const tabs = useStore((s) => s.tabs);
   const activeId = useStore((s) => s.activeId);
   const t = useT();
+  const agentMode = useAgents((s) => s.senderAgentMode);
 
   const [text, setText] = useState("");
   const [tagName, setTagName] = useState("");
@@ -93,6 +96,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
 
   const openComposer = () => {
     closeMore();
+    useAgents.setState({ senderAgentMode: false });
     onExpandedChange(true);
     requestAnimationFrame(() => commandRef.current?.focus());
   };
@@ -136,7 +140,10 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
     setTagName,
     setEnding,
     compact,
-    onExpandedChange,
+    onExpandedChange: (expanded) => {
+      if (expanded) useAgents.setState({ senderAgentMode: false });
+      onExpandedChange(expanded);
+    },
     closeMore,
     setText,
   });
@@ -190,6 +197,8 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
     }, 200);
   };
 
+  if (agentMode && !compact)
+    return <AgentComposer onCollapse={canCompact ? () => onExpandedChange(false) : undefined} />;
   return (
     <>
       {compact ? (
@@ -223,6 +232,14 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
             <div className="panel-title is-sender">
               <Icon name="send" />
               {t("panel.sender")}
+            </div>
+            <div className="agent-inline-tabs">
+              <button type="button" className="is-active" aria-pressed="true">
+                {t("agent.commands")}
+              </button>
+              <button type="button" onClick={showAgentComposer}>
+                {t("agent.prompt")}
+              </button>
             </div>
             <div className="sender-options">
               <label className="sender-field">

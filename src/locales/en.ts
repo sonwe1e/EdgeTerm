@@ -1,4 +1,55 @@
 export const en = {
+  "agent.commands": "Commands",
+  "agent.inlineHint":
+    "Write a complete prompt here. Enter adds a line; Ctrl+Enter inserts it into the terminal.",
+  "agent.inlineSubmitHint":
+    "Insert preserves blank lines and indentation. Review in the terminal, then press Enter there to submit.",
+  "agent.attentionHint":
+    "Tabs to review (inferred from activity; a pause does not prove completion)",
+  "agent.needDirectory": "Choose an absolute project directory on the remote host first.",
+  "agent.fileReference": "Referenced file: {path}",
+  "agent.addFile": "Add file or image reference",
+  "agent.attachmentHint":
+    "Files are referenced by path for the agent to read. Remote files upload to .edgeterm-attachments in the project and remain there; uploads appear in Transfers. Image embedding follows the agent's own controls.",
+  "agent.title": "Coding Agents",
+  "agent.target": "Terminal",
+  "agent.tool": "Tool",
+  "agent.local": "Local",
+  "agent.directory": "Project directory",
+  "agent.directoryHint": "Directory on the selected host",
+  "agent.compose": "Prompt",
+  "agent.diagnostics": "Compatibility",
+  "agent.prompt": "Agent prompt",
+  "agent.composeHint":
+    "Keep paragraphs, indentation and blank lines. Insert into the selected terminal, check the input field, then press Enter there to submit.",
+  "agent.inputUnavailable":
+    "This connection cannot accept a whole prompt. Check the target, enable bracketed paste in the agent, and leave any file transfer first.",
+  "agent.connectFirst": "Connect a local or SSH terminal to use these actions.",
+  "agent.selectionUnavailable":
+    "Select text in the terminal first. Hold Shift while dragging if the program handles the mouse, then add the selection.",
+  "agent.addSelection": "Add terminal selection",
+  "agent.insert": "Insert into terminal",
+  "agent.passTabs": "Send Ctrl+Tab / Ctrl+Shift+Tab to this agent",
+  "agent.inspect": "Inspect selected host",
+  "agent.inspectionHint":
+    "Checks the installed command and settings on this host. A running agent may still use older settings.",
+  "agent.executable": "Command",
+  "agent.version": "Version",
+  "agent.notFound": "Not found on the application or SSH inspection PATH",
+  "agent.stateUnknown": "State unknown",
+  "agent.screen": "Screen / mouse",
+  "agent.historyRows": "Terminal history rows",
+  "agent.output": "Received / parse wait",
+  "agent.metricsHint":
+    "Parse wait covers queued terminal parsing, not scroll-to-screen latency. Fullscreen scrolling also depends on agent redraws and SSH round trips.",
+  "agent.global": "Agent settings",
+  "agent.project": "Project override",
+  "agent.configUnreadable": "Could not read this file; its effective value is unknown",
+  "agent.inherited": "Not set here",
+  "agent.resumeHint": "Use resume hint on exit",
+  "agent.reloadPi": "Saved. Run /reload in Pi, or restart it. Project settings take precedence.",
+  "agent.piExitHint":
+    "Pi 1.4.0 defaults to replaying the transcript on fullscreen exit. resume-hint keeps the resume command. Check project and remote settings separately; an unreadable file does not prove its effective setting.",
   // --- shared buttons and words --------------------------------------------
   "common.cancel": "Cancel",
   "common.apply": "Apply",
@@ -590,7 +641,7 @@ export const en = {
   "sender.currentSession": "Current Session",
   "sender.allSessions": "All Sessions ({count})",
   "sender.continueEditing": "Continue editing",
-  "sender.new": "New",
+  "sender.new": "New command",
   "sender.expand": "Expand Sender",
   "sender.ending": "Ending",
   "sender.endingNone": "None",
