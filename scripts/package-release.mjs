@@ -121,7 +121,7 @@ export function buildZip(entries) {
 // --- the three attachments --------------------------------------------------
 const portableReadme = (appVersion) => `EdgeTerm ${appVersion} portable (Windows x64)
 
-Run EdgeTerm.exe directly; nothing is installed. All configuration lives in
+Run EdgeTerm.exe directly; nothing is installed. Session profiles and settings live in
 the data folder next to the executable, so the whole folder can move between
 machines or live on a removable drive.
 
@@ -132,11 +132,12 @@ stores configuration under %APPDATA% like an installed copy.
 Notes:
 - Requires the Microsoft Edge WebView2 runtime, preinstalled on current
   Windows 10 and 11.
-- Saved passwords are encrypted with a machine-bound key, so they do not
-  decrypt on another machine; sessions and settings travel fine.
+- Passwords and passphrases are kept in memory for the current run only in
+  portable mode. Enter them again after restarting; profiles and settings travel.
 - Updates are not installed in place: when a new version is available,
-  EdgeTerm opens the release download page and you replace this folder with
-  the new portable zip.
+  download the new portable zip from the release page and replace the program
+  files. Preserve your existing data folder; do not overwrite it with the empty
+  folder in the new archive.
 `;
 
 const diagnosticsReadme = (appVersion) => `EdgeTerm ${appVersion} Windows diagnostics
