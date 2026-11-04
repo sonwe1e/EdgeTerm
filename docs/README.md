@@ -47,7 +47,11 @@
 | [release-1.3.0.zh-CN.md](release-1.3.0.zh-CN.md) | 1.3.0 |
 | [release-1.4.0.zh-CN.md](release-1.4.0.zh-CN.md) | 1.4.0 |
 | [release-1.5.0.zh-CN.md](release-1.5.0.zh-CN.md) | 1.5.0 |
-| [release-1.5.1.zh-CN.md](release-1.5.1.zh-CN.md) | 1.5.1（现行最新） |
+| [release-1.5.1.zh-CN.md](release-1.5.1.zh-CN.md) | 1.5.1 |
+| [release-1.6.0.zh-CN.md](release-1.6.0.zh-CN.md) | 1.6.0 |
+| [release-1.6.1.zh-CN.md](release-1.6.1.zh-CN.md) | 1.6.1 |
+| [release-1.6.2.zh-CN.md](release-1.6.2.zh-CN.md) | 1.6.2（仅本地构建） |
+| [release-1.7.0.zh-CN.md](release-1.7.0.zh-CN.md) | 1.7.0（发布准备） |
 
 ## 专题与历史记录
 
@@ -65,6 +69,7 @@
 | [terminal-performance.zh-CN.md](terminal-performance.zh-CN.md) | OpenCode 多标签性能测试记录 | 记录 |
 | [sidebar-freeze-diagnostics.zh-CN.md](sidebar-freeze-diagnostics.zh-CN.md) | 侧栏拖拽卡死的诊断与修复边界 | 记录 |
 | [terminal-input-fixes.zh-CN.md](terminal-input-fixes.zh-CN.md) | 终端输入修复：Pi 滚动、标签切换、Alt 菜单 | 记录 |
+| [coding-agents.zh-CN.md](coding-agents.zh-CN.md) | Coding Agent 输入、选区引用、兼容诊断及状态与通信分析 | 开发记录 |
 | [filer-ui-audit.zh-CN.md](filer-ui-audit.zh-CN.md) | Filer 面板 UI 审查（第一轮） | 历史 |
 | [filer-ui-audit-round2.zh-CN.md](filer-ui-audit-round2.zh-CN.md) | Filer UI 审查第二轮汇总 | 历史 |
 | [roadmap-scrollback-and-bulk-transfer.zh-CN.md](roadmap-scrollback-and-bulk-transfer.zh-CN.md) | 长历史与批量小文件传输的路线图 | 规划稿 |
