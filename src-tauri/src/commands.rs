@@ -105,5 +105,7 @@ mod responses;
 use responses::*;
 mod project;
 pub use project::*;
+mod agents;
+pub use agents::*;
 mod preview;
 pub use preview::*;

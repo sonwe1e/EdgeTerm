@@ -469,6 +469,7 @@ pub fn run() {
             commands::sample_resources,
             commands::project_read_text,
             commands::project_write_text,
+            commands::coding_agent_inspect,
             commands::start_port_forward,
             commands::list_port_forwards,
             commands::stop_port_forward,

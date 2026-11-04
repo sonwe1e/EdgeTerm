@@ -236,6 +236,7 @@ export const commands = {
 	 *  `expectedHash`. The returned hash becomes the next save's baseline.
 	 */
 	projectWriteText: (id: string | null, request: TextWrite) => __TAURI_INVOKE<WriteOutcome>("project_write_text", { id, request }),
+	codingAgentInspect: (id: string, tool: string) => __TAURI_INVOKE<AgentInstallation>("coding_agent_inspect", { id, tool }),
 	localHome: () => __TAURI_INVOKE<string>("local_home"),
 	/**
 	 *  Where the session's shell is right now, for the Filer's "Reveal Working
@@ -440,6 +441,13 @@ export const events = {
 };
 
 /* Types */
+export type AgentInstallation = {
+	executable: string,
+	version: string,
+	home: string,
+	configRoot: string,
+};
+
 /**
  *  One export / import file: the frontend's settings, saved sessions with
  *  their groups, and Sender tags. Session passwords and key passphrases are

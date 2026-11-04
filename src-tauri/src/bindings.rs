@@ -90,6 +90,7 @@ fn export_bindings() {
             commands::cancel_resource_sample,
             commands::project_read_text,
             commands::project_write_text,
+            commands::coding_agent_inspect,
             commands::local_home,
             commands::session_cwd,
             commands::local_hostname,
