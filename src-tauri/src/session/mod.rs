@@ -10,6 +10,7 @@ pub mod recording;
 pub mod reuse;
 pub mod serial;
 pub mod ssh;
+mod start_directory;
 pub mod telnet;
 pub mod transfer;
 

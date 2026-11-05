@@ -16,6 +16,7 @@ import {
 } from "./filerDirectoryCache";
 import { remoteParent } from "./filerPresentation";
 import { NewEntryDraft } from "./filerTypes";
+import { getLocalFilerPath } from "../../workspaceDirectories";
 
 /** Why a directory is being listed; only a manual navigation pauses following. */
 type LoadReason = "manual" | "follow" | "resume";
@@ -192,7 +193,10 @@ export function useFilerDirectory({
         if (cancelled) return;
         // Coming back to a session resumes where it was browsed; home only
         // the first time, or when that directory no longer lists.
-        const last = lastPaths.get(remoteId ?? LOCAL_SOURCE);
+        const last =
+          (remoteId
+            ? useStore.getState().tabs.find((tab) => tab.info.id === remoteId)?.directories?.filer
+            : getLocalFilerPath()) ?? lastPaths.get(remoteId ?? LOCAL_SOURCE);
         if (last !== undefined && (await load(last, true, true, "resume"))) return;
         if (cancelled) return;
         const home = remoteId ? await api.sftpHome(remoteId) : await api.localHome();

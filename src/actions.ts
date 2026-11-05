@@ -10,6 +10,7 @@ import { tabTitle, useStore, type HostKeyPrompt, type Tab } from "./store";
 import type { TerminalController } from "./terminal";
 import { disposeController, getController, setController } from "./terminalRegistry";
 import { isFileSession, type SessionInfo, type SessionProfile } from "./types";
+import { rememberWorkspaceDirectory } from "./workspaceDirectories";
 
 /**
  * Line written into a terminal when its session ends, however it ended. Built
@@ -18,12 +19,12 @@ import { isFileSession, type SessionInfo, type SessionProfile } from "./types";
 export const sessionClosedNotice = (): string =>
   `\r\n\x1b[33m${t("terminal.sessionClosed")}\x1b[0m\r\n`;
 
-function newSessionId(): string {
+export function newSessionId(): string {
   if (typeof crypto?.randomUUID === "function") return crypto.randomUUID();
   return `s-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
 }
 
-function pendingSessionInfo(id: string, profile: SessionProfile): SessionInfo {
+export function pendingSessionInfo(id: string, profile: SessionProfile): SessionInfo {
   const name = profile.name || profile.host || profile.portName || "session";
 
   let protocol: string;
@@ -126,7 +127,16 @@ export async function ensureController(id: string): Promise<TerminalController> 
       // The Filer's follow mode consumes these: a shell that announced a new
       // directory moves an on-screen Filer to it, after the report burst
       // settles. Nothing here queries the server.
-      onReportedCwd: (cwd) => useStore.getState().terminalCwdReported(id, cwd.path, cwd.host),
+      onReportedCwd: (cwd) => {
+        useStore.getState().terminalCwdReported(id, cwd.path, cwd.host);
+        const tab = useStore.getState().tabs.find((item) => item.info.id === id);
+        if (tab?.info.kind === "ssh") rememberWorkspaceDirectory(id, "terminal", cwd.path);
+        else if (tab?.info.kind === "local")
+          void isThisHost(cwd.host).then((local) => {
+            if (local && getController(id)?.reportedCwd === cwd)
+              rememberWorkspaceDirectory(id, "terminal", localPathFromUrlPath(cwd.path));
+          });
+      },
       // A Ctrl+clicked path from the output: open it in the built-in editor at
       // the printed line, through this session's own file system.
       onFileLink: (path, line, cwd) => void openTerminalFileLink(id, path, line, cwd),
@@ -364,7 +374,7 @@ export function toggleSessionConnection(id: string): void {
  * waiting on the user — and to null when the connection failed or the tab
  * was closed meanwhile.
  */
-async function connectSession(
+export async function connectSession(
   id: string,
   profile: SessionProfile,
   reuseSessionId?: string,
@@ -390,11 +400,26 @@ async function connectSession(
   const attemptKey = `${id}:${attempt}`;
   pendingConnects.add(id);
   try {
+    let connectionProfile = profile;
+    const cwd = pending?.directories?.terminal;
+    if (cwd && (profile.kind === "local" || profile.kind === "ssh")) {
+      let startAt = cwd;
+      if (profile.kind === "local") {
+        // A removed directory should not turn a remembered local tab into a
+        // permanently failed shell. Listing also validates the path as a directory.
+        try {
+          await api.localList(cwd);
+        } catch {
+          startAt = await api.localHome();
+        }
+      }
+      connectionProfile = { ...profile, cwd: startAt };
+    }
     // The controller exists before the backend is asked to connect (see
     // openSession), so the output channel handed over here already has a
     // terminal to land its bytes on.
     const outcome = await api.openSession(
-      profile,
+      connectionProfile,
       id,
       (bytes, consumed) => {
         const controller = getController(id);
@@ -534,7 +559,7 @@ function localPathFromUrlPath(path: string): string {
  * first — exact, and needing no shell setup — with its OSC report as the
  * fallback where the OS cannot be asked (Windows).
  */
-async function shellCwd(tab: Tab): Promise<string> {
+export async function shellCwd(tab: Tab): Promise<string> {
   const id = tab.info.id;
   const reported = getController(id)?.reportedCwd ?? null;
   if (tab.info.kind === "ssh") {

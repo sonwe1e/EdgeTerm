@@ -144,16 +144,20 @@ pub(super) const REMOTE_CWD_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Asks the server for the working directory of the shell's foreground job
 /// (see `session::cwd`) over a fresh exec channel of the same connection.
-pub(super) async fn remote_cwd(handle: Arc<Handle<Client>>) -> Result<String> {
+pub(super) async fn remote_cwd(handle: Arc<Handle<Client>>, token: &str) -> Result<String> {
     let query = async {
         let mut channel = handle.channel_open_session().await?;
         // `sh` takes the script on stdin, so the user's login shell — which
         // sshd runs the command line through, and which may be csh or fish
         // — never has to parse POSIX syntax.
         channel.exec(true, "sh").await?;
-        channel
-            .data_bytes(crate::session::cwd::REMOTE_CWD_SCRIPT.as_bytes().to_vec())
-            .await?;
+        // The token is minted locally, never supplied by terminal output.
+        let script = format!(
+            "edgeterm_token='{}'\n{}",
+            token,
+            crate::session::cwd::REMOTE_CWD_SCRIPT
+        );
+        channel.data_bytes(script.into_bytes()).await?;
         channel.eof().await?;
         let mut stdout = Vec::new();
         let mut stderr = Vec::new();

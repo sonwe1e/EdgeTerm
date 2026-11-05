@@ -2115,6 +2115,76 @@ fn install_key() -> (&'static str, &'static str) {
 }
 
 #[tokio::test]
+#[ignore = "dedicated Linux OpenSSH fixture; tests only its own temporary directories"]
+async fn real_workspace_directories_restore_and_stay_separate_on_shared_transport() {
+    let var = |name: &str| std::env::var(name).expect("dedicated SSH fixture environment");
+    let address = var("EDGETERM_REAL_SSH_ADDR");
+    let (host, port) = address.rsplit_once(':').unwrap();
+    let known_hosts = KnownHosts::new();
+    let transport = super::test_transport(
+        host,
+        port.parse().unwrap(),
+        &var("EDGETERM_REAL_SSH_USER"),
+        &var("EDGETERM_REAL_SSH_KEY"),
+        known_hosts.path(),
+    )
+    .await;
+    let files = SftpSession::new(transport.transfer_channel().await.unwrap())
+        .await
+        .unwrap();
+    let home = files.canonicalize(".").await.unwrap();
+    assert_eq!(
+        home,
+        var("EDGETERM_REAL_SSH_ROOT"),
+        "use the dedicated fixture account only"
+    );
+    let root = format!("{home}/workspace-restore-{}", uuid::Uuid::new_v4());
+    let first_path = format!("{root}/first ' $(printf wrong); 中文");
+    let second_path = format!("{root}/second space");
+    let third_path = format!("{root}/third");
+    for path in [&root, &first_path, &second_path, &third_path] {
+        files.create_dir(path).await.unwrap();
+    }
+    let mut profile = crate::tests::profile(SessionKind::Ssh);
+    profile.cwd = Some(first_path.clone());
+    let first = open_shell(transport.clone(), &profile).await.unwrap();
+    profile.cwd = Some(second_path.clone());
+    let second = open_shell(transport.clone(), &profile).await.unwrap();
+    async fn wait_cwd(transport: &Arc<SharedTransport>, token: &str, path: &str) {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                let found = super::sftp::remote_cwd(transport.handle.clone(), token).await;
+                if matches!(found, Ok(value) if value == path) {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        })
+        .await
+        .expect("the correct PTY must report its restored directory");
+    }
+    wait_cwd(&transport, &first.cwd_token, &first_path).await;
+    wait_cwd(&transport, &second.cwd_token, &second_path).await;
+    first
+        .channel
+        .data_bytes(format!("cd -- '{third_path}'\r").into_bytes())
+        .await
+        .unwrap();
+    wait_cwd(&transport, &first.cwd_token, &third_path).await;
+    wait_cwd(&transport, &second.cwd_token, &second_path).await;
+    // A deleted starting directory still opens a shell at home.
+    profile.cwd = Some(format!("{root}/gone"));
+    let fallback = open_shell(transport.clone(), &profile).await.unwrap();
+    wait_cwd(&transport, &fallback.cwd_token, &home).await;
+    for connection in [&first, &second, &fallback] {
+        connection.channel.close().await.unwrap();
+    }
+    for path in [&first_path, &second_path, &third_path, &root] {
+        files.remove_dir(path).await.unwrap();
+    }
+}
+
+#[tokio::test]
 #[ignore = "dedicated OpenSSH fixture whose SFTP home equals EDGETERM_REAL_SSH_ROOT"]
 async fn real_public_key_append_preserves_existing_keys_and_reconnects() {
     use tokio::io::AsyncWriteExt;

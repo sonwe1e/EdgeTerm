@@ -13,7 +13,11 @@ pub fn spawn(
     output: crate::session::output::OutputChannel,
 ) {
     tauri::async_runtime::spawn(async move {
-        let SshConnection { transport, channel } = conn;
+        let SshConnection {
+            transport,
+            channel,
+            cwd_token,
+        } = conn;
         // Held for as long as this session runs; the transport goes down
         // when the last session on it drops its share (see `SharedTransport`).
         let handle = transport.handle.clone();
@@ -94,8 +98,9 @@ pub fn spawn(
                             // the shell channel is neither written to nor
                             // held up.
                             let handle = handle.clone();
+                            let cwd_token = cwd_token.clone();
                             tauri::async_runtime::spawn(async move {
-                                let _ = reply.send(remote_cwd(handle).await);
+                                let _ = reply.send(remote_cwd(handle, &cwd_token).await);
                             });
                         }
                         Some(SessionCommand::Close) | None => {

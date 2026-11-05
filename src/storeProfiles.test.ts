@@ -17,7 +17,7 @@ it("shows a failed profile load instead of leaving startup ready or replacing ro
   useStore.setState({ profiles, error: null, status: "Ready" });
   vi.mocked(api.listProfiles).mockRejectedValue({ code: "invalidInput", message });
   vi.mocked(api.listSessionGroups).mockResolvedValue([]);
-  await expect(useStore.getState().loadProfiles()).resolves.toBeUndefined();
+  await expect(useStore.getState().loadProfiles()).resolves.toBe(false);
   expect(useStore.getState().profiles).toEqual(profiles);
   expect(useStore.getState().error).toBe(message);
   expect(useStore.getState().status).toBe(message);

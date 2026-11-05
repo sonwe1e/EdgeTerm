@@ -20,8 +20,8 @@ interface Options {
   localEntries: FileEntry[];
   setRemoteError: Dispatch<SetStateAction<string | null>>;
   setLocalError: Dispatch<SetStateAction<string | null>>;
-  loadRemote: (target: string) => Promise<void>;
-  loadLocal: (target: string) => Promise<void>;
+  loadRemote: (target: string) => Promise<unknown>;
+  loadLocal: (target: string) => Promise<unknown>;
   /** The pane's selection, in listing order; any number of entries. */
   selectedLocal: readonly FileEntry[];
   selectedRemote: readonly FileEntry[];

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { loadWorkspaceSnapshot } from "./workspaceSnapshot";
 import { ROOT_PANE_ID } from "./storeLayout";
 import { createPreferenceActions } from "./storePreferenceActions";
 import {
@@ -96,6 +97,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
   authPrompts: [],
   closePrompt: null,
   filerTarget: null,
+  localFilerPath: loadWorkspaceSnapshot()?.localFilerPath,
   filerFollow: {},
   senderLibraryVersion: 0,
 

@@ -1,7 +1,7 @@
 //! Where a session's shell is right now, for the Filer's "Reveal Working
-//! Directory in Filer" action (⌘J / Ctrl+Shift+J). Nothing here follows the
-//! directory over time: each query answers for the moment it is made, and
-//! only when the user asks.
+//! Directory in Filer" action (⌘J / Ctrl+Shift+J) and workspace restoration.
+//! Each query answers for the moment it is made. Workspace capture also
+//! queries periodically and before exiting when no OSC report is available.
 //!
 //! A local shell is asked through the OS: the pty's foreground process group
 //! is looked up and its working directory read from the kernel
@@ -12,6 +12,8 @@
 //! working directory of the foreground job on the shell's terminal. The exec
 //! channel carries the very same `SSH_CONNECTION` as the shell channel, so
 //! nothing about the client side (ports, NAT, jump hosts) has to be known.
+//! A per-channel token distinguishes multiplexed terminals. Without an
+//! accepted token, only a connection with one unambiguous PTY is answered.
 
 use crate::error::{AppError, Result};
 
@@ -158,16 +160,35 @@ pub const REMOTE_CWD_SCRIPT: &str = r#"LC_ALL=C
 export LC_ALL
 [ -r /proc/$$/environ ] || exit 4
 needle=$(tr '\000' '\n' < /proc/$$/environ | grep '^SSH_CONNECTION=') || exit 2
+candidate=
+candidate_tty=
+ambiguous=0
 for f in $(grep -lF -- "$needle" /proc/[0-9]*/environ 2>/dev/null); do
   d=${f%/environ}
   [ "$d" = "/proc/$$" ] && continue
   tr '\000' '\n' < "$d/environ" 2>/dev/null | grep -qxF -- "$needle" || continue
   set -- $(sed 's/^.*) //' "$d/stat" 2>/dev/null)
   [ "${5:-0}" != 0 ] || continue
-  cwd=$(readlink "/proc/$6/cwd") || exit 3
+  if [ -n "${edgeterm_token:-}" ]; then
+    if tr '\000' '\n' < "$d/environ" 2>/dev/null | grep -qxF -- "LC_EDGETERM_SESSION=$edgeterm_token"; then
+      cwd=$(readlink "/proc/$6/cwd") || exit 3
+      printf 'EDGETERM-CWD %s\n' "$cwd"
+      exit 0
+    fi
+    if tr '\000' '\n' < "$d/environ" 2>/dev/null | grep -q '^LC_EDGETERM_SESSION='; then
+      ambiguous=1
+    fi
+  fi
+  if [ -n "$candidate_tty" ] && [ "$candidate_tty" != "$5" ]; then ambiguous=1; fi
+  candidate=$6
+  candidate_tty=$5
+done
+[ "$ambiguous" = 0 ] || exit 5
+if [ -n "$candidate" ]; then
+  cwd=$(readlink "/proc/$candidate/cwd") || exit 3
   printf 'EDGETERM-CWD %s\n' "$cwd"
   exit 0
-done
+fi
 exit 1
 "#;
 
@@ -193,6 +214,7 @@ pub fn parse_remote_cwd(stdout: &str, stderr: &str, exit_status: Option<u32>) ->
                 .to_string()
         }
         Some(4) => "the server has no /proc filesystem; only Linux hosts can be asked".to_string(),
+        Some(5) => "multiple shell channels cannot be distinguished; enable OSC 7 reports or AcceptEnv LC_EDGETERM_SESSION".to_string(),
         Some(code) => format!("the query exited with status {code}"),
         None => "the server sent no answer".to_string(),
     };

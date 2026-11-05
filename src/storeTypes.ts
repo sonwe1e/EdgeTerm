@@ -5,6 +5,7 @@ import { type LayoutNode, type Side } from "./layout";
 import { type ProgramClipboardMode } from "./osc52";
 import { type PanelDock, type PanelDocks } from "./panelDock";
 import { type ShortcutBindings } from "./shortcuts";
+import type { WorkspaceDirectories } from "./workspaceSnapshot";
 import type { CursorStyle, GutterMode, RightClickAction } from "./terminal";
 import type {
   AuthPrompt,
@@ -57,6 +58,8 @@ export interface Tab {
   rows: number;
   /** The pane whose strip shows this tab; see `AppStore.panes`. */
   paneId: string;
+  /** Last confirmed paths, independent of the connection profile and of each other. */
+  directories?: WorkspaceDirectories;
 }
 
 /**
@@ -262,6 +265,7 @@ export interface AppStore {
    * after the user had switched to another tab.
    */
   filerTarget: { sessionId: string; path: string; token: number } | null;
+  localFilerPath?: string;
   /**
    * Whether the Filer follows each session's shell directory; a session that
    * is absent is off. Runtime only and per session: following a shell is a
@@ -277,7 +281,7 @@ export interface AppStore {
   senderLibraryVersion: number;
 
   /** Fetches saved profiles and their groups together. */
-  loadProfiles: () => Promise<void>;
+  loadProfiles: () => Promise<boolean>;
   upsertProfile: (profile: SessionProfile) => Promise<SessionProfile>;
   /** Saves a copy of a profile right after it; resolves to the copy. */
   duplicateProfile: (id: string) => Promise<SessionProfile>;

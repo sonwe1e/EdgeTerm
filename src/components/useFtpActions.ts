@@ -11,12 +11,12 @@ interface Options {
   transferring: boolean;
   setRemoteError: Dispatch<SetStateAction<string | null>>;
   sessionId: string;
-  loadRemote: (target: string) => Promise<void>;
+  loadRemote: (target: string) => Promise<unknown>;
   /** The pane's selection, in listing order. Rename needs exactly one. */
   selectedRemote: readonly FileEntry[];
   localPath: string;
   setLocalError: Dispatch<SetStateAction<string | null>>;
-  loadLocal: (target: string) => Promise<void>;
+  loadLocal: (target: string) => Promise<unknown>;
   selectedLocal: readonly FileEntry[];
 }
 

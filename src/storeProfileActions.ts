@@ -22,10 +22,12 @@ export const createProfileActions: StateCreator<
     try {
       const [profiles, groups] = await Promise.all([api.listProfiles(), api.listSessionGroups()]);
       set({ profiles, groups });
+      return true;
     } catch (error) {
       const message = errorText(error);
       get().setError(message);
       get().setStatus(message);
+      return false;
     }
   },
 

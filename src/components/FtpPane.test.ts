@@ -158,6 +158,29 @@ beforeEach(() => {
   root = createRoot(host);
 });
 
+it("restores the dual pane's local and remote directories independently", async () => {
+  useStore.setState({
+    tabs: [{ ...tab(), directories: { filer: "/remote/saved", local: "/local/saved" } }],
+  });
+  await mount();
+  expect(api.sftpList).toHaveBeenCalledWith("ftp-session", "/remote/saved");
+  expect(api.localList).toHaveBeenCalledWith("/local/saved");
+  expect(useStore.getState().tabs[0].directories).toEqual({
+    filer: "/remote/saved",
+    local: "/local/saved",
+  });
+});
+
+it("falls back each missing dual-pane directory to its own home", async () => {
+  useStore.setState({
+    tabs: [{ ...tab(), directories: { filer: "/remote/gone", local: "/local/gone" } }],
+  });
+  vi.mocked(api.sftpList).mockRejectedValueOnce(new Error("gone"));
+  vi.mocked(api.localList).mockRejectedValueOnce(new Error("gone"));
+  await mount();
+  expect(useStore.getState().tabs[0].directories).toEqual({ filer: "/remote", local: "/local" });
+});
+
 afterEach(() => {
   act(() => root.unmount());
   host.remove();

@@ -1,5 +1,6 @@
 import { useStore } from "../../store";
 import type { FileEntry } from "../../types";
+import { rememberLocalFilerPath, rememberWorkspaceDirectory } from "../../workspaceDirectories";
 
 /** `lastPaths` key for the local file system, which every local tab shares. */
 export const LOCAL_SOURCE = "";
@@ -61,4 +62,6 @@ export const rememberPath = (source: string, path: string) => {
     if (key !== LOCAL_SOURCE && !open.has(key)) lastPaths.delete(key);
   }
   lastPaths.set(source, path);
+  if (source === LOCAL_SOURCE) rememberLocalFilerPath(path);
+  else rememberWorkspaceDirectory(source, "filer", path);
 };

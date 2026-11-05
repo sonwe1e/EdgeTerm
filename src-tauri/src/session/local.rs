@@ -77,8 +77,16 @@ pub fn spawn(
     if let Some(flag) = login_flag(&argv, cfg!(target_os = "macos")) {
         argv.push(flag.to_string());
     }
+    let prompt = if cfg!(windows) {
+        super::start_directory::windows_shell_integration(&mut argv)
+    } else {
+        None
+    };
     let mut cmd = CommandBuilder::new(&argv[0]);
     cmd.args(&argv[1..]);
+    if let Some(prompt) = prompt {
+        cmd.env("PROMPT", prompt);
+    }
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
     cmd.env("TERM_PROGRAM", "EdgeTerm");

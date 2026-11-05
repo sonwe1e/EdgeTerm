@@ -36,7 +36,7 @@ import { UpdateDialog } from "./components/UpdateDialog";
 import { Workspace } from "./components/Workspace";
 import { FileEditorDialog } from "./components/FileEditorDialog";
 import { AgentDialog } from "./components/AgentDialog";
-import { closeFileEditor, hasUnsavedFile } from "./fileEditor";
+import { closeFileEditor } from "./fileEditor";
 import { FilerPanel } from "./components/panels/FilerPanel";
 import { SenderPanel } from "./components/panels/SenderPanel";
 import { SessionPanel } from "./components/panels/SessionPanel";
@@ -61,6 +61,7 @@ import { isFileSession, type SessionProfile, type SessionState } from "./types";
 import { useT } from "./useT";
 import { useUpdater } from "./updater";
 import { REPOSITORY_URL, UPSTREAM_REPOSITORY_URL } from "./distribution";
+import { flushWorkspace, startWorkspace } from "./workspace";
 
 // The largest dialog in the application, and one nothing shows until the user
 // asks for a session, so it is not part of what the window opens with.
@@ -73,7 +74,10 @@ const SessionDialog = lazy(() =>
 /** Stable empty result for the closing-tabs selector (see `useShallow`). */
 const EMPTY_CLOSING_TABS: Tab[] = [];
 const exitSafely = async () => {
-  if (await closeFileEditor()) await exit(0);
+  if (await closeFileEditor()) {
+    await flushWorkspace();
+    await exit(0);
+  }
 };
 
 const hasLiveSessions = () =>
@@ -119,7 +123,6 @@ export default function App() {
   const panels = useStore((s) => s.panels);
   const panelDocks = useStore((s) => s.panelDocks);
   const togglePanel = useStore((s) => s.togglePanel);
-  const loadProfiles = useStore((s) => s.loadProfiles);
   const sshConfigImport = useStore((s) => s.sshConfigImport);
   const setSshConfigImport = useStore((s) => s.setSshConfigImport);
   const panelFontSize = useStore((s) => s.panelFontSize);
@@ -269,10 +272,9 @@ export default function App() {
   // --- backend events -------------------------------------------------------
 
   useEffect(() => {
-    void loadProfiles();
     // Opt-in feature: fetch the history only for users who enabled it.
     if (useStore.getState().suggestionsEnabled) commandHistory.load();
-  }, [loadProfiles]);
+  }, []);
 
   // The window is hidden until there is an interface to show, so the
   // application opens on the UI rather than on an empty frame (issue #35).
@@ -354,17 +356,14 @@ export default function App() {
         getController(id)?.writeText(sessionClosedNotice());
       }
     });
+    const authUnlisten = api.onAuthPrompt(addAuthPrompt);
+    const stopWorkspace = startWorkspace(Promise.all([unlisten, authUnlisten]));
     return () => {
+      stopWorkspace();
       void unlisten.then((off) => off());
+      void authUnlisten.then((off) => off());
     };
-  }, [applyState]);
-
-  useEffect(() => {
-    const unlisten = api.onAuthPrompt(addAuthPrompt);
-    return () => {
-      void unlisten.then((off) => off());
-    };
-  }, [addAuthPrompt]);
+  }, [applyState, addAuthPrompt]);
 
   // A recording the backend had to give up on (disk full, folder gone) is
   // reported against its session; the session itself carries on.
@@ -420,10 +419,8 @@ export default function App() {
         return;
       }
       if (!hasLiveSessions()) {
-        if (hasUnsavedFile()) {
-          event.preventDefault();
-          void exitSafely();
-        }
+        event.preventDefault();
+        void exitSafely();
         return;
       }
       event.preventDefault();

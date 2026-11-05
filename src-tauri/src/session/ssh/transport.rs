@@ -295,6 +295,7 @@ impl Drop for SharedTransport {
 }
 
 pub struct SshConnection {
+    pub(super) cwd_token: String,
     pub(super) transport: Arc<SharedTransport>,
     pub(super) channel: Channel<Msg>,
 }
@@ -687,6 +688,12 @@ pub(super) async fn open_shell(
     // modern CLI applications select their 24-bit color output automatically.
     let _ = channel.set_env(false, "COLORTERM", "truecolor").await;
     let _ = channel.set_env(false, "TERM_PROGRAM", "EdgeTerm").await;
+    // OpenSSH commonly accepts LC_*. If refused, cwd queries only use an
+    // unambiguous single PTY; they must never borrow a sibling tab's cwd.
+    let cwd_token = uuid::Uuid::new_v4().to_string();
+    let _ = channel
+        .set_env(false, "LC_EDGETERM_SESSION", cwd_token.clone())
+        .await;
     // The locale the profile asks the server for, so its `ls` prints UTF-8
     // rather than octal escapes (issue #39). Applied by servers configured
     // with `AcceptEnv LANG`; see `locale::ssh_lang` for why only a locale
@@ -694,9 +701,18 @@ pub(super) async fn open_shell(
     if let Some(lang) = locale::ssh_lang(profile) {
         let _ = channel.set_env(false, "LANG", lang).await;
     }
-    channel.request_shell(true).await?;
+    if let Some(cwd) = profile.cwd.as_deref().filter(|cwd| !cwd.is_empty()) {
+        let command = crate::session::start_directory::ssh_start_command(cwd, &cwd_token)?;
+        channel.exec(true, command).await?;
+    } else {
+        channel.request_shell(true).await?;
+    }
 
-    Ok(SshConnection { transport, channel })
+    Ok(SshConnection {
+        transport,
+        channel,
+        cwd_token,
+    })
 }
 
 /// Test-only: logs in to a real server with a key file and returns the
