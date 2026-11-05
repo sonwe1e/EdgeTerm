@@ -53,6 +53,8 @@ export class TerminalController {
   private outputBytes = 0;
   private parseMs = 0;
   private readonly keyboard: TerminalKeyboard;
+  /** Only the synchronous xterm wheel dispatch may translate its fallback keys. */
+  private dispatchingWheel = false;
 
   private readonly searchController: TerminalSearchController;
 
@@ -548,6 +550,15 @@ export class TerminalController {
     // A file transfer owns the byte stream while it is active. Forwarding
     // keystrokes or paste data in the middle of a binary frame corrupts it.
     this.term.onData((data) => this.handleData(data));
+    this.term.attachCustomWheelEventHandler(() => {
+      // Keep xterm's delta accumulation, trackpad filtering and mouse reports.
+      // Its no-mouse fallback emits an arrow synchronously in this dispatch.
+      this.dispatchingWheel = true;
+      queueMicrotask(() => {
+        this.dispatchingWheel = false;
+      });
+      return true;
+    });
     // xterm sends legacy mouse reports, including wheel events, through
     // onBinary. Coordinates above 95 become bytes above 127: UTF-8 encoding
     // would corrupt them.
@@ -668,6 +679,7 @@ export class TerminalController {
         this.semantic.scheduleBacklog();
       }
       this.lineGutter.gutterContentDirty = true;
+      this.commands.observeCommandEcho();
       this.commands.detectReturnedPrompt();
       // The shell's echo of a keystroke lands here; recompute the suggestions
       // from the buffer only while the user is composing a command.
@@ -986,6 +998,19 @@ export class TerminalController {
     if (this.isTransferActive()) return;
     if (this.locked) {
       if (data === "\r") this.callbacks.onReconnect?.();
+      return;
+    }
+    if (
+      this.dispatchingWheel &&
+      (this.commands.aiTool === "pi" || this.commands.aiTool === "pi-coding-agent") &&
+      this.term.buffer.active.type === "alternate" &&
+      this.term.modes.mouseTrackingMode === "none" &&
+      /^\x1b(?:\[|O)[AB]$/.test(data)
+    ) {
+      // Pi uses arrows for prompt history. Its fullscreen page keys scroll
+      // the transcript (or the focused overlay) without changing the draft.
+      // A real key press and other programs retain xterm's normal behavior.
+      this.callbacks.onData(data.endsWith("A") ? "\x1b[5~" : "\x1b[6~");
       return;
     }
     this.commands.trackInput(data);

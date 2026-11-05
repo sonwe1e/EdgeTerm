@@ -31,6 +31,9 @@ export class TerminalCommands {
 
   private commandPromptRecognized = false;
 
+  /** Enter may arrive before an SSH shell has echoed the submitted command. */
+  private awaitingCommandEcho = false;
+
   commandOutputAdvanced = false;
 
   commandRunning = false;
@@ -158,6 +161,7 @@ export class TerminalCommands {
     this.endAiSession();
     this.aiTool = aiSessionTool(sent ?? this.submittedCommand(prompt));
     this.aiSession = this.aiTool !== null;
+    this.awaitingCommandEcho = !this.aiSession && sent === undefined;
     this.context.callbacks.onAiSession?.(this.aiTool);
     // An agentic CLI runs until the user quits it, so reporting its whole
     // session as one running command would say nothing. The tab stays quiet
@@ -176,6 +180,41 @@ export class TerminalCommands {
     const text = this.cursorLine()?.text ?? "";
     const end = shellPromptEnd(text);
     return text.slice(end >= 0 ? end : prompt.length).trim();
+  }
+
+  /** Read a completed echo from the normal buffer, even after a TUI covers it. */
+  observeCommandEcho() {
+    if (!this.awaitingCommandEcho || !this.commandRunning || this.aiSession) return;
+    const marker = this.commandMarker;
+    if (!marker || marker.isDisposed) {
+      this.awaitingCommandEcho = false;
+      return;
+    }
+    const term = this.context.term;
+    const buffer = term.buffer.normal;
+    let row = marker.line;
+    for (let count = 0; count < 10 && row > 0 && buffer.getLine(row)?.isWrapped; count++) row--;
+    let text = "";
+    let complete = false;
+    for (let count = 0; count < 10; count++, row++) {
+      text += buffer.getLine(row)?.translateToString(false) ?? "";
+      if (!buffer.getLine(row + 1)?.isWrapped) {
+        complete = true;
+        break;
+      }
+      if (text.length > 4096) break;
+    }
+    // Partial words such as `p` must not decide whether this is `pi`.
+    if (term.buffer.active.type === "normal" && row >= buffer.baseY + buffer.cursorY) return;
+    this.awaitingCommandEcho = false;
+    if (!complete || text.length > 4096 || !text.startsWith(this.commandPrompt)) return;
+    const end = shellPromptEnd(text);
+    const tool = aiSessionTool(text.slice(end >= 0 ? end : this.commandPrompt.length).trim());
+    if (!tool) return;
+    this.aiTool = tool;
+    this.aiSession = true;
+    this.context.callbacks.onAiSession?.(tool);
+    this.emitCommandState(this.aiReportedActivity ?? "idle");
   }
 
   /**
@@ -253,6 +292,7 @@ export class TerminalCommands {
     this.commandMarker = null;
     this.commandPrompt = "";
     this.commandPromptRecognized = false;
+    this.awaitingCommandEcho = false;
     this.commandOutputAdvanced = false;
     this.commandRunning = false;
     this.endAiSession();

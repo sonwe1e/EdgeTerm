@@ -57,6 +57,40 @@ afterEach(() => {
 });
 
 describe("agentic CLI sessions", () => {
+  it("recognizes Pi after a delayed SSH echo has left the normal screen", async () => {
+    const events: string[] = [];
+    const controller = createController(events);
+    await write(controller, PROMPT);
+    controller.term.input("pi", true);
+    controller.term.input("\r", true);
+    await vi.advanceTimersByTimeAsync(800);
+    expect(controller.agentDiagnostics().tool).toBeNull();
+    await write(controller, "p");
+    expect(controller.agentDiagnostics().tool).toBeNull();
+    await write(controller, "i --offline\r\n\x1b[?1049h");
+    expect(controller.agentDiagnostics().tool).toBe("pi");
+    expect(events[events.length - 1]).toBe("idle:ai");
+    await write(controller, `\x1b[?1049l${PROMPT}`);
+    expect(controller.agentDiagnostics().tool).toBeNull();
+  });
+
+  it("recognizes a wrapped Pi launch without mistaking later output for a launch", async () => {
+    const events: string[] = [];
+    const controller = createController(events);
+    controller.term.resize(24, 12);
+    await write(controller, PROMPT);
+    controller.term.input("/usr/local/bin/pi --offline", true);
+    controller.term.input("\r", true);
+    await write(controller, "/usr/local/bin/pi --offline\r\n\x1b[?1049h");
+    expect(controller.agentDiagnostics().tool).toBe("pi");
+    await write(controller, `\x1b[?1049l${PROMPT}`);
+    controller.term.input("printf pi", true);
+    controller.term.input("\r", true);
+    await write(controller, "printf pi\r\npi\r\n");
+    expect(controller.agentDiagnostics().tool).toBeNull();
+    expect(events[events.length - 1]).toBe("running:command");
+  });
+
   it("accepts OpenCode's idle report when Enter beats the SSH command echo", async () => {
     const events: string[] = [];
     const sent: string[] = [];

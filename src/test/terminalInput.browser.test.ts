@@ -34,7 +34,7 @@ window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
 };
 
 const ids = ["input-first", "input-second", "input-third"];
-async function fixture() {
+async function fixture(kind: "local" | "ssh" = "local") {
   await page.viewport(1440, 900);
   useStore.getState().setShortcuts(defaultShortcuts());
   const paneId = initial.activePaneId;
@@ -42,8 +42,8 @@ async function fixture() {
     info: {
       id,
       name: id,
-      kind: "local",
-      protocol: "local",
+      kind,
+      protocol: kind,
       profileId: null,
       address: "fixture",
       color: null,
@@ -52,7 +52,7 @@ async function fixture() {
       legacyAlgorithms: [],
       sharedConnection: false,
     },
-    profile: { id, name: id, kind: "local" },
+    profile: { id, name: id, kind },
     number: index + 1,
     ordinal: 0,
     state: "connected",
@@ -191,4 +191,75 @@ it("forwards SGR wheel reports and keeps ordinary shell scrollback local", async
   await wheel(-300);
   await expect.poll(() => controller.term.buffer.normal.viewportY).toBeLessThan(before);
   expect(writes).toEqual([]);
+});
+
+it.each(["local", "ssh"] as const)(
+  "scrolls Pi history with page keys when mouse reporting is missing in a %s session",
+  async (kind) => {
+    const controller = await fixture(kind);
+    controller.noteCommandSent("pi");
+    await output("\x1b[?1049h");
+    await wheel(-120);
+    expect(writes.length).toBeGreaterThan(0);
+    expect(writes.every(({ args }) => (args as { data: string }).data === "\x1b[5~")).toBe(true);
+    writes.length = 0;
+    await output("\x1b[?1h");
+    await wheel(120);
+    expect(writes.length).toBeGreaterThan(0);
+    expect(writes.every(({ args }) => (args as { data: string }).data === "\x1b[6~")).toBe(true);
+
+    writes.length = 0;
+    await userEvent.keyboard("{ArrowUp}");
+    await twoFrames();
+    expect(writes.map(({ args }) => (args as { data: string }).data)).toEqual(["\x1bOA"]);
+  },
+);
+
+it("recovers Pi wheel scrolling after mouse modes are disabled and keeps SGR reports when restored", async () => {
+  const controller = await fixture("ssh");
+  controller.noteCommandSent("pi");
+  await output("\x1b[?1049h\x1b[?1003h\x1b[?1006h");
+  await wheel(-120);
+  expect(writes.some(({ args }) => /^\x1b\[<64;/.test((args as { data: string }).data))).toBe(true);
+  await output("\x1b[?1003l");
+  await wheel(-120);
+  expect(writes.length).toBeGreaterThan(0);
+  expect(writes.every(({ args }) => (args as { data: string }).data === "\x1b[5~")).toBe(true);
+  await output("\x1b[?1003h");
+  await wheel(120);
+  expect(writes.some(({ args }) => /^\x1b\[<65;/.test((args as { data: string }).data))).toBe(true);
+
+  await output("\x1b[?1003l");
+  controller.setLocked(true);
+  writes.length = 0;
+  await wheel(-120);
+  expect(writes).toEqual([]);
+});
+
+it("keeps alternate-screen arrow scrolling for other programs", async () => {
+  await fixture("ssh");
+  await output("\x1b[?1049h");
+  await wheel(-120);
+  expect(writes.length).toBeGreaterThan(0);
+  expect(writes.every(({ args }) => (args as { data: string }).data === "\x1b[A")).toBe(true);
+});
+
+it("keeps Pi regular-mode scrollback local and releases its wheel fallback on exit", async () => {
+  const controller = await fixture("ssh");
+  const prompt = "alice@server:~/repo$ ";
+  await output(prompt);
+  controller.noteCommandSent("pi");
+  await output("pi\r\n" + "Pi regular-mode history\r\n".repeat(200));
+  const before = controller.term.buffer.normal.viewportY;
+  await wheel(-300);
+  await expect.poll(() => controller.term.buffer.normal.viewportY).toBeLessThan(before);
+  expect(writes).toEqual([]);
+  expect(controller.agentDiagnostics().tool).toBe("pi");
+
+  await output(`\x1b[?1049h\x1b[?1049l${prompt}`);
+  expect(controller.agentDiagnostics().tool).toBeNull();
+  await output("\x1b[?1049h");
+  await wheel(-120);
+  expect(writes.length).toBeGreaterThan(0);
+  expect(writes.every(({ args }) => (args as { data: string }).data === "\x1b[A")).toBe(true);
 });
