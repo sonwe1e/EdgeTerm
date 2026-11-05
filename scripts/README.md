@@ -334,6 +334,46 @@ selection, wrapping, navigation past the highlight limit and bounded painting;
 `src/workbench/searchInteraction.browser.test.ts` covers StrictMode request
 completion and quick-open keyboard navigation with fixture IPC responses.
 
+### Native SSH program checks
+
+`scripts/check-native-opencode-ssh.mjs` checks OpenCode 2.2.5 idle activity in an
+explicitly selected disposable WebView2 instance (`EDGETERM_CDP_URL` and
+`EDGETERM_CDP_TARGET_ID`). Run it with `./dev.ps1 script` and a fresh output path
+under `.tmp`. It requires a dedicated local OpenSSH account `edgeterm`, its test
+key at `.tmp/ssh/id_ed25519`, and a remote setup script passed as
+`EDGETERM_OPENCODE_ENV`. The setup must put OpenCode on PATH, disable providers,
+create a separate Linux home named `/tmp/edgeterm-opencode-225.*`, print
+`FIXTURE_READY` and `FIXTURE_HOME:<path>`, and set the prompt to
+`edgeterm@fixture:~/project$ `. It uses a loopback proxy on port 22625 to add
+200 ms downstream latency. The test instance must have no profiles or sessions;
+its SSH connection uses the application's normal known-host verification.
+Set `EDGETERM_OPENCODE_EXPECT_BUG=1` only when checking the old implementation.
+Evidence includes screenshots, raw output from this test session and JSON state
+checks. It submits no model prompt. The launching wrapper must stop the isolated
+OpenCode background server after the test and close only its own app instance.
+
+`check-native-pi-ssh.mjs <new-output-dir>` uses the same explicit disposable
+WebView2 target, empty profiles/sessions, local SSH account/key, port 22625 proxy
+and 200 ms downstream latency. Set `EDGETERM_PI_SSH_ENV` to an isolated Linux
+setup script, and `EDGETERM_PI_SSH_CONTROL` to a helper that accepts the fixture
+home and `disable`/`enable` and writes mouse-mode escapes only to that fixture's
+owned PTY. The setup prints `FIXTURE_READY` and `FIXTURE_HOME:<path>` using a
+fresh `/tmp/edgeterm-pi-ssh.*` home, sets `edgeterm@fixture:~/pi-project$ ` as its
+prompt, and makes `pi` launch official Pi 1.5.0 offline/fullscreen with 80
+generated question/answer pairs. Each answer has eight lines containing
+`PI-HISTORY-NNN`. Disable extensions, MCP, tools and provider credentials; use
+`fullscreenExitOutput: "resume-hint"`. The helper must validate the fixture path,
+owner and `/dev/pts/` device before touching it. The script invokes this helper
+through WSL `Ubuntu-26.04` as the dedicated `edgeterm` account.
+
+The test checks normal SGR scrolling, deliberate mouse-mode loss, up/down
+transcript paging with a preserved draft, restored mouse reporting and normal
+Pi exit. Set `EDGETERM_PI_EXPECT_BUG=1` for the old implementation: it must send
+arrow keys, replace the draft and leave the transcript at the latest message.
+The launching wrapper closes only its own app. JSON and screenshots are real
+Windows release/WebView2, SSH and Pi evidence with generated history and CDP
+input; they do not prove why mouse mode was lost on a user's remote server.
+
 ### Static checks
 
 `npm run format` applies Biome 2.5.15 formatting; `npm run format:check` checks
