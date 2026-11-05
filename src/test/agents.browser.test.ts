@@ -143,6 +143,63 @@ afterEach(async () => {
   uploadDone = null;
 });
 
+it.each(["local", "ssh"] as const)(
+  "stops an idle OpenCode tab animation over %s",
+  async (kind) => {
+    const controller = await fixture(kind);
+    await page.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).click();
+    const bytes = new TextEncoder();
+    const output = (text: string) =>
+      new Promise<void>((resolve) => controller.write(bytes.encode(text), resolve));
+    await output(kind === "ssh" ? "alice@server:~/repo$ " : "PS C:\\fixture> ");
+    controller.term.input("opencode", true);
+    await output("opencode");
+    controller.term.input("\r", true);
+    await output("\r\n\x1b[?1049h\x1b]7501;state=idle:app=opencode\x07");
+
+    const first = useStore.getState().tabs[0];
+    useStore.setState({
+      tabs: [
+        first,
+        {
+          ...first,
+          info: { ...first.info, id: "agent-other", name: "Other terminal" },
+          number: 2,
+        },
+      ],
+    });
+    useStore.getState().setActive("agent-other");
+    await twoFrames();
+    const tab = document.querySelector<HTMLElement>('[data-tab-id="agent-fixture"]')!;
+    const animation = () => getComputedStyle(tab, "::after").animationName;
+    const activity = () =>
+      useStore.getState().tabs.find((item) => item.info.id === "agent-fixture")?.commandActivity;
+
+    await output("\x1b]7501;state=working:app=opencode\x07");
+    await twoFrames();
+    expect(activity()).toBe("running");
+    expect(animation()).toBe("tab-command-stream");
+    await page.screenshot({ path: `../../artifacts/usability/opencode-${kind}-working.png` });
+    await output("\x1b]7501;state=idle:app=opencode\x07");
+    await twoFrames();
+    expect(activity()).toBe("complete");
+    expect(animation()).toBe("none");
+    await page.screenshot({ path: `../../artifacts/usability/opencode-${kind}-idle.png` });
+
+    controller.term.input("a draft", true);
+    for (let index = 0; index < 5; index += 1) {
+      await output(`\x1b[HReady ${index}\x1b[K`);
+      await new Promise((resolve) => window.setTimeout(resolve, 500));
+    }
+    expect(activity()).toBe("complete");
+    expect(animation()).toBe("none");
+    useStore.getState().setActive("agent-fixture");
+    await twoFrames();
+    expect(activity()).toBe("idle");
+  },
+  15_000,
+);
+
 it("undoes and redoes quoted text and file references in the prompt draft", async () => {
   const controller = await fixture();
   await page.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).click();

@@ -593,6 +593,13 @@ export class TerminalController {
       if (text !== null) this.clipboard.programClipboardWrite(text);
       return true;
     });
+    // OpenCode and other agents can report their own state. Idle redraws
+    // and prompt editing must not override these reports with byte activity.
+    this.term.parser.registerOscHandler(7501, (data) => this.commands.reportProgramStatus(data));
+    this.term.parser.registerEscHandler({ final: "c" }, () => {
+      this.commands.resetProgramStatus();
+      return false; // Let xterm perform the full terminal reset as well.
+    });
     // FinalTerm/iTerm shell integration brackets commands with OSC 133. It
     // is the authoritative completion signal when available; prompt matching
     // below covers ordinary bash/zsh/fish/cmd/PowerShell installations.

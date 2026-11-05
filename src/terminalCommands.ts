@@ -6,6 +6,7 @@ import { IS_MAC } from "./platform";
 import { shellPromptEnd } from "./semanticColors";
 import { TerminalLineGutter } from "./terminalLineGutter";
 import { isInputPrompt } from "./terminalPrompt";
+import { TerminalProgramStatus, type ProgramActivity } from "./terminalProgramStatus";
 import { AI_QUIET_MS, Callbacks, InputAnchor, TERMINAL_REPORT } from "./terminalShared";
 
 interface Context {
@@ -47,6 +48,9 @@ export class TerminalCommands {
   aiOutputAt = 0;
 
   private aiQuietTimer: number | null = null;
+
+  private readonly aiProgramStatus = new TerminalProgramStatus();
+  private aiReportedActivity: ProgramActivity | null = null;
 
   popup: HTMLElement;
 
@@ -151,6 +155,7 @@ export class TerminalCommands {
     this.commandPromptRecognized = isInputPrompt(prompt);
     this.commandOutputAdvanced = false;
     this.commandRunning = true;
+    this.endAiSession();
     this.aiTool = aiSessionTool(sent ?? this.submittedCommand(prompt));
     this.aiSession = this.aiTool !== null;
     this.context.callbacks.onAiSession?.(this.aiTool);
@@ -262,14 +267,68 @@ export class TerminalCommands {
     }
   }
 
+  /** Program reports do not depend on seeing the shell echo of a launch command. */
+  reportProgramStatus(data: string): boolean {
+    if (this.context.disposed || this.context.locked || this.context.isTransferActive()) {
+      return false;
+    }
+    if (data === "?") {
+      this.context.callbacks.onData("\x1b]7501;?\x1b\\");
+      return true;
+    }
+    const activity = this.aiProgramStatus.update(data);
+    if (activity === null) return true;
+    const firstUnidentifiedReport = this.aiReportedActivity === null && !this.aiSession;
+    const previous = this.aiReportedActivity ?? (this.aiTurn ? "running" : "idle");
+    const tool = aiSessionTool(this.aiProgramStatus.app ?? "");
+    const discoveredAgent = tool !== null && !this.aiSession;
+    if (discoveredAgent) {
+      this.aiTool = tool;
+      this.aiSession = true;
+      this.context.callbacks.onAiSession?.(tool);
+      if (!this.commandRunning) {
+        // Auto-started tools and commands whose echo was missed still need
+        // to release AI tracking when the terminal returns to a shell prompt.
+        this.commandRunning = true;
+        this.commandOutputAdvanced = true;
+        this.commandPromptRecognized = true;
+      }
+    }
+    this.stopAiQuiet();
+    this.aiTurn = false;
+    this.aiReportedActivity = activity;
+    if (activity !== previous || firstUnidentifiedReport || discoveredAgent) {
+      this.emitCommandState(activity === "idle" && previous === "running" ? "complete" : activity);
+    }
+    return true;
+  }
+
+  resetProgramStatus() {
+    const hadStatus = this.aiReportedActivity !== null;
+    this.stopAiQuiet();
+    this.aiTurn = false;
+    this.aiProgramStatus.clear();
+    this.aiReportedActivity = null;
+    if (this.aiSession || hadStatus) this.emitCommandState("idle");
+  }
+
+  private stopAiQuiet() {
+    if (this.aiQuietTimer !== null) {
+      window.clearTimeout(this.aiQuietTimer);
+      this.aiQuietTimer = null;
+    }
+  }
+
   /**
-   * A keystroke inside an agentic CLI starts an activity interval, and output
-   * keeps it open until the stream has been quiet. This is only a signal to
-   * review the tab: a tool can pause and resume before actually finishing.
+   * Without explicit program status, a keystroke inside an agentic CLI starts
+   * an activity interval, and output keeps it open until the stream has been
+   * quiet. This is only a signal to review the tab: a tool can pause and
+   * resume before actually finishing.
    * Output alone never opens an interval, so an idle tool's occasional
    * repaint does not repeatedly create a new notification.
    */
   private noteAiInput() {
+    if (this.aiReportedActivity !== null) return;
     this.aiOutputAt = Date.now();
     if (!this.aiTurn) {
       this.aiTurn = true;
@@ -294,10 +353,9 @@ export class TerminalCommands {
   }
 
   private endAiSession() {
-    if (this.aiQuietTimer !== null) {
-      window.clearTimeout(this.aiQuietTimer);
-      this.aiQuietTimer = null;
-    }
+    this.stopAiQuiet();
+    this.aiProgramStatus.clear();
+    this.aiReportedActivity = null;
     this.aiSession = false;
     if (this.aiTool) this.context.callbacks.onAiSession?.(null);
     this.aiTool = null;
