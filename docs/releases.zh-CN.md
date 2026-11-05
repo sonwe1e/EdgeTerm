@@ -1,6 +1,6 @@
 # 本分支历史发布索引
 
-历史索引核对日期：2026-10-23；1.3.0 发布补记：2026-10-26；1.4.0 发布补记：2026-10-27；1.5.0 发布补记：2026-10-28；1.5.1 发布补记：2026-10-29；1.6.0 发布补记：2026-11-02；1.6.1 发布补记：2026-11-02；1.6.2 构建记录（未发布）：2026-11-02。发行仓库是 [sonwe1e/EdgeTerm](https://github.com/sonwe1e/EdgeTerm)，上游是 [miskin-lee/EdgeTerm](https://github.com/miskin-lee/EdgeTerm)。两者独立发布，不能根据版本数字大小推断功能包含关系。
+历史索引核对日期：2026-10-23；1.3.0 发布补记：2026-10-26；1.4.0 发布补记：2026-10-27；1.5.0 发布补记：2026-10-28；1.5.1 发布补记：2026-10-29；1.6.0 发布补记：2026-11-02；1.6.1 发布补记：2026-11-02；1.6.2 构建记录（未发布）：2026-11-02；1.7.0 发布补记：2026-11-05。发行仓库是 [sonwe1e/EdgeTerm](https://github.com/sonwe1e/EdgeTerm)，上游是 [miskin-lee/EdgeTerm](https://github.com/miskin-lee/EdgeTerm)。两者独立发布，不能根据版本数字大小推断功能包含关系。
 
 本次索引核对了 GitHub Releases 的发布时间、附件名、发布说明和远端标签；下表 SHA 是标签解引用后的 **commit SHA**，不是 annotated tag 对象 SHA。日期使用北京时间。没有重新下载历史二进制，也没有重新执行旧版本的验收；历史验证结论以对应发布说明及其环境边界为准。
 
@@ -21,8 +21,27 @@
 | [v1.5.1](https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.5.1) | 2026-10-29 | [4cbf773](https://github.com/sonwe1e/EdgeTerm/commit/4cbf773ceaaa5edce4bf12727eba46a794fbd04f) | Windows x64 安装包、便携包、独立诊断工具、SHA256SUMS；严格 SFTP 服务器保存、重读输入保护、日志 traceback 跳转与慢链路 SFTP 预算，见[发布说明](release-1.5.1.zh-CN.md) |
 | [v1.6.0](https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.6.0) | 2026-11-02 | [42d01f0](https://github.com/sonwe1e/EdgeTerm/commit/42d01f0f29ea61c2362b716685fb36a2e8ffb492) | Windows x64 安装包、便携包、独立诊断工具、SHA256SUMS；终端文件路径跳转、Filer 跟随终端目录、远端 localhost 地址经 SSH 转发打开、远程 HTML 报告预览，见[发布说明](release-1.6.0.zh-CN.md) |
 | [v1.6.1](https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.6.1) | 2026-11-02 | [fe8976b](https://github.com/sonwe1e/EdgeTerm/commit/fe8976be5fb486fec27e9104aa19562e1b2d762f) | 同上；输入行选区直接删除/替换、Alt+点击不再弹出菜单栏，见[发布说明](release-1.6.1.zh-CN.md) |
+| [v1.7.0](https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.7.0) | 2026-11-05 | [399702f](https://github.com/sonwe1e/EdgeTerm/commit/399702f959dd4d9b5834f6a3597033b8c8c542f9) | Windows x64 安装包、便携包、独立诊断工具、SHA256SUMS；Agent 提示词、终端选区引用与撤销，以及未公开发布的 1.6.2 改进，见[发布说明](release-1.7.0.zh-CN.md) |
 
 截至 2026-10-28，本分支没有公开的 macOS/Linux 安装包，也没有签名自动更新清单。上游提供这些平台的发布包，不代表本分支已完成这些平台的构建或验证。`v1.0.0` 是保留的共同基线标签，不是本分支独立发布的 Release；本地其他 `v0.*`、`v1.0.*` 标签也不能当作本分支发布记录。
+
+## 1.7.0 构建与验证记录
+
+前一个本分支公开版本为 1.6.1。本版增加 Agent 提示词草稿、选区与文件路径引用，按兼容功能使用 minor 版本 1.7.0，并纳入此前仅作本地构建的 1.6.2 改进。安装版沿用 `com.edgeterm.desktop`、配置目录和凭据存储，没有数据格式迁移。便携模式密码与口令只保留在当前进程内，升级应保留已有 `data` 目录；本版同步更正便携包内的旧说明。
+
+固定源码及标签解引用提交为 `399702f959dd4d9b5834f6a3597033b8c8c542f9`。在干净的 Windows x64 工作树中通过受限 runner 执行 `tauri:build -- --bundles nsis`，使用 Node 24.19.0、rustc/cargo 1.99.1、MSVC 和 Windows SDK；程序与安装器文件版本均为 1.7.0。便携包的 `EdgeTerm.exe` 与 NSIS 构建输入一致，SHA-256 为 `fe3b5ddc25f958fc77457496d83eec161391348d8fc373509d79c7585a890b91`。便携包只含程序、说明及空 `data/`，诊断包只含两个诊断脚本与说明。程序和安装器未做 Windows 数字签名，校验和只用于核对完整性。
+
+| 1.7.0 附件 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| `EdgeTerm_1.7.0_x64-setup.exe` | 4111456 | `fc3db99164b6e85dab17920168d0c9d94ee967c98581c62f4aec5c61ca18bbf8` |
+| `EdgeTerm_1.7.0_x64-portable.zip` | 5111722 | `04afb31849c3041279be72eefd66b692c962dd9d7fe35d9e6e67367bd8a8f98a` |
+| `EdgeTerm_1.7.0_windows-diagnostics.zip` | 5471 | `6da5046003a51b0971b8a65e48df04c9506c9e76447ba70e8aa78980f49e6d5b` |
+
+`SHA256SUMS.txt` 列出上述三个附件，自身 298 字节、SHA-256 为 `5bb7e35a42a743684eacfc3220294adeb7e1cf94722681cd95a06ce826ee4efb`。上传到 GitHub 草稿后回下载四个附件，逐个计算 SHA-256 与本地比对一致；2026-11-05 08:20:59（北京时间）公开为 latest，非草稿、非预发布。公开后再次核对 latest 记录、四个附件的大小及 GitHub SHA-256，与上述结果一致。`v1.6.2` 仍只保留为原有本地标签，没有补发该版本或改写任何已发布标签。发布记录在固定构建提交之后补充，不移动 `v1.7.0` 标签。
+
+Windows 本地检查：113 个前端单元测试文件 / 1060 项通过（首轮两个 Windows 系统工具用例受到沙箱权限限制，相关 2 文件 / 7 项在沙箱外重跑通过）；30 个真实 Edge 浏览器测试文件 / 151 项通过；Rust 451 项通过、28 项按条件跳过。TypeScript、版本一致性、Biome 格式、lint、Rust 格式、Rust/前端绑定（98/103 命令、5 事件、5 条显式例外）与生产构建通过；`dfc7b98..399702f` 的 8 个提交逐个通过规范与类型检查。更正便携包说明后，打包脚本 5 项测试再次通过。lint 保留生成绑定中两条既有 `any` 警告，Rust 构建保留未使用代码与链接器信息警告。固定源码的 [GitHub checks CI](https://github.com/sonwe1e/EdgeTerm/actions/runs/41880823513) 通过。
+
+浏览器套件使用模拟 IPC。实际 Codex 0.166.0 / Windows WebView2 / ConPTY 的 6 项验收在独立应用标识、隔离 Codex 配置与本地固定回复环境通过，覆盖普通拖选、Shift 高亮保留、引用、Ctrl+Z / Ctrl+Shift+Z 和新建命令入口；没有使用用户会话或真实模型请求。旧实现的普通拖选引用失败，浏览器回归也确认旧版选区、高亮、撤销和模式切换问题。正式构建使用相同功能源码加版本与说明变更，未把开发验收程序当作正式附件。其他 Agent 版本、真实 SSH、安装器升级、macOS/Linux 桌面未据此视为验证通过。任务完成状态仍是终端活动推断，Agent 自动互联尚未实现，详见[功能说明](coding-agents.zh-CN.md)。
 
 ## 1.6.2 构建记录（未发布）
 

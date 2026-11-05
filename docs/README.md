@@ -51,7 +51,7 @@
 | [release-1.6.0.zh-CN.md](release-1.6.0.zh-CN.md) | 1.6.0 |
 | [release-1.6.1.zh-CN.md](release-1.6.1.zh-CN.md) | 1.6.1 |
 | [release-1.6.2.zh-CN.md](release-1.6.2.zh-CN.md) | 1.6.2（仅本地构建） |
-| [release-1.7.0.zh-CN.md](release-1.7.0.zh-CN.md) | 1.7.0（发布准备） |
+| [release-1.7.0.zh-CN.md](release-1.7.0.zh-CN.md) | 1.7.0（最新公开版） |
 
 ## 专题与历史记录
 
