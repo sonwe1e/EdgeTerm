@@ -158,6 +158,17 @@ pub(super) fn wire_lengths(limits: Limits, chunk_kib: usize) -> (usize, usize) {
     (read_len, write_len)
 }
 
+/// The number of files one job copies concurrently: half the handles a
+/// server says it holds, and the conservative historical ceiling on a
+/// server that advertises nothing — it may be a constrained appliance,
+/// and one that stays silent cannot be asked.
+pub(super) fn file_width(configured: usize, limits: &Limits) -> usize {
+    match limits.open_handles {
+        Some(n) => configured.min((n / 2).max(1) as usize),
+        None => configured.min(4),
+    }
+}
+
 impl Remote {
     /// Production dial/handshake for one job's SFTP session; also the
     /// bridge the real-server acceptance tests use to reach the engine.
@@ -210,13 +221,7 @@ impl Remote {
             extensions: version.extensions,
             read_len: job.pace_slice(read_len),
             write_len: job.pace_slice(write_len),
-            files: match limits.open_handles {
-                Some(n) => job.options.files.min((n / 2).max(1) as usize),
-                // A server that does not advertise limits may be a
-                // constrained appliance; keep the historical default
-                // ceiling instead of the full configured width.
-                None => job.options.files.min(4),
-            },
+            files: file_width(job.options.files, &limits),
             requests: Semaphore::new(job.options.requests),
             buffers: Arc::new(Semaphore::new(job.options.requests)),
             readback: job.options.requests,

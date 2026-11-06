@@ -67,6 +67,15 @@ struct Server {
     /// closed-handle request — a close the client sent while writes were
     /// still in flight kills those writes here.
     closed: std::collections::HashSet<String>,
+    /// File handles the server currently holds open, by path and
+    /// generation: the open-minus-close count a server itself tracks.
+    /// Listing handles are deliberately absent — planning holds no file
+    /// width — so a directory close never dents the count.
+    open_files: HashMap<String, usize>,
+    /// File handles open right now, and the peak of it: the concurrent
+    /// file width the engine actually ran, as the server counts it.
+    open_file_handles: usize,
+    peak_open_file_handles: usize,
 }
 
 struct Fixture {
@@ -319,6 +328,10 @@ fn response(server: &mut Server, packet: Packet) -> (Option<Packet>, u64) {
                 server.files.entry(p.filename.clone()).or_default();
                 // A new open of the same path is a new handle generation.
                 server.closed.remove(&p.filename);
+                *server.open_files.entry(p.filename.clone()).or_insert(0) += 1;
+                server.open_file_handles += 1;
+                server.peak_open_file_handles =
+                    server.peak_open_file_handles.max(server.open_file_handles);
                 Packet::Handle(Handle {
                     id,
                     handle: p.filename,
@@ -394,6 +407,13 @@ fn response(server: &mut Server, packet: Packet) -> (Option<Packet>, u64) {
         Packet::SetStat(_) => Packet::error(id, StatusCode::Ok),
         Packet::Close(p) => {
             server.close_with_pending_write = server.pending_writes > 0;
+            if let Some(count) = server.open_files.get_mut(&p.handle) {
+                *count -= 1;
+                server.open_file_handles -= 1;
+                if *count == 0 {
+                    server.open_files.remove(&p.handle);
+                }
+            }
             server.closed.insert(p.handle);
             Packet::error(id, StatusCode::Ok)
         }
@@ -1830,6 +1850,57 @@ async fn benchmark_500_files_at_20ms_rtt() {
     }
 }
 
+/// The same bulk shape against the serial fixture: the whole reply delay
+/// is slept before one request at a time is answered — the shape of a
+/// single-threaded sftp-server draining a pipelined backlog. Width stops
+/// buying time once the server itself is the bottleneck; these numbers
+/// say where that wall sits. Two widths take a few minutes at 20 ms.
+#[tokio::test]
+#[ignore = "repeatable simulated-latency benchmark; run with --ignored --nocapture"]
+async fn benchmark_500_files_serial_server_at_20ms_rtt() {
+    for files in [4, 16] {
+        let mut f = Fixture::new(Server {
+            delay_ms: 20,
+            serial: true,
+            ..Server::default()
+        })
+        .await;
+        {
+            let remote = Arc::get_mut(&mut f.remote).unwrap();
+            remote.files = files;
+        }
+        let root = f.root.join("project");
+        for d in 0..50 {
+            let dir = root.join(format!("pkg-{d}"));
+            std::fs::create_dir_all(&dir).unwrap();
+            for n in 0..10 {
+                std::fs::write(dir.join(format!("mod-{n}.py")), payload(4096)).unwrap();
+            }
+        }
+        let job = super::super::test_job_items(
+            f.root.clone(),
+            vec![Item {
+                local: root.to_string_lossy().into(),
+                remote: "/site".into(),
+                upload: true,
+                directory: true,
+            }],
+        );
+        let started = std::time::Instant::now();
+        let items = plan(&job, &f.remote).await.unwrap();
+        let planned = started.elapsed();
+        let started = std::time::Instant::now();
+        copy_files(&job, &f.remote, items).await.unwrap();
+        let copied = started.elapsed();
+        assert_eq!(f.state.lock().files.len(), 500);
+        assert_eq!(f.state.lock().dirs.len(), 51);
+        eprintln!(
+            "upload 500 x 4KiB in 51 dirs, serial server, file_concurrency={files}: plan={planned:?}, copy={copied:?}, total={:?}",
+            planned + copied
+        );
+    }
+}
+
 #[tokio::test]
 async fn audit_mkdir_recovers_every_failed_descendant_in_a_full_window() {
     let f = Fixture::new(Server {
@@ -2602,6 +2673,39 @@ async fn data_request_peak_respects_the_requests_ceiling() {
     assert!(peak <= 32, "requests=32 exceeded: {peak}");
 }
 
+/// The file width is what the server sees as concurrently open file
+/// handles: files=4 keeps at most four handles open at once across a
+/// batch, and a batch deep enough really does overlap its files.
+#[tokio::test]
+async fn concurrently_open_file_handles_respect_the_configured_width() {
+    let mut f = Fixture::new(Server {
+        delay_ms: 1,
+        ..Server::default()
+    })
+    .await;
+    {
+        let remote = Arc::get_mut(&mut f.remote).unwrap();
+        remote.files = 4;
+    }
+    let items: Vec<_> = (0..12)
+        .map(|n| {
+            let path = f.root.join(format!("width{n}"));
+            std::fs::write(&path, payload(4 * 1024)).unwrap();
+            Item {
+                local: path.to_string_lossy().into(),
+                remote: format!("/width{n}"),
+                upload: true,
+                directory: false,
+            }
+        })
+        .collect();
+    copy_files(&f.job(), &f.remote, items).await.unwrap();
+    let peak = f.state.lock().peak_open_file_handles;
+    assert!(peak >= 2, "the width must actually overlap files: {peak}");
+    assert!(peak <= 4, "files=4 exceeded: {peak}");
+    assert_eq!(f.state.lock().files.len(), 12);
+}
+
 fn job_profile() -> crate::model::SessionProfile {
     serde_json::from_value(
         serde_json::json!({"name":"t", "kind":"sftp", "host":"fixture", "username":"u"}),
@@ -2882,6 +2986,44 @@ fn read_lengths_leave_room_for_only_the_data_framing() {
         128,
     );
     assert_eq!(read, 0);
+}
+
+/// The concurrent-file width follows what the server advertised: half
+/// the handles it says it holds, and the conservative four on a server
+/// that says nothing, however wide the setting is.
+#[test]
+fn file_width_follows_the_advertised_handle_budget() {
+    let advertised = Limits {
+        open_handles: Some(8),
+        ..Limits::default()
+    };
+    assert_eq!(super::file_width(16, &advertised), 4);
+    assert_eq!(
+        super::file_width(
+            16,
+            &Limits {
+                open_handles: Some(64),
+                ..advertised
+            }
+        ),
+        16
+    );
+    // A setting narrower than the budget stays the setting.
+    assert_eq!(super::file_width(2, &advertised), 2);
+    // The protocol reads zero as "no limit", but the engine parses every
+    // advertised count as one file per two handles, so zero runs one file.
+    assert_eq!(
+        super::file_width(
+            16,
+            &Limits {
+                open_handles: Some(0),
+                ..advertised
+            }
+        ),
+        1
+    );
+    // Silence keeps the historical ceiling instead of the full width.
+    assert_eq!(super::file_width(16, &Limits::default()), 4);
 }
 
 /// The two sample windows of a signature are independent reads on one
