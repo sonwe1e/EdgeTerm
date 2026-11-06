@@ -1,5 +1,49 @@
 # 项目状态
 
+## 本轮：四向性能优化（2026-11-06）
+
+- 用户确认：A（长历史内存）+B（批量传输）+C（链接识别走查）+D（全局排查）全选；修改并逐提交 main（`perf:` 带 Measured/Unmeasured、`fix:` 带 Tests:）；允许 WSL sshd 真实基准；按路线图验收门验收。
+- 环境预检：`./dev.ps1 doctor` 通过（Node 24.19.0、rustc/cargo 1.99.1、cargoJobs=2、34.7 GiB 空闲）；`.tmp/ssh/id_ed25519` 仍在；127.0.0.1:2222 未监听，且会话沙箱内 `wsl` 报 `WSL_E_ACCESSDENIED`（命名管道边界）——真实服务器基准到 Wave 2 需提权或用户侧启动。
+- 研究结论（3 个只读子代理 + Lead 逐条抽查核实）：
+  - **路线图 B 项已大半落地**（13cec59 journal 出 runtime、43817f1 小文件 2 次 save、ea6e02c TOCTOU 修复+plain rename、53301cd readdir 规划、bb47ac7 files 8→16、4dbabeb FTP 精简、926e2ed tar 流、91dedbf/39607cd 窗口共享；5842f6c close 流水线被 dc09dfa 回退——真实 sftp-server 拒绝迟到 write）。原 B0→B3→B1 计划作废。**剩余缺口**：串行服务器模式未接入 3 个 `#[ignore]` 基准、并发文件数无引擎级断言、基准无数值记录（仅 eprintln）、job 无分阶段计时、无 bench-transfer.ps1（由 real_tests.rs 6 个 `#[ignore]` 替代）、`local::signature` 仍同步于 async fn（sftp.rs:1038/1179）、B7 多通道与 B9 并行遍历未做。行号以重验报告为准，勿引用路线图旧行号。
+  - A 项：A0 已落地（默认 10k+内存估算+WebGL LRU+隐藏暂停；搜索已自研非 addon-search；无隐藏自动停闪）。A2 唯一高危假设＝xterm 无"裁剪前"事件 → 先做裁剪捕获 spike 再谈 2-3 周估算。工作区恢复（e0a905a）放大了启动内存涌入（20 标签×10k 行×200 列×12B≈480MB）。
+  - C 项：链接 provider 仅在鼠标换格时求值（高输出+鼠标静止＝零求值）；现有测试无性能基准；方案 `scripts/measure-file-links.mjs` 复用 measure-agent-scroll.mjs 骨架。
+  - D-lite 缺口：冷启动（卖点从未测量）、应用常驻内存、安装包体积守卫（README 卖点 4–5MB 无门禁）、终端 tab 切换门禁。
+  - 战略：价值排序 B剩余 ≥ A > D-lite > C；Wave0＝测量重定基线，Wave1＝B7 探针+A2 spike+history 纯函数，Wave2＝真实 CSV 后定并发。砍：FTP 新工作、B11 快速模式、A3/A4、原生渲染评估。
+- 分工：c-bench-builder（teammate）写 measure-file-links.mjs；Lead 做 B0-lite（串行基准变体+并发文件断言+跑基准记数值）；验证由 Lead 串行执行（单 runner 约束）。
+- **本会话沙箱实测（重要）**：受管任务/子进程对仓库内被 gitignore 的目录（`src-tauri/target`、`.tmp/`、`node_modules/`、`artifacts/`）一律 os error 5 拒写（旧会话建成的 ACE 只带旧沙箱身份；`G:\Workspaces\acl-reports\` 有 ACL 修复记录与回滚命令，修复了 WRITE_OWNER 前端条件但不改变该行为）；未忽略路径与 `%TEMP%` 可写。绕行：`CARGO_TARGET_DIR=%TEMP%\edgeterm-cargo-target`；浏览器/测量脚本输出目录同样需可覆盖到临时区。gitignore 之外的构建产物目录在本会话均按此约束设计验证命令。后续实测补充：拒写不限于忽略目录——`src-tauri/src`、`scripts`、`.git`（提交需提权命令）同样拒写；仓库根与前端 `src/` 可写。PowerShell 会吞裸 `--`，传给 cargo 的分隔符需引号 `'--'`。
+
+### B0 基线数值（2026-11-06，受管 runner，CPU 亲和被拒用满核、cargo jobs=2，fixture 20ms RTT，提交 085a3e2，`--ignored --nocapture` 单次运行）
+
+| 基准 | 数值 |
+| --- | --- |
+| journal 落盘成本 | 200 次 save 297.0ms → **每次 1.485ms**；每 fresh 文件 6 次 save 共 8.91ms |
+| 500×4KiB/51 目录（重叠应答） | F=4：copy 20.94s；F=8：11.28s；F=16：6.05s；F=32：3.35s（随 F 近似线性） |
+| 500×4KiB/51 目录（**串行服务器**） | **F=4：84.23s；F=16：84.75s——完全打平**；plan 约 3.1s（串行下 mkdir/realpath 窗口也逐个应答） |
+| 8MiB pipeline 深度 | upload 2.38s@1→0.53s@8→0.26s@32；download 2.28s→0.56s→0.41s；peak_inflight 与深度一致 |
+| 24×4KiB | F=1：4.80s；F=4：1.20s |
+| 50×4KiB/11 目录 | F=4：2.34s；F=8：1.36s |
+
+结论（fixture 证据，非真实服务器）：重叠应答服务器上文件并发收益到 F=32 仍在；**单线程 sftp-server 形态下文件并发收益为零（T_server 主导）**，串行服务器只有多 sftp channel（B7，T_server/C）或 opt-in tar 流两个杠杆；plan 阶段在串行链路约占 3.1s。真实服务器 CSV（netem 三档 RTT）留待 Wave 2 决策 B7 时再做。
+
+### C 项：高输出链接识别走查（2026-11-07 关闭——未发现性能问题）
+
+- 交付：`scripts/measure-file-links.mjs` + scripts/README 小节（提交 86b79d1）。首个基准：进程内 node:http 页面 + 真实 xterm（无渲染器/无鼠标管线/无 IPC）+ 生产 `createFileLinkProvider`，经与 src/terminal.ts 相同的 registerLinkProvider 路径计时每次 provideLinks；固定校验块证明夹具真实出链（traceback/path:line 必须出、普通行必须不出）。
+- 实测（Edge 157.0.4341.42 headless，external-cdp 接入，两轮 PASS 差异 ≤0.7ms；工件 `.tmp/records/file-links/`，含采样数组与 sourceSha256）：
+  - 80×24、801k 字符 → 10,024 缓冲行（scrollback 触顶）：全缓冲逐行 19.0–19.6ms ≈ **0.002ms/行**；视口扫过（24 行）p50 0.1 / p95 0.2–0.3ms。
+  - 200×24、801k 字符 → 5,242 行：全缓冲 17.1–17.8ms ≈ 0.0034ms/行（80→200 列 ~1.7×，随行宽缩放符合预期）。
+  - 单次调用受非跨域页 performance.now ~0.1ms 量化限制（p99=0.1ms 即下限），全缓冲均值是可信口径。
+- **结论：指针扫过整个视口的链接求值成本 0.1–0.3ms，距 50ms tripwire 三个数量级；2026-11-02 轮遗留的"高输出下链接识别/跟随性能走查"以证据关闭。** 未覆盖：Linkifier 行缓存/dispose、渲染器命中、hover 下划线、click/open IO、WebView2 真实渲染。
+- 本会话沙箱适配（已写入脚本与 README）：`--out` 覆盖输出；esbuild 管道进程被禁 → 进程内 transpileModule；浏览器 spawn 全禁 → `EDGETERM_FILE_LINKS_CDP` 连接外部调试 Edge（Lead 提权启动，测后关闭）。
+
+### A1-lite：终端内存/吞吐基线（2026-11-07，脚本 measure-terminal-memory.mjs，本波提交）
+
+- 矩阵 W1/W3 × {10k,100k} 行 × {80,200} 列（scrollback=行数），进程内 node:http + 真实 xterm 无渲染器，CDP HeapProfiler.collectGarbage×2 + Runtime.getHeapUsage 取堆；external-cdp 接入 Edge 157 headless；两轮 PASS，堆增量差异 ≤0.2%，校验块（buffer.length、首末行）全过。工件 `.tmp/records/terminal-memory/`。
+- 数值：10k 行 ≈ +2.2–2.4 MB；100k 行 ≈ +20.55–20.59 MB（≈205–240 B/行）；写吞吐 6.6–15.7 MB/s（W3 比 W1 低 20–30%，200 列比 80 列低 20–30%，100k 比 10k 慢）；滚动 p50/p95 ≈7/8 ms 全变体无差异（无渲染器 O(1)，JS 侧上限口径）。
+- **关键发现 1（推翻路线图 §1.1 内存模型）：堆增量只随行数缩放、与列宽完全无关**（100k×80 与 ×200 均 ≈20.57MB）。xterm 6.0 行存储按内容惰性分配，并非按 cols 预分配整列数组；路线图"短行也占满整列、1M×200 列 ≈2.4GB"的估算对短行负载不成立（短行 1M 行 ≈210MB 量级）。A0 的 rows×cols×12 公式对短行最多高估 ~11.6×（仅对满宽行接近下限；本轮未测满宽行）。**影响：A2 冷存储的内存收益前提需重估（长历史仍有 ~10× 压缩空间，但 GB 级痛点叙事不成立）；§6 决策 1-3 征求时按本实测口径重新陈述。**
+- 关键发现 2：SGR/spinner 负载（W3）堆与纯文本几乎相同（属性稀疏存储），代价在解析吞吐而非内存。
+- 边界：V8 堆≠WebView2 进程工作集；无渲染器/无 IPC/无 PTY；合成负载；本机单机数值；满宽行（cat 大文件）形态未覆盖，定阈值前需补一轮或改用"每行实测均值"口径。
+
 ## 本轮：目录与打包整理、缺陷修复（2026-11-01）
 
 - 基线 `b4ba925`，工作区干净。协作约定见 [TEAM.md](../../TEAM.md)：本轮由 Lead 派两个只读审计任务（打包一致性、前端缺陷），修复与验证由 Lead 完成；审计者无写权限，结论逐条由 Lead 复核并给出可执行证据。
