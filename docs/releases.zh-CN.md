@@ -1,6 +1,6 @@
 # 本分支历史发布索引
 
-历史索引核对日期：2026-10-23；1.3.0 发布补记：2026-10-26；1.4.0 发布补记：2026-10-27；1.5.0 发布补记：2026-10-28；1.5.1 发布补记：2026-10-29；1.6.0 发布补记：2026-11-02；1.6.1 发布补记：2026-11-02；1.6.2 构建记录（未发布）：2026-11-02；1.7.0 发布补记：2026-11-05。发行仓库是 [sonwe1e/EdgeTerm](https://github.com/sonwe1e/EdgeTerm)，上游是 [miskin-lee/EdgeTerm](https://github.com/miskin-lee/EdgeTerm)。两者独立发布，不能根据版本数字大小推断功能包含关系。
+历史索引核对日期：2026-10-23；1.3.0 发布补记：2026-10-26；1.4.0 发布补记：2026-10-27；1.5.0 发布补记：2026-10-28；1.5.1 发布补记：2026-10-29；1.6.0 发布补记：2026-11-02；1.6.1 发布补记：2026-11-02；1.6.2 构建记录（未发布）：2026-11-02；1.7.0 发布补记：2026-11-05；1.7.2 发布补记：2026-11-06。发行仓库是 [sonwe1e/EdgeTerm](https://github.com/sonwe1e/EdgeTerm)，上游是 [miskin-lee/EdgeTerm](https://github.com/miskin-lee/EdgeTerm)。两者独立发布，不能根据版本数字大小推断功能包含关系。
 
 本次索引核对了 GitHub Releases 的发布时间、附件名、发布说明和远端标签；下表 SHA 是标签解引用后的 **commit SHA**，不是 annotated tag 对象 SHA。日期使用北京时间。没有重新下载历史二进制，也没有重新执行旧版本的验收；历史验证结论以对应发布说明及其环境边界为准。
 
@@ -22,8 +22,28 @@
 | [v1.6.0](https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.6.0) | 2026-11-02 | [42d01f0](https://github.com/sonwe1e/EdgeTerm/commit/42d01f0f29ea61c2362b716685fb36a2e8ffb492) | Windows x64 安装包、便携包、独立诊断工具、SHA256SUMS；终端文件路径跳转、Filer 跟随终端目录、远端 localhost 地址经 SSH 转发打开、远程 HTML 报告预览，见[发布说明](release-1.6.0.zh-CN.md) |
 | [v1.6.1](https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.6.1) | 2026-11-02 | [fe8976b](https://github.com/sonwe1e/EdgeTerm/commit/fe8976be5fb486fec27e9104aa19562e1b2d762f) | 同上；输入行选区直接删除/替换、Alt+点击不再弹出菜单栏，见[发布说明](release-1.6.1.zh-CN.md) |
 | [v1.7.0](https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.7.0) | 2026-11-05 | [399702f](https://github.com/sonwe1e/EdgeTerm/commit/399702f959dd4d9b5834f6a3597033b8c8c542f9) | Windows x64 安装包、便携包、独立诊断工具、SHA256SUMS；Agent 提示词、终端选区引用与撤销，以及未公开发布的 1.6.2 改进，见[发布说明](release-1.7.0.zh-CN.md) |
+| [v1.7.2](https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.7.2) | 2026-11-06 | [84221bc](https://github.com/sonwe1e/EdgeTerm/commit/84221bc8f76e072397cec3ae8cdabb2bd07eedf4) | Windows x64 安装包、便携包、独立诊断工具、SHA256SUMS；工作区恢复、OpenCode 状态和 Pi 滚轮兼容，见[发布说明](release-1.7.2.zh-CN.md) |
 
 截至 2026-10-28，本分支没有公开的 macOS/Linux 安装包，也没有签名自动更新清单。上游提供这些平台的发布包，不代表本分支已完成这些平台的构建或验证。`v1.0.0` 是保留的共同基线标签，不是本分支独立发布的 Release；本地其他 `v0.*`、`v1.0.*` 标签也不能当作本分支发布记录。
+
+## 1.7.2 构建与发布记录
+
+前一个公开版本为 1.7.0。按用户指定，本次公开版本号为 1.7.2，包含工作区恢复、OpenCode 状态修复以及此前 1.7.3 本地构建中的 Pi 滚轮修复。此前同名的 1.7.2 本地安装包内容和哈希不同，详见下方历史记录；本次没有替换任何已公开附件。安装版沿用应用标识和配置目录，工作区从本版开始记录，不会恢复旧版从未保存的标签，也不会续跑原来的程序。
+
+固定源码及远端标签解引用提交为 `84221bc8f76e072397cec3ae8cdabb2bd07eedf4`。在干净的 Windows x64 工作树中以 `./dev.ps1 tauri:build --bundles nsis` 构建，使用 Node 24.19.0、rustc/cargo 1.99.1、MSVC 和 Windows SDK；程序与安装器文件版本均为 1.7.2。便携包中的程序与 NSIS 构建输入一致，SHA-256 为 `bae1efbedc532101b151f219b7ba2ca85906572dcab210522767b2efaaefb3af`。便携包只含程序、说明和空 `data/`，诊断包只含两个诊断脚本与说明；程序和安装器均未签名。
+
+| 正式附件 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| `EdgeTerm_1.7.2_x64-setup.exe` | 4115462 | `4189a18fb6cbe06609f713ab12f5bb17176f36112216fad09dedd5e41d98effe` |
+| `EdgeTerm_1.7.2_x64-portable.zip` | 5115660 | `a1ebda89a98e57ff69a930220e914532f8ddf901464a33871e02fec9f9ae5cb2` |
+| `EdgeTerm_1.7.2_windows-diagnostics.zip` | 5471 | `f1db4a676bee77f7b2db22af9232d6d5454520cede978da75a4098283c3e8333` |
+| `SHA256SUMS.txt` | 298 | `a9e9025f23b92c1e6e069fdbb77a240dd31270348d29299fbc1d39c39afb501b` |
+
+草稿中的四个附件回下载后逐个计算 SHA-256，与本地构建和 GitHub 记录一致。2026-11-06 08:43:32（北京时间）公开为 latest，非草稿、非预发布；公开后核对了附件大小和 GitHub 摘要。固定源码的 [GitHub checks 工作流](https://github.com/sonwe1e/EdgeTerm/actions/runs/42065265453)通过。发布记录由后续文档提交补充，不移动标签。
+
+Windows 上相同功能源码在最终版本号调整前通过前端 115 文件 / 1106 项、真实 Edge 浏览器 31 文件 / 160 项及 Rust 455 项测试，另有 29 项 Rust 测试按环境条件忽略；格式、lint、TypeScript 和前端生产构建通过。最终 1.7.2 源码通过版本一致性检查、Windows release 构建，以及 5 个提交逐一类型和提交规范检查。OpenCode 和 Pi 的独立提交分别通过 40 / 20 项单元和 16 / 10 项浏览器测试；这些工作树仅为引用主仓库依赖放宽 Vite 文件访问边界。保留既有 Rust/链接器警告。
+
+浏览器测试使用模拟 IPC；本机 Windows ConPTY、WSL OpenSSH、OpenCode 2.2.5 和 Pi 1.5.0 的先前原生验收与边界分别见下方历史记录。未连接用户远端主机或调用模型，未在用户现有安装上执行升级，也未实测本次正式安装器的原生重启恢复。
 
 ## 1.7.3 本地安装包（未发布）
 
@@ -42,7 +62,7 @@ Linux x64、本机 WSL OpenSSH、200 ms SSH 下行延迟及 Windows release/WebV
 测试其他 Pi 版本或执行安装升级。原生测试程序使用独立应用标识和预发布版本号；基线为
 修复前的功能源码，不是交付的 1.7.2 安装文件。最终安装器使用正常应用标识。
 
-源码为 `99b0adb4bb1eaf79663408929e284c3eebab62c5` 加当前工作区变更；2026-11-05
+源码为 `99b0adb4bb1eaf79663408929e284c3eebab62c5` 加当时尚未提交的工作区变更；2026-11-05
 15:28–15:32（北京时间）通过 `./dev.ps1 tauri:build --bundles nsis` 构建。应用和安装器版本
 均为 1.7.3，载荷为 Windows x64；构建前后源文件清单一致，交付副本与构建输出哈希一致。
 目录 `artifacts/EdgeTerm-1.7.3-99b0adb-pi-scroll/` 含来源清单、构建日志、校验和、
@@ -72,11 +92,11 @@ Linux x64、本机 WSL OpenSSH、200 ms SSH 下行延迟及 Windows release/WebV
 退出 OpenCode 后普通 `sleep 2` 的开始／结束提示正常。此验证未调用模型；真实模型、
 授权与多任务负载未实测，其状态切换由协议用例覆盖。未连接用户 SSH 主机或执行安装升级。
 
-源码基线为 `99b0adb4bb1eaf79663408929e284c3eebab62c5` 加当前工作区变更。
+源码基线为 `99b0adb4bb1eaf79663408929e284c3eebab62c5` 加当时尚未提交的工作区变更。
 本机产物目录为 `artifacts/EdgeTerm-1.7.2-99b0adb-opencode-ssh/`。
 测试程序使用独立应用标识以避开正在运行的用户实例，交付安装器使用正常应用标识；
 版本、哈希、源文件清单和测试边界记录在相邻 `build-info.json`、`source-manifest.json`，
-原生对照结果及截图为 `ssh-before.*` 和 `ssh-after.*`。未发布 GitHub Release 或标签。
+原生对照结果及截图为 `ssh-before.*` 和 `ssh-after.*`。该历史构建当时未发布 GitHub Release 或标签。
 
 最终通过 `./dev.ps1 tauri:build --bundles nsis` 生成 Windows x64 NSIS 安装器，
 应用及安装器版本均为 1.7.2；构建前后源码清单哈希一致，交付副本与构建输出一致。
