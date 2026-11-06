@@ -334,6 +334,61 @@ selection, wrapping, navigation past the highlight limit and bounded painting;
 `src/workbench/searchInteraction.browser.test.ts` covers StrictMode request
 completion and quick-open keyboard navigation with fixture IPC responses.
 
+### Terminal file-link detection baseline
+
+`./dev.ps1 script scripts/measure-file-links.mjs` records the first
+performance baseline for the file-link provider (`src/terminalFileLinks.ts`)
+under high output — the docs/team/STATE.md item that had never been measured.
+It reuses the measure-agent-scroll harness shape — an isolated headless-Edge
+page (same `PERF_BROWSER` knob, default `msedge`), a real xterm with no
+attached renderer, no mouse pipeline and no IPC — but serves the page itself
+through a minimal in-process HTTP server: the page, the xterm bundle, and the
+provider transpiled in-process with the repo's TypeScript. A confined sandbox
+forbids the esbuild service pipes (piped stdio) that a Vite dev server and
+Playwright's default browser transport need; when Playwright's direct launch
+fails, the script automatically spawns the browser on a loopback debug port
+and connects over a WebSocket instead. No build tooling or browser helper
+spawns with pipes at measure time. Where even spawning the browser is
+forbidden, set `EDGETERM_FILE_LINKS_CDP=http://127.0.0.1:<port>` to measure
+against an already-running debug browser; the script leaves that browser
+running for its owner to close. The script writes about
+800,000 characters of mixed output into two terminals (80x24 and 200x24,
+scrollback 10000): plain log lines, Python traceback rows, `path:line`
+references, quoted paths, tokens at and just over the 1024-char path limit
+(which wrap across rows), and URL prose. `--chars=N` changes the byte budget
+and `--rows=N` switches to an N-line workload (e.g. 100000) that keeps the
+buffer trimming while it is written.
+
+The provider is registered through the same `term.registerLinkProvider`
+path as `src/terminal.ts`, wrapped to time every `provideLinks` call. A
+pointer sweep is emulated by evaluating the viewport's 24 rows per sweep
+(12 sweeps = 288 calls, 2 warm-up sweeps discarded): the linkifier pays one
+full-row evaluation each time a moving pointer crosses into a new row, while
+high output with a still pointer performs zero evaluations. The report has
+per-call p50/p95/p99, per-sweep totals, and a diagnostic whole-buffer
+per-row pass. On a non-isolated page `performance.now()` is quantized to
+~0.1 ms, so sweep totals and whole-buffer means are the accurate
+cross-check for the coarse per-call percentiles. A fixed validation block
+asserts that traceback and `path:line` rows produce their expected links and
+a plain row produces none, so a fixture regression cannot measure nothing.
+
+JSON lands in `artifacts/performance/file-links/measure-<timestamp>.json`
+(`--out=<path>` overrides; a path outside ignored directories works where a
+sandbox denies writes to `artifacts/`) with the browser, OS, xterm version
+and the provider source hash. There are deliberately no performance gates yet:
+first-round numbers are recorded for later threshold decisions, and only an
+error, a fixture self-check failure, or a per-call p95 sanity tripwire above
+50 ms exits nonzero. Boundary: provider evaluation cost only — xterm's own
+linkifier row caching/dispose, renderer hit-testing, hover underlining,
+click/open IO and native WebView2 are not covered, and values are
+machine-specific. Dated observation (2026-11-07, this Windows machine,
+headless Edge 157.0.4341.42 through `EDGETERM_FILE_LINKS_CDP`): 80x24 —
+800,994-char mixed stream, 10,024 buffer rows, whole-buffer pass 19.0-19.6 ms
+(~0.002 ms/row); 200x24 — 801,612 chars, 5,242 rows, 17.1-17.8 ms
+(~0.0034 ms/row); sweep per-call samples quantized to 0-0.1 ms at the page
+clock's resolution, orders of magnitude under the tripwire; two consecutive
+runs agreed within ~0.7 ms on the whole-buffer totals.
+
 ### Native SSH program checks
 
 `scripts/check-native-opencode-ssh.mjs` checks OpenCode 2.2.5 idle activity in an
