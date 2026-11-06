@@ -389,6 +389,49 @@ headless Edge 157.0.4341.42 through `EDGETERM_FILE_LINKS_CDP`): 80x24 —
 clock's resolution, orders of magnitude under the tripwire; two consecutive
 runs agreed within ~0.7 ms on the whole-buffer totals.
 
+### Terminal memory and throughput baseline (A1-lite)
+
+`./dev.ps1 script scripts/measure-terminal-memory.mjs` records the first
+measured memory, throughput and scroll numbers for xterm buffers
+(docs/team/STATE.md roadmap A1, lite matrix), reusing the file-link baseline's
+harness: an in-process HTTP page with a real renderer-less xterm, the same
+browser launch adaptivity, and `--out=<path>` for sandboxes that cannot write
+`artifacts/`. The matrix is W1 (plain seq-style lines) and W3 (agent-style
+short lines with frequent SGR color switches, one `\r` spinner line of 20
+same-position redraws every 10 lines, and occasional `\x1b[K`) across rows
+{10000, 100000} and cols {80, 200}, with scrollback set to the row count.
+W2-style colored listings and the 1M-row point are deferred.
+
+Per variant the report records: the JS heap delta measured through a CDP
+session (`HeapProfiler.collectGarbage` + `Runtime.getHeapUsage`, before
+Terminal creation vs after the write plus GC); write throughput in 64 KiB
+chunks timed by the `term.write` callbacks (MB = 1e6 UTF-16 code units,
+escapes included); a scroll p95 from 64 `requestAnimationFrame` interval
+samples while alternating `scrollLines(-400)` and `scrollToTop`; and the
+ratio of the measured heap delta to the A0 formula lower bound
+(rows x cols x 12 / 1e6 MB), reported as a cross-check only. Validation
+asserts `buffer.length === rows + 1` and the first/last row text, so a
+workload or wrap regression cannot measure the wrong shape.
+
+Set `EDGETERM_MEASURE_CDP` (or the script-specific
+`EDGETERM_TERMINAL_MEMORY_CDP`) to an already-running debug browser where
+spawning one is forbidden; the script disconnects without closing it.
+Non-gating: only errors and fixture self-check failures exit nonzero, and
+numbers wait for A1 threshold decisions. Boundary: heap figures are the
+page's V8 JS heap, not the WebView2/browser process working set; throughput
+covers the xterm parser and buffer, not PTY or network; scroll intervals are
+rAF cadence without a renderer — a JS-side upper bound, not frame time.
+Dated observation (2026-11-07, this Windows machine, headless Edge
+157.0.4341.42 through `EDGETERM_MEASURE_CDP`, two consecutive runs): heap
+delta scaled with rows and was independent of cols — ~2.2-2.4 MB at 10k rows
+and ~20.55-20.60 MB at 100k rows for both W1 and W3 (~205-240 bytes per
+short row), so xterm 6.0 stores lines by content, not by terminal width,
+and the A0 rows*cols*12 formula overestimates short-line buffers by up to
+~11x (ratio 0.086 at 100k x 200). Write throughput ran 6.6-15.7 MB/s (W1
+faster than W3; 80 cols faster than 200; larger buffers slower per char);
+scroll p50/p95 stayed at ~7/8 ms across all variants. Heap deltas agreed
+between the two runs within 0.2%.
+
 ### Native SSH program checks
 
 `scripts/check-native-opencode-ssh.mjs` checks OpenCode 2.2.5 idle activity in an
