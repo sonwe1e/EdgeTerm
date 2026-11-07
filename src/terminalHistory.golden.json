@@ -1,0 +1,41 @@
+{
+  "format": "edgebatch-v1",
+  "description": "Cross-language golden vectors for the terminal history batch encoding shared by src/terminalHistory.ts and src-tauri/src/session/history.rs. Each vector is one independent batch: u32 LE record count, then per record [varint absLine delta from the previous record (batch starts at 0), varint timeMs delta from the previous record (batch starts at 0), u16 LE utf8 text byte length + bytes, u16 LE run count, then per run five varints: start, len, fg, bg, flags]. absLine must strictly increase within a batch and timeMs must not decrease; encoders reject anything else (see delta-reject). fg/bg are 32-bit packed colors, 0xFFFFFFFF = default. flags bits: 1 bold, 2 dim, 4 italic, 8 underline, 16 blink, 32 inverse, 64 invisible, 128 strike.",
+  "vectors": [
+    {
+      "name": "plain-ascii",
+      "lines": [{ "absLine": 1, "timeMs": 1000, "text": "hi", "runs": [] }],
+      "hex": "0100000001e807020068690000"
+    },
+    {
+      "name": "cjk-and-colors",
+      "lines": [
+        {
+          "absLine": 3,
+          "timeMs": 1005,
+          "text": "你好 w",
+          "runs": [{ "start": 0, "len": 2, "fg": 4294967295, "bg": 0, "flags": 1 }]
+        }
+      ],
+      "hex": "0100000003ed070800e4bda0e5a5bd207701000002ffffffff0f0001"
+    },
+    {
+      "name": "multi-line-deltas",
+      "lines": [
+        { "absLine": 10, "timeMs": 2000, "text": "a", "runs": [] },
+        { "absLine": 11, "timeMs": 2000, "text": "", "runs": [] },
+        { "absLine": 13, "timeMs": 2005, "text": "zz", "runs": [] }
+      ],
+      "hex": "030000000ad00f0100610000010000000000020502007a7a0000"
+    },
+    {
+      "name": "delta-reject",
+      "lines": [
+        { "absLine": 10, "timeMs": 2000, "text": "a", "runs": [] },
+        { "absLine": 11, "timeMs": 1999, "text": "back", "runs": [] }
+      ],
+      "hex": null,
+      "expectError": "timeMs decreased within a batch"
+    }
+  ]
+}
