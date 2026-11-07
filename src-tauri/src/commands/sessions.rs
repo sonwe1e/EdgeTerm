@@ -334,6 +334,10 @@ pub fn close_session(
     id: String,
 ) -> Result<()> {
     state.file_transfers.forget(&id);
+    // The terminal's cold history belongs to this session's lifetime (D14);
+    // the frontend's dispose path clears it too, but a session closed from
+    // anywhere else must not leave its compressed blocks behind.
+    state.history.clear(&id);
     // The report previews read this session's connection, so their loopback
     // listeners go with it rather than outliving the login.
     previews.close_session(&id);

@@ -327,6 +327,9 @@ export const zhCN: Catalog = {
   "fontDialog.scrollbackHint": "每个会话保留的终端历史行数（200 列时至少 {mb} MB）",
   "fontDialog.scrollbackLines": "终端回滚行数",
   "fontDialog.lines": "行",
+  "fontDialog.coldHistory": "无缝冷历史",
+  "fontDialog.coldHistoryHint":
+    "超出回滚的行转入压缩内存存储，滚动到顶部时自动接回；内存上限每会话 64 MB、全局 256 MB（默认关闭）",
   "fontDialog.resetDefaults": "恢复默认",
   "fontDialog.systemDefault": "系统默认",
 
@@ -1271,6 +1274,8 @@ export const zhCN: Catalog = {
   "search.searching": "搜索中…",
   "search.timeout": "搜索超时，请简化表达式。",
   "search.unavailable": "无法启动搜索，请重试或使用普通文本。",
+  "search.historyCount": "历史 {count} 条",
+  "search.historyHint": "滚动到顶部载入更早的命中",
   "tab.scrollLeft": "向左滚动标签",
   "tab.scrollRight": "向右滚动标签",
   "session.baudRates": "常用波特率",

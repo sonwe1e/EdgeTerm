@@ -363,6 +363,9 @@ export const en = {
     "Terminal history retained per session (at least {mb} MB for 200 columns)",
   "fontDialog.scrollbackLines": "Terminal scrollback lines",
   "fontDialog.lines": "lines",
+  "fontDialog.coldHistory": "Seamless cold history",
+  "fontDialog.coldHistoryHint":
+    "Lines scrolled past the buffer move to compressed memory and rejoin when you scroll to the top; memory is capped at 64 MB per session and 256 MB overall (off by default)",
   "fontDialog.resetDefaults": "Reset Defaults",
   "fontDialog.systemDefault": "System default",
 
@@ -1356,6 +1359,8 @@ export const en = {
   "search.searching": "Searching…",
   "search.timeout": "Search timed out. Simplify the expression.",
   "search.unavailable": "Search could not start. Retry or use plain text.",
+  "search.historyCount": "{count} in history",
+  "search.historyHint": "Scroll to the top to load older matches",
   "tab.scrollLeft": "Scroll Left",
   "tab.scrollRight": "Scroll Right",
   "session.baudRates": "Common baud rates",

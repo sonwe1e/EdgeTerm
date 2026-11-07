@@ -50,6 +50,12 @@ export interface HistoryCapture {
   notifyWriteParsed(): void;
   /** Call when the terminal is cleared: starts a new numbering epoch. */
   noteClear(): void;
+  /**
+   * Call after seamless history re-inserted `count` rows above the buffer
+   * top: the frontier marker re-parks count rows lower so those already
+   * exported rows can never be exported again.
+   */
+  notePrepended(count: number): void;
   dispose(): void;
   /** Records emitted across all epochs. */
   exportedLines(): number;
@@ -154,7 +160,22 @@ export function createHistoryCapture(
   let marker: IMarker | null = null;
   let resyncPending = false;
   let disposed = false;
+  // Bounded memory of what was already exported: the resize resync matches
+  // from the buffer bottom upward, so only the most recent exports can ever
+  // match. An unbounded set would hold every line's text for the session's
+  // lifetime - tens of MB on a long one - defeating the cold store's cap.
+  const RECENT_TEXTS_CAP = 20000;
   const exportedTexts = new Set<string>();
+  const exportedOrder: string[] = [];
+  const rememberExported = (text: string) => {
+    exportedTexts.add(text);
+    exportedOrder.push(text);
+    if (exportedOrder.length > RECENT_TEXTS_CAP) {
+      exportedOrder.splice(0, exportedOrder.length - RECENT_TEXTS_CAP);
+      exportedTexts.clear();
+      for (const recent of exportedOrder) exportedTexts.add(recent);
+    }
+  };
   const resizeListener = terminal.onResize(() => {
     // Reflow re-wraps rows and can delete marker lines; relocate lazily.
     resyncPending = true;
@@ -258,7 +279,7 @@ export function createHistoryCapture(
       options.onBatch(encodeHistoryBatch(records));
       exportedThroughAbs += records.length;
       emitted += records.length;
-      for (const record of records) exportedTexts.add(record.text);
+      for (const record of records) rememberExported(record.text);
       frontierRow = row;
     }
     parkMarker(frontierRow);
@@ -277,7 +298,19 @@ export function createHistoryCapture(
       exportedThroughAbs = 0;
       frontierRow = 0;
       exportedTexts.clear();
+      exportedOrder.length = 0;
       parkMarker(0);
+    },
+    notePrepended: (count: number) => {
+      // Seamless history re-inserts already-exported lines above the buffer
+      // top; markers do not follow insertions, so the frontier marker is
+      // re-parked count rows lower. Those rows sit above the frontier and
+      // can never be re-exported.
+      if (disposed || count <= 0) return;
+      marker?.dispose();
+      marker = null;
+      frontierRow += count;
+      parkMarker(frontierRow);
     },
     dispose: () => {
       disposed = true;

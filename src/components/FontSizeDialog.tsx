@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { listSystemFonts, type FontFamily } from "../api";
 import { fontChoices, fontStack, installedFonts, symbolFallbacks } from "../fonts";
+import { setTerminalColdHistory, terminalColdHistoryEnabled } from "../storePreferences";
 import {
   BUFFER_FONT_SIZE,
   PANEL_FONT_SIZE,
@@ -52,6 +53,10 @@ export function FontSizeDialog({
   const [cursor, setCursor] = useState<CursorStyle>(cursorStyle);
   const [blink, setBlink] = useState(cursorBlink);
   const [gpu, setGpu] = useState(gpuRenderer);
+  // Cold history is not part of DisplaySettings: the terminal controllers
+  // read this preference on every write, so the switch persists itself the
+  // moment it is toggled instead of waiting for Apply.
+  const [coldHistory, setColdHistory] = useState(terminalColdHistoryEnabled);
   const t = useT();
 
   // Probing the machine for installed families measures text on a canvas, so
@@ -296,6 +301,24 @@ export function FontSizeDialog({
             />
             <span className="font-size-unit">{t("fontDialog.lines")}</span>
           </label>
+
+          <label className="font-size-setting cold-history-setting">
+            <span>
+              <strong>{t("fontDialog.coldHistory")}</strong>
+              <small>{t("fontDialog.coldHistoryHint")}</small>
+            </span>
+            <span className="cursor-blink">
+              <input
+                type="checkbox"
+                checked={coldHistory}
+                onChange={(event) => {
+                  setColdHistory(event.target.checked);
+                  setTerminalColdHistory(event.target.checked);
+                }}
+              />
+              {t("common.enabled")}
+            </span>
+          </label>
         </div>
         <div className="dialog-footer font-size-dialog-footer">
           <button
@@ -310,6 +333,8 @@ export function FontSizeDialog({
               setCursor("block");
               setBlink(true);
               setGpu(true);
+              setColdHistory(false);
+              setTerminalColdHistory(false);
             }}
           >
             {t("fontDialog.resetDefaults")}

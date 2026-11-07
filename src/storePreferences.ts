@@ -78,6 +78,31 @@ export const CURSOR_STYLE_KEY = "edgeterm.cursorStyle";
 
 export const CURSOR_BLINK_KEY = "edgeterm.cursorBlink";
 
+/**
+ * Seamless cold history (roadmap A2, D14): trimmed lines spill into the
+ * Rust-side compressed store behind this opt-in switch, and scrolling to the
+ * buffer top re-inserts them. Default off until the A2 acceptance gates pass.
+ */
+export const TERMINAL_COLD_HISTORY_KEY = "edgeterm.terminalColdHistory";
+
+/** Non-reactive read for terminal controllers (the dialog writes the key). */
+export function terminalColdHistoryEnabled(): boolean {
+  try {
+    return window.localStorage.getItem(TERMINAL_COLD_HISTORY_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Persists the switch; controllers pick it up on their next write. */
+export function setTerminalColdHistory(enabled: boolean): void {
+  try {
+    window.localStorage.setItem(TERMINAL_COLD_HISTORY_KEY, enabled ? "1" : "0");
+  } catch {
+    // Portable mode keeps secrets in memory only; a lost UI switch is fine.
+  }
+}
+
 export const GPU_RENDERER_KEY = "edgeterm.gpuRenderer";
 
 export const SSH_AUTO_REUSE_KEY = "edgeterm.sshAutoReuse";

@@ -44,6 +44,8 @@ export const TRANSFER_OPTIONS_KEY = "edgeterm.transfer-options";
 export const RESOURCE_MONITOR_KEY = "edgeterm.resource-monitor";
 /** Legacy history/recovery metadata: retained only for export/reset cleanup. */
 export const AGENT_SETTINGS_KEY = "edgeterm.agents";
+/** Seamless cold-history switch; see storePreferences.ts (same literal). */
+export const TERMINAL_COLD_HISTORY_KEY = "edgeterm.terminalColdHistory";
 
 /**
  * Panel preferences kept outside the app store. Their modules validate and
@@ -62,4 +64,5 @@ export const PANEL_PREFERENCE_KEYS: readonly string[] = [
   TRANSFER_OPTIONS_KEY,
   RESOURCE_MONITOR_KEY,
   AGENT_SETTINGS_KEY,
+  TERMINAL_COLD_HISTORY_KEY,
 ];

@@ -5,6 +5,7 @@ import { Terminal } from "@xterm/xterm";
 
 import { TerminalClipboard } from "./terminalClipboard";
 import { CwdAttribution, createFileLinkProvider } from "./terminalFileLinks";
+import { TerminalColdHistory } from "./terminalHistoryIntegration";
 import { TerminalCommands } from "./terminalCommands";
 import { TerminalGpuRenderer } from "./terminalGpuRenderer";
 import { TerminalKeyboard } from "./terminalKeyboard";
@@ -34,6 +35,7 @@ import { patchImeInput } from "./imePatch";
 import { parseOsc52, type ProgramClipboardMode } from "./osc52";
 import { setSemanticColorTheme } from "./semanticColors";
 import { selectionEdit } from "./terminalSelectionEdit";
+import { terminalColdHistoryEnabled } from "./storePreferences";
 import { DEFAULT_FIND_OPTIONS, type FindOptions, type SearchResults } from "./terminalSearch";
 import { type TransferNoticeKind } from "./terminalTransfer";
 import type { BackspaceKey, ThemeMode } from "./types";
@@ -194,6 +196,7 @@ export class TerminalController {
   readonly term: Terminal;
   readonly fitAddon = new FitAddon();
   private readonly zmodem: ZmodemController;
+  private readonly coldHistory: TerminalColdHistory;
   /**
    * Decodes session output when the session is not in UTF-8, the only
    * encoding xterm reads itself; null feeds xterm the bytes as they are.
@@ -524,6 +527,19 @@ export class TerminalController {
         this.showTransferNotice(message, kind),
     };
     this.zmodem = new ZmodemController(sessionId, transferCallbacks);
+    // Seamless cold history (A2, D14): inert until the preference is on; the
+    // capture starts with the first parsed write after that.
+    this.coldHistory = new TerminalColdHistory({
+      terminal: this.term,
+      sessionId,
+      enabled: () => terminalColdHistoryEnabled(),
+      onPrepended: (rows) => {
+        // The re-inserted rows predate the current first line number.
+        this.lineGutter.firstLineNumber -= rows;
+        this.lineGutter.invalidateGutter();
+      },
+      onNotice: (text) => this.callbacks.onStatus?.(`cold history: ${text}`),
+    });
 
     this.term.loadAddon(this.fitAddon);
     // The handler carries the session into the click: an SSH terminal's
@@ -658,6 +674,7 @@ export class TerminalController {
     });
     this.term.onWriteParsed(() => {
       this.lineGutter.outputParsed();
+      this.coldHistory.outputParsed();
       // New output: xterm has updated the buffer and queued its repaint but
       // not painted yet, so cells painted here show in that same frame. Coloring only from `onRender` (which fires *after* the
       // renderer has drawn) showed every freshly written row plain for one
@@ -790,6 +807,8 @@ export class TerminalController {
     root.appendChild(this.transferNotice);
 
     this.term.open(this.host);
+    // Wheel events past the buffer top pull one cold chunk in (A2).
+    this.coldHistory.attachWheel(this.term.element ?? null);
     this.viewport.observeDisplayChanges();
     // IME text takes the exactly-once path in imePatch.ts. It hooks the
     // composition helper xterm creates in open(), so it goes right after.
@@ -1144,6 +1163,9 @@ export class TerminalController {
    * becomes line 1.
    */
   private scrollbackErased() {
+    // The cold store follows the same reset: everything above the viewport
+    // is gone, so the history's line numbering starts over too.
+    this.coldHistory.cleared();
     const dropped = this.term.buffer.active.length - this.term.rows;
     if (dropped <= 0) return;
     this.lineGutter.followTrimmedLines();
@@ -1168,6 +1190,7 @@ export class TerminalController {
   }
 
   private resetLineMetadata() {
+    this.coldHistory.cleared();
     this.cwdLines.reset();
     this.lineGutter.setLineTimes([Date.now()]);
     this.lineGutter.firstLineNumber = 1;
@@ -1283,6 +1306,7 @@ export class TerminalController {
     this.gpu.dispose();
     this.zmodem.dispose();
     this.searchController.dispose();
+    this.coldHistory.dispose();
     this.term.dispose();
     this.root = null;
     this.host = null;
