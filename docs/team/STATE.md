@@ -58,6 +58,18 @@
 - 进展：Rust `session/history.rs`（含 lz4 块压缩、会话 64MB/100 万行、全局 256MB LRU 淘汰、newest-first 分页读、限时子串搜索、清理）10/10 测试通过；`src/terminalHistory.ts` + 黄金向量（Lead 定稿、c-bench 修正一处 off-by-one 并暴露 Rust u16 截断 bug——已改显式拒绝）双方对齐，vitest 验收进行中。
 - **A2-3～A2-5（2026-11-07 提交 875270d/0f99e57/bfb800a）**：IPC 五命令 + specta 绑定再生（103/108）；**裁剪前导出证伪件成立**（marker 停靠导出前沿，dispose=精确失配信号；5×scrollback 洪灌零丢行、reflow 后连续、clear 新纪元；vitest 5/5——Lead 修两处 vitest 环境适配：rAF 垫片下块写 5 行/次、scrollback 可空收窄）；**顶部前置证伪件成立**（`_core._bufferService.buffer` 防御式访问 + clone + `CircularList.splice(0,0,…)` + 先扩 maxLength；视口平移保内容、resize 存活、内部缺失降级为零；语义：扩容使有效容量临时+N 直到惰性回收，集成层须知）。**无缝滚动两个技术前提全部实证**。集成注意事项：单次 write 内部裁剪可越过余量带（边界①，集成须分块或加大 ratio）；前置前须 clearSelection；resize 顶裁仍需集成层防护。
 
+### A2 完成记录（2026-11-07，提交 e83e528/138973c）
+
+- **A2-6 集成**：TerminalColdHistory 接入 onWriteParsed（偏好开→惰性建 capture，批量→IPC）；ED3/clear-buffer/dispose/close_session（Rust 侧）四处清理；滚顶 wheel 触发冷块物化（scratch 终端按当前列宽重析 + splice 前置 + capture 前沿重停防重导 + gutter 行号回拨）；exportedTexts 上限 20k 防前端无界增长（设计审查发现的真实缺陷，已修）；设置开关（FontSizeDialog，默认关，即时生效，已注册 persistKeys）。**A2-7**：find 面板冷区计数（降级版：TerminalFind 同步游标无到顶事件，完整跳转留 newestAbsLine 待升级；regex/wholeWord/不区分大小写按 Rust 字面语义门控）。
+- 验收门状态（对照路线图 §2.4）：
+  - 门1 正确性 ✅：热冷往返、clear 清空、无缺号重号、失配信号（48 个 A2 前端用例 + Rust 10 用例）。
+  - 门2 内存：设计有界（热窗 2.2–2.4MB@10k 实测 + 前端文本集 ≤20k 条 + Rust 64/256MB 硬上限）；1M 行 Playwright 数值**未执行**。
+  - 门3 吞吐 ≥90% 基线：jsdom 洪灌下 capture 开销不可见（500 行含编码 ≈0.1s 实算）；浏览器级对比**未执行**。
+  - 门4 交互：无缝前置+视口钉顶 jsdom 已证；真实 WebView2 p95 **未执行**。
+  - 门5 冷搜索 <300ms/2s：Rust 限时预算已强制；1M 行 release 数值**未执行**。
+  - **未验证（真机项）**：真实 Tauri/WebView2 窗口内开关→洪灌→滚顶接回→搜索计数全链路；默认开启（路线图步骤 6）留待上述真机验证与用户拍板后单独提交。
+- 全量回归：前端 120 文件/1147 用例、Rust 467/30、typecheck/format/rustfmt/check:bindings/check:commits 全绿。
+
 ## 本轮：目录与打包整理、缺陷修复（2026-11-01）
 
 - 基线 `b4ba925`，工作区干净。协作约定见 [TEAM.md](../../TEAM.md)：本轮由 Lead 派两个只读审计任务（打包一致性、前端缺陷），修复与验证由 Lead 完成；审计者无写权限，结论逐条由 Lead 复核并给出可执行证据。
