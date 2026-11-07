@@ -3,6 +3,7 @@ pub mod cwd;
 pub mod encoding;
 pub mod exec;
 pub mod ftp;
+pub mod history;
 pub mod local;
 pub mod locale;
 pub mod output;

@@ -80,6 +80,11 @@ futures-util = "0.3"
 hyper = { version = "1.11", features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 
+# Pure-Rust LZ4 block compression for the in-memory terminal history store
+# (see `session/history.rs`): interactive search decompresses one block at a
+# time, where decompression speed matters more than the ratio. D14, 2026-11-07.
+lz4_flex = "0.11"
+
 # Structured diagnostics: a request-scoped, rotating file log behind "export
 # diagnostics" (see `diagnostics.rs`). Writes go through a non-blocking
 # channel, so a slow disk never sits on a connection.
