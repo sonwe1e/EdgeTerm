@@ -22,6 +22,7 @@ import {
   type SearchResults,
 } from "../terminalSearch";
 import { getController } from "../terminalRegistry";
+import { searchColdHistory } from "../terminalColdSearch";
 import { isFileSession } from "../types";
 import { useT } from "../useT";
 import { Icon, type IconName } from "./icons";
@@ -256,6 +257,26 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(function Sea
     return () => listener?.dispose();
   }, [activeId]);
 
+  // Cold-history matches are counted apart from the buffer (roadmap A2-7):
+  // the seamless store answers asynchronously, so the number arrives a beat
+  // after the buffer's own and is shown next to it instead of holding the
+  // box back. Regex and whole-word queries skip it — the store searches
+  // literal needles (see terminalColdSearch).
+  const [historyCount, setHistoryCount] = useState(0);
+  const historyRequest = useRef(0);
+  useEffect(() => {
+    const request = ++historyRequest.current;
+    const session = activeId;
+    setHistoryCount(0);
+    if (!session || !query) return;
+    const timer = window.setTimeout(() => {
+      void searchColdHistory(session, query, options).then((outcome) => {
+        if (historyRequest.current === request) setHistoryCount(outcome.count);
+      });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [activeId, query, options]);
+
   // Search the seeded selection right away; the search starts at the
   // selection, so it stays the current match. Closing the box drops the
   // highlights.
@@ -346,6 +367,13 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(function Sea
     );
   };
 
+  const historySuffix =
+    historyCount > 0
+      ? ` · ${t("search.historyCount", { count: historyCount })}${
+          results?.resultCount === 0 ? ` · ${t("search.historyHint")}` : ""
+        }`
+      : "";
+
   const status = notice
     ? t(notice)
     : syntaxError
@@ -355,7 +383,7 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(function Sea
         : results?.busy
           ? t("search.searching")
           : query && results
-            ? formatResults(results)
+            ? formatResults(results) + historySuffix
             : "";
 
   return (
