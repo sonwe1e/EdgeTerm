@@ -48,6 +48,15 @@
 - W2 满宽行四变体（四轮一致，JS 堆差异 ≤0.1%；工件 `.tmp/records/terminal-memory/w2-*.json`，-3 为中途崩溃轮留证）：总内存（JS 堆 + cell 外部储）10k×80=12.03 MB、10k×200=26.17、100k×80=116.54、100k×200=**260.58 MB**（总/公式比 1.09–1.25）；吞吐 10.0–14.7 MB/s；滚动 ~8.3/8.5–9 ms。
 - tabs×20（80×24、各 10k 行、W1/W3 交替、全部存活）：JS 堆 +42.30 MB（2.115/标签）+ cell 储 192.02 = **234.32 MB**——工作区恢复（e0a905a）20 标签启动涌入即此量级；1M×200 单标签 ≈2.4 GB cell + ~0.22 GB JS。**A2 冷存储的内存收益前提被证实**（上节更正的反面结论作废）。
 - 冷启动（scripts/measure-cold-start.ps1，release 1.7.2 便携空档，安静机器，5 冷+1 热）：主窗口句柄中位 **102.4 ms**（min 100.7 / max 161.2，真首启最慢）；进程响应中位 131.1 ms；热启动 61.1 ms。口径=窗口句柄出现≠首帧可交互；单机单轮样本。测量曾被一个 11-05 起驻留的 TestStudio install-smoke 实例经 single-instance 插件阻挡（新实例转发即退、退出码 0），经用户确认后关闭。
+- 真实服务器基准（2026-11-07，WSL OpenSSH 回环 RTT≈0，release 构建，500×4KiB/51 目录）：`connect=6.67ms, plan=30.59ms, copy=939.28ms, plan+copy=969.87ms`，files in flight=16（服务器声明 limits，F 取配置默认 16）。对照 fixture@20ms RTT 的 F=16 copy=6.05s：低 RTT 下每文件 ~1.9ms 主要是请求计数+服务器处理，plan 可忽略；B7 多通道的收益空间集中在高 RTT+串行服务器场景（与串行 fixture 打平数据互补）。sshd 重建：`wsl -d Ubuntu-26.04 -u root -- bash /mnt/g/Workspaces/EdgeTerm/.tmp/ssh/setup.sh`。
+
+### A2 启动（2026-11-07，用户确认全量，决策 D14）
+
+- 范围：热窗口 + Rust 内存冷存储 + lz4_flex 压缩 + **无缝滚动**（用户明确选高风险项，替代独立只读视图）；仅内存；会话 64MB/全局 256MB；裁剪前导出与无缝前置两个高危假设的 spike 提前。
+- 分工：c-bench-builder 负责 `src/terminalHistory.ts` 序列化纯函数 + 黄金向量（跨语言一致）；Lead 负责 Rust `session/history.rs` 块存储/搜索/上限 + IPC + terminal.ts 集成；xterm 6 无缝前置可行性研究已派只读子代理。依赖：Cargo.toml 新增 `lz4_flex = "0.11"`（D14-4）。
+- **无缝前置可行性研究结论（2026-11-07，源码证据）**："xterm 无法顶部前置行"仅在公开 API 层成立；内部层 `CircularList.splice(0,0,…)`（CircularList.ts:156-186，InputHandler.ts:1433-1450 自用同款）+ `Buffer.ybase/ydisp` 可写（Buffer.ts:29-33）+ 渲染器按 ydisp 取行 → **路线 A（活缓冲前置注入）有条件可行，且是唯一保住原生选择/搜索/decoration 的无缝方案，列首选**。陷阱：splice 溢出从最老端裁（须先扩 maxLength）；resize/scrollback 变化从顶裁；SelectionService 只听 onTrim 不听 onInsert（前置前 clearSelection）；clear/reset 清空（Rust 为 source of truth）；reflow 按原 cols 重建（冷数据须记录列宽/折行）。滚顶无弹性、v6 默认不吞顶界 wheel（冒泡可接管）；scrollback=0 时 wheel 转箭头键（双终端方案的坑）。无 Viewport 替换 API、无顶外绘制扩展点。判定顺序 A → B（自绘接管，最安全但接缝最差/工程最大）→ C（双终端，不推荐）。@xterm/xterm 已固化 6.0.0，内部 API 面稳定。
+- 进展：Rust `session/history.rs`（含 lz4 块压缩、会话 64MB/100 万行、全局 256MB LRU 淘汰、newest-first 分页读、限时子串搜索、清理）10/10 测试通过；`src/terminalHistory.ts` + 黄金向量（Lead 定稿、c-bench 修正一处 off-by-one 并暴露 Rust u16 截断 bug——已改显式拒绝）双方对齐，vitest 验收进行中。
+- **A2-3～A2-5（2026-11-07 提交 875270d/0f99e57/bfb800a）**：IPC 五命令 + specta 绑定再生（103/108）；**裁剪前导出证伪件成立**（marker 停靠导出前沿，dispose=精确失配信号；5×scrollback 洪灌零丢行、reflow 后连续、clear 新纪元；vitest 5/5——Lead 修两处 vitest 环境适配：rAF 垫片下块写 5 行/次、scrollback 可空收窄）；**顶部前置证伪件成立**（`_core._bufferService.buffer` 防御式访问 + clone + `CircularList.splice(0,0,…)` + 先扩 maxLength；视口平移保内容、resize 存活、内部缺失降级为零；语义：扩容使有效容量临时+N 直到惰性回收，集成层须知）。**无缝滚动两个技术前提全部实证**。集成注意事项：单次 write 内部裁剪可越过余量带（边界①，集成须分块或加大 ratio）；前置前须 clearSelection；resize 顶裁仍需集成层防护。
 
 ## 本轮：目录与打包整理、缺陷修复（2026-11-01）
 
