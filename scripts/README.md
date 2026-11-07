@@ -396,11 +396,14 @@ measured memory, throughput and scroll numbers for xterm buffers
 (docs/team/STATE.md roadmap A1, lite matrix), reusing the file-link baseline's
 harness: an in-process HTTP page with a real renderer-less xterm, the same
 browser launch adaptivity, and `--out=<path>` for sandboxes that cannot write
-`artifacts/`. The matrix is W1 (plain seq-style lines) and W3 (agent-style
-short lines with frequent SGR color switches, one `\r` spinner line of 20
-same-position redraws every 10 lines, and occasional `\x1b[K`) across rows
-{10000, 100000} and cols {80, 200}, with scrollback set to the row count.
-W2-style colored listings and the 1M-row point are deferred.
+`artifacts/`. The matrix is W1 (plain seq-style lines), W2 (full-width
+printable lines — exactly cols characters per row, the cat-a-large-file
+shape and the remaining scenario where the A0 12-bytes-per-cell formula is
+expected to hold) and W3 (agent-style short lines with frequent SGR color
+switches, one `\r` spinner line of 20 same-position redraws every 10 lines,
+and occasional `\x1b[K`) across rows {10000, 100000} and cols {80, 200},
+with scrollback set to the row count. `--workloads=W1,W2,W3` (or `none`)
+selects the matrix subset; the 1M-row point stays deferred.
 
 Per variant the report records: the JS heap delta measured through a CDP
 session (`HeapProfiler.collectGarbage` + `Runtime.getHeapUsage`, before
@@ -411,7 +414,15 @@ samples while alternating `scrollLines(-400)` and `scrollToTop`; and the
 ratio of the measured heap delta to the A0 formula lower bound
 (rows x cols x 12 / 1e6 MB), reported as a cross-check only. Validation
 asserts `buffer.length === rows + 1` and the first/last row text, so a
-workload or wrap regression cannot measure the wrong shape.
+workload or wrap regression cannot measure the wrong shape. `--tabs=N`
+(default 20, 0 skips) adds the workspace-restore burst shape: N terminals
+created and filled in sequence in one page (80x24, scrollback 10000, 10k
+rows, alternating W1/W3), all kept live, with the cumulative heap recorded
+after each one — total, per-tab average and per-tab step. It does not
+measure real tab-switching cost. `--snapshot` takes one heap snapshot while
+the last matrix variant's terminal is still alive and reports the external
+ArrayBuffer/typed-array bytes by node name — the calibration for the
+cell-store estimate.
 
 Set `EDGETERM_MEASURE_CDP` (or the script-specific
 `EDGETERM_TERMINAL_MEMORY_CDP`) to an already-running debug browser where
@@ -422,15 +433,43 @@ page's V8 JS heap, not the WebView2/browser process working set; throughput
 covers the xterm parser and buffer, not PTY or network; scroll intervals are
 rAF cadence without a renderer — a JS-side upper bound, not frame time.
 Dated observation (2026-11-07, this Windows machine, headless Edge
-157.0.4341.42 through `EDGETERM_MEASURE_CDP`, two consecutive runs): heap
-delta scaled with rows and was independent of cols — ~2.2-2.4 MB at 10k rows
-and ~20.55-20.60 MB at 100k rows for both W1 and W3 (~205-240 bytes per
-short row), so xterm 6.0 stores lines by content, not by terminal width,
-and the A0 rows*cols*12 formula overestimates short-line buffers by up to
-~11x (ratio 0.086 at 100k x 200). Write throughput ran 6.6-15.7 MB/s (W1
-faster than W3; 80 cols faster than 200; larger buffers slower per char);
-scroll p50/p95 stayed at ~7/8 ms across all variants. Heap deltas agreed
-between the two runs within 0.2%.
+157.0.4341.42 through `EDGETERM_MEASURE_CDP`; JS-heap deltas agreed across
+four runs within 0.1%): the getHeapUsage delta scales with rows and is
+independent of cols and content — ~2.2-2.4 MB at 10k rows, ~20.55-20.60 MB
+at 100k rows (~205-240 bytes per row of BufferLine/wrapper objects). An
+earlier note read that as content-proportional line storage and an ~11x
+overestimate of the A0 rows*cols*12 formula; **corrected after source and
+snapshot verification**: xterm 6.0 allocates every line eagerly as
+`new Uint32Array(cols * 3)` — exactly 12 bytes per cell — and those backing
+stores live in external memory that `Runtime.getHeapUsage` cannot see. A
+heap snapshot of the W2 100k x 200 variant (full-width lines, the
+cat-a-large-file shape) shows `system / JSArrayBufferData` at 240.337 MB
+across 100,010 arrays versus the formula's 240.0024 MB (+0.14%), so the
+formula is the dominant, load-shape-independent term: total memory is
+JS-heap ~205-240 B/row plus rows*cols*12, and W2 totals measured
+12.03 / 26.17 / 116.54 / 260.58 MB (total/formula ratios 1.25 / 1.09 /
+1.21 / 1.09 at 10k/100k x 80/200). Twenty live 10k-row tabs (workspace
+restore shape) cost ~42.3 MB JS heap + 192.0 MB cell store = ~234.3 MB.
+Write throughput ran 6.6-15.7 MB/s (W1 faster than W3, 80 cols faster than
+200, larger buffers slower per char; W2 10-14.7 MB/s); scroll p50/p95
+stayed at ~7-9 ms across all variants.
+
+### Cold-start baseline
+
+`pwsh -NoProfile -File scripts/measure-cold-start.ps1 -Exe <release edgeterm.exe> [-Runs 5]`
+times the packaged release executable's launch: it copies the exe into a fresh
+temporary directory with an empty portable `data/`, starts it, and polls the
+main window handle at 25 ms until it exists (then until the process reports
+responding), kills the whole tree, waits the process out so the single-instance
+mutex cannot eat the next launch, and repeats. One extra warm run reuses the
+first directory. Non-gating: a run without a window inside 30 s exits nonzero.
+Boundary: a window handle means the window was created — not first paint or
+first interactive frame — on one machine, unconfined, with a fresh profile; a
+resident same-app instance forwards new launches through the single-instance
+plugin and makes every run exit 0 without a window, so close other EdgeTerm
+instances first. Dated observation (2026-11-07, release 1.7.2, quiet machine):
+cold window-handle median 102.4 ms (min 100.7, max 161.2 on the true first
+launch), responding median 131.1 ms, warm 61.1 ms.
 
 ### Native SSH program checks
 
