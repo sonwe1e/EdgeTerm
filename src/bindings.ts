@@ -109,6 +109,11 @@ export const commands = {
 	 */
 	answerAuthPrompt: (id: string, responses: string[] | null) => __TAURI_INVOKE<null>("answer_auth_prompt", { id, responses }),
 	closeSession: (id: string) => __TAURI_INVOKE<null>("close_session", { id }),
+	historyAppend: (sessionId: string, batch: number[]) => __TAURI_INVOKE<AppendOutcome>("history_append", { sessionId, batch }),
+	historyRead: (sessionId: string, fromAbsLine: number, maxLines: number) => __TAURI_INVOKE<HistoryLine[]>("history_read", { sessionId, fromAbsLine, maxLines }),
+	historySearch: (sessionId: string, needle: string, limit: number, budgetMs: number) => __TAURI_INVOKE<HistorySearchHit[]>("history_search", { sessionId, needle, limit, budgetMs }),
+	historyStats: (sessionId: string) => __TAURI_INVOKE<HistoryStats>("history_stats", { sessionId }),
+	historyClear: (sessionId: string) => __TAURI_INVOKE<null>("history_clear", { sessionId }),
 	/**
 	 *  Consumption acknowledgements must bypass a potentially busy transport's
 	 *  command queue. Tokens distinguish reconnects that reuse a tab/session id.
@@ -543,6 +548,13 @@ export type AppError_Serialize = {
  */
 export type AppSettingsValue = unknown;
 
+/**  What an append did, for the UI's "n older lines were discarded" notice. */
+export type AppendOutcome = {
+	storedLines: number,
+	droppedLines: number,
+	totalRecords: number,
+};
+
 export type AuthKind = "password" | "publicKey" | "agent";
 
 /**
@@ -823,6 +835,45 @@ export type Gpu = {
 	usedBytes: number | null,
 	totalBytes: number | null,
 	temperature: number | null,
+};
+
+/**
+ *  One logical line of history: wrapped fragments already joined by the JS
+ *  side, with its SGR runs kept as cell-coordinate segments so a view can
+ *  re-wrap the line for the current width.
+ */
+export type HistoryLine = {
+	absLine: number,
+	timeMs: number,
+	text: string,
+	runs: HistoryRun[],
+};
+
+/**
+ *  One SGR run over [`HistoryLine::text`] in cell coordinates; `fg`/`bg` are
+ *  32-bit packed colors where `u32::MAX` means "default", and `flags` carries
+ *  the modifier bits (1 bold, 2 dim, 4 italic, 8 underline, 16 blink,
+ *  32 inverse, 64 invisible, 128 strike).
+ */
+export type HistoryRun = {
+	start: number,
+	len: number,
+	fg: number,
+	bg: number,
+	flags: number,
+};
+
+export type HistorySearchHit = {
+	absLine: number,
+	column: number,
+};
+
+export type HistoryStats = {
+	totalRecords: number,
+	compressedBytes: number,
+	droppedLines: number,
+	firstAbsLine: number,
+	lastAbsLine: number,
 };
 
 /**

@@ -173,6 +173,7 @@ async fn real_ssh_diff_monitor_and_forward_cross_tauri_ipc() {
         key_checks: Default::default(),
         port_forwards: Default::default(),
         ssh_transports: Default::default(),
+        history: Default::default(),
     };
     state.file_transfers.remember("fixture", &profile);
     state.ssh_transports.register("fixture", &transport);

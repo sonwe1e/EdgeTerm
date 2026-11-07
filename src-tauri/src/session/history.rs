@@ -20,6 +20,7 @@ use std::time::{Duration, Instant};
 /// side, with its SGR runs kept as cell-coordinate segments so a view can
 /// re-wrap the line for the current width.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 pub(crate) struct HistoryLine {
     #[serde(rename = "absLine")]
     pub abs_line: u64,
@@ -34,6 +35,7 @@ pub(crate) struct HistoryLine {
 /// the modifier bits (1 bold, 2 dim, 4 italic, 8 underline, 16 blink,
 /// 32 inverse, 64 invisible, 128 strike).
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 pub(crate) struct HistoryRun {
     pub start: u32,
     pub len: u32,
@@ -125,7 +127,9 @@ pub(crate) fn encode_batch(lines: &[HistoryLine]) -> Result<Vec<u8>, HistoryErro
     let mut prev_time = 0u64;
     for line in lines {
         if line.abs_line <= prev_abs {
-            return Err(HistoryError::Order("absLine did not increase within a batch"));
+            return Err(HistoryError::Order(
+                "absLine did not increase within a batch",
+            ));
         }
         if line.time_ms < prev_time {
             return Err(HistoryError::Order("timeMs decreased within a batch"));
@@ -168,10 +172,16 @@ pub(crate) fn decode_batch(bytes: &[u8]) -> Result<Vec<HistoryLine>, HistoryErro
     for _ in 0..count {
         let abs_delta = reader.varint("absLine delta")?;
         let time_delta = reader.varint("timeMs delta")?;
-        let abs_line = prev_abs.checked_add(abs_delta).ok_or_else(|| malformed("absLine overflow"))?;
-        let time_ms = prev_time.checked_add(time_delta).ok_or_else(|| malformed("timeMs overflow"))?;
+        let abs_line = prev_abs
+            .checked_add(abs_delta)
+            .ok_or_else(|| malformed("absLine overflow"))?;
+        let time_ms = prev_time
+            .checked_add(time_delta)
+            .ok_or_else(|| malformed("timeMs overflow"))?;
         if abs_delta == 0 {
-            return Err(HistoryError::Order("absLine did not increase within a batch"));
+            return Err(HistoryError::Order(
+                "absLine did not increase within a batch",
+            ));
         }
         let text_len = reader.u16("text length")? as usize;
         let text = std::str::from_utf8(reader.take(text_len, "text bytes")?)
@@ -248,6 +258,7 @@ struct SessionHistory {
 
 /// What an append did, for the UI's "n older lines were discarded" notice.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 pub(crate) struct AppendOutcome {
     #[serde(rename = "storedLines")]
     pub stored_lines: u64,
@@ -258,6 +269,7 @@ pub(crate) struct AppendOutcome {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 pub(crate) struct HistoryStats {
     #[serde(rename = "totalRecords")]
     pub total_records: u64,
@@ -324,19 +336,26 @@ impl HistoryStore {
     /// Appends one encoded batch. The batch must continue the session's line
     /// numbering (`absLine` strictly greater than everything stored so far),
     /// which is what a hot window exporting its trimmed lines guarantees.
-    pub(crate) fn append(&self, session_id: &str, batch: &[u8]) -> Result<AppendOutcome, HistoryError> {
+    pub(crate) fn append(
+        &self,
+        session_id: &str,
+        batch: &[u8],
+    ) -> Result<AppendOutcome, HistoryError> {
         let lines = decode_batch(batch)?;
         let mut inner = self.inner.lock().expect("history store poisoned");
-        let session = inner.sessions.entry(session_id.to_string()).or_insert_with(|| SessionHistory {
-            blocks: VecDeque::new(),
-            pending: Vec::new(),
-            compressed_bytes: 0,
-            records: 0,
-            dropped_lines: 0,
-            first_abs: 0,
-            last_abs: 0,
-            sealed_seq: 0,
-        });
+        let session = inner
+            .sessions
+            .entry(session_id.to_string())
+            .or_insert_with(|| SessionHistory {
+                blocks: VecDeque::new(),
+                pending: Vec::new(),
+                compressed_bytes: 0,
+                records: 0,
+                dropped_lines: 0,
+                first_abs: 0,
+                last_abs: 0,
+                sealed_seq: 0,
+            });
         if session.last_abs > 0 {
             if let Some(first) = lines.first() {
                 if first.abs_line <= session.last_abs {
@@ -400,11 +419,19 @@ impl HistoryStore {
         })
     }
 
-    fn seal_block(inner: &mut StoreInner, session_id: &str, chunk: Vec<HistoryLine>, session_cap: usize) {
+    fn seal_block(
+        inner: &mut StoreInner,
+        session_id: &str,
+        chunk: Vec<HistoryLine>,
+        session_cap: usize,
+    ) {
         let seq = inner.next_seq;
         inner.next_seq += 1;
         {
-            let session = inner.sessions.get_mut(session_id).expect("caller holds the entry");
+            let session = inner
+                .sessions
+                .get_mut(session_id)
+                .expect("caller holds the entry");
             let block = Block::seal(&chunk);
             session.compressed_bytes += block.compressed.len();
             session.sealed_seq = seq;
@@ -414,7 +441,10 @@ impl HistoryStore {
         // Session cap: keep at least the newest block, drop older ones.
         loop {
             let over = {
-                let session = inner.sessions.get_mut(session_id).expect("caller holds the entry");
+                let session = inner
+                    .sessions
+                    .get_mut(session_id)
+                    .expect("caller holds the entry");
                 session.compressed_bytes > session_cap && session.blocks.len() > 1
             };
             if !over || !drop_oldest(inner, session_id) {
@@ -433,7 +463,10 @@ impl HistoryStore {
         max_lines: usize,
     ) -> Result<Vec<HistoryLine>, HistoryError> {
         let inner = self.inner.lock().expect("history store poisoned");
-        let session = inner.sessions.get(session_id).ok_or(HistoryError::UnknownSession)?;
+        let session = inner
+            .sessions
+            .get(session_id)
+            .ok_or(HistoryError::UnknownSession)?;
         let mut out = Vec::new();
         for line in session.pending.iter().rev() {
             if out.len() >= max_lines {
@@ -477,7 +510,10 @@ impl HistoryStore {
         }
         let deadline = Instant::now() + budget;
         let inner = self.inner.lock().expect("history store poisoned");
-        let session = inner.sessions.get(session_id).ok_or(HistoryError::UnknownSession)?;
+        let session = inner
+            .sessions
+            .get(session_id)
+            .ok_or(HistoryError::UnknownSession)?;
         let mut hits = Vec::new();
         let push_hits = |lines: Vec<HistoryLine>, hits: &mut Vec<HistorySearchHit>| {
             for line in lines.into_iter().rev() {
@@ -519,7 +555,10 @@ impl HistoryStore {
 
     pub(crate) fn stats(&self, session_id: &str) -> Result<HistoryStats, HistoryError> {
         let inner = self.inner.lock().expect("history store poisoned");
-        let session = inner.sessions.get(session_id).ok_or(HistoryError::UnknownSession)?;
+        let session = inner
+            .sessions
+            .get(session_id)
+            .ok_or(HistoryError::UnknownSession)?;
         Ok(HistoryStats {
             total_records: session.records,
             compressed_bytes: session.compressed_bytes,
@@ -530,11 +569,15 @@ impl HistoryStore {
     }
 
     pub(crate) fn global_compressed_bytes(&self) -> usize {
-        self.inner.lock().expect("history store poisoned").global_compressed
+        self.inner
+            .lock()
+            .expect("history store poisoned")
+            .global_compressed
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 pub(crate) struct HistorySearchHit {
     #[serde(rename = "absLine")]
     pub abs_line: u64,
@@ -578,7 +621,12 @@ mod tests {
     }
 
     fn line(abs: u64, time: u64, text: &str) -> HistoryLine {
-        HistoryLine { abs_line: abs, time_ms: time, text: text.into(), runs: Vec::new() }
+        HistoryLine {
+            abs_line: abs,
+            time_ms: time,
+            text: text.into(),
+            runs: Vec::new(),
+        }
     }
 
     fn hex_string(hex: &str) -> Vec<u8> {
@@ -603,7 +651,8 @@ mod tests {
         assert_eq!(vectors.len(), 4);
         for vector in vectors {
             let name = vector["name"].as_str().unwrap();
-            let expected: Vec<HistoryLine> = serde_json::from_value(vector["lines"].clone()).unwrap();
+            let expected: Vec<HistoryLine> =
+                serde_json::from_value(vector["lines"].clone()).unwrap();
             match vector["hex"].as_str() {
                 Some(hex) => {
                     let bytes = hex_string(hex);
@@ -626,7 +675,10 @@ mod tests {
         assert!(matches!(decode_batch(&bytes), Err(HistoryError::Order(_))));
         let mut valid = batch(&[line(1, 1, "a")]);
         valid.push(0);
-        assert!(matches!(decode_batch(&valid), Err(HistoryError::Malformed(_))));
+        assert!(matches!(
+            decode_batch(&valid),
+            Err(HistoryError::Malformed(_))
+        ));
     }
 
     #[test]
@@ -638,8 +690,20 @@ mod tests {
                 time_ms: 1_700_000_000_000 + i * 3,
                 text: format!("line {i} 你好 {}", i % 97),
                 runs: vec![
-                    HistoryRun { start: 0, len: 4, fg: 0xff9bd5ff, bg: u32::MAX, flags: 1 },
-                    HistoryRun { start: 6, len: 2, fg: 0x66ccffff, bg: 0x101010, flags: 8 | 128 },
+                    HistoryRun {
+                        start: 0,
+                        len: 4,
+                        fg: 0xff9bd5ff,
+                        bg: u32::MAX,
+                        flags: 1,
+                    },
+                    HistoryRun {
+                        start: 6,
+                        len: 2,
+                        fg: 0x66ccffff,
+                        bg: 0x101010,
+                        flags: 8 | 128,
+                    },
                 ],
             });
         }
@@ -660,21 +724,29 @@ mod tests {
                 .collect();
             store.append("s", &batch(&lines)).unwrap();
         }
-        let tail: Vec<_> = (1..=100u32).map(|_| {
-            abs += 1;
-            line(abs, abs, &format!("text-{abs}"))
-        }).collect();
+        let tail: Vec<_> = (1..=100u32)
+            .map(|_| {
+                abs += 1;
+                line(abs, abs, &format!("text-{abs}"))
+            })
+            .collect();
         store.append("s", &batch(&tail)).unwrap();
         assert_eq!(store.stats("s").unwrap().total_records, 8292);
         assert_eq!(store.stats("s").unwrap().dropped_lines, 0);
 
         let top = store.read("s", 1, 3).unwrap();
-        assert_eq!(top.iter().map(|l| l.abs_line).collect::<Vec<_>>(), vec![8292, 8291, 8290]);
+        assert_eq!(
+            top.iter().map(|l| l.abs_line).collect::<Vec<_>>(),
+            vec![8292, 8291, 8290]
+        );
 
         // A page long enough to cross the pending/newest-block boundary.
         let page = store.read("s", 1, 150).unwrap();
         let abs_list: Vec<u64> = page.iter().map(|l| l.abs_line).collect();
-        assert!(abs_list.contains(&8193) && abs_list.contains(&8192), "{abs_list:?}");
+        assert!(
+            abs_list.contains(&8193) && abs_list.contains(&8192),
+            "{abs_list:?}"
+        );
         assert_eq!(abs_list.len(), 150);
         let filtered = store.read("s", 4090, 7).unwrap();
         assert!(filtered.iter().all(|l| l.abs_line >= 4090));
@@ -697,10 +769,12 @@ mod tests {
         let store = HistoryStore::with_caps(usize::MAX, 8192, usize::MAX);
         let mut abs = 0;
         for _ in 0..3 {
-            let lines: Vec<_> = (1..=4096u32).map(|_| {
-                abs += 1;
-                line(abs, abs, "x")
-            }).collect();
+            let lines: Vec<_> = (1..=4096u32)
+                .map(|_| {
+                    abs += 1;
+                    line(abs, abs, "x")
+                })
+                .collect();
             store.append("s", &batch(&lines)).unwrap();
         }
         let stats = store.stats("s").unwrap();
@@ -716,10 +790,12 @@ mod tests {
         let store = HistoryStore::with_caps(1, u64::MAX, usize::MAX);
         let mut abs = 0;
         for _ in 0..3 {
-            let lines: Vec<_> = (1..=4096u32).map(|_| {
-                abs += 1;
-                line(abs, abs, "compress me please, plenty of repetition")
-            }).collect();
+            let lines: Vec<_> = (1..=4096u32)
+                .map(|_| {
+                    abs += 1;
+                    line(abs, abs, "compress me please, plenty of repetition")
+                })
+                .collect();
             store.append("s", &batch(&lines)).unwrap();
         }
         let stats = store.stats("s").unwrap();
@@ -735,7 +811,11 @@ mod tests {
         // because each batch's first absLine delta differs.
         let probe = HistoryStore::new();
         let block = |from: u64| -> Vec<u8> {
-            batch(&(from..from + 4096).map(|i| line(i, i, "payload")).collect::<Vec<_>>())
+            batch(
+                &(from..from + 4096)
+                    .map(|i| line(i, i, "payload"))
+                    .collect::<Vec<_>>(),
+            )
         };
         probe.append("probe", &block(1)).unwrap();
         let one_block = probe.global_compressed_bytes();
@@ -761,16 +841,26 @@ mod tests {
     fn search_is_newest_first_bounded_and_budget_aware() {
         let store = HistoryStore::new();
         let sealed: Vec<_> = (1..=4096u32)
-            .map(|i| line(u64::from(i), u64::from(i), if i % 2 == 0 { "hit here" } else { "miss" }))
+            .map(|i| {
+                line(
+                    u64::from(i),
+                    u64::from(i),
+                    if i % 2 == 0 { "hit here" } else { "miss" },
+                )
+            })
             .collect();
         store.append("s", &batch(&sealed)).unwrap();
         let pending: Vec<_> = vec![line(4097, 4097, "hit pending"), line(4098, 4098, "nope")];
         store.append("s", &batch(&pending)).unwrap();
 
-        let all = store.search("s", "hit", 10_000, Duration::from_secs(10)).unwrap();
+        let all = store
+            .search("s", "hit", 10_000, Duration::from_secs(10))
+            .unwrap();
         assert_eq!(all.first().unwrap().abs_line, 4097);
         assert_eq!(all.len(), 2048 + 1);
-        let limited = store.search("s", "hit", 3, Duration::from_secs(10)).unwrap();
+        let limited = store
+            .search("s", "hit", 3, Duration::from_secs(10))
+            .unwrap();
         assert_eq!(limited.len(), 3);
         assert_eq!(limited[0].abs_line, 4097);
         assert_eq!(limited[1].abs_line, 4096);
@@ -781,19 +871,29 @@ mod tests {
         assert_eq!(spent[0].abs_line, 4097);
 
         // Column is 1-based on characters, not bytes.
-        let columned = store.search("s", "pending", 10, Duration::from_secs(10)).unwrap();
+        let columned = store
+            .search("s", "pending", 10, Duration::from_secs(10))
+            .unwrap();
         assert_eq!(columned[0].column, 5);
     }
 
     #[test]
     fn clear_releases_the_session_and_its_bytes() {
         let store = HistoryStore::new();
-        let lines: Vec<_> = (1..=4096u32).map(|i| line(u64::from(i), u64::from(i), "z")).collect();
+        let lines: Vec<_> = (1..=4096u32)
+            .map(|i| line(u64::from(i), u64::from(i), "z"))
+            .collect();
         store.append("s", &batch(&lines)).unwrap();
         assert!(store.global_compressed_bytes() > 0);
         store.clear("s");
         assert_eq!(store.global_compressed_bytes(), 0);
-        assert!(matches!(store.stats("s"), Err(HistoryError::UnknownSession)));
-        assert!(matches!(store.read("s", 1, 1), Err(HistoryError::UnknownSession)));
+        assert!(matches!(
+            store.stats("s"),
+            Err(HistoryError::UnknownSession)
+        ));
+        assert!(matches!(
+            store.read("s", 1, 1),
+            Err(HistoryError::UnknownSession)
+        ));
     }
 }

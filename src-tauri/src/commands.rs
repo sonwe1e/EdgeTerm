@@ -47,6 +47,9 @@ pub struct AppState {
     /// session can be opened on one instead of authenticating again; see
     /// `open_session`'s `reuse_session_id`.
     pub ssh_transports: SshTransports,
+    /// The in-memory compressed terminal cold history (A2, D14); see
+    /// `session::history` and `commands::history`.
+    pub history: crate::session::history::HistoryStore,
 }
 
 // --- profiles ---------------------------------------------------------------
@@ -97,6 +100,8 @@ mod desktop;
 pub use desktop::*;
 mod diagnostics;
 pub use diagnostics::*;
+mod history;
+pub use history::*;
 mod remote_edit;
 pub use remote_edit::*;
 mod file_drag;

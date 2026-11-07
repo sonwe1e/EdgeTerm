@@ -403,6 +403,7 @@ pub fn run() {
             key_checks: Default::default(),
             port_forwards: Default::default(),
             ssh_transports: Default::default(),
+            history: Default::default(),
         })
         .manage(crate::preview::Previews::default())
         .on_window_event(|window, event| {
@@ -453,6 +454,11 @@ pub fn run() {
             commands::accept_host_key,
             commands::answer_auth_prompt,
             commands::close_session,
+            commands::history_append,
+            commands::history_read,
+            commands::history_search,
+            commands::history_stats,
+            commands::history_clear,
             commands::acknowledge_session_output,
             commands::list_sessions,
             commands::default_recording_dir,

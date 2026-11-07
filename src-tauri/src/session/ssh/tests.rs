@@ -2771,6 +2771,7 @@ fn project_state(
         key_checks: Default::default(),
         port_forwards: Default::default(),
         ssh_transports: Default::default(),
+        history: Default::default(),
     };
     state.file_transfers.remember("editor", profile);
     state.ssh_transports.register("editor", transport);
