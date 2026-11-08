@@ -19,6 +19,160 @@ use crate::model::SessionProfile;
 use crate::session::ssh::SharedTransport;
 
 const TEXT_LIMIT: usize = 4 * 1024 * 1024;
+/// A log view moves a bounded window over an arbitrarily large file. This
+/// limit is independent of the built-in editor's full-file limit.
+pub(crate) const LOG_WINDOW_BYTES: u64 = 256 * 1024;
+
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LogWindow {
+    pub path: String,
+    /// Byte offsets into the original file, not character/line offsets.
+    pub start: u64,
+    pub end: u64,
+    pub size: u64,
+    pub content: String,
+    pub encoding: String,
+    pub modified_at: Option<i64>,
+}
+
+pub(crate) fn log_window_bounds(size: u64, anchor: Option<u64>, before: bool) -> (u64, u64) {
+    if before {
+        let end = anchor.unwrap_or(size).min(size);
+        (end.saturating_sub(LOG_WINDOW_BYTES), end)
+    } else {
+        let start = anchor.unwrap_or(0).min(size);
+        (start, start.saturating_add(LOG_WINDOW_BYTES).min(size))
+    }
+}
+
+/// A new tail window may start in the middle of a UTF-8 character. A few
+/// preceding bytes provide concrete evidence of a UTF-8 character crossing
+/// (or ending at) that boundary. Only accept that evidence when the complete
+/// remainder also decodes as UTF-8; otherwise a GBK lead byte must not be
+/// mistaken for a valid UTF-8 prefix by itself.
+fn utf8_boundary_evidence(bytes: &[u8], prefix_len: usize) -> bool {
+    if prefix_len == 0 || prefix_len >= bytes.len() {
+        return false;
+    }
+    for offset in 0..prefix_len {
+        let width = match bytes[offset] {
+            0xc2..=0xdf => 2,
+            0xe0..=0xef => 3,
+            0xf0..=0xf4 => 4,
+            _ => continue,
+        };
+        if offset + width < prefix_len || offset + width > bytes.len() {
+            continue;
+        }
+        if std::str::from_utf8(&bytes[offset..offset + width]).is_err() {
+            continue;
+        }
+        for suffix in 0..=3.min(bytes.len() - offset - width) {
+            if std::str::from_utf8(&bytes[offset..bytes.len() - suffix]).is_ok() {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Decode a log window without replacement characters. `selected_encoding`
+/// locks subsequent pages to one codec; `session_encoding` is only an initial
+/// fallback when no codec has been chosen. At the first page, try complete
+/// candidates BEFORE trimming possible split-character boundary bytes. This
+/// prevents silently dropping valid GBK characters to make UTF-8 decode.
+pub(crate) fn decode_log_window(
+    bytes: &[u8],
+    start: u64,
+    file_size: u64,
+    session_encoding: Option<&str>,
+    selected_encoding: Option<&str>,
+) -> Result<(String, u64, u64, String)> {
+    if bytes.contains(&0) {
+        return Err(AppError::invalid_input("the log looks binary; only text can be viewed"));
+    }
+    let mut candidates = Vec::with_capacity(2);
+    if let Some(label) = selected_encoding {
+        let encoding = encoding_rs::Encoding::for_label_no_replacement(label.as_bytes())
+            .ok_or_else(|| AppError::invalid_input("unsupported log encoding"))?;
+        if encoding == encoding_rs::UTF_16BE || encoding == encoding_rs::UTF_16LE {
+            return Err(AppError::invalid_input("UTF-16 is not supported for windowed logs"));
+        }
+        candidates.push(encoding);
+    } else {
+        candidates.push(encoding_rs::UTF_8);
+        if let Some(fallback) = session_encoding
+            .and_then(|label| encoding_rs::Encoding::for_label_no_replacement(label.as_bytes()))
+            .filter(|encoding| {
+                *encoding != encoding_rs::UTF_8
+                    && *encoding != encoding_rs::UTF_16BE
+                    && *encoding != encoding_rs::UTF_16LE
+            })
+        {
+            candidates.push(fallback);
+        }
+    }
+    let bom = if start == 0 && bytes.starts_with(&[0xef, 0xbb, 0xbf]) {
+        3
+    } else {
+        0
+    };
+    for total_trim in 0..=6 {
+        for &encoding in &candidates {
+            // A real UTF-8 BOM is a stronger signal than a session fallback.
+            if bom != 0 && encoding != encoding_rs::UTF_8 {
+                continue;
+            }
+            let max_split = if encoding == encoding_rs::UTF_8 || encoding == encoding_rs::GB18030 {
+                3
+            } else {
+                1
+            };
+            let prefix_limit = if start == 0 {
+                bom
+            } else {
+                max_split.min(bytes.len())
+            };
+            let suffix_limit = if start + (bytes.len() as u64) >= file_size {
+                0
+            } else {
+                max_split.min(bytes.len())
+            };
+            for prefix in bom..=prefix_limit {
+                let removed_prefix = prefix - bom;
+                if removed_prefix > total_trim {
+                    continue;
+                }
+                let suffix = total_trim - removed_prefix;
+                if suffix > suffix_limit || prefix + suffix > bytes.len() {
+                    continue;
+                }
+                let candidate = &bytes[prefix..bytes.len() - suffix];
+                // A page of invalid bytes must not be made to "succeed" by
+                // dropping everything; BOM-only is the one valid exception.
+                if candidate.is_empty() && bytes.len() > bom {
+                    continue;
+                }
+                if let Some(decoded) =
+                    encoding.decode_without_bom_handling_and_without_replacement(candidate)
+                {
+                    return Ok((
+                        decoded.into_owned(),
+                        // A leading UTF-8 BOM belongs to the first page but
+                        // is not rendered. Keep its original byte start so
+                        // "Earlier" cannot loop forever over a BOM-only page.
+                        start + (prefix - bom) as u64,
+                        start + (bytes.len() - suffix) as u64,
+                        encoding.name().to_string(),
+                    ));
+                }
+            }
+        }
+    }
+    Err(AppError::invalid_input("the log cannot be decoded; choose its encoding explicitly"))
+}
 
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -338,6 +492,104 @@ impl Sftp {
         ))
     }
 
+    /// Read only one bounded byte interval. Unlike the editor, this does not
+    /// copy the full file or reject a file solely because it is very large.
+    async fn read_log_window(
+        &self,
+        path: &str,
+        anchor: Option<u64>,
+        before: bool,
+        encoding_auto: bool,
+    ) -> Result<(Vec<u8>, u64, u64, u64, Option<i64>, usize)> {
+        let metadata = self
+            .raw
+            .stat(path)
+            .await
+            .map_err(|error| AppError::invalid_input(format!("{path}: {error}")))?
+            .attrs;
+        if metadata.is_dir()
+            || metadata.permissions.is_some_and(|mode| {
+                let kind = mode & 0o170000;
+                kind != 0 && kind != 0o100000
+            })
+        {
+            return Err(AppError::invalid_input("select a regular text file"));
+        }
+        let size = metadata.size.ok_or_else(|| {
+            AppError::invalid_input("the server did not report a regular file size")
+        })?;
+        let (bounded_start, end) = log_window_bounds(size, anchor, before);
+        // A fresh automatic tail read probes up to one complete four-byte
+        // UTF-8 character before the boundary. Probe bytes are for charset
+        // detection only: the actual window must keep its original bounds.
+        // Later pages already have a fixed encoding and need no probe.
+        let prefix_len = if encoding_auto && before && anchor.is_none() {
+            bounded_start.min(4) as usize
+        } else {
+            0
+        };
+        let start = bounded_start - prefix_len as u64;
+        if start == end {
+            return Ok((
+                Vec::new(),
+                start,
+                end,
+                size,
+                metadata.mtime.map(|value| value as i64 * 1000),
+                prefix_len,
+            ));
+        }
+        let handle = self
+            .raw
+            .open(path, OpenFlags::READ, FileAttributes::empty())
+            .await
+            .map_err(|error| AppError::invalid_input(format!("{path}: {error}")))?
+            .handle;
+        let mut bytes = Vec::with_capacity((end - start) as usize);
+        let mut offset = start;
+        let result = async {
+            while offset < end {
+                let count = (end - offset).min(64 * 1024) as u32;
+                match self.raw.read(&handle, offset, count).await {
+                    Ok(data) if !data.data.is_empty() => {
+                        let wanted = (end - offset) as usize;
+                        let take = data.data.len().min(wanted);
+                        bytes.extend_from_slice(&data.data[..take]);
+                        offset += take as u64;
+                    }
+                    Err(russh_sftp::client::error::Error::Status(status))
+                        if status.status_code == StatusCode::Eof =>
+                    {
+                        break;
+                    }
+                    Ok(_) => break,
+                    Err(error) => return Err(AppError::new(format!("reading {path}: {error}"))),
+                }
+            }
+            Ok(())
+        }
+        .await;
+        let _ = self.raw.close(&handle).await;
+        result?;
+        if offset != end {
+            // The file was truncated/replaced between stat and read (or the
+            // server stopped yielding bytes). Returning an apparently valid
+            // short page with the old size would make Next/Follow stall.
+            return Err(AppError::coded(
+                ErrorCode::Conflict,
+                "the log changed or ended during this read; reload the latest window",
+            ));
+        }
+        Ok((
+            bytes,
+            start,
+            offset,
+            size,
+            metadata.mtime.map(|value| value as i64 * 1000),
+            prefix_len,
+        ))
+    }
+
     async fn write(&self, path: &str, bytes: &[u8], permissions: Option<u32>) -> Result<()> {
         let handle = self
             .raw
@@ -577,6 +829,47 @@ pub(crate) async fn read_preview_bytes(
     })
     .await
     .map_err(|_| AppError::timeout("the image preview read timed out"))?
+}
+
+/// A windowed, read-only log operation; never opens a writable SFTP handle.
+pub async fn read_log_window(
+    state: &crate::commands::AppState,
+    id: &str,
+    path: &str,
+    anchor: Option<u64>,
+    before: bool,
+    encoding: Option<&str>,
+) -> Result<LogWindow> {
+    let path = validate_path(path)?;
+    let (profile, transport) = transport_of(state, id)?;
+    let sftp = sftp_for(transport).await?;
+    let (bytes, start, _, size, modified_at, prefix_len) = tokio::time::timeout(
+        Duration::from_secs(30),
+        sftp.read_log_window(path, anchor, before, encoding.is_none()),
+    )
+    .await
+    .map_err(|_| AppError::timeout("reading the log window timed out"))??;
+    let selected = if encoding.is_none() && utf8_boundary_evidence(&bytes, prefix_len) {
+        Some("UTF-8")
+    } else {
+        encoding
+    };
+    let (content, start, end, encoding) = decode_log_window(
+        &bytes[prefix_len..],
+        start + prefix_len as u64,
+        size,
+        profile.encoding.as_deref(),
+        selected,
+    )?;
+    Ok(LogWindow {
+        path: path.to_string(),
+        start,
+        end,
+        size,
+        content,
+        encoding,
+        modified_at,
+    })
 }
 
 /// A save is serialized per *file*, not per session: two sessions logged in
@@ -848,6 +1141,134 @@ pub async fn write_text(
 /// A wire-protocol fixture for the editor save's replacement ladder.
 #[cfg(test)]
 mod sftp_replace_tests;
+
+#[cfg(test)]
+mod log_window_tests {
+    use super::*;
+
+    #[test]
+    fn bounds_are_bounded_even_for_an_eight_gib_log() {
+        let size = 8 * 1024 * 1024 * 1024u64 + 17;
+        let (start, end) = log_window_bounds(size, None, true);
+        assert_eq!(end, size);
+        assert_eq!(end - start, LOG_WINDOW_BYTES);
+        assert_eq!(log_window_bounds(size, Some(start), true).1, start);
+        assert_eq!(log_window_bounds(size, Some(size), false), (size, size));
+        assert_eq!(log_window_bounds(size, Some(2), true), (0, 2));
+        assert_eq!(log_window_bounds(0, None, true), (0, 0));
+    }
+
+    #[test]
+    fn a_utf8_character_cut_at_either_page_boundary_is_not_replaced() {
+        let bytes = "开头🙂结尾".as_bytes();
+        let smile = "🙂".as_bytes();
+        let emoji_start = bytes.windows(smile.len()).position(|slice| slice == smile).unwrap();
+        // First page ends inside the four-byte emoji. The next page starts
+        // from the returned boundary, so no complete character is skipped.
+        let (first, first_start, first_end, _) =
+            decode_log_window(&bytes[..emoji_start + 2], 0, bytes.len() as u64, None, None).unwrap();
+        assert_eq!(first, "开头");
+        assert_eq!(first_start, 0);
+        assert_eq!(first_end, emoji_start as u64);
+        let (next, next_start, next_end, _) =
+            decode_log_window(&bytes[first_end as usize..], first_end, bytes.len() as u64, None, Some("UTF-8"))
+                .unwrap();
+        assert_eq!(first + &next, "开头🙂结尾");
+        assert_eq!(next_start, first_end);
+        assert_eq!(next_end, bytes.len() as u64);
+        // A backwards page that starts inside the emoji drops its partial
+        // prefix; loading the previous page up to its returned start restores
+        // the complete character.
+        let (_, trimmed_start, _, _) = decode_log_window(
+            &bytes[emoji_start + 2..],
+            (emoji_start + 2) as u64,
+            bytes.len() as u64,
+            None,
+            Some("UTF-8"),
+        )
+        .unwrap();
+        assert_eq!(trimmed_start, (emoji_start + 4) as u64);
+    }
+
+    #[test]
+    fn gbk_fallback_preserves_complete_middle_pages_and_utf8_remains_preferred() {
+        let (gbk, _, _) = encoding_rs::GBK.encode("测试日志");
+        let (decoded, _, _, encoding) =
+            decode_log_window(&gbk, 0, gbk.len() as u64, Some("gbk"), None).unwrap();
+        assert_eq!(decoded, "测试日志");
+        assert_eq!(encoding, "GBK");
+        let utf8 = "utf8日志".as_bytes();
+        let (decoded, _, _, encoding) =
+            decode_log_window(utf8, 0, utf8.len() as u64, Some("gbk"), None).unwrap();
+        assert_eq!(decoded, "utf8日志");
+        assert_eq!(encoding, "UTF-8");
+        assert!(decode_log_window(b"bad\0log", 0, 7, None, None).is_err());
+        // Previously UTF-8 consumed the leading two GBK bytes as a bogus
+        // window boundary and silently showed only "abc". A complete GBK
+        // candidate must win over any trimmed UTF-8 candidate.
+        let middle = [0xd6, 0xd0, b'a', b'b', b'c'];
+        let (decoded, start, end, encoding) =
+            decode_log_window(&middle, 101, 200, Some("gbk"), None).unwrap();
+        assert_eq!(decoded, "中abc");
+        assert_eq!((start, end), (101, 106));
+        assert_eq!(encoding, "GBK");
+        let (locked, _, _, _) =
+            decode_log_window(&middle, 101, 200, None, Some("GBK")).unwrap();
+        assert_eq!(locked, "中abc");
+    }
+
+    #[test]
+    fn initial_tail_charset_probe_never_pollutes_the_visible_page() {
+        let complete = "🙂abc".as_bytes();
+        // Include boundaries inside the emoji, immediately after it, and
+        // after one ASCII byte. These must never make an orphan suffix look
+        // like GBK or leak look-behind characters into the visible page.
+        for boundary in [1usize, 2, 3, 4, 5] {
+            let lookbehind = boundary.min(4);
+            let probed = &complete[boundary - lookbehind..];
+            let detected = utf8_boundary_evidence(probed, lookbehind);
+            let selected = detected.then_some("UTF-8");
+            let (visible, start, end, codec) = decode_log_window(
+                &probed[lookbehind..],
+                boundary as u64,
+                complete.len() as u64,
+                Some("GBK"),
+                selected,
+            )
+            .unwrap();
+            assert_eq!(visible, if boundary <= 4 { "abc" } else { "bc" });
+            assert_eq!((start, end), (boundary.max(4) as u64, complete.len() as u64));
+            assert_eq!(codec, "UTF-8");
+        }
+        // An orphan byte in a probe must never be surfaced or used to force
+        // a different codec when the underlying window is plain ASCII.
+        let orphan_probe = [0x9f, 0x99, 0x82, b'a', b'b', b'c'];
+        assert!(!utf8_boundary_evidence(&orphan_probe, 3));
+        let (visible, _, _, codec) = decode_log_window(
+            &orphan_probe[3..],
+            50,
+            53,
+            Some("GBK"),
+            None,
+        )
+        .unwrap();
+        assert_eq!(visible, "abc");
+        assert_eq!(codec, "UTF-8");
+    }
+
+    #[test]
+    fn bom_crlf_and_empty_files_keep_navigable_offsets() {
+        let raw = b"\xef\xbb\xbfhello\r\n";
+        let (decoded, start, end, encoding) =
+            decode_log_window(raw, 0, raw.len() as u64, None, None).unwrap();
+        assert_eq!(decoded, "hello\r\n");
+        assert_eq!((start, end), (0, raw.len() as u64));
+        assert_eq!(encoding, "UTF-8");
+        let (decoded, start, end, _) = decode_log_window(b"", 0, 0, None, None).unwrap();
+        assert!(decoded.is_empty());
+        assert_eq!((start, end), (0, 0));
+    }
+}
 
 #[cfg(test)]
 mod tests {

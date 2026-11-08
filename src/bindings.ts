@@ -236,6 +236,8 @@ export const commands = {
 	sampleResources: (id: string, requestId: string) => __TAURI_INVOKE<Metrics>("sample_resources", { id, requestId }),
 	cancelResourceSample: (requestId: string) => __TAURI_INVOKE<void>("cancel_resource_sample", { requestId }),
 	projectReadText: (id: string | null, path: string) => __TAURI_INVOKE<TextFile>("project_read_text", { id, path }),
+	/**  Read a bounded, read-only slice of a local or SSH log by byte offset. */
+	projectReadLogWindow: (id: string | null, path: string, anchor: number | null, before: boolean, encoding: string | null) => __TAURI_INVOKE<LogWindow>("project_read_log_window", { id, path, anchor, before, encoding }),
 	/**
 	 *  Saves one text file, refusing when the server's copy no longer matches
 	 *  `expectedHash`. The returned hash becomes the next save's baseline.
@@ -1607,6 +1609,17 @@ export type StateEvent = {
 	id: string,
 	state: string,
 	message: string | null,
+};
+
+export type LogWindow = {
+	path: string,
+	/**  Byte offsets in the original file, not character offsets. */
+	start: number,
+	end: number,
+	size: number,
+	content: string,
+	encoding: string,
+	modifiedAt: number | null,
 };
 
 export type TextFile = {
