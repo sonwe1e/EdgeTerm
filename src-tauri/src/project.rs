@@ -91,14 +91,18 @@ pub(crate) fn decode_log_window(
     selected_encoding: Option<&str>,
 ) -> Result<(String, u64, u64, String)> {
     if bytes.contains(&0) {
-        return Err(AppError::invalid_input("the log looks binary; only text can be viewed"));
+        return Err(AppError::invalid_input(
+            "the log looks binary; only text can be viewed",
+        ));
     }
     let mut candidates = Vec::with_capacity(2);
     if let Some(label) = selected_encoding {
         let encoding = encoding_rs::Encoding::for_label_no_replacement(label.as_bytes())
             .ok_or_else(|| AppError::invalid_input("unsupported log encoding"))?;
         if encoding == encoding_rs::UTF_16BE || encoding == encoding_rs::UTF_16LE {
-            return Err(AppError::invalid_input("UTF-16 is not supported for windowed logs"));
+            return Err(AppError::invalid_input(
+                "UTF-16 is not supported for windowed logs",
+            ));
         }
         candidates.push(encoding);
     } else {
@@ -171,7 +175,9 @@ pub(crate) fn decode_log_window(
             }
         }
     }
-    Err(AppError::invalid_input("the log cannot be decoded; choose its encoding explicitly"))
+    Err(AppError::invalid_input(
+        "the log cannot be decoded; choose its encoding explicitly",
+    ))
 }
 
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
@@ -817,7 +823,9 @@ pub(crate) async fn read_preview_bytes(
             }
         })?;
         if bytes.len() > limit {
-            return Err(AppError::invalid_input("the image exceeds the preview size limit"));
+            return Err(AppError::invalid_input(
+                "the image exceeds the preview size limit",
+            ));
         }
         if bytes.len() as u64 != size {
             return Err(AppError::coded(
@@ -1162,17 +1170,26 @@ mod log_window_tests {
     fn a_utf8_character_cut_at_either_page_boundary_is_not_replaced() {
         let bytes = "开头🙂结尾".as_bytes();
         let smile = "🙂".as_bytes();
-        let emoji_start = bytes.windows(smile.len()).position(|slice| slice == smile).unwrap();
+        let emoji_start = bytes
+            .windows(smile.len())
+            .position(|slice| slice == smile)
+            .unwrap();
         // First page ends inside the four-byte emoji. The next page starts
         // from the returned boundary, so no complete character is skipped.
         let (first, first_start, first_end, _) =
-            decode_log_window(&bytes[..emoji_start + 2], 0, bytes.len() as u64, None, None).unwrap();
+            decode_log_window(&bytes[..emoji_start + 2], 0, bytes.len() as u64, None, None)
+                .unwrap();
         assert_eq!(first, "开头");
         assert_eq!(first_start, 0);
         assert_eq!(first_end, emoji_start as u64);
-        let (next, next_start, next_end, _) =
-            decode_log_window(&bytes[first_end as usize..], first_end, bytes.len() as u64, None, Some("UTF-8"))
-                .unwrap();
+        let (next, next_start, next_end, _) = decode_log_window(
+            &bytes[first_end as usize..],
+            first_end,
+            bytes.len() as u64,
+            None,
+            Some("UTF-8"),
+        )
+        .unwrap();
         assert_eq!(first + &next, "开头🙂结尾");
         assert_eq!(next_start, first_end);
         assert_eq!(next_end, bytes.len() as u64);
@@ -1212,8 +1229,7 @@ mod log_window_tests {
         assert_eq!(decoded, "中abc");
         assert_eq!((start, end), (101, 106));
         assert_eq!(encoding, "GBK");
-        let (locked, _, _, _) =
-            decode_log_window(&middle, 101, 200, None, Some("GBK")).unwrap();
+        let (locked, _, _, _) = decode_log_window(&middle, 101, 200, None, Some("GBK")).unwrap();
         assert_eq!(locked, "中abc");
     }
 
@@ -1237,21 +1253,18 @@ mod log_window_tests {
             )
             .unwrap();
             assert_eq!(visible, if boundary <= 4 { "abc" } else { "bc" });
-            assert_eq!((start, end), (boundary.max(4) as u64, complete.len() as u64));
+            assert_eq!(
+                (start, end),
+                (boundary.max(4) as u64, complete.len() as u64)
+            );
             assert_eq!(codec, "UTF-8");
         }
         // An orphan byte in a probe must never be surfaced or used to force
         // a different codec when the underlying window is plain ASCII.
         let orphan_probe = [0x9f, 0x99, 0x82, b'a', b'b', b'c'];
         assert!(!utf8_boundary_evidence(&orphan_probe, 3));
-        let (visible, _, _, codec) = decode_log_window(
-            &orphan_probe[3..],
-            50,
-            53,
-            Some("GBK"),
-            None,
-        )
-        .unwrap();
+        let (visible, _, _, codec) =
+            decode_log_window(&orphan_probe[3..], 50, 53, Some("GBK"), None).unwrap();
         assert_eq!(visible, "abc");
         assert_eq!(codec, "UTF-8");
     }

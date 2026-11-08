@@ -31,7 +31,8 @@ pub async fn project_read_log_window(
     encoding: Option<String>,
 ) -> Result<LogWindow> {
     if let Some(id) = id {
-        crate::project::read_log_window(&state, &id, &path, anchor, before, encoding.as_deref()).await
+        crate::project::read_log_window(&state, &id, &path, anchor, before, encoding.as_deref())
+            .await
     } else {
         tokio::task::spawn_blocking(move || {
             crate::local_text::read_log_window(&path, anchor, before, encoding.as_deref())
