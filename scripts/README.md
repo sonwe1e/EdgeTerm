@@ -14,9 +14,10 @@ path for the test operator to review and clean up. Local synthetic data and
 journals live in an automatically cleaned temporary directory. **The run ID and
 exact remote target are printed before any remote write**, so even an aborted
 seed, plan or verification can be cleaned up using the failed test log. Reserve at
-least 1 GiB of local scratch space; every completed run leaves 512 MiB of
-remote data, so 6 combinations × 3 repeats require **9 GiB of remote space**
-until the operator removes the recorded disposable paths.
+least 2 GiB of local scratch space (downloads need both the generated source
+and downloaded destination, plus temporary/journal overhead). Every completed
+run leaves 512 MiB of remote data, so 6 combinations × 3 repeats require
+**9 GiB of remote space** until the operator removes the disposable paths.
 
 The three workloads all carry **512 MiB**, so file count and file size can be
 compared without silently changing total payload:
