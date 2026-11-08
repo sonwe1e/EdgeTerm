@@ -170,14 +170,53 @@ fn validate_image(bytes: &[u8], kind: ImageKind) -> Result<()> {
     Ok(())
 }
 
+/// Preflight *before* opening: File::open on a FIFO can block forever while it
+/// waits for a writer. Do not even try to open a non-regular preview target.
+fn inspect_local_path(path: &str) -> Result<std::fs::Metadata> {
+    let metadata = std::fs::metadata(path)?;
+    if !metadata.is_file() || metadata.len() > MAX_BYTES as u64 {
+        return Err(AppError::invalid_input(
+            "the preview only opens regular images up to 16 MiB",
+        ));
+    }
+    Ok(metadata)
+}
+
 fn read_local(path: &str) -> Result<Vec<u8>> {
+    let path_metadata = inspect_local_path(path)?;
+    // On Unix, make the open itself nonblocking as well: the path can turn
+    // into a FIFO after preflight but before open. Regular files ignore this
+    // flag, while a raced FIFO opens promptly and fails the post-open check.
+    #[cfg(unix)]
+    let mut file = {
+        use std::os::unix::fs::OpenOptionsExt;
+        std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NONBLOCK)
+            .open(path)?
+    };
+    #[cfg(not(unix))]
     let mut file = std::fs::File::open(path)?;
+
     let before = file.metadata()?;
     if !before.is_file() || before.len() > MAX_BYTES as u64 {
         return Err(AppError::invalid_input(
             "the preview only opens regular images up to 16 MiB",
         ));
     }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if path_metadata.dev() != before.dev() || path_metadata.ino() != before.ino() {
+            return Err(AppError::coded(
+                ErrorCode::Conflict,
+                "the image path changed while opening; retry preview",
+            ));
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = path_metadata;
+
     let mut bytes = Vec::with_capacity(before.len() as usize);
     (&mut file)
         .take((MAX_BYTES + 1) as u64)
@@ -258,5 +297,35 @@ mod tests {
         assert!(validate_image(&webp, ImageKind::Webp).is_ok());
         webp[4] = 0;
         assert!(validate_image(&webp, ImageKind::Webp).is_err());
+    }
+
+    /// This deliberately tests *only preflight*. Calling a blocking open on
+    /// the fixture would turn a regression test into an unkillable CI hang.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn fifo_is_rejected_by_preflight_without_opening_it() {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "edgeterm-preview-fifo-{}-{unique}.png",
+            std::process::id()
+        ));
+        let c_path = CString::new(path.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) }, 0);
+        let result = inspect_local_path(path.to_str().unwrap());
+        std::fs::remove_file(&path).unwrap();
+        assert!(matches!(
+            result,
+            Err(AppError {
+                code: ErrorCode::InvalidInput,
+                ..
+            })
+        ));
     }
 }

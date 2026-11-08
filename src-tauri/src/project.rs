@@ -551,7 +551,19 @@ pub(crate) async fn read_preview_bytes(
     let (_, transport) = transport_of(state, id)?;
     tokio::time::timeout(Duration::from_secs(45), async {
         let sftp = sftp_for(transport).await?;
-        let (bytes, size, ..) = sftp.read(path, limit).await?;
+        // Keep the editor's existing SFTP error wording unchanged. Only this
+        // preview call translates the exact bounded-read limit failure.
+        let (bytes, size, ..) = sftp.read(path, limit).await.map_err(|error| {
+            if error.code == ErrorCode::InvalidInput
+                && error.message.ends_with("-byte editor limit")
+            {
+                AppError::invalid_input(format!(
+                    "the image exceeds the {limit}-byte preview limit; open it externally"
+                ))
+            } else {
+                error
+            }
+        })?;
         if bytes.len() > limit {
             return Err(AppError::invalid_input("the image exceeds the preview size limit"));
         }
