@@ -10,12 +10,30 @@
  * and the scratch's buffer lines are then MOVED (not cloned; the scratch is
  * disposed afterwards) into the top of the target buffer through the same
  * CircularList splice xterm's own InputHandler uses (see
- * terminalHistoryPrepend.ts). Callers keep the viewport stable with
- * shiftViewport and clear selections before prepending.
+ * terminalHistoryPrepend.ts). Commit also shifts xterm's screen base and
+ * viewport and clears selections, so subsequent shell output still appends
+ * after the original hot screen.
  */
 import { Terminal } from "@xterm/xterm";
 import { DEFAULT_COLOR, type HistoryRecord, type HistoryRun } from "./terminalHistory";
 import { internalList } from "./terminalHistoryPrepend";
+
+/** The screen position is stored separately from the CircularList rows. */
+interface LiveBufferPosition {
+  lines: unknown;
+  ybase: number;
+  ydisp: number;
+}
+
+function liveBufferPosition(term: Terminal): LiveBufferPosition | null {
+  const buffer = (
+    term as unknown as {
+      _core?: { _bufferService?: { buffer?: LiveBufferPosition } };
+    }
+  )._core?._bufferService?.buffer;
+  if (!buffer || !Number.isInteger(buffer.ybase) || !Number.isInteger(buffer.ydisp)) return null;
+  return buffer;
+}
 
 // xterm's color packing (common/buffer/Constants.ts; semanticPaint cites the
 // same layout): color mode in bits 25-26, RGB/palette below.
@@ -181,16 +199,16 @@ export function recordsToEscapes(records: readonly HistoryRecord[]): string {
  * target's current columns, so the number of prepended rows can exceed the
  * record count; that count is what the promise resolves to. Resolves 0 —
  * without touching the target — when there is nothing to prepend or the
- * buffer internals do not match the expected shapes. The viewport is not
- * shifted here; callers use shiftViewport (terminalHistoryPrepend.ts).
+ * buffer internals do not match the expected shapes. The optional guard is
+ * checked again after scratch parsing, before touching the target buffer.
  */
 export async function prependRecords(
   term: Terminal,
   records: readonly HistoryRecord[],
+  canCommit?: () => boolean,
 ): Promise<number> {
   if (records.length === 0) return 0;
-  const target = internalList(term);
-  if (!target) return 0;
+  if (term.buffer.active.type !== "normal" || (canCommit && !canCommit())) return 0;
   const cols = Math.max(1, term.cols);
   // One row per cell of width, rounded up per record (the scratch re-wraps
   // at the target's columns; summing widths globally would undercount).
@@ -204,17 +222,43 @@ export async function prependRecords(
     const list = internalList(scratch);
     if (!list) return 0;
     const lines: unknown[] = [];
-    for (let index = 0; index < list.length; index++) {
+    // The scratch terminal has at least two screen rows even when a page
+    // contains just one short logical line. Rows after the final cursor are
+    // unused screen padding, not history, and must not be prepended.
+    // This still includes real blank records: CRLF advances the cursor to
+    // their row, and a single empty record owns row 0.
+    const lastProducedRow = scratch.buffer.active.baseY + scratch.buffer.active.cursorY;
+    if (lastProducedRow < 0 || lastProducedRow >= list.length) return 0;
+    for (let index = 0; index <= lastProducedRow; index++) {
       const line = list.get(index);
       if (!line) return 0;
       lines.push(line);
     }
+    // `scratch.write` is async. The user may have entered a full-screen TUI,
+    // switched the preference off, cleared the screen, or resized meanwhile.
+    // Recheck immediately before mutating the live buffer; never splice
+    // normal shell history into an alternate screen or with stale wrapping.
+    if (term.buffer.active.type !== "normal" || term.cols !== cols || (canCommit && !canCommit()))
+      return 0;
+    const target = internalList(term);
+    const position = liveBufferPosition(term);
+    if (!target || !position || position.lines !== target) return 0;
+    // xterm tracks trims and scrolls in selections, not insertions. Clear
+    // only after the commit guard, so an Agent's alternate-screen selection
+    // survives an abandoned cold-history fetch.
+    term.clearSelection();
     const lengthBefore = target.length;
     // Grow the capacity first: CircularList.splice trims from the oldest
     // end when an insertion would exceed maxLength (see prependClonedLines).
     target.maxLength += lines.length;
     target.splice(0, 0, ...lines);
     if (target.length !== lengthBefore + lines.length) return 0;
+    // CircularList.splice moves every hot row down but does not move the
+    // viewport/cursor's screen base. Without this adjustment the next shell
+    // write overwrites reinserted cold history instead of the original hot
+    // screen, and the capture's frontier never advances into new output.
+    position.ybase += lines.length;
+    position.ydisp += lines.length;
     return lines.length;
   } finally {
     scratch.dispose();

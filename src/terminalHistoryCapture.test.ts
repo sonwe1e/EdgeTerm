@@ -2,6 +2,7 @@ import { Terminal } from "@xterm/xterm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { decodeHistoryBatch, type HistoryRecord } from "./terminalHistory";
 import { createHistoryCapture } from "./terminalHistoryCapture";
+import { prependRecords } from "./terminalHistoryMaterialize";
 
 const terminals: Terminal[] = [];
 
@@ -56,6 +57,65 @@ const consecutive = (records: HistoryRecord[]) =>
   expect(records.map((record) => record.absLine)).toEqual(records.map((_, index) => index + 1));
 
 describe("createHistoryCapture", () => {
+  it("timestamps logical records from their physical head row and clamps across batches", async () => {
+    const terminal = new Terminal({ cols: 20, rows: 5, scrollback: 30 });
+    terminals.push(terminal);
+    const batches: Uint8Array[] = [];
+    const capture = createHistoryCapture(terminal, {
+      onBatch: (bytes) => batches.push(bytes),
+      lineTimeAtRow: (row) => {
+        const text = terminal.buffer.active.getLine(row)?.translateToString(true) ?? "";
+        const index = /^T(\d+)/.exec(text);
+        if (!index) return null;
+        // A cursor-addressed repaint dated an older line later than a
+        // following line. The codec requires nondecreasing timestamps.
+        return Number(index[1]) === 20 ? 100 : 10_000 + Number(index[1]);
+      },
+    });
+    for (let index = 0; index < 80; index += 4) {
+      let content = "";
+      for (let next = index; next < index + 4; next++) {
+        content += `T${next} ${"x".repeat(25)}\r\n`;
+      }
+      await write(terminal, content);
+      capture.notifyWriteParsed();
+    }
+    const records = reassemble(batches);
+    expect(records.length).toBeGreaterThan(20);
+    expect(records[0].timeMs).toBe(10_000);
+    expect(records.some((record) => record.text.startsWith("T20 "))).toBe(true);
+    for (let index = 1; index < records.length; index++) {
+      expect(records[index].timeMs).toBeGreaterThanOrEqual(records[index - 1].timeMs);
+    }
+    capture.dispose();
+  });
+
+  it("reports the oldest resident exported logical line and moves it after prepend", async () => {
+    const terminal = new Terminal({ cols: COLS, rows: ROWS, scrollback: SCROLLBACK });
+    terminals.push(terminal);
+    const batches: Uint8Array[] = [];
+    const capture = createHistoryCapture(terminal, { onBatch: (bytes) => batches.push(bytes) });
+    expect(capture.oldestBufferedExportedAbsLine()).toBeNull();
+    await writeLines(terminal, capture, 0, 300);
+    const before = capture.oldestBufferedExportedAbsLine();
+    expect(before).not.toBeNull();
+    expect(before!).toBeGreaterThan(3);
+    const restore = reassemble(batches).filter(
+      (record) => record.absLine >= before! - 2 && record.absLine < before!,
+    );
+    expect(restore).toHaveLength(2);
+    const rows = await prependRecords(terminal, restore);
+    expect(rows).toBeGreaterThan(0);
+    capture.notePrepended(rows);
+    expect(capture.oldestBufferedExportedAbsLine()).toBe(before! - 2);
+    const exportedBeforeMoreOutput = capture.exportedLines();
+    await writeLines(terminal, capture, 300, 450);
+    expect(capture.exportedLines()).toBeGreaterThan(exportedBeforeMoreOutput + 80);
+    terminal.resize(20, ROWS);
+    expect(capture.oldestBufferedExportedAbsLine()).toBeNull();
+    capture.dispose();
+  });
+
   it("exports every logical line across repeated trims without gaps or duplicates", async () => {
     const terminal = new Terminal({ cols: COLS, rows: ROWS, scrollback: SCROLLBACK });
     terminals.push(terminal);
@@ -101,6 +161,77 @@ describe("createHistoryCapture", () => {
     expect(onMismatch).not.toHaveBeenCalled();
     const records = reassemble(batches);
     expect(records.length).toBeGreaterThan(0);
+    consecutive(records);
+    for (let index = 0; index < records.length; index++) {
+      expect(records[index].text).toBe(visible(index));
+    }
+    capture.dispose();
+  });
+
+  it("preserves the resize frontier when unexported log lines repeat exported text", async () => {
+    const run = async (repeat: boolean) => {
+      const terminal = new Terminal({ cols: COLS, rows: ROWS, scrollback: SCROLLBACK });
+      terminals.push(terminal);
+      const batches: Uint8Array[] = [];
+      const onMismatch = vi.fn();
+      const capture = createHistoryCapture(terminal, {
+        onBatch: (bytes) => batches.push(bytes),
+        onMismatch,
+      });
+      const append = async (from: number, to: number) => {
+        for (let start = from; start < to; start += 5) {
+          let chunk = "";
+          for (let index = start; index < Math.min(start + 5, to); index++) {
+            // Identical physical row layout in both runs. Only one varies
+            // text, making the old `Set.has(text)` resync unambiguous.
+            const line = repeat
+              ? "R".repeat(27)
+              : `R${String(index).padStart(5, "0")}${"x".repeat(21)}`;
+            chunk += `${line}\r\n`;
+          }
+          await write(terminal, chunk);
+          capture.notifyWriteParsed();
+        }
+      };
+      await append(0, 300);
+      terminal.resize(20, ROWS);
+      await append(300, 600);
+      const records = reassemble(batches);
+      expect(onMismatch).not.toHaveBeenCalled();
+      consecutive(records);
+      capture.dispose();
+      return records.length;
+    };
+
+    const distinctCount = await run(false);
+    const repeatedCount = await run(true);
+    expect(repeatedCount).toBe(distinctCount);
+  });
+
+  it("does not lose the normal history frontier when resizing in alternate screen", async () => {
+    const terminal = new Terminal({ cols: COLS, rows: ROWS, scrollback: SCROLLBACK });
+    terminals.push(terminal);
+    const batches: Uint8Array[] = [];
+    const onMismatch = vi.fn();
+    const capture = createHistoryCapture(terminal, {
+      onBatch: (bytes) => batches.push(bytes),
+      onMismatch,
+    });
+    await writeLines(terminal, capture, 0, 300);
+    await write(terminal, "\u001b[?1049h");
+    capture.notifyWriteParsed();
+    expect(terminal.buffer.active.type).toBe("alternate");
+    terminal.resize(20, ROWS);
+    // Shell output can arrive in the *same* PTY packet that exits alternate
+    // screen. A lazy resync at onWriteParsed would skip this first chunk.
+    let normalOutput = "\u001b[?1049l";
+    for (let index = 300; index < 305; index++) normalOutput += written(index);
+    await write(terminal, normalOutput);
+    capture.notifyWriteParsed();
+    expect(terminal.buffer.active.type).toBe("normal");
+    await writeLines(terminal, capture, 305, 600);
+    const records = reassemble(batches);
+    expect(onMismatch).not.toHaveBeenCalled();
     consecutive(records);
     for (let index = 0; index < records.length; index++) {
       expect(records[index].text).toBe(visible(index));

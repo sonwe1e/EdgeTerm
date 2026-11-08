@@ -182,6 +182,76 @@ describe("recordsToEscapes", () => {
 });
 
 describe("prependRecords", () => {
+  it("does not prepend unused scratch padding for a one-line cold page", async () => {
+    const target = new Terminal({ cols: 40, rows: 5, scrollback: 100 });
+    terminals.push(target);
+    const records: HistoryRecord[] = [{ absLine: 1, timeMs: 1000, text: "short", runs: [] }];
+    const before = target.buffer.active.length;
+    expect(await prependRecords(target, records)).toBe(1);
+    expect(target.buffer.active.length).toBe(before + 1);
+    expect(target.buffer.active.getLine(0)?.translateToString(true)).toBe("short");
+  });
+
+  it("preserves a genuine empty record but not the padding after it", async () => {
+    const target = new Terminal({ cols: 40, rows: 5, scrollback: 100 });
+    terminals.push(target);
+    const blank: HistoryRecord[] = [{ absLine: 1, timeMs: 1000, text: "", runs: [] }];
+    expect(await prependRecords(target, blank)).toBe(1);
+    const withTrailingBlank: HistoryRecord[] = [
+      { absLine: 2, timeMs: 2000, text: "line", runs: [] },
+      { absLine: 3, timeMs: 3000, text: "", runs: [] },
+    ];
+    expect(await prependRecords(target, withTrailingBlank)).toBe(2);
+    expect(reassembleFrom(target, 2).map((line) => line.text)).toEqual(["line", ""]);
+  });
+
+  it("returns the actual wrapped physical rows of a narrow one-record page", async () => {
+    const target = new Terminal({ cols: 4, rows: 5, scrollback: 100 });
+    terminals.push(target);
+    const records: HistoryRecord[] = [{ absLine: 1, timeMs: 1000, text: "abcdefghi", runs: [] }];
+    expect(await prependRecords(target, records)).toBe(3);
+    expect(target.buffer.active.getLine(1)?.isWrapped).toBe(true);
+    expect(target.buffer.active.getLine(2)?.isWrapped).toBe(true);
+  });
+
+  it("rechecks the commit guard after the async scratch write", async () => {
+    const target = new Terminal({ cols: 40, rows: 5, scrollback: 100 });
+    terminals.push(target);
+    const before = target.buffer.active.length;
+    let checks = 0;
+    const records: HistoryRecord[] = [{ absLine: 1, timeMs: 0, text: "short", runs: [] }];
+    expect(await prependRecords(target, records, () => ++checks === 1)).toBe(0);
+    expect(checks).toBe(2);
+    expect(target.buffer.active.length).toBe(before);
+  });
+
+  it("moves the screen base with prepended rows so later output cannot overwrite cold history", async () => {
+    const target = new Terminal({ cols: 20, rows: 3, scrollback: 20 });
+    terminals.push(target);
+    await write(target, "warm\r\nhot\r\n");
+    const base = target.buffer.normal.baseY;
+    const display = target.buffer.normal.viewportY;
+    const records: HistoryRecord[] = [
+      { absLine: 1, timeMs: 1000, text: "cold one", runs: [] },
+      { absLine: 2, timeMs: 2000, text: "cold two", runs: [] },
+    ];
+    const added = await prependRecords(target, records);
+    expect(added).toBe(2);
+    expect(target.buffer.normal.baseY).toBe(base + added);
+    expect(target.buffer.normal.viewportY).toBe(display + added);
+    expect(target.buffer.normal.getLine(added)?.translateToString(true)).toBe("warm");
+    await write(target, "new output\r\n");
+    expect(target.buffer.normal.getLine(0)?.translateToString(true)).toBe("cold one");
+    expect(target.buffer.normal.getLine(1)?.translateToString(true)).toBe("cold two");
+    expect(target.buffer.normal.getLine(added)?.translateToString(true)).toBe("warm");
+    expect(target.buffer.normal.getLine(added + 1)?.translateToString(true)).toBe("hot");
+    expect(
+      Array.from({ length: target.buffer.normal.length }, (_, row) =>
+        target.buffer.normal.getLine(row)?.translateToString(true),
+      ),
+    ).toContain("new output");
+  });
+
   it("materializes captured records with text and styles intact", async () => {
     const records = await capturedRecords();
     const target = new Terminal({ cols: 40, rows: 24, scrollback: 2000 });
