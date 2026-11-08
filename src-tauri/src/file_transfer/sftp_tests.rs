@@ -1653,11 +1653,18 @@ async fn benchmark_real_server_transfer_matrix() {
     options.validate().unwrap();
 
     let run_id = uuid::Uuid::new_v4().to_string();
+    let remote_path = format!("{base}/edgeterm-bench-{run_id}");
+    // Print the exact operator-owned target BEFORE any SFTP mutation. If
+    // seeding, planning or verification panics, the failed test log still
+    // identifies the unique remote directory that may need manual cleanup.
+    println!(
+        "EDGETERM_SFTP_BENCH_TARGET run_id={run_id} remote_path={remote_path} workload={workload} direction={direction}"
+    );
+    std::io::Write::flush(&mut std::io::stdout()).unwrap();
     let scratch = BenchScratch::new();
     let source = scratch.0.join("source");
     let expected = bench_prepare(&source, &workload);
     let expected_bytes: u64 = expected.iter().map(|f| f.size).sum();
-    let remote_path = format!("{base}/edgeterm-bench-{run_id}");
 
     // A download needs a remote source. Seed it by the production SFTP copy
     // path OUTSIDE every measured interval; do not count seeding as download.
@@ -1832,6 +1839,8 @@ async fn benchmark_real_server_transfer_matrix() {
         "workload": workload,
         "direction": direction,
         "remote_path": remote_path,
+        "local_scratch_path": scratch.0.to_string_lossy(),
+        "local_scratch_filesystem": "not_detected",
         "files_expected": expected.len(),
         "bytes_expected": expected_bytes,
         "files_planned": planned_files,
@@ -1877,7 +1886,14 @@ async fn benchmark_real_server_transfer_matrix() {
 struct BenchScratch(PathBuf);
 impl BenchScratch {
     fn new() -> Self {
-        let path = std::env::temp_dir().join(format!("edgeterm-bench-{}", uuid::Uuid::new_v4()));
+        // On Linux, the default /tmp can be tmpfs. Callers measuring real
+        // disk I/O may place this fixture on a representative local volume.
+        let base = std::env::var_os("EDGETERM_BENCH_LOCAL_TEMP_BASE")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
+        let base = base.canonicalize().expect("benchmark local scratch base must exist");
+        assert!(base.is_dir(), "benchmark local scratch base must be a directory");
+        let path = base.join(format!("edgeterm-bench-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir(&path).unwrap();
         Self(path)
     }
