@@ -38,6 +38,7 @@ import { IS_MAC } from "../../platform";
 import { chordLabel } from "../../shortcuts";
 import { tabTitle, useActiveTab, useStore } from "../../store";
 import type { FileEntry } from "../../types";
+import type { ImagePreviewTarget } from "../../imagePreview";
 import { useFilerDownloads } from "../../useFilerDownloads";
 import { useFileSelection } from "../../useFileSelection";
 import { useStableCallback } from "../../useStableCallback";
@@ -46,6 +47,7 @@ import { ContextMenu, type MenuItem } from "../ContextMenu";
 import { DeleteEntryDialog } from "../DeleteEntryDialog";
 import { FilerTransferSummary } from "../FilerTransferSummary";
 import { Icon } from "../icons";
+import { ImagePreviewDialog } from "../ImagePreviewDialog";
 import { VirtualFileRows } from "../VirtualFileRows";
 
 /**
@@ -146,6 +148,13 @@ function FilerPanelBase() {
   const collapseSelection = useRef<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [imagePreview, setImagePreview] = useState<ImagePreviewTarget | null>(null);
+  // The preview belongs to the Filer's source, not to whichever tab becomes
+  // active while an SSH read is still in flight.
+  useEffect(() => {
+    if (imagePreview && (imagePreview.tabId !== (tab?.info.id ?? null) || offline))
+      setImagePreview(null);
+  }, [imagePreview, tab?.info.id, offline]);
   // Before the hooks that report through it: `reportError` carries every
   // error that is not the footer's own transfer failure (see the hook).
   const {
@@ -323,6 +332,14 @@ function FilerPanelBase() {
       uploadFolder,
       creating,
       entries,
+      previewImage: (entry) =>
+        setImagePreview({
+          id: crypto.randomUUID(),
+          tabId: tab?.info.id ?? null,
+          sessionId: remoteId,
+          path: entry.path,
+          name: entry.name,
+        }),
     });
 
   const remoteTitle = (label: string) => (remote ? label : `${label}${t("filer.sshOnly")}`);
@@ -1117,6 +1134,13 @@ function FilerPanelBase() {
       </div>
 
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={closeMenu} />}
+      {imagePreview && (
+        <ImagePreviewDialog
+          key={imagePreview.id}
+          target={imagePreview}
+          onClose={() => setImagePreview(null)}
+        />
+      )}
       {pendingDelete && (
         <DeleteEntryDialog
           entry={pendingDelete[0]}

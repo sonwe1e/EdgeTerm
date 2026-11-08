@@ -538,6 +538,35 @@ pub async fn read_text(
     })
 }
 
+/// Read a bounded binary preview through the existing authenticated SSH
+/// transport. Unlike an external-editor copy, this never creates a watched
+/// local file and therefore cannot upload anything back to the server.
+pub(crate) async fn read_preview_bytes(
+    state: &crate::commands::AppState,
+    id: &str,
+    path: &str,
+    limit: usize,
+) -> Result<Vec<u8>> {
+    let path = validate_path(path)?;
+    let (_, transport) = transport_of(state, id)?;
+    tokio::time::timeout(Duration::from_secs(45), async {
+        let sftp = sftp_for(transport).await?;
+        let (bytes, size, ..) = sftp.read(path, limit).await?;
+        if bytes.len() > limit {
+            return Err(AppError::invalid_input("the image exceeds the preview size limit"));
+        }
+        if bytes.len() as u64 != size {
+            return Err(AppError::coded(
+                ErrorCode::Conflict,
+                "the image was truncated while it was being read; retry preview",
+            ));
+        }
+        Ok(bytes)
+    })
+    .await
+    .map_err(|_| AppError::timeout("the image preview read timed out"))?
+}
+
 /// A save is serialized per *file*, not per session: two sessions logged in
 /// as the same user on the same host write the same file, so the key is the
 /// connection identity plus the canonical path. Using the tab id here would

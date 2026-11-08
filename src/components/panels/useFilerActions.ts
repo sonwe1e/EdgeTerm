@@ -10,6 +10,7 @@ import type { Translate } from "../../i18n";
 import { open as openDialog } from "../../nativeDialog";
 import { IS_MAC, IS_WINDOWS } from "../../platform";
 import type { FileEntry } from "../../types";
+import { imagePreviewMime } from "../../imagePreview";
 import { type MenuItem } from "../ContextMenu";
 import { appDisplayName, joinLocal, joinRemote, rememberOpenWithApp } from "./filerPresentation";
 import type { MenuState, NewEntryDraft, RenameDraft, TransferState } from "./filerTypes";
@@ -53,6 +54,7 @@ interface Options {
   uploadFolder: () => Promise<void>;
   creating: NewEntryDraft | null;
   entries: FileEntry[];
+  previewImage: (entry: FileEntry) => void;
 }
 
 export function useFilerActions({
@@ -88,6 +90,7 @@ export function useFilerActions({
   uploadFolder,
   creating,
   entries,
+  previewImage,
 }: Options) {
   const removeEntries = async (chosen: readonly FileEntry[]) => {
     setPendingDelete(null);
@@ -280,6 +283,16 @@ export function useFilerActions({
                   disabled: busy,
                   action: () => void openFileEditor(remoteId, entry.path),
                 },
+                ...(imagePreviewMime(entry.name)
+                  ? [
+                      {
+                        label: t("filer.previewImage"),
+                        icon: "file-media" as const,
+                        disabled: busy,
+                        action: () => previewImage(entry),
+                      },
+                    ]
+                  : []),
                 ...(canPreviewReport(entry) ? [previewMenuItem(entry)] : []),
                 openWithMenu(entry),
               ]),

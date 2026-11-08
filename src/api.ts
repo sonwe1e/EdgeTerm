@@ -415,6 +415,10 @@ export const zmodemFileInfo = (path: string) =>
 export const zmodemReadBytes = async (path: string, offset: number, length: number) =>
   new Uint8Array(await invoke<ArrayBuffer>("zmodem_read_bytes", { path, offset, length }));
 
+/** Read-only, ≤16 MiB image preview. Rust verifies image signature and dimensions. */
+export const previewImageFile = async (id: string | null, path: string) =>
+  new Uint8Array(await invoke<ArrayBuffer>("preview_image_file", { id, path }));
+
 export const zmodemCreateFile = (path: string) => invoke<void>("zmodem_create_file", { path });
 
 export const zmodemWriteBytes = (path: string, offset: number, bytes: Uint8Array) =>
