@@ -1,6 +1,6 @@
 # 本分支历史发布索引
 
-历史索引核对日期：2026-10-23；1.3.0 发布补记：2026-10-26；1.4.0 发布补记：2026-10-27；1.5.0 发布补记：2026-10-28；1.5.1 发布补记：2026-10-29；1.6.0 发布补记：2026-11-02；1.6.1 发布补记：2026-11-02；1.6.2 构建记录（未发布）：2026-11-02；1.7.0 发布补记：2026-11-05；1.7.2 发布补记：2026-11-06。发行仓库是 [sonwe1e/EdgeTerm](https://github.com/sonwe1e/EdgeTerm)，上游是 [miskin-lee/EdgeTerm](https://github.com/miskin-lee/EdgeTerm)。两者独立发布，不能根据版本数字大小推断功能包含关系。
+历史索引核对日期：2026-10-23；1.3.0 发布补记：2026-10-26；1.4.0 发布补记：2026-10-27；1.5.0 发布补记：2026-10-28；1.5.1 发布补记：2026-10-29；1.6.0 发布补记：2026-11-02；1.6.1 发布补记：2026-11-02；1.6.2 构建记录（未发布）：2026-11-02；1.7.0 发布补记：2026-11-05；1.7.2 发布补记：2026-11-06；1.7.3 发布补记：2026-11-08。发行仓库是 [sonwe1e/EdgeTerm](https://github.com/sonwe1e/EdgeTerm)，上游是 [miskin-lee/EdgeTerm](https://github.com/miskin-lee/EdgeTerm)。两者独立发布，不能根据版本数字大小推断功能包含关系。
 
 本次索引核对了 GitHub Releases 的发布时间、附件名、发布说明和远端标签；下表 SHA 是标签解引用后的 **commit SHA**，不是 annotated tag 对象 SHA。日期使用北京时间。没有重新下载历史二进制，也没有重新执行旧版本的验收；历史验证结论以对应发布说明及其环境边界为准。
 
@@ -23,6 +23,7 @@
 | [v1.6.1](https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.6.1) | 2026-11-02 | [fe8976b](https://github.com/sonwe1e/EdgeTerm/commit/fe8976be5fb486fec27e9104aa19562e1b2d762f) | 同上；输入行选区直接删除/替换、Alt+点击不再弹出菜单栏，见[发布说明](release-1.6.1.zh-CN.md) |
 | [v1.7.0](https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.7.0) | 2026-11-05 | [399702f](https://github.com/sonwe1e/EdgeTerm/commit/399702f959dd4d9b5834f6a3597033b8c8c542f9) | Windows x64 安装包、便携包、独立诊断工具、SHA256SUMS；Agent 提示词、终端选区引用与撤销，以及未公开发布的 1.6.2 改进，见[发布说明](release-1.7.0.zh-CN.md) |
 | [v1.7.2](https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.7.2) | 2026-11-06 | [84221bc](https://github.com/sonwe1e/EdgeTerm/commit/84221bc8f76e072397cec3ae8cdabb2bd07eedf4) | Windows x64 安装包、便携包、独立诊断工具、SHA256SUMS；工作区恢复、OpenCode 状态和 Pi 滚轮兼容，见[发布说明](release-1.7.2.zh-CN.md) |
+| [v1.7.3](https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.7.3) | 2026-11-08 | [4cbbb6f](https://github.com/sonwe1e/EdgeTerm/commit/4cbbb6f2551370e3ce6d6939d8b3423d53055324) | Windows x64 安装包、便携包、独立诊断工具、SHA256SUMS；实验性无缝冷历史（默认关闭）、oh-my-pi 识别、Agent 侧栏固定宽度、显示设置保存时机修复，见[发布说明](release-1.7.3.zh-CN.md) |
 
 截至 2026-10-28，本分支没有公开的 macOS/Linux 安装包，也没有签名自动更新清单。上游提供这些平台的发布包，不代表本分支已完成这些平台的构建或验证。`v1.0.0` 是保留的共同基线标签，不是本分支独立发布的 Release；本地其他 `v0.*`、`v1.0.*` 标签也不能当作本分支发布记录。
 
@@ -44,6 +45,21 @@
 Windows 上相同功能源码在最终版本号调整前通过前端 115 文件 / 1106 项、真实 Edge 浏览器 31 文件 / 160 项及 Rust 455 项测试，另有 29 项 Rust 测试按环境条件忽略；格式、lint、TypeScript 和前端生产构建通过。最终 1.7.2 源码通过版本一致性检查、Windows release 构建，以及 5 个提交逐一类型和提交规范检查。OpenCode 和 Pi 的独立提交分别通过 40 / 20 项单元和 16 / 10 项浏览器测试；这些工作树仅为引用主仓库依赖放宽 Vite 文件访问边界。保留既有 Rust/链接器警告。
 
 浏览器测试使用模拟 IPC；本机 Windows ConPTY、WSL OpenSSH、OpenCode 2.2.5 和 Pi 1.5.0 的先前原生验收与边界分别见下方历史记录。未连接用户远端主机或调用模型，未在用户现有安装上执行升级，也未实测本次正式安装器的原生重启恢复。
+
+## 1.7.3 构建与发布记录
+
+前一个公开版本为 1.7.2。本版按用户指定发布为 1.7.3，包含公开 1.7.2 之后合入 main 的全部工作：实验性无缝冷历史（A2，默认关闭，含压缩存储、IPC、滚顶接回、溢写设置与查找计数）、交互式 oh-my-pi 会话识别、Agent/交替屏下侧栏固定轨道宽度、显示设置中实验开关改为 Apply 才保存，以及配套的测量基线脚本与文档。历史上 2026-11-05 的 1.7.3 本地安装包（Pi 滚轮修复）从未发布，其修复已含于公开 1.7.2；本公开 1.7.3 与其内容、哈希均不同，上文该节已改题为「历史构建，非正式附件」。
+
+固定源码及远端标签解引用提交为 `4cbbb6f2551370e3ce6d6939d8b3423d53055324`（annotated 标签 `v1.7.3`）。在干净的 Windows x64 工作树以 `./dev.ps1 tauri:build --bundles nsis` 构建，Node 24.19.0、rustc/cargo 1.99.1、MSVC 与 Windows SDK；程序与安装器文件版本均为 1.7.3。便携包中的程序与 NSIS 构建输入一致，SHA-256 为 `5e65715d51b6e4bd992bfb17171b22ea1af71d49273fafacc7df7a1217e1bab7`。程序和安装器均未签名。
+
+| 正式附件 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| `EdgeTerm_1.7.3_x64-setup.exe` | 4132908 | `bb1bbf819cfb292a6ab87a45b4cf05c0342809c81523dbec0a702021f20d7bf0` |
+| `EdgeTerm_1.7.3_x64-portable.zip` | 5134350 | `6adf9f4282b45aec17ce72a33c3bbda12acbd49338d8057d5e0557807b0eb1b3` |
+| `EdgeTerm_1.7.3_windows-diagnostics.zip` | 5471 | `21221bc651cae4d79b2e79b1a5571da50d1acb4c8740a3d62055a09b400af833` |
+| `SHA256SUMS.txt` | 298 | `aeea23e40f3fc6bf9121085189818dfb15d54fa37680494c9c4d3eafa9647a24` |
+
+发布验证：`release:package --check` 三附件与 SHA256SUMS 一致；`version:check` 四处版本号一致为 1.7.3；从发布页重新下载的安装包 SHA-256 与清单逐字节一致。发布载荷冒烟：便携包程序文件版本 1.7.3，启动后因检测到同应用标识的既有实例（另一工作区的用户进程）按单实例规则转发并正常退出（exit 0）——该行为符合预期，但意味着本次未在新实例中完整走 UI；完整 UI/功能验证以同源码真机验收（`docs/team/edge-term-1.7.2-stable-acceptance.md` 的 P0 记录，基于 `6802947` 构建的便携版，与本发布载荷仅版本资源不同）及单元/浏览器/原生门禁为准。`check:commits` 对 `84221bc..4cbbb6f` 共 23 个提交 0 错误 0 警告。未执行：签名（本 fork 保持手动下载）、macOS/Linux 包、自动更新清单。
 
 ## 1.7.3 本地安装包（历史构建，非正式附件）
 
