@@ -55,6 +55,8 @@ interface Options {
   creating: NewEntryDraft | null;
   entries: FileEntry[];
   previewImage: (entry: FileEntry) => void;
+  /** Opens a bounded read-only viewer; never creates an editable temp copy. */
+  onViewLog: (entry: FileEntry) => void;
 }
 
 export function useFilerActions({
@@ -91,6 +93,7 @@ export function useFilerActions({
   creating,
   entries,
   previewImage,
+  onViewLog,
 }: Options) {
   const removeEntries = async (chosen: readonly FileEntry[]) => {
     setPendingDelete(null);
@@ -293,6 +296,12 @@ export function useFilerActions({
                       },
                     ]
                   : []),
+                {
+                  label: t("logViewer.menu"),
+                  icon: "find-in-files" as const,
+                  disabled: busy,
+                  action: () => onViewLog(entry),
+                },
                 ...(canPreviewReport(entry) ? [previewMenuItem(entry)] : []),
                 openWithMenu(entry),
               ]),

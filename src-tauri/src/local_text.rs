@@ -1,13 +1,17 @@
 //! Bounded local text editing, with the same optimistic hash contract as SFTP.
 use crate::{
     error::{AppError, ErrorCode, Result},
-    project::{apply_eol, eol_of, sha256_hex, TextFile, TextWrite, WriteOutcome},
+    project::{
+        apply_eol, decode_log_window, eol_of, log_window_bounds, sha256_hex, LogWindow, TextFile,
+        TextWrite, WriteOutcome,
+    },
 };
 use std::{
     fs,
-    io::{Read, Write},
+    io::{Read, Seek, SeekFrom, Write},
     path::Path,
     sync::Mutex,
+    time::UNIX_EPOCH,
 };
 
 const LIMIT: usize = 4 * 1024 * 1024;
@@ -51,6 +55,71 @@ pub fn read(path: &str) -> Result<TextFile> {
         bom,
         modified_at: None,
         permissions: None,
+    })
+}
+
+/// Local counterpart of the SSH log reader. The 4 MiB editor limit remains
+/// untouched: a 100 GiB log still costs at most one 256 KiB allocation.
+pub fn read_log_window(
+    path: &str,
+    anchor: Option<u64>,
+    before: bool,
+    encoding: Option<&str>,
+) -> Result<LogWindow> {
+    let path = fs::canonicalize(path)?;
+    // Reject special files before opening: a named FIFO opened for reading
+    // may block indefinitely even though the viewer promises a bounded read.
+    let path_metadata = fs::metadata(&path)?;
+    if !path_metadata.is_file() {
+        return Err(AppError::invalid_input("select a regular text file"));
+    }
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NONBLOCK);
+    }
+    let mut file = options.open(&path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() {
+        return Err(AppError::invalid_input("select a regular text file"));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if path_metadata.dev() != metadata.dev() || path_metadata.ino() != metadata.ino() {
+            return Err(AppError::coded(
+                ErrorCode::Conflict,
+                "the selected file changed before it could be opened",
+            ));
+        }
+    }
+    let size = metadata.len();
+    let (start, end) = log_window_bounds(size, anchor, before);
+    file.seek(SeekFrom::Start(start))?;
+    let mut bytes = Vec::with_capacity((end - start) as usize);
+    file.take(end - start).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 != end - start {
+        return Err(AppError::coded(
+            ErrorCode::Conflict,
+            "the log changed during this read; reload the latest window",
+        ));
+    }
+    let (content, start, end, encoding) = decode_log_window(&bytes, start, size, None, encoding)?;
+    let modified_at = metadata
+        .modified()
+        .ok()
+        .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
+        .map(|value| value.as_millis() as i64);
+    Ok(LogWindow {
+        path: path.to_string_lossy().into_owned(),
+        start,
+        end,
+        size,
+        content,
+        encoding,
+        modified_at,
     })
 }
 

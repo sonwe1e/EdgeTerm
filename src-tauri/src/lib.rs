@@ -475,6 +475,7 @@ pub fn run() {
             commands::compare_files,
             commands::sample_resources,
             commands::project_read_text,
+            commands::project_read_log_window,
             commands::project_write_text,
             commands::preview_image_file,
             commands::coding_agent_inspect,

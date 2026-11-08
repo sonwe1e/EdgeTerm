@@ -48,6 +48,7 @@ import { DeleteEntryDialog } from "../DeleteEntryDialog";
 import { FilerTransferSummary } from "../FilerTransferSummary";
 import { Icon } from "../icons";
 import { ImagePreviewDialog } from "../ImagePreviewDialog";
+import { LogViewerDialog, type LogViewerTarget } from "../LogViewerDialog";
 import { VirtualFileRows } from "../VirtualFileRows";
 
 /**
@@ -205,6 +206,9 @@ function FilerPanelBase() {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [pendingDelete, setPendingDelete] = useState<readonly FileEntry[] | null>(null);
   useEffect(() => setPendingDelete(null), [remoteId, path]);
+  const [logTarget, setLogTarget] = useState<LogViewerTarget | null>(null);
+  const sourceTabId = tab?.info.id ?? "";
+  useEffect(() => setLogTarget(null), [sourceTabId, offline]);
   const [openWithApps, setOpenWithApps] = useState<string[]>(loadOpenWithApps);
   useEffect(() => setOpenWithApps(loadOpenWithApps()), [preferencesRevision]);
   const remoteIdRef = useRef(remoteId);
@@ -340,6 +344,9 @@ function FilerPanelBase() {
           path: entry.path,
           name: entry.name,
         }),
+      onViewLog: (entry) => {
+        setLogTarget({ sessionId: remoteId, path: entry.path, name: entry.name, sourceTabId });
+      },
     });
 
   const remoteTitle = (label: string) => (remote ? label : `${label}${t("filer.sshOnly")}`);
@@ -1139,6 +1146,13 @@ function FilerPanelBase() {
           key={imagePreview.id}
           target={imagePreview}
           onClose={() => setImagePreview(null)}
+        />
+      )}
+      {logTarget && logTarget.sourceTabId === sourceTabId && !offline && (
+        <LogViewerDialog
+          key={`${logTarget.sourceTabId}:${logTarget.path}`}
+          target={logTarget}
+          onClose={() => setLogTarget(null)}
         />
       )}
       {pendingDelete && (

@@ -22,6 +22,7 @@ import type {
 } from "./types";
 
 export type StateEvent = Wire.StateEvent;
+export type LogWindow = Wire.LogWindow;
 
 export type TransferProgress = Wire.TransferProgress;
 
@@ -430,6 +431,16 @@ export const zmodemFinishFile = (path: string, size: number) =>
 // --- remote filesystem ------------------------------------------------------
 
 export const sftpHome = (id: string) => invoke<string>("sftp_home", { id });
+
+/** Only 256 KiB per call. `before` selects the range ending at `anchor`;
+ * null anchor means the live file's end. Forward reads begin at `anchor`. */
+export const readLogWindow = (
+  id: string | null,
+  path: string,
+  anchor: number | null,
+  before: boolean,
+  encoding: string | null = null,
+) => commands.projectReadLogWindow(id, path, anchor, before, encoding);
 
 export const sftpList = (id: string, path: string) => invoke<DirListing>("sftp_list", { id, path });
 

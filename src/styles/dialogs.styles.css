@@ -1680,3 +1680,140 @@ dialog.dialog-backdrop.is-fallback[open] {
   max-width: min(560px, 100%);
   overflow-wrap: anywhere;
 }
+
+/* Large remote files are read as bounded windows, never mounted in CodeMirror
+   or downloaded as watched editable copies. The viewer follows editor chrome
+   while allowing its own log pane to scroll in both directions. */
+.log-viewer-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(1050px, calc(100vw - 32px));
+  height: min(750px, calc(100vh - 32px));
+  overflow: hidden;
+}
+.log-viewer-location {
+  display: grid;
+  gap: var(--sp-6);
+  padding: var(--sp-12) var(--sp-16);
+  border-bottom: 1px solid var(--border);
+}
+.log-viewer-location strong,
+.log-viewer-location code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.log-viewer-location small {
+  color: var(--fg-dim);
+}
+.log-viewer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--sp-8);
+  padding: var(--sp-8) var(--sp-16);
+  border-bottom: 1px solid var(--border);
+}
+.log-viewer-search-group {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-8);
+  min-width: 0;
+  max-width: 520px;
+  width: 100%;
+}
+.log-viewer-search {
+  min-width: 0;
+  flex: 1;
+  height: var(--h-control-lg);
+  padding: 0 var(--sp-10);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--bg-field);
+  color: var(--fg);
+}
+.log-viewer-search:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.log-viewer-match-count {
+  flex: none;
+  min-width: 46px;
+  color: var(--fg-dim);
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+.log-viewer-encoding {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-8);
+  color: var(--fg-dim);
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+}
+.log-viewer-encoding select {
+  min-width: 108px;
+  height: var(--h-control-lg);
+  padding: 0 var(--sp-8);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  color: var(--fg);
+  background: var(--bg-field);
+}
+.log-viewer-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--bg-terminal);
+}
+.log-viewer-text {
+  margin: 0;
+  min-height: 100%;
+  padding: var(--sp-12) var(--sp-16);
+  color: var(--fg);
+  white-space: pre;
+  tab-size: 4;
+  font-family: var(--font-mono);
+  font-size: var(--panel-font-size);
+  line-height: 1.5;
+}
+.log-viewer-text mark {
+  background: var(--accent);
+  color: var(--bg-terminal);
+}
+.log-viewer-notice {
+  padding: var(--sp-8) var(--sp-16);
+  color: var(--fg-dim);
+  border-top: 1px solid var(--border);
+}
+.log-viewer-dialog .dialog-error {
+  max-height: 90px;
+  overflow: auto;
+}
+.log-viewer-footer {
+  flex-wrap: wrap;
+  align-items: center;
+}
+.log-viewer-range {
+  flex: 1 1 180px;
+  min-width: 0;
+  color: var(--fg-dim);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 680px) {
+  .log-viewer-dialog {
+    width: calc(100vw - 16px);
+    height: calc(100vh - 16px);
+  }
+  .log-viewer-footer {
+    justify-content: flex-start;
+    gap: var(--sp-6);
+  }
+  .log-viewer-range {
+    flex-basis: 100%;
+  }
+}

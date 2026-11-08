@@ -94,6 +94,7 @@ fn export_bindings() {
             commands::sample_resources,
             commands::cancel_resource_sample,
             commands::project_read_text,
+            commands::project_read_log_window,
             commands::project_write_text,
             commands::coding_agent_inspect,
             commands::local_home,
