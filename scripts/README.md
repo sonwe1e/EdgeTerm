@@ -40,7 +40,9 @@ Required variables:
   `EDGETERM_BENCH_KEY=<disposable-test-key>` — dedicated key-auth OpenSSH.
 - `EDGETERM_BENCH_REMOTE_BASE=/home/edgeterm/bench` — **existing**, writable,
   disposable absolute POSIX directory. The test appends a unique child and
-  refuses to reuse a destination that already exists. Do not use `/` or `..`.
+  refuses to reuse a destination that already exists. An SFTP **LSTAT safety
+  check** rejects a missing base, a regular file or a symlink before any
+  seeding/copy. Do not use `/` or `..`.
 - `EDGETERM_BENCH_CASE=small|single|four` and
   `EDGETERM_BENCH_DIRECTION=upload|download` — exactly one combination per run.
 
@@ -97,7 +99,8 @@ and metadata work; `copy` covers the engine including commit and journal;
 transfer and is never included in throughput. Download seeding is likewise
 excluded from the measured download. `plan_copy` throughput includes metadata
 planning, while `copy` throughput does not. These are backend-engine metrics,
-not Filer drag/drop UI latency.
+not Filer drag/drop UI latency. Safety LSTAT probes on the already-existing
+remote base and generated target are also outside the measured phases.
 
 A run is valid only when `status=pass`, `files_completed` equals the expected
 count, `bytes_reported` equals the expected payload, and **all files pass exact

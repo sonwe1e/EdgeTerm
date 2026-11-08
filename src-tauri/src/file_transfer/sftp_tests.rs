@@ -1690,6 +1690,7 @@ async fn benchmark_real_server_transfer_matrix() {
             .await,
         );
         let seed_remote = Remote::connect(&seed).await.unwrap();
+        bench_check_remote_base(&seed_remote, base, &seed.control).await;
         assert!(
             seed_remote.attrs(&remote_path, &seed.control).await.unwrap().is_none(),
             "refusing to seed over an existing remote path"
@@ -1740,6 +1741,7 @@ async fn benchmark_real_server_transfer_matrix() {
     let remote = Remote::connect(&job).await.unwrap();
     let sftp_ms = bench_ms(started.elapsed());
     let effective_files = remote.files;
+    bench_check_remote_base(&remote, base, &job.control).await;
     if direction == "upload" {
         assert!(
             remote.attrs(&remote_path, &job.control).await.unwrap().is_none(),
@@ -1966,6 +1968,34 @@ fn bench_sha256(path: &Path) -> std::io::Result<String> {
 
 fn bench_ms(duration: Duration) -> f64 {
     duration.as_secs_f64() * 1000.0
+}
+
+/// A benchmark must never quietly create a missing base or follow a symlink
+/// as its parent. `Remote::attrs` uses SFTP LSTAT rather than STAT, so links
+/// can be rejected without first following them.
+fn bench_is_real_directory(attrs: Option<&FileAttributes>) -> bool {
+    matches!(attrs, Some(attrs) if attrs.is_dir() && !attrs.is_symlink())
+}
+
+async fn bench_check_remote_base(remote: &Remote, base: &str, control: &Control) {
+    let attrs = remote.attrs(base, control).await.unwrap();
+    assert!(
+        bench_is_real_directory(attrs.as_ref()),
+        "benchmark remote base must already exist as a real directory, not a file or symlink: {base}"
+    );
+}
+
+#[test]
+fn benchmark_remote_base_must_exist_as_a_real_directory() {
+    let make = |permissions| FileAttributes {
+        permissions: Some(permissions),
+        ..FileAttributes::empty()
+    };
+    assert!(!bench_is_real_directory(None));
+    assert!(bench_is_real_directory(Some(&make(0o040755))));
+    assert!(!bench_is_real_directory(Some(&make(0o100644))));
+    assert!(!bench_is_real_directory(Some(&make(0o120777))));
+    assert!(!bench_is_real_directory(Some(&FileAttributes::empty())));
 }
 
 #[tokio::test]
