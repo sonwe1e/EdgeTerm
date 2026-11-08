@@ -35,6 +35,24 @@ pub fn history_read(
         .map_err(err)
 }
 
+/// Newest-first exclusive-cursor paging for seamless scrollback. Pass the
+/// oldest `absLine` from the previous page as `before_abs_line` to fetch the
+/// next page without repeating records; initial callers can use the largest
+/// safely representable absolute line.
+#[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
+pub fn history_read_before(
+    state: State<'_, AppState>,
+    session_id: String,
+    before_abs_line: u64,
+    max_lines: u32,
+) -> Result<Vec<HistoryLine>> {
+    state
+        .history
+        .read_before(&session_id, before_abs_line, max_lines.max(1) as usize)
+        .map_err(err)
+}
+
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
 pub fn history_search(
@@ -51,6 +69,31 @@ pub fn history_search(
             &needle,
             limit.max(1) as usize,
             Duration::from_millis(u64::from(budget_ms)),
+        )
+        .map_err(err)
+}
+
+/// Cold-only search: exclude records already covered by xterm's hot buffer
+/// *before* the result limit is applied. The original history_search remains
+/// available with its unchanged unbounded-by-line semantics.
+#[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
+pub fn history_search_before(
+    state: State<'_, AppState>,
+    session_id: String,
+    needle: String,
+    limit: u32,
+    budget_ms: u32,
+    before_abs_line: u64,
+) -> Result<Vec<HistorySearchHit>> {
+    state
+        .history
+        .search_before(
+            &session_id,
+            &needle,
+            limit.max(1) as usize,
+            Duration::from_millis(u64::from(budget_ms)),
+            before_abs_line,
         )
         .map_err(err)
 }

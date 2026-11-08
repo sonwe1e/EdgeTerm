@@ -111,7 +111,9 @@ export const commands = {
 	closeSession: (id: string) => __TAURI_INVOKE<null>("close_session", { id }),
 	historyAppend: (sessionId: string, batch: number[]) => __TAURI_INVOKE<AppendOutcome>("history_append", { sessionId, batch }),
 	historyRead: (sessionId: string, fromAbsLine: number, maxLines: number) => __TAURI_INVOKE<HistoryLine[]>("history_read", { sessionId, fromAbsLine, maxLines }),
+	historyReadBefore: (sessionId: string, beforeAbsLine: number, maxLines: number) => __TAURI_INVOKE<HistoryLine[]>("history_read_before", { sessionId, beforeAbsLine, maxLines }),
 	historySearch: (sessionId: string, needle: string, limit: number, budgetMs: number) => __TAURI_INVOKE<HistorySearchHit[]>("history_search", { sessionId, needle, limit, budgetMs }),
+	historySearchBefore: (sessionId: string, needle: string, limit: number, budgetMs: number, beforeAbsLine: number) => __TAURI_INVOKE<HistorySearchHit[]>("history_search_before", { sessionId, needle, limit, budgetMs, beforeAbsLine }),
 	historyStats: (sessionId: string) => __TAURI_INVOKE<HistoryStats>("history_stats", { sessionId }),
 	historyClear: (sessionId: string) => __TAURI_INVOKE<null>("history_clear", { sessionId }),
 	/**
