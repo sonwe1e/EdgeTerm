@@ -11,7 +11,9 @@ Do not point it at any of your normal SSH servers, personal files or production
 paths. The test creates a fresh `edgeterm-bench-<UUID>` remote child on every run.
 It **does not delete remote files** afterward; the output records each exact
 path for the test operator to review and clean up. Local synthetic data and
-journals live in an automatically cleaned OS temporary directory. Reserve at
+journals live in an automatically cleaned temporary directory. **The run ID and
+exact remote target are printed before any remote write**, so even an aborted
+seed, plan or verification can be cleaned up using the failed test log. Reserve at
 least 1 GiB of local scratch space; every completed run leaves 512 MiB of
 remote data, so 6 combinations × 3 repeats require **9 GiB of remote space**
 until the operator removes the recorded disposable paths.
@@ -49,6 +51,13 @@ Optional variables:
   recorded (the latter is not a measurement of peak live handles).
 - `EDGETERM_BENCH_SERVER_LABEL` — anonymized identifier for the server.
 - `EDGETERM_BENCH_COMMIT` — source revision (recorded alongside metrics).
+- `EDGETERM_BENCH_LOCAL_TEMP_BASE` — an **existing local directory** on the
+  volume being measured; the test creates and later removes only its own UUID
+  child. By default it uses the OS temporary directory. On Linux `/tmp` can
+  be backed by **tmpfs (RAM)** rather than SSD/HDD, producing misleading local
+  I/O timings. Choose a representative disk directory and record its filesystem
+  type independently (`findmnt -T <path>` on Linux). The JSONL includes the
+  scratch path and explicitly labels filesystem type `not_detected`.
 - `EDGETERM_BENCH_OUTPUT` — existing local output directory plus a filename
   such as `C:\\bench\\sftp-matrix.jsonl`. Each run appends one JSON object on a
   separate line. Without it the same JSON is printed with the prefix
@@ -58,6 +67,7 @@ Example using PowerShell in the repository root (after starting the dedicated
 test sshd and creating its empty `/home/edgeterm/bench` directory):
 
 ```powershell
+New-Item -ItemType Directory -Force -Path 'C:\\bench\\scratch' | Out-Null
 $env:EDGETERM_BENCH_ISOLATED = '1'
 $env:EDGETERM_BENCH_ADDR = '127.0.0.1:2222'
 $env:EDGETERM_BENCH_USER = 'edgeterm'
@@ -65,6 +75,7 @@ $env:EDGETERM_BENCH_KEY = 'C:\\path\\to\\disposable-test-key'
 $env:EDGETERM_BENCH_REMOTE_BASE = '/home/edgeterm/bench'
 $env:EDGETERM_BENCH_SERVER_LABEL = 'wsl-openssh-loopback'
 $env:EDGETERM_BENCH_COMMIT = (git rev-parse HEAD).Trim()
+$env:EDGETERM_BENCH_LOCAL_TEMP_BASE = 'C:\\bench\\scratch'
 $env:EDGETERM_BENCH_OUTPUT = 'C:\\bench\\sftp-matrix.jsonl'
 $env:EDGETERM_BENCH_CASE = 'small'
 $env:EDGETERM_BENCH_DIRECTION = 'upload'
