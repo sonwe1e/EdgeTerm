@@ -1,5 +1,103 @@
 # Validation and diagnostics
 
+## SFTP transfer matrix (opt-in real OpenSSH test)
+
+`benchmark_real_server_transfer_matrix` in
+`src-tauri/src/file_transfer/sftp_tests.rs` measures the existing engine,
+without changing its protocol, user-facing defaults or transfer semantics.
+It is `#[ignore]`d and requires `EDGETERM_BENCH_ISOLATED=1`: run **only with a
+disposable OpenSSH test account and an existing isolated remote base directory**.
+Do not point it at any of your normal SSH servers, personal files or production
+paths. The test creates a fresh `edgeterm-bench-<UUID>` remote child on every run.
+It **does not delete remote files** afterward; the output records each exact
+path for the test operator to review and clean up. Local synthetic data and
+journals live in an automatically cleaned OS temporary directory. Reserve at
+least 1 GiB of local scratch space; every completed run leaves 512 MiB of
+remote data, so 6 combinations × 3 repeats require **9 GiB of remote space**
+until the operator removes the recorded disposable paths.
+
+The three workloads all carry **512 MiB**, so file count and file size can be
+compared without silently changing total payload:
+
+| `EDGETERM_BENCH_CASE` | Synthetic files | Primary question |
+| --- | --- | --- |
+| `small` | 512 × 1 MiB in 32 album directories | Per-file and directory overhead |
+| `single` | 1 × 512 MiB | Single-file pipeline throughput |
+| `four` | 4 × 128 MiB | Large-file sharing and two-slot scheduling |
+
+They are pseudorandom binary fixtures of approximately image size, **not
+decodable JPEG/PNG images**. Each file has an independent deterministic content
+seed and a SHA-256 digest computed while preparing the fixture.
+
+Required variables:
+
+- `EDGETERM_BENCH_ISOLATED=1` — explicit consent to write test data to the
+  disposable endpoint; the test refuses to start without this value.
+- `EDGETERM_BENCH_ADDR=127.0.0.1:2222`, `EDGETERM_BENCH_USER=edgeterm`,
+  `EDGETERM_BENCH_KEY=<disposable-test-key>` — dedicated key-auth OpenSSH.
+- `EDGETERM_BENCH_REMOTE_BASE=/home/edgeterm/bench` — **existing**, writable,
+  disposable absolute POSIX directory. The test appends a unique child and
+  refuses to reuse a destination that already exists. Do not use `/` or `..`.
+- `EDGETERM_BENCH_CASE=small|single|four` and
+  `EDGETERM_BENCH_DIRECTION=upload|download` — exactly one combination per run.
+
+Optional variables:
+
+- `EDGETERM_BENCH_FILES` (1–32, default 16) and `EDGETERM_BENCH_REQUESTS`
+  (1–32, default 32). The server's advertised handle count can reduce the
+  *effective maximum* file width; both configured and negotiated ceilings are
+  recorded (the latter is not a measurement of peak live handles).
+- `EDGETERM_BENCH_SERVER_LABEL` — anonymized identifier for the server.
+- `EDGETERM_BENCH_COMMIT` — source revision (recorded alongside metrics).
+- `EDGETERM_BENCH_OUTPUT` — existing local output directory plus a filename
+  such as `C:\\bench\\sftp-matrix.jsonl`. Each run appends one JSON object on a
+  separate line. Without it the same JSON is printed with the prefix
+  `EDGETERM_SFTP_BENCH_JSON` and can be captured from the test log.
+
+Example using PowerShell in the repository root (after starting the dedicated
+test sshd and creating its empty `/home/edgeterm/bench` directory):
+
+```powershell
+$env:EDGETERM_BENCH_ISOLATED = '1'
+$env:EDGETERM_BENCH_ADDR = '127.0.0.1:2222'
+$env:EDGETERM_BENCH_USER = 'edgeterm'
+$env:EDGETERM_BENCH_KEY = 'C:\\path\\to\\disposable-test-key'
+$env:EDGETERM_BENCH_REMOTE_BASE = '/home/edgeterm/bench'
+$env:EDGETERM_BENCH_SERVER_LABEL = 'wsl-openssh-loopback'
+$env:EDGETERM_BENCH_COMMIT = (git rev-parse HEAD).Trim()
+$env:EDGETERM_BENCH_OUTPUT = 'C:\\bench\\sftp-matrix.jsonl'
+$env:EDGETERM_BENCH_CASE = 'small'
+$env:EDGETERM_BENCH_DIRECTION = 'upload'
+./dev.ps1 test:rust --release benchmark_real_server_transfer_matrix -- --ignored --nocapture
+```
+
+For a complete comparison, run all six case/direction combinations, with **3–5
+successful repeats per combination**. Alternate the run order to reduce cache,
+temperature and concurrent-load bias; each invocation uses its own remote
+target. Record the source commit, Rust/Windows/server versions, SSH server
+configuration, actual RTT, storage medium and other workload on the machine.
+Use the same options and total bytes when comparing candidates. The default
+rate limit, durable fsync and tar mode remain OFF; this test does not exercise
+the opt-in tar fast path. `ssh` timing includes a new SSH transport handshake;
+`sftp` timing measures channel/subsystem initialization; `plan` is scanning
+and metadata work; `copy` covers the engine including commit and journal;
+`verify_excluded` is the complete per-file SHA-256 verification **after** the
+transfer and is never included in throughput. Download seeding is likewise
+excluded from the measured download. `plan_copy` throughput includes metadata
+planning, while `copy` throughput does not. These are backend-engine metrics,
+not Filer drag/drop UI latency.
+
+A run is valid only when `status=pass`, `files_completed` equals the expected
+count, `bytes_reported` equals the expected payload, and **all files pass exact
+size plus complete SHA-256 checks**. Do not use failures or partial transfers
+in speed averages. Compare medians and sample ranges; a one-off faster run
+is not evidence for a new concurrency default. Inspect `.jsonl` records and
+the recorded remote paths before separately cleaning the disposable test tree.
+
+No remote server is started or contacted by this documentation or the ordinary
+Rust test suite. The opt-in test must be run explicitly in an environment with
+the Rust toolchain and an authorized disposable server.
+
 `./dev.ps1 script scripts/check-native-codex-selection.mjs <new-dir-under-.tmp>`
 uses the installed Codex executable named by `EDGETERM_CODEX_EXE` in the same
 disposable CDP setup. It creates a separate `CODEX_HOME` and a loopback Responses
