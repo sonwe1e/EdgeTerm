@@ -114,3 +114,5 @@ mod agents;
 pub use agents::*;
 mod preview;
 pub use preview::*;
+mod image_preview;
+pub use image_preview::*;

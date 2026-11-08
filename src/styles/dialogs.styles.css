@@ -1633,3 +1633,50 @@ dialog.dialog-backdrop.is-fallback[open] {
   overflow: auto;
   flex-shrink: 0;
 }
+
+/* One-off Filer preview, using the same modal and spacing system as the
+   editor. The image never escapes its bounded viewport on narrow windows. */
+.image-preview-dialog {
+  width: min(920px, calc(100vw - 32px));
+  height: min(720px, calc(100vh - 32px));
+}
+.image-preview-destination {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding: var(--sp-10) var(--sp-16);
+  border-bottom: 1px solid var(--border);
+}
+.image-preview-destination strong,
+.image-preview-destination code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.image-preview-destination code,
+.image-preview-destination small {
+  color: var(--fg-dim);
+  font-size: var(--fs-sm);
+}
+.image-preview-stage {
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  place-items: center;
+  overflow: auto;
+  padding: var(--sp-12);
+  color: var(--fg-dim);
+  background: var(--bg-terminal);
+}
+.image-preview-stage img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.image-preview-stage .dialog-error {
+  max-width: min(560px, 100%);
+  overflow-wrap: anywhere;
+}

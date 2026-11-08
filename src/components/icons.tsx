@@ -41,6 +41,7 @@ import error from "@vscode/codicons/src/icons/error.svg?raw";
 // `export` is a reserved word, so the binding carries the suffix.
 import exportIcon from "@vscode/codicons/src/icons/export.svg?raw";
 import eyeClosed from "@vscode/codicons/src/icons/eye-closed.svg?raw";
+import fileMedia from "@vscode/codicons/src/icons/file-media.svg?raw";
 import folder from "@vscode/codicons/src/icons/folder.svg?raw";
 import folderOpened from "@vscode/codicons/src/icons/folder-opened.svg?raw";
 import globe from "@vscode/codicons/src/icons/globe.svg?raw";
@@ -120,6 +121,7 @@ const SVGS = {
   error,
   export: exportIcon,
   "eye-closed": eyeClosed,
+  "file-media": fileMedia,
   folder,
   "folder-opened": folderOpened,
   globe,

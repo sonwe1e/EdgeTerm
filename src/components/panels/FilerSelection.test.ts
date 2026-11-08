@@ -13,6 +13,7 @@ vi.mock("../../platform", () => ({
   },
 }));
 vi.mock("../FileIcon", () => ({ FileIcon: () => null }));
+vi.mock("../icons", () => ({ Icon: () => null }));
 vi.mock("../../actions", () => ({ revealCwdInFiler: vi.fn() }));
 vi.mock("@tauri-apps/api/webview", () => ({
   getCurrentWebview: () => ({ onDragDropEvent: async () => () => {} }),
@@ -37,6 +38,8 @@ vi.mock("../../api", async (original) => ({
   localRename: vi.fn(),
   sftpRename: vi.fn(),
   sftpDownload: vi.fn(),
+  previewImageFile: vi.fn(),
+  watchRemoteEdit: vi.fn(),
   sftpDownloadDirectory: vi.fn(),
   onFileTransfer: vi.fn(async () => () => {}),
   onFileTransferRemoved: vi.fn(async () => () => {}),
@@ -207,6 +210,7 @@ beforeEach(() => {
   vi.mocked(api.dragStagingPath).mockImplementation(async (name) => `/staging/${name}`);
   vi.mocked(api.cancelTransfer).mockResolvedValue();
   vi.mocked(api.controlFileTransfer).mockResolvedValue();
+  vi.mocked(api.previewImageFile).mockResolvedValue(Uint8Array.of(1, 2, 3));
   host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
@@ -242,6 +246,32 @@ const transferJob = (
 });
 
 describe("Filer multiple selection at the real panel entry", () => {
+  it("previews a single local image via raw IPC without opening or copying it", async () => {
+    vi.mocked(api.localList).mockImplementation(async (path) => ({
+      path,
+      entries: [{ ...entries[0], name: "plot.png", path: "/selection/plot.png" }],
+    }));
+    await mount();
+    context("plot.png");
+    await act(async () => menuItem("Preview Image").click());
+    expect(api.previewImageFile).toHaveBeenCalledWith(null, "/selection/plot.png");
+    expect(api.sftpDownload).not.toHaveBeenCalled();
+    expect(api.watchRemoteEdit).not.toHaveBeenCalled();
+  });
+
+  it("previews an SSH image using the active session, never remote-edit sync", async () => {
+    useRemote();
+    vi.mocked(api.sftpList).mockImplementation(async (_id, path) => ({
+      path,
+      entries: [{ ...entries[0], name: "camera.webp", path: "/selection/camera.webp" }],
+    }));
+    await mount();
+    context("camera.webp");
+    await act(async () => menuItem("Preview Image").click());
+    expect(api.previewImageFile).toHaveBeenCalledWith("selection-ssh", "/selection/camera.webp");
+    expect(api.sftpDownload).not.toHaveBeenCalled();
+    expect(api.watchRemoteEdit).not.toHaveBeenCalled();
+  });
   it("adds and toggles paths with Ctrl instead of replacing the selection", async () => {
     await mount();
     press("file10.txt");
