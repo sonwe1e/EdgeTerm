@@ -868,14 +868,20 @@ mod tests {
         let first = store.read_before("s", u64::MAX, 500).unwrap();
         assert_eq!(first.len(), 500);
         assert_eq!(first.last().unwrap().abs_line, 501);
-        store.append("s", &batch(&[line(1001, 1001, "later")])).unwrap();
+        store
+            .append("s", &batch(&[line(1001, 1001, "later")]))
+            .unwrap();
         let second = store.read_before("s", 501, 500).unwrap();
         assert_eq!(second.len(), 500);
         assert_eq!(second.first().unwrap().abs_line, 500);
         assert_eq!(second.last().unwrap().abs_line, 1);
         assert!(store.read_before("s", 1, 500).unwrap().is_empty());
 
-        let mut all: Vec<_> = first.iter().chain(second.iter()).map(|l| l.abs_line).collect();
+        let mut all: Vec<_> = first
+            .iter()
+            .chain(second.iter())
+            .map(|l| l.abs_line)
+            .collect();
         all.dedup();
         assert_eq!(all.len(), 1000);
         assert_eq!(store.read_before("s", u64::MAX, 1).unwrap()[0].abs_line, 1001);
@@ -888,9 +894,7 @@ mod tests {
             let lines: Vec<_> = (from..from + 4096).map(|i| line(i, i, "sealed")).collect();
             store.append("s", &batch(&lines)).unwrap();
         }
-        let tail: Vec<_> = (8193..=8292u64)
-            .map(|i| line(i, i, "pending"))
-            .collect();
+        let tail: Vec<_> = (8193..=8292u64).map(|i| line(i, i, "pending")).collect();
         store.append("s", &batch(&tail)).unwrap();
 
         assert_eq!(
@@ -1095,9 +1099,7 @@ mod tests {
     #[test]
     fn exclusive_search_crosses_blocks_and_keeps_pending_budget_semantics() {
         let store = HistoryStore::new();
-        let sealed: Vec<_> = (1..=4096u64)
-            .map(|i| line(i, i, "hit sealed"))
-            .collect();
+        let sealed: Vec<_> = (1..=4096u64).map(|i| line(i, i, "hit sealed")).collect();
         store.append("s", &batch(&sealed)).unwrap();
         let pending: Vec<_> = (4097..=4102u64)
             .map(|i| line(i, i, "hit pending"))
