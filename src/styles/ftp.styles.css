@@ -563,8 +563,24 @@
 }
 
 .term-gutter {
+  /* Fixed tracks are essential: when a TUI switches buffers, or the blank
+     tail is cleared, text width must not shrink the terminal host and send
+     another resize back into the TUI. Seven digits cover 9,999,999 lines;
+     the timestamp format is always 14 glyphs ([HH:MM:SS.mmm]). */
+  --gutter-time-track: 14ch;
+  --gutter-line-track: max(32px, 7ch);
   position: relative;
-  flex: 0 0 auto;
+  box-sizing: border-box;
+  min-width: 0;
+  flex: 0 0
+    calc(
+      var(--gutter-time-track) +
+      var(--gutter-line-track) +
+      var(--sp-8) +
+      var(--sp-8) +
+      var(--sp-6) +
+      1px
+    );
   padding: 0 var(--sp-8) 0 var(--sp-6);
   background: var(--bg-terminal);
   border-right: 1px solid var(--gutter-border);
@@ -579,8 +595,17 @@
   display: none;
 }
 
+.term-gutter.no-time {
+  flex-basis: calc(var(--gutter-line-track) + var(--sp-8) + var(--sp-6) + 1px);
+}
+
+.term-gutter.no-line {
+  flex-basis: calc(var(--gutter-time-track) + var(--sp-8) + var(--sp-6) + 1px);
+}
+
 .gutter-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: var(--gutter-time-track) var(--gutter-line-track);
   align-items: center;
   gap: var(--sp-8);
   /* Set on .term-gutter by TerminalController.measureCell. */
@@ -600,7 +625,6 @@
 }
 
 .gutter-line {
-  min-width: 32px;
   text-align: right;
   color: var(--gutter-line-fg);
 }
@@ -614,8 +638,16 @@
   display: none;
 }
 
+.term-gutter.no-time .gutter-row {
+  grid-template-columns: var(--gutter-line-track);
+}
+
 .term-gutter.no-line .gutter-line {
   display: none;
+}
+
+.term-gutter.no-line .gutter-row {
+  grid-template-columns: var(--gutter-time-track);
 }
 
 .term-host {
