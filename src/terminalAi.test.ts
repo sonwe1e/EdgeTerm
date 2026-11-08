@@ -57,6 +57,42 @@ afterEach(() => {
 });
 
 describe("agentic CLI sessions", () => {
+  it("tracks interactive OMP turns, then returns to shell command tracking", async () => {
+    const events: string[] = [];
+    const controller = createController(events);
+    await write(controller, PROMPT);
+    await submit(controller, "omp");
+    expect(controller.agentDiagnostics().tool).toBe("omp");
+    expect(events).toEqual(["idle:ai"]);
+
+    controller.term.input("Review this diff\r", true);
+    expect(events[events.length - 1]).toBe("running:ai");
+    for (let tick = 0; tick < 3; tick += 1) {
+      output(controller, `\r\x1b[KAnalyzing ${tick}...`);
+      await vi.advanceTimersByTimeAsync(500);
+    }
+    await vi.advanceTimersByTimeAsync(2500);
+    expect(events[events.length - 1]).toBe("complete:ai");
+
+    await write(controller, `\r\n${PROMPT}`);
+    expect(controller.agentDiagnostics().tool).toBeNull();
+    await submit(controller, "ls");
+    expect(events[events.length - 1]).toBe("running:command");
+  });
+
+  it("treats OMP print and machine transport as ordinary shell commands", async () => {
+    for (const command of ['omp -p "hello"', "omp --mode rpc"]) {
+      const events: string[] = [];
+      const controller = createController(events);
+      await write(controller, PROMPT);
+      await submit(controller, command);
+      expect(controller.agentDiagnostics().tool).toBeNull();
+      expect(events).toEqual(["running:command"]);
+      await write(controller, PROMPT);
+      expect(events[events.length - 1]).toBe("complete:command");
+    }
+  });
+
   it("recognizes Pi after a delayed SSH echo has left the normal screen", async () => {
     const events: string[] = [];
     const controller = createController(events);
