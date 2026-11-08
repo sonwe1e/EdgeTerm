@@ -172,6 +172,82 @@ describe("TerminalColdHistory integration", () => {
     expect(term.buffer.active.getLine(0)?.translateToString(true)).toContain("agent UI");
   }, 30000);
 
+  it("rejects an in-flight page when oh-my-pi takes over the normal buffer", async () => {
+    let agentActive = false;
+    const { term, history, wheel, prepend } = setup({ interactive: () => agentActive });
+    await flood(term, history, 0, 220);
+    await vi.waitFor(() => expect(stored.length).toBeGreaterThan(100));
+
+    const gate = deferred<HistoryRecord[]>();
+    readBefore.mockImplementationOnce(() => gate.promise);
+    wheel();
+    await vi.waitFor(() => expect(readBefore).toHaveBeenCalledTimes(1));
+    const beforeLength = term.buffer.normal.length;
+
+    // oh-my-pi can repaint in the normal buffer without an alternate-screen
+    // switch. A page requested just before its takeover must not be spliced
+    // into that screen, even though the IPC response is otherwise valid.
+    agentActive = true;
+    expect(term.buffer.active.type).toBe("normal");
+    gate.resolve(stored.slice(0, 5).reverse());
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(prepend).not.toHaveBeenCalled();
+    expect(term.buffer.normal.length).toBe(beforeLength);
+
+    wheel();
+    expect(readBefore).toHaveBeenCalledTimes(1);
+
+    // Leaving the Agent re-enables history loading; the canceled request
+    // must not incorrectly mark the cold store as exhausted.
+    agentActive = false;
+    wheel();
+    await vi.waitFor(() => expect(readBefore).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(prepend).toHaveBeenCalledTimes(1));
+  }, 30000);
+
+  it("discards an in-flight wrapped page after a column resize", async () => {
+    const { term, history, wheel, prepend } = setup();
+    term.resize(18, 8);
+    await flood(term, history, 0, 350);
+    await vi.waitFor(() => expect(stored.length).toBeGreaterThan(150));
+
+    const gate = deferred<HistoryRecord[]>();
+    readBefore.mockImplementationOnce(() => gate.promise);
+    wheel();
+    await vi.waitFor(() => expect(readBefore).toHaveBeenCalledTimes(1));
+    const previousBound = readBefore.mock.calls[0][1];
+
+    // The old page was selected for 18 columns. After a resize to 8, many
+    // records have a different physical row count and must be re-parsed.
+    term.resize(8, 8);
+    expect(
+      Array.from(
+        { length: term.buffer.normal.length },
+        (_, row) => term.buffer.normal.getLine(row)?.isWrapped,
+      ).some(Boolean),
+    ).toBe(true);
+    const resizedLength = term.buffer.normal.length;
+    gate.resolve(
+      stored
+        .filter((record) => record.absLine < previousBound)
+        .slice(-5)
+        .reverse(),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(prepend).not.toHaveBeenCalled();
+    expect(term.buffer.normal.length).toBe(resizedLength);
+
+    // A subsequent parser observation resolves the resize frontier; a fresh
+    // wheel can then fetch a page at the current width.
+    await write(term, "\u001b[0m");
+    history.outputParsed();
+    wheel();
+    await vi.waitFor(() => expect(readBefore).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(prepend).toHaveBeenCalledTimes(1));
+  }, 30000);
+
   it("discards a pending page when concurrent output advances the hot/cold seam", async () => {
     const { term, history, wheel, prepend } = setup();
     await flood(term, history, 0, 220);
