@@ -78,6 +78,16 @@
 - **默认保持冷历史关闭**。A2 的完成记录中仍有未过的门：1M 行的总内存实测（尤其滚顶后 `CircularList.maxLength` 随物化页增加的峰值）、吞吐相对基线 ≥90%、WebView2 交互 p95、release 版冷搜索时限。在上述数据满足路线图 §2.4 之前，不允许凭单测通过改为默认开启。
 - 真机回归最小矩阵：普通 shell 连续洪灌→滚顶两页→继续输出→再次滚顶；重复文本日志 + 终端缩放；选区/中文输入/鼠标拖动；OpenCode、Pi、oh-my-pi 正常缓冲区和 alternate buffer 间切换；多标签后台输出；关掉设置或结束会话期间的异步恢复。检查行号和时间戳无跳动、历史不重号、不吞字、不覆盖新输出，相关异常应能在状态栏观察到。
 
+### PR #2 后续验证（2026-11-08；A2 仍为实验开关）
+
+- 补充了两项真实 xterm/jsdom 集成回归：普通缓冲区的 oh-my-pi 交互接管发生在冷分页 IPC 在途时，旧页面不得插入，退出后能继续加载；18→8 列缩放使折行变化时，丢弃旧宽度的分页并在重新观察解析状态后恢复。`src/terminalHistoryIntegration.test.ts` 聚焦测试 9/9 通过；独立 Verifier 复跑 9/9，并加强了缩放后的精确缓冲区长度断言。该环境模拟 Agent 活跃状态，**不是**真实 oh-my-pi/Tauri 验收。
+- 新增 `scripts/measure-cold-history-jsdom.mjs` 作为**结构性诊断，不是发布性能门**：复用生产代码的 xterm 6 `CircularList.maxLength += rows`、`splice(0,0,...)` 及屏幕基准平移，逐页校验原有热行。Node `--expose-gc`：80 列 × 40 页 × 500 行，`maxLength` +20,000、`arrayBuffers` +19.2 MB；200 列 × 10 页 × 500 行，`maxLength` +5,000、`arrayBuffers` +12.0 MB。增量都符合 `物化物理行 × 列数 × 12 B`，并有可配置的预分配中止门。命令：`node --expose-gc scripts/measure-cold-history-jsdom.mjs --hot=10000 --pages=40 --page-lines=500 --cols=80 --max-buffer-mb=128 --out=<new-report.json>`。
+- **修正对门2的理解**：Rust 冷区 64/256 MB 上限和 hot 10k 行不能证明*加载冷页之后*的 xterm 内存有界。物化页会持续增长 `CircularList.maxLength`，100 万物理行 × 200 列仅 cell backing 就约 2.4 GB，另有 JS 堆、暂存与渲染内存；这是代码机制加结构性实测支持的风险，**未执行浏览器中真正物化 100 万行的测量**。xterm 6 容量 setter 及头部 splice 还有随驻留行数增加的搬移成本。简易拒载/截断不能满足用户确认的无缝回滚；若要严格有界且双向无缝，需要另立窗口虚拟化的路线选择，不能作为小修擅自落地。
+- **新确认的 A2 正确性阻塞（真实 xterm 6，无 WebView2）**：`terminalHistoryCapture.ts` 的长折行部分裁剪 TODO 已复现。`cols=8/rows=4/scrollback=20`，先写 `a00..a05`，再写 32 字符 `ABCDEFGHIJKLMNOPQRSTUVWXYZ012345`，再追加 `s00..s19`；冷记录保有 32 字符整行，但热缓冲首行只余 `IJKLMNOP`（`isWrapped=true`）。独占上界分页把这一残留当作完整驻留记录，只向前插入 `a00..a05`，导致 `ABCDEFGH` 静默丢失，且尾部错误地连到 `a05`，无 mismatch 告警；极端大于整个热缓冲的单逻辑行在导出前已丢失前缀（200 字符仅捕获末尾 176 字符）。单纯改变游标或直接插入完整记录会导致重号/错位；完整修复需要跨捕获、物化、gutter、resize 的正确性设计。当前不得称 A2 长折行连续性门通过。
+- **另一个待验证风险**：`terminalHistoryIntegration.ts` 的 Promise 追加队列未显式限制在途字节数；高输出、慢 IPC 时可能积压 JS 内存，但本轮没有真实慢 IPC 测量，暂不标为已复现。
+- 验收限制：Linux 容器内 Chromium 因 `socket() failed: Operation not permitted` 无法启动真实浏览器测试；缺少 Cargo；尚未执行真实 Rust release 搜索、WebView2 帧 p95/长时间 SSH、完整 ON/OFF 吞吐对照。**PR 继续保持 Draft，A2 默认关闭，不能将结构性诊断和 jsdom 回归冒充发布验收。**
+- Linux 工作树验证：TypeScript `tsc --noEmit` 通过；完整 Vitest 为 118 文件/1203 用例通过、2 文件/7 用例失败、2 文件/7 用例跳过。失败的两文件仅为 Material 文件图标：隔离工作树未链接 `node_modules`，而 `fileIcons.ts` 的绝对 `/node_modules/material-icon-theme/icons/*.svg` glob 因此匹配为空；主检出目录拥有图标资源，同两文件 8/8 通过。该项是**工作树资源配置限制**，不是 PR 已验证的全绿证据，也没有修改产品图标实现来隐藏失败。
+
 ## 本轮：目录与打包整理、缺陷修复（2026-11-01）
 
 - 基线 `b4ba925`，工作区干净。协作约定见 [TEAM.md](../../TEAM.md)：本轮由 Lead 派两个只读审计任务（打包一致性、前端缺陷），修复与验证由 Lead 完成；审计者无写权限，结论逐条由 Lead 复核并给出可执行证据。
