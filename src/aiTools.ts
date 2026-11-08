@@ -17,6 +17,7 @@ const AI_CLIS = new Set([
   "copilot",
   "amp",
   "opencode",
+  "omp",
   "pi",
   "pi-coding-agent",
   "crush",
@@ -82,6 +83,112 @@ const ONE_SHOT_SUBCOMMANDS = new Set([
   "migrate-installer",
 ]);
 
+/** OMP subcommands other than `launch` do not start a coding-agent turn.
+ * https://github.com/can1357/oh-my-pi/blob/main/docs/cli-reference.md
+ */
+const OMP_OTHER_SUBCOMMANDS = new Set([
+  "acp",
+  "auth-broker",
+  "auth-gateway",
+  "agents",
+  "bench",
+  "browser-relay",
+  "cleanse",
+  "collab",
+  "clip",
+  "commit",
+  "completions",
+  "compress",
+  "config",
+  "dry-balance",
+  "find",
+  "gc",
+  "grep",
+  "gallery",
+  "git",
+  "grievances",
+  "if-bench",
+  "images",
+  "img",
+  "install",
+  "join",
+  "login",
+  "models",
+  "plugin",
+  "plugins",
+  "play",
+  "predict",
+  "ps",
+  "say",
+  "share",
+  "shell",
+  "read",
+  "render",
+  "setup",
+  "skill",
+  "skills",
+  "ssh",
+  "stats",
+  "stream",
+  "update",
+  "usage",
+  "tiny-models",
+  "token",
+  "toks",
+  "ttsr",
+  "worktree",
+  "wt",
+  "search",
+  "q",
+  "web-search",
+  "__complete",
+]);
+
+/** Launch options whose next argv token is a value, not an OMP subcommand. */
+const OMP_VALUE_FLAGS = new Set([
+  "--cwd",
+  "--add-dir",
+  "--profile",
+  "--config",
+  "--session-dir",
+  "--resume",
+  "-r",
+  "--session",
+  "--restore",
+  "--fork",
+  "--model",
+  "--smol",
+  "--slow",
+  "--plan",
+  "--models",
+  "--provider",
+  "--api-key",
+  "--provider-session-id",
+  "--prompt-cache-key",
+  "--service-tier",
+  "--thinking",
+  "--prewalk-into",
+  "--plan-yolo-into",
+  "--goal",
+  "--tools",
+  "--approval-mode",
+  "--max-time",
+  "--motion",
+  "--spinner-interval",
+  "--max-fps",
+  "--warn-cost",
+  "--max-cost",
+  "--extension",
+  "-e",
+  "--hook",
+  "--trusted-extension",
+  "--plugin-dir",
+  "--skills",
+  "--system-prompt",
+  "--system-prompt-template",
+  "--append-system-prompt",
+]);
+
 /** `VAR=value` assignments in front of a command. */
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
 
@@ -142,6 +249,7 @@ function startsAiSession(segment: string): string | null {
   if (!AI_CLIS.has(tool)) return null;
 
   const args = tokens.slice(index + 1);
+  if (tool === "omp") return isOmpSession(args) ? tool : null;
   if (args.some((arg) => ONE_SHOT_FLAGS.has(arg))) return null;
   // Flags belong to tools: -m is a model in Codex/OpenCode and a message in
   // aider. OpenCode --prompt opens its TUI; Pi --mode rpc does not.
@@ -170,4 +278,34 @@ function startsAiSession(segment: string): string | null {
     ONE_SHOT_SUBCOMMANDS.has(first)
     ? null
     : tool;
+}
+
+/** OMP permits launch flags before a subcommand, e.g. `omp --profile dev stats`.
+ * Quotes do not change argv semantics: `omp "models"` is still a subcommand.
+ * `--` ends flag/subcommand parsing so following words are literal prompts.
+ * Explicit `--mode text` is headless unlike the default.
+ */
+function isOmpSession(args: string[]): boolean {
+  let firstPositional: string | null = null;
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "--") break;
+    if (arg.startsWith("-")) {
+      const flag = arg.split("=", 1)[0];
+      if (
+        ONE_SHOT_FLAGS.has(flag) ||
+        flag === "-p" ||
+        flag === "--print" ||
+        flag === "--mode" ||
+        flag === "--export" ||
+        flag === "--alias"
+      ) {
+        return false;
+      }
+      if (OMP_VALUE_FLAGS.has(flag) && flag === arg) i += 1;
+      continue;
+    }
+    if (firstPositional === null) firstPositional = arg;
+  }
+  return !firstPositional || !OMP_OTHER_SUBCOMMANDS.has(firstPositional);
 }
