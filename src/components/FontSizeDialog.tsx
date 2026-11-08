@@ -53,9 +53,9 @@ export function FontSizeDialog({
   const [cursor, setCursor] = useState<CursorStyle>(cursorStyle);
   const [blink, setBlink] = useState(cursorBlink);
   const [gpu, setGpu] = useState(gpuRenderer);
-  // Cold history is not part of DisplaySettings: the terminal controllers
-  // read this preference on every write, so the switch persists itself the
-  // moment it is toggled instead of waiting for Apply.
+  // Cold history is stored outside DisplaySettings, but it must still obey
+  // this dialog's Apply/Cancel contract. Otherwise Cancel can silently enable
+  // an experimental feature with known correctness limits.
   const [coldHistory, setColdHistory] = useState(terminalColdHistoryEnabled);
   const t = useT();
 
@@ -131,6 +131,7 @@ export function FontSizeDialog({
       <form
         onSubmit={(event) => {
           event.preventDefault();
+          setTerminalColdHistory(coldHistory);
           onApply({
             panelFontSize: panelSize,
             bufferFontSize: bufferSize,
@@ -311,10 +312,7 @@ export function FontSizeDialog({
               <input
                 type="checkbox"
                 checked={coldHistory}
-                onChange={(event) => {
-                  setColdHistory(event.target.checked);
-                  setTerminalColdHistory(event.target.checked);
-                }}
+                onChange={(event) => setColdHistory(event.target.checked)}
               />
               {t("common.enabled")}
             </span>
@@ -334,7 +332,6 @@ export function FontSizeDialog({
               setBlink(true);
               setGpu(true);
               setColdHistory(false);
-              setTerminalColdHistory(false);
             }}
           >
             {t("fontDialog.resetDefaults")}

@@ -329,7 +329,7 @@ export const zhCN: Catalog = {
   "fontDialog.lines": "行",
   "fontDialog.coldHistory": "无缝冷历史",
   "fontDialog.coldHistoryHint":
-    "超出回滚的行转入压缩内存存储，滚动到顶部时自动接回；内存上限每会话 64 MB、全局 256 MB（默认关闭）",
+    "实验功能（默认关闭）。每会话 64 MB、全局 256 MB 仅限压缩存储；回填会增加终端内存，长折行可能丢字。",
   "fontDialog.resetDefaults": "恢复默认",
   "fontDialog.systemDefault": "系统默认",
 
