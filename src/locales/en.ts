@@ -365,7 +365,7 @@ export const en = {
   "fontDialog.lines": "lines",
   "fontDialog.coldHistory": "Seamless cold history",
   "fontDialog.coldHistoryHint":
-    "Lines scrolled past the buffer move to compressed memory and rejoin when you scroll to the top; memory is capped at 64 MB per session and 256 MB overall (off by default)",
+    "Experimental (off by default). The 64/256 MB caps cover compressed storage only; reloaded rows use more RAM, and long wrapped lines may lose text.",
   "fontDialog.resetDefaults": "Reset Defaults",
   "fontDialog.systemDefault": "System default",
 
