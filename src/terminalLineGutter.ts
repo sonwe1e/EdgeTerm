@@ -4,6 +4,8 @@ import { GutterMode, GutterView, LINE_TIME_SLACK, formatTime } from "./terminalS
 interface Context {
   readonly gutter: HTMLElement | null;
   readonly gutterMode: GutterMode;
+  /** The shell has handed this terminal to an interactive coding agent. */
+  readonly agentSessionActive: boolean;
   readonly term: Terminal;
   readonly scrollback: number;
   readonly host: HTMLElement | null;
@@ -48,6 +50,9 @@ export class TerminalLineGutter {
    * at their mutation sites instead of being compared here.
    */
   private gutterPainted: GutterView | null = null;
+
+  /** Agent TUIs and alternate-screen programs have no meaningful gutter rows. */
+  private gutterContentSuppressed = false;
 
   /** Output may have changed the last nonblank screen row without moving the cursor. */
   gutterContentDirty = true;
@@ -300,13 +305,24 @@ export class TerminalLineGutter {
     // Full-screen programs (vim, top) paint into the alternate buffer, where
     // line numbers and produced-at times are meaningless.
     const alternate = buf.type === "alternate";
+    // Agent TUIs can also draw into the normal buffer. Keep the gutter's
+    // reserved width, but do not show transient row numbers/timestamps over
+    // their interactive output. This is per terminal, not a global setting.
+    const suppressContent = alternate || this.context.agentSessionActive;
+    // While it remains hidden, output may repaint the entire TUI each frame.
+    // Its gutter is already blank; avoid touching every row on each repaint.
+    if (suppressContent && this.gutterContentSuppressed && this.rowPool.length === rows) {
+      this.gutterContentDirty = false;
+      return;
+    }
     const painted = this.gutterPainted;
     const sameView = !!(
       painted &&
       painted.viewportY === viewportY &&
       painted.cursorIndex === cursorIndex &&
       painted.rows === rows &&
-      painted.alternate === alternate
+      painted.alternate === alternate &&
+      this.gutterContentSuppressed === suppressContent
     );
     if (sameView && !this.gutterContentDirty) return;
     this.gutterContentDirty = false;
@@ -326,6 +342,7 @@ export class TerminalLineGutter {
     }
     if (sameView && painted?.contentEnd === contentEnd) return;
     this.gutterPainted = { viewportY, cursorIndex, contentEnd, rows, alternate };
+    this.gutterContentSuppressed = suppressContent;
 
     while (this.rowPool.length < rows) {
       const row = document.createElement("div");
@@ -348,7 +365,7 @@ export class TerminalLineGutter {
 
       // `buf.length` spans the viewport, and line feeds can put timestamps
       // on padding rows. The content limit keeps that blank suffix hidden.
-      const written = !alternate && index < this.lineCount && index <= contentEnd;
+      const written = !suppressContent && index < this.lineCount && index <= contentEnd;
       row.classList.toggle("is-empty", !written);
       row.classList.toggle("is-cursor", written && index === cursorIndex);
 

@@ -218,6 +218,158 @@ describe("TerminalController fit in a real container", () => {
     expect(controller.term.rows).toBeGreaterThan(10);
   });
 
+  it("keeps the fitted columns stable while a TUI clears and restores the gutter", async () => {
+    const pane = mountPane(640, 400);
+    const { controller, resizes } = make(pane);
+    controller.setVisible(true);
+    await frame();
+    controller.fit(true);
+    await write(controller, lines(220));
+    // Settle the initial content-dependent gutter width before measuring. A
+    // regression must be caught on the normal -> alternate transition, not
+    // accidentally counted as an initial mount fit.
+    await wait(250);
+
+    const gutter = pane.querySelector<HTMLElement>(".term-gutter")!;
+    const host = pane.querySelector<HTMLElement>(".term-host")!;
+    const dimensions = () => ({
+      gutter: gutter.getBoundingClientRect().width,
+      host: host.getBoundingClientRect().width,
+      cols: controller.term.cols,
+      resizes: resizes.length,
+    });
+    const normal = dimensions();
+    expect(normal.gutter, "the visible gutter occupies real horizontal space").toBeGreaterThan(50);
+    expect(gutter.querySelector(".gutter-time")?.textContent).toContain("[");
+
+    // Many full-screen CLIs temporarily enter the alternate screen, which
+    // deliberately blanks the meaningless timestamps and line numbers. Their
+    // content visibility must not change the *layout* width or send PTY
+    // resizes/reflow to the running program.
+    await write(controller, "\x1b[?1049h\x1b[H\x1b[2J");
+    await wait(250);
+    const alternate = dimensions();
+    expect(controller.term.buffer.active.type).toBe("alternate");
+    expect(gutter.querySelector(".gutter-time")?.textContent).toBe("");
+    expect(alternate.gutter, "blank TUI gutter keeps the reserved width").toBeCloseTo(
+      normal.gutter,
+      1,
+    );
+    expect(alternate.host, "blank TUI gutter cannot widen the terminal").toBeCloseTo(
+      normal.host,
+      1,
+    );
+    expect(alternate.cols, "a buffer switch does not change fitted columns").toBe(normal.cols);
+    expect(alternate.resizes, "a buffer switch does not send a PTY resize").toBe(normal.resizes);
+
+    await write(controller, "\x1b[?1049l");
+    await wait(250);
+    const restored = dimensions();
+    expect(controller.term.buffer.active.type).toBe("normal");
+    expect(gutter.querySelector(".gutter-time")?.textContent).toContain("[");
+    expect(restored.gutter).toBeCloseTo(normal.gutter, 1);
+    expect(restored.host).toBeCloseTo(normal.host, 1);
+    expect(restored.cols).toBe(normal.cols);
+    expect(restored.resizes).toBe(normal.resizes);
+  });
+
+  it("clearing the normal-buffer tail does not change terminal geometry", async () => {
+    const pane = mountPane(640, 400);
+    const { controller, resizes } = make(pane);
+    controller.setVisible(true);
+    await frame();
+    controller.fit(true);
+    await write(controller, lines(220));
+    await wait(250);
+
+    const host = pane.querySelector<HTMLElement>(".term-host")!;
+    const width = host.getBoundingClientRect().width;
+    const cols = controller.term.cols;
+    const count = resizes.length;
+    // Cursor-addressed repaint in the normal buffer can make the tail's
+    // line numbers and timestamps disappear without changing pane geometry.
+    await write(controller, "\x1b[H\x1b[2J\x1b[Hready");
+    await wait(250);
+    expect(pane.querySelectorAll(".gutter-row.is-empty").length).toBeGreaterThan(0);
+    expect(host.getBoundingClientRect().width).toBeCloseTo(width, 1);
+    expect(controller.term.cols).toBe(cols);
+    expect(resizes.length).toBe(count);
+
+    await write(controller, "\x1b[Hrepainted");
+    await wait(250);
+    expect(host.getBoundingClientRect().width).toBeCloseTo(width, 1);
+    expect(controller.term.cols).toBe(cols);
+    expect(resizes.length).toBe(count);
+  });
+
+  it("hides normal-buffer OMP screen labels without resizing its terminal", async () => {
+    const pane = mountPane(640, 400);
+    const { controller, resizes } = make(pane);
+    controller.setVisible(true);
+    await frame();
+    controller.fit(true);
+    const prompt = "alice@server:~/repo$ ";
+    await write(controller, prompt);
+    await wait(250);
+
+    const gutter = pane.querySelector<HTMLElement>(".term-gutter")!;
+    const host = pane.querySelector<HTMLElement>(".term-host")!;
+    const width = gutter.getBoundingClientRect().width;
+    const hostWidth = host.getBoundingClientRect().width;
+    const cols = controller.term.cols;
+    const count = resizes.length;
+    expect(gutter.querySelector(".gutter-line")?.textContent).not.toBe("");
+
+    // OMP can repaint in the normal buffer instead of the alternate screen.
+    // The public Sender command path identifies that foreground Agent session.
+    expect(controller.noteCommandSent("omp")).toBe(true);
+    expect(controller.agentDiagnostics().tool).toBe("omp");
+    await write(controller, "\r\nOMP interactive screen\r\n\x1b[HTUI repaint");
+    await wait(250);
+    expect(controller.term.buffer.active.type).toBe("normal");
+    expect(gutter.querySelector(".gutter-line")?.textContent).toBe("");
+    expect(gutter.querySelector(".gutter-time")?.textContent).toBe("");
+    expect(gutter.getBoundingClientRect().width).toBeCloseTo(width, 1);
+    expect(host.getBoundingClientRect().width).toBeCloseTo(hostWidth, 1);
+    expect(controller.term.cols).toBe(cols);
+    expect(resizes.length).toBe(count);
+
+    await write(controller, `\r\n${prompt}`);
+    await wait(250);
+    expect(controller.agentDiagnostics().tool).toBeNull();
+    expect(gutter.querySelector(".gutter-line")?.textContent).not.toBe("");
+    expect(gutter.getBoundingClientRect().width).toBeCloseTo(width, 1);
+    expect(controller.term.cols).toBe(cols);
+    expect(resizes.length).toBe(count);
+  });
+
+  it("a user-selected off mode intentionally releases the gutter width", async () => {
+    const pane = mountPane(640, 400);
+    const { controller } = make(pane);
+    controller.setVisible(true);
+    await frame();
+    controller.fit(true);
+    await write(controller, "shell prompt> ");
+    await wait(250);
+
+    const gutter = pane.querySelector<HTMLElement>(".term-gutter")!;
+    const host = pane.querySelector<HTMLElement>(".term-host")!;
+    const gutterOnWidth = gutter.getBoundingClientRect().width;
+    const hostOnWidth = host.getBoundingClientRect().width;
+    expect(gutterOnWidth).toBeGreaterThan(50);
+
+    controller.setGutterMode("off");
+    await wait(250);
+    expect(getComputedStyle(gutter).display).toBe("none");
+    expect(gutter.getBoundingClientRect().width).toBe(0);
+    expect(host.getBoundingClientRect().width).toBeGreaterThan(hostOnWidth + 5);
+
+    controller.setGutterMode("both");
+    await wait(250);
+    expect(gutter.getBoundingClientRect().width).toBeCloseTo(gutterOnWidth, 1);
+    expect(host.getBoundingClientRect().width).toBeCloseTo(hostOnWidth, 1);
+  });
+
   it("buffers under 200 lines resize both axes immediately", async () => {
     const pane = mountPane(640, 400);
     const { controller, resizes } = make(pane);

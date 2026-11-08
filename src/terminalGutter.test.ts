@@ -51,6 +51,13 @@ function gutterLine(rows: HTMLElement[], index: number): string {
   return rows[index]?.querySelector(".gutter-line")?.textContent ?? "";
 }
 
+function expectGutterContentHidden(rows: HTMLElement[]) {
+  for (const row of rows) {
+    expect(row.querySelector(".gutter-line")?.textContent).toBe("");
+    expect(row.querySelector(".gutter-time")?.textContent).toBe("");
+  }
+}
+
 /** `line 1` … `line n`, one per row, as a single chunk of output. */
 function lines(from: number, to: number): string {
   let out = "";
@@ -208,6 +215,48 @@ describe("gutter line numbering", () => {
     rows = gutterRows(controller);
     expect(gutterLine(rows, 4)).toBe("5");
     expect(gutterLine(rows, 29)).toBe("");
+  });
+
+  it("hides interactive Agent rows without losing normal-buffer metadata", async () => {
+    const controller = createController(100);
+    await write(controller, "shell output\r\nagent output\r\n");
+    const before = recordedTimes(controller);
+    let rows = gutterRows(controller);
+    expect(gutterLine(rows, 0)).toBe("1");
+    const internals = controller as unknown as { commands: { aiTool: string | null } };
+
+    // Agent TUIs may repaint in the normal buffer. The current viewport
+    // doesn't move, so switching to and from Agent mode must bypass its
+    // cached gutter view without relying on a manual invalidation.
+    internals.commands.aiTool = "omp";
+    rows = gutterRows(controller);
+    expectGutterContentHidden(rows);
+    expect(rows[0].classList.contains("is-empty")).toBe(true);
+
+    await write(controller, "more agent output\r\n");
+    rows = gutterRows(controller);
+    expectGutterContentHidden(rows);
+
+    internals.commands.aiTool = null;
+    rows = gutterRows(controller);
+    expect(gutterLine(rows, 0)).toBe("1");
+    expect(gutterLine(rows, 1)).toBe("2");
+    expect(recordedTimes(controller).get("shell output")).toBe(before.get("shell output"));
+  });
+
+  it("does not show alternate-screen rows after an interactive session ends", async () => {
+    const controller = createController(100);
+    await write(controller, "history\r\n");
+    expect(gutterLine(gutterRows(controller), 0)).toBe("1");
+    const internals = controller as unknown as { commands: { aiTool: string | null } };
+
+    internals.commands.aiTool = "omp";
+    await write(controller, "\x1b[?1049hfull-screen agent\r\n");
+    internals.commands.aiTool = null;
+    expect(gutterLine(gutterRows(controller), 0)).toBe("");
+
+    await write(controller, "\x1b[?1049l");
+    expect(gutterLine(gutterRows(controller), 0)).toBe("1");
   });
 
   it("follows xterm's trimming once the scrollback is full", async () => {

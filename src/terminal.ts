@@ -395,6 +395,10 @@ export class TerminalController {
         return owner.gutterMode;
       },
 
+      get agentSessionActive() {
+        return owner.commands.aiTool !== null;
+      },
+
       get term() {
         return owner.term;
       },
