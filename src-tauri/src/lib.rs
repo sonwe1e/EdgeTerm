@@ -20,10 +20,10 @@ mod model;
 mod port_forward;
 // Unix test builds compile it too: the detection is pure, and no CI job
 // runs the Rust tests on Linux.
+mod image_preview;
 #[cfg(any(target_os = "linux", all(test, unix)))]
 mod nvidia_quirk;
 mod preview;
-mod image_preview;
 mod project;
 mod remote_edit;
 mod resource_monitor;

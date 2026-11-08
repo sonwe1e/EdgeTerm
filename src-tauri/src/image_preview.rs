@@ -108,9 +108,13 @@ fn webp_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
     let chunk_size = u32_le(bytes.get(16..)?)? as usize;
     let payload = bytes.get(20..20usize.checked_add(chunk_size)?)?;
     if chunk_type == b"VP8X" && payload.len() >= 10 {
-        let width = 1 + u32::from(payload[4]) + (u32::from(payload[5]) << 8)
+        let width = 1
+            + u32::from(payload[4])
+            + (u32::from(payload[5]) << 8)
             + (u32::from(payload[6]) << 16);
-        let height = 1 + u32::from(payload[7]) + (u32::from(payload[8]) << 8)
+        let height = 1
+            + u32::from(payload[7])
+            + (u32::from(payload[8]) << 8)
             + (u32::from(payload[9]) << 16);
         Some((width, height))
     } else if chunk_type == b"VP8L" && payload.len() >= 5 && payload[0] == 0x2f {
@@ -223,7 +227,9 @@ fn read_local(path: &str) -> Result<Vec<u8>> {
         .read_to_end(&mut bytes)?;
     let after = file.metadata()?;
     if bytes.len() > MAX_BYTES {
-        return Err(AppError::invalid_input("the image exceeds the 16 MiB preview limit"));
+        return Err(AppError::invalid_input(
+            "the image exceeds the 16 MiB preview limit",
+        ));
     }
     if bytes.len() as u64 != before.len() {
         return Err(AppError::coded(

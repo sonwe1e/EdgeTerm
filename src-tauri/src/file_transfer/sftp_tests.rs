@@ -1692,7 +1692,11 @@ async fn benchmark_real_server_transfer_matrix() {
         let seed_remote = Remote::connect(&seed).await.unwrap();
         bench_check_remote_base(&seed_remote, base, &seed.control).await;
         assert!(
-            seed_remote.attrs(&remote_path, &seed.control).await.unwrap().is_none(),
+            seed_remote
+                .attrs(&remote_path, &seed.control)
+                .await
+                .unwrap()
+                .is_none(),
             "refusing to seed over an existing remote path"
         );
         let items = plan(&seed, &seed_remote).await.unwrap();
@@ -1744,7 +1748,11 @@ async fn benchmark_real_server_transfer_matrix() {
     bench_check_remote_base(&remote, base, &job.control).await;
     if direction == "upload" {
         assert!(
-            remote.attrs(&remote_path, &job.control).await.unwrap().is_none(),
+            remote
+                .attrs(&remote_path, &job.control)
+                .await
+                .unwrap()
+                .is_none(),
             "refusing to upload over an existing remote path"
         );
     }
@@ -1882,7 +1890,10 @@ async fn benchmark_real_server_transfer_matrix() {
             .unwrap();
         std::io::Write::write_all(&mut output, format!("{line}\n").as_bytes()).unwrap();
     }
-    assert!(passed, "benchmark transfer or SHA-256 check failed: {record}");
+    assert!(
+        passed,
+        "benchmark transfer or SHA-256 check failed: {record}"
+    );
 }
 
 struct BenchScratch(PathBuf);
@@ -1893,8 +1904,13 @@ impl BenchScratch {
         let base = std::env::var_os("EDGETERM_BENCH_LOCAL_TEMP_BASE")
             .map(PathBuf::from)
             .unwrap_or_else(std::env::temp_dir);
-        let base = base.canonicalize().expect("benchmark local scratch base must exist");
-        assert!(base.is_dir(), "benchmark local scratch base must be a directory");
+        let base = base
+            .canonicalize()
+            .expect("benchmark local scratch base must exist");
+        assert!(
+            base.is_dir(),
+            "benchmark local scratch base must be a directory"
+        );
         let path = base.join(format!("edgeterm-bench-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir(&path).unwrap();
         Self(path)
@@ -1915,7 +1931,12 @@ struct BenchFile {
 fn bench_prepare(root: &Path, workload: &str) -> Vec<BenchFile> {
     let sizes: Vec<(String, u64)> = match workload {
         "small" => (0..512)
-            .map(|i| (format!("images/album-{:02}/frame-{i:04}.bin", i / 16), 1024 * 1024))
+            .map(|i| {
+                (
+                    format!("images/album-{:02}/frame-{i:04}.bin", i / 16),
+                    1024 * 1024,
+                )
+            })
             .collect(),
         "single" => vec![("large/single.bin".into(), 512 * 1024 * 1024)],
         "four" => (0..4)
@@ -1947,7 +1968,11 @@ fn bench_prepare(root: &Path, workload: &str) -> Vec<BenchFile> {
                 left -= n as u64;
             }
             std::io::Write::flush(&mut writer).unwrap();
-            BenchFile { name, size, sha256: local::hex(sha.finish().as_ref()) }
+            BenchFile {
+                name,
+                size,
+                sha256: local::hex(sha.finish().as_ref()),
+            }
         })
         .collect()
 }
