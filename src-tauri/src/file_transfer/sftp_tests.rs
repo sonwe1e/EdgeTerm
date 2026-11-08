@@ -1596,6 +1596,362 @@ fn walk_count(dir: &Path) -> usize {
         .sum()
 }
 
+/// A real-server benchmark for the two workloads absent from the historical
+/// 4 KiB fixture: many ~1 MiB image-sized files and large files. This test is
+/// intentionally opt-in, writes only into a unique child of an explicitly
+/// supplied disposable remote directory, and NEVER cleans up that remote
+/// child (the operator must inspect the results before removing it).
+///
+/// Run one `(workload, direction)` per invocation with `--ignored --nocapture`;
+/// repeat against the same server and settings with fresh, unique targets.
+/// See scripts/README.md for the complete environment contract and examples.
+#[tokio::test]
+#[ignore = "requires an explicitly acknowledged, isolated OpenSSH benchmark server"]
+async fn benchmark_real_server_transfer_matrix() {
+    let var = |name: &str| std::env::var(name).unwrap_or_else(|_| panic!("{name} is required"));
+    assert_eq!(
+        var("EDGETERM_BENCH_ISOLATED"),
+        "1",
+        "run only against a disposable, isolated OpenSSH benchmark account"
+    );
+    let workload = var("EDGETERM_BENCH_CASE");
+    assert!(
+        matches!(workload.as_str(), "small" | "single" | "four"),
+        "EDGETERM_BENCH_CASE must be small, single or four"
+    );
+    let direction = var("EDGETERM_BENCH_DIRECTION");
+    assert!(
+        matches!(direction.as_str(), "upload" | "download"),
+        "EDGETERM_BENCH_DIRECTION must be upload or download"
+    );
+    let base = var("EDGETERM_BENCH_REMOTE_BASE");
+    let base = base.trim_end_matches('/');
+    assert!(
+        base.starts_with('/')
+            && !base.is_empty()
+            && !base.split('/').any(|part| part == "." || part == "..")
+            && !base.chars().any(|c| matches!(c, '\\' | '\n' | '\r')),
+        "EDGETERM_BENCH_REMOTE_BASE must be an existing, isolated absolute POSIX directory"
+    );
+    let (host, port) = var("EDGETERM_BENCH_ADDR")
+        .rsplit_once(':')
+        .map(|(host, port)| (host.to_owned(), port.parse::<u16>().expect("numeric port")))
+        .expect("EDGETERM_BENCH_ADDR must be host:port");
+    let files = std::env::var("EDGETERM_BENCH_FILES")
+        .ok()
+        .map(|v| v.parse::<usize>().expect("numeric EDGETERM_BENCH_FILES"))
+        .unwrap_or(16);
+    let requests = std::env::var("EDGETERM_BENCH_REQUESTS")
+        .ok()
+        .map(|v| v.parse::<usize>().expect("numeric EDGETERM_BENCH_REQUESTS"))
+        .unwrap_or(32);
+    let options = super::super::Options {
+        files,
+        requests,
+        ..Default::default()
+    };
+    options.validate().unwrap();
+
+    let run_id = uuid::Uuid::new_v4().to_string();
+    let scratch = BenchScratch::new();
+    let source = scratch.0.join("source");
+    let expected = bench_prepare(&source, &workload);
+    let expected_bytes: u64 = expected.iter().map(|f| f.size).sum();
+    let remote_path = format!("{base}/edgeterm-bench-{run_id}");
+
+    // A download needs a remote source. Seed it by the production SFTP copy
+    // path OUTSIDE every measured interval; do not count seeding as download.
+    if direction == "download" {
+        let seed_root = scratch.0.join("seed-journal");
+        let seed = super::super::test_job_items(
+            seed_root,
+            vec![Item {
+                local: source.to_string_lossy().into(),
+                remote: remote_path.clone(),
+                upload: true,
+                directory: true,
+            }],
+        );
+        *seed.transport.lock() = Some(
+            crate::session::ssh::test_transport(
+                &host,
+                port,
+                &var("EDGETERM_BENCH_USER"),
+                &var("EDGETERM_BENCH_KEY"),
+                &scratch.0.join("known_hosts"),
+            )
+            .await,
+        );
+        let seed_remote = Remote::connect(&seed).await.unwrap();
+        assert!(
+            seed_remote.attrs(&remote_path, &seed.control).await.unwrap().is_none(),
+            "refusing to seed over an existing remote path"
+        );
+        let items = plan(&seed, &seed_remote).await.unwrap();
+        assert_eq!(items.len(), expected.len(), "seeding omitted files");
+        copy_files(&seed, &seed_remote, items).await.unwrap();
+        drop(seed_remote);
+        drop(seed);
+    }
+
+    let download = scratch.0.join("download");
+    if direction == "download" {
+        std::fs::create_dir(&download).unwrap();
+    }
+    let local_path = if direction == "upload" {
+        &source
+    } else {
+        &download
+    };
+    let job = super::super::test_job_items(
+        scratch.0.join("measured-journal"),
+        vec![Item {
+            local: local_path.to_string_lossy().into(),
+            remote: remote_path.clone(),
+            upload: direction == "upload",
+            directory: true,
+        }],
+    );
+    // test_job_items supplies production defaults. Override only the two
+    // explicitly measured concurrency knobs, before the Arc is shared.
+    let mut job = job;
+    Arc::get_mut(&mut job).unwrap().options = options.clone();
+
+    let started = Instant::now();
+    *job.transport.lock() = Some(
+        crate::session::ssh::test_transport(
+            &host,
+            port,
+            &var("EDGETERM_BENCH_USER"),
+            &var("EDGETERM_BENCH_KEY"),
+            &scratch.0.join("known_hosts"),
+        )
+        .await,
+    );
+    let ssh_ms = bench_ms(started.elapsed());
+    let started = Instant::now();
+    let remote = Remote::connect(&job).await.unwrap();
+    let sftp_ms = bench_ms(started.elapsed());
+    let effective_files = remote.files;
+    if direction == "upload" {
+        assert!(
+            remote.attrs(&remote_path, &job.control).await.unwrap().is_none(),
+            "refusing to upload over an existing remote path"
+        );
+    }
+    let started = Instant::now();
+    let items = plan(&job, &remote).await.unwrap();
+    let planned_ms = bench_ms(started.elapsed());
+    let planned_files = items.len();
+    let started = Instant::now();
+    let copied = copy_files(&job, &remote, items).await;
+    let copied_ms = bench_ms(started.elapsed());
+    let snapshot = job.snapshot.lock().clone();
+
+    // Verification is explicitly excluded from transfer timings. For upload
+    // re-read EVERY remote file through SFTP; for download hash local files.
+    let started = Instant::now();
+    let mut verified = 0usize;
+    let mut error = copied.as_ref().err().map(|e| e.to_string());
+    if error.is_none()
+        && (planned_files != expected.len()
+            || snapshot.total_files != expected.len()
+            || snapshot.completed_files != expected.len()
+            || snapshot.total != expected_bytes
+            || snapshot.transferred != expected_bytes)
+    {
+        error = Some(format!(
+            "work mismatch: planned={planned_files}, total_files={}, completed={}, bytes={}/{expected_bytes}",
+            snapshot.total_files, snapshot.completed_files, snapshot.transferred
+        ));
+    }
+    if error.is_none() {
+        for file in &expected {
+            let actual = if direction == "upload" {
+                let path = format!("{remote_path}/{}", file.name);
+                match remote.attrs(&path, &job.control).await {
+                    Ok(Some(attrs))
+                        if attrs.size == Some(file.size)
+                            && !attrs.is_symlink()
+                            && !attrs.is_dir() =>
+                    {
+                        remote
+                            .hash(&path, file.size, &job.control)
+                            .await
+                            .map_err(|e| e.to_string())
+                    }
+                    Ok(attrs) => Err(format!(
+                        "unexpected remote size for {path}: {:?}",
+                        attrs.and_then(|attrs| attrs.size)
+                    )),
+                    Err(e) => Err(e.to_string()),
+                }
+            } else {
+                let path = download.join(&file.name);
+                match std::fs::symlink_metadata(&path) {
+                    Ok(meta) if meta.is_file() && meta.len() == file.size => {
+                        bench_sha256(&path).map_err(|e| e.to_string())
+                    }
+                    Ok(meta) => Err(format!(
+                        "unexpected local size for {}: {}",
+                        file.name,
+                        meta.len()
+                    )),
+                    Err(e) => Err(e.to_string()),
+                }
+            };
+            match actual {
+                Ok(hash) if hash == file.sha256 => verified += 1,
+                Ok(_) => {
+                    error = Some(format!("SHA-256 mismatch: {}", file.name));
+                    break;
+                }
+                Err(e) => {
+                    error = Some(format!("verify {}: {e}", file.name));
+                    break;
+                }
+            }
+        }
+    }
+    let verify_ms = bench_ms(started.elapsed());
+    let passed = error.is_none() && verified == expected.len();
+    let plan_copy_s = (planned_ms + copied_ms) / 1000.0;
+    let copy_s = copied_ms / 1000.0;
+    let mib = expected_bytes as f64 / (1024.0 * 1024.0);
+    let record = serde_json::json!({
+        "schema": 1,
+        "captured_unix_ms": std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis(),
+        "run_id": run_id,
+        "commit": std::env::var("EDGETERM_BENCH_COMMIT").ok(),
+        "release_build": !cfg!(debug_assertions),
+        "server_label": std::env::var("EDGETERM_BENCH_SERVER_LABEL")
+            .unwrap_or_else(|_| "fixture".into()),
+        "workload": workload,
+        "direction": direction,
+        "remote_path": remote_path,
+        "files_expected": expected.len(),
+        "bytes_expected": expected_bytes,
+        "files_planned": planned_files,
+        "files_reported_total": snapshot.total_files,
+        "files_completed": snapshot.completed_files,
+        "bytes_reported_total": snapshot.total,
+        "bytes_reported": snapshot.transferred,
+        "files_sha256_verified": verified,
+        "status": if passed { "pass" } else { "fail" },
+        "error": error,
+        "configured": { "files": files, "requests": requests, "chunk_kib": options.chunk_kib },
+        "effective": {
+            "files_ceiling": effective_files,
+            "read_bytes": remote.read_len,
+            "write_bytes": remote.write_len
+        },
+        "time_ms": {
+            "ssh": ssh_ms,
+            "sftp": sftp_ms,
+            "plan": planned_ms,
+            "copy": copied_ms,
+            "verify_excluded": verify_ms
+        },
+        "throughput_mib_s": {
+            "copy": if passed && copy_s > 0.0 { Some(mib / copy_s) } else { None },
+            "plan_copy": if passed && plan_copy_s > 0.0 { Some(mib / plan_copy_s) } else { None }
+        },
+        "remote_cleanup_required": true
+    });
+    let line = serde_json::to_string(&record).unwrap();
+    println!("EDGETERM_SFTP_BENCH_JSON {line}");
+    if let Ok(path) = std::env::var("EDGETERM_BENCH_OUTPUT") {
+        let mut output = std::fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(path)
+            .unwrap();
+        std::io::Write::write_all(&mut output, format!("{line}\n").as_bytes()).unwrap();
+    }
+    assert!(passed, "benchmark transfer or SHA-256 check failed: {record}");
+}
+
+struct BenchScratch(PathBuf);
+impl BenchScratch {
+    fn new() -> Self {
+        let path = std::env::temp_dir().join(format!("edgeterm-bench-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&path).unwrap();
+        Self(path)
+    }
+}
+impl Drop for BenchScratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+struct BenchFile {
+    name: String,
+    size: u64,
+    sha256: String,
+}
+
+fn bench_prepare(root: &Path, workload: &str) -> Vec<BenchFile> {
+    let sizes: Vec<(String, u64)> = match workload {
+        "small" => (0..512)
+            .map(|i| (format!("images/album-{:02}/frame-{i:04}.bin", i / 16), 1024 * 1024))
+            .collect(),
+        "single" => vec![("large/single.bin".into(), 512 * 1024 * 1024)],
+        "four" => (0..4)
+            .map(|i| (format!("large/part-{i}.bin"), 128 * 1024 * 1024))
+            .collect(),
+        _ => unreachable!("workload was validated"),
+    };
+    sizes
+        .into_iter()
+        .enumerate()
+        .map(|(index, (name, size))| {
+            let path = root.join(&name);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            let mut writer = std::io::BufWriter::new(std::fs::File::create(path).unwrap());
+            let mut sha = Context::new(&SHA256);
+            let mut value = (index as u64 + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+            let mut buffer = vec![0u8; 64 * 1024];
+            let mut left = size;
+            while left > 0 {
+                let n = left.min(buffer.len() as u64) as usize;
+                for byte in &mut buffer[..n] {
+                    value ^= value << 13;
+                    value ^= value >> 7;
+                    value ^= value << 17;
+                    *byte = value as u8;
+                }
+                std::io::Write::write_all(&mut writer, &buffer[..n]).unwrap();
+                sha.update(&buffer[..n]);
+                left -= n as u64;
+            }
+            std::io::Write::flush(&mut writer).unwrap();
+            BenchFile { name, size, sha256: local::hex(sha.finish().as_ref()) }
+        })
+        .collect()
+}
+
+fn bench_sha256(path: &Path) -> std::io::Result<String> {
+    let mut file = std::fs::File::open(path)?;
+    let mut sha = Context::new(&SHA256);
+    let mut buffer = [0u8; 256 * 1024];
+    loop {
+        let read = std::io::Read::read(&mut file, &mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        sha.update(&buffer[..read]);
+    }
+    Ok(local::hex(sha.finish().as_ref()))
+}
+
+fn bench_ms(duration: Duration) -> f64 {
+    duration.as_secs_f64() * 1000.0
+}
+
 #[tokio::test]
 async fn durable_option_restores_the_per_file_fsync() {
     let mut f = Fixture::new(Server::default()).await;
