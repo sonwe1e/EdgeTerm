@@ -43,3 +43,18 @@ P1（不阻断上述 P0 结果的记录）：后台输出期间关闭单个会�
 `编号 + Git SHA + Windows/WebView2 版本 + Agent 版本（若涉及） + 本地/SSH + gutter 模式/A2 OFF + 窗口尺寸/字号 + 3–5 步复现 + 脱敏截图或 15–30 秒录屏`。
 
 **放行边界**：P0 通过只代表**主线稳定体验与小补丁 UX** 在该 Windows 环境通过，不授权开启 A2、不解除 Draft PR #2 的正确性与内存阻断项。按用户选择，A2 底层修复等待独立需求确认后再启动。
+
+## 真机验证记录（2026-11-08，通过）
+
+在 Windows 真机（Windows 11 Home 26H2，10.0.26300.9711；WebView2 157.0.4341.42；DPI 1.75）用本分支 `6802947` 源码构建的便携版（`tauri:build` release，exe SHA256 `DE2B92E9…0590F6`）通过 CDP 驱动真实 WebView2 窗口执行全部 P0 项。工具版本：omp/18.18.1（Windows bun 1.4.4 与 WSL Ubuntu-26.04 各一份）、opencode 1.19.5、pi 1.5.0（全局）/1.4.0（隔离副本 + 仓库官方 `patch-pi-windows-mouse` 修复）、vim 9.1（WSL）、tmux 3.6（WSL sshd 2222 端口，专用 `edgeterm` 账户密钥认证）。全程 gutter 模式 both、A2 OFF。
+
+- **P0-1 通过**：新配置默认 OFF（`null`）；勾选 ON → Cancel 后持久值仍 `null`；Reset Defaults 仅暂存；Apply 关闭后持久化 `"0"`；**重启应用后仍 OFF 且对话框未勾选**。
+- **P0-2 通过**：本地 Shell 与 SSH 标签各进入/退出交互式 omp：20/20 采样中时间戳/行号内容隐藏而 gutter 占位宽度不变（抖动 0.00px，主机宽度抖动 0.00px，重绘期间 `resize_session` 0 次）；退出后行号恢复（本地 27 行 / SSH 24 行）。SSH 侧 omp 首次运行进入设置向导，走完向导后双 Ctrl+C 退出。
+- **P0-3 通过**：`check-native-terminal-input`（真实 Pi 1.4.0 离线转录）passed：双向滚轮翻历史、Alt+Delete 删词不开菜单、Ctrl+Tab 切换、退出后 shell 完成标记/鼠标释放/无历史污染、160 条消息原样。OpenCode 1.19.5 TUI 进入/退出期间 20/20 标签抑制 + 宽度恒定。Vim（本地）10/10：交替屏隐藏标签、宽度 173.09px 恒定、退出恢复。tmux 3.6 与 vim 9.1 over SSH 同样隐藏标签且宽度恒定。
+- **P0-4 通过**：`check-native-agent-selection` 全 PASS（选区引用、全屏 Shift 选区、中文多行缩进、无意外 PTY 注入）；真机 PowerShell PSReadLine Alt+点击后输入落在点击处（`deltaX`）、无菜单打开；查看历史时点击不改当前输入。
+- **P0-5 通过（边界）**：经 CDP `Input.imeSetComposition`/`insertText` 驱动真实 WebView2 渲染进程的组合事件路径：compositionstart/end 恰好各 1 次；带选区时"abc"被"你好"恰好替换一次（无双写/残留）；无选区时"世界"提交一次。**边界**：未驱动 Windows OS 输入法候选面板本体。
+- **P0-6 通过**：4 个并行 SSH 标签（127.0.0.1:2222）：一个输出 300 行有序编号日志、一个 tmux 进出、一个 vim 进出、一个空闲；20 次切换 gutter 宽度抖动 0.00px；滚轮回看可达；空闲标签无跨标签泄漏；结束后 4/4 会话存活。另 `check-native-terminal-tabs`（8×ConPTY、3×20000 行突发、搜索、三轮切换）passed。
+- **P0-7 通过**：Win32 驱动 10 次窗口宽度调整（920–1400px）：终端列宽随窗口全部重排（11 档不同 screenW），gutter 宽度全程恒定 173.09px；Ctrl+Shift+F 搜索计数与 Enter/Shift+Enter 导航正常、历史完好；Agent 运行且窗口不变时重绘不触发 resize（P0-2 采样）。
+
+已知边界与本轮未执行：OpenCode 无模型凭据，以未认证 TUI 验证（真实 TUI 重绘/退出路径）；P1 项（后台输出期关单个会话、重启恢复、明暗主题/窄窗）未执行，按卡片定义不阻断。测试环境备注：宿主作业对象曾向被测应用转发 WM_CLOSE 触发"关闭 EdgeTerm"询问框（closeAction 默认 ask），取消即恢复且与被测行为无关；将应用移出作业对象后不再出现。证据：`.tmp/accept/p0-*`（result.json 与截图）与 `.tmp/accept/native-*`（仓库门禁原始输出，含 CPU profile/录制的会话字节）。
+
