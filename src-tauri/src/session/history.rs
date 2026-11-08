@@ -884,7 +884,10 @@ mod tests {
             .collect();
         all.dedup();
         assert_eq!(all.len(), 1000);
-        assert_eq!(store.read_before("s", u64::MAX, 1).unwrap()[0].abs_line, 1001);
+        assert_eq!(
+            store.read_before("s", u64::MAX, 1).unwrap()[0].abs_line,
+            1001
+        );
     }
 
     #[test]
