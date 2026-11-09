@@ -109,8 +109,13 @@ fn mark_active(local: &Path) -> Result<()> {
     let dir = local
         .parent()
         .ok_or_else(|| AppError::new(format!("{} has no parent folder", local.display())))?;
-    if local.file_name().is_some_and(|name| name == ACTIVE_MARKER || name == UNSYNCED_MARKER) {
-        return Err(AppError::invalid_input("the editable copy uses a reserved marker name"));
+    if local
+        .file_name()
+        .is_some_and(|name| name == ACTIVE_MARKER || name == UNSYNCED_MARKER)
+    {
+        return Err(AppError::invalid_input(
+            "the editable copy uses a reserved marker name",
+        ));
     }
     write_marker(dir, ACTIVE_MARKER)
 }
@@ -261,7 +266,10 @@ impl RemoteEdits {
         let key = (session_id.clone(), remote.clone());
         let state = app.state::<AppState>();
         let mut watchers = self.watchers_for_session(&state.sessions, &session_id)?;
-        if watchers.get(&key).is_some_and(|watched| watched.local == local) {
+        if watchers
+            .get(&key)
+            .is_some_and(|watched| watched.local == local)
+        {
             return Ok(());
         }
         let dir = local
@@ -656,8 +664,15 @@ mod tests {
             .unwrap();
         assert!(reopened.reused);
         assert_eq!(reopened.path, prepared.path);
-        assert_eq!(std::fs::read(&local).unwrap(), b"local draft waiting for upload");
-        let watched = edits.watchers.lock().remove(&key).expect("watch kept alive");
+        assert_eq!(
+            std::fs::read(&local).unwrap(),
+            b"local draft waiting for upload"
+        );
+        let watched = edits
+            .watchers
+            .lock()
+            .remove(&key)
+            .expect("watch kept alive");
         assert!(Arc::ptr_eq(&watched.dirty, &dirty));
         assert!(dirty.load(Ordering::Relaxed));
         watched.task.abort();

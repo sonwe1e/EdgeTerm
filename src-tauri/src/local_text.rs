@@ -301,7 +301,10 @@ mod tests {
         };
         let checked = path.with_extension("checked").exists();
         fs::remove_dir_all(&dir).unwrap();
-        assert!(completed && checked, "a FIFO must be rejected before opening it");
+        assert!(
+            completed && checked,
+            "a FIFO must be rejected before opening it"
+        );
     }
 
     #[test]
