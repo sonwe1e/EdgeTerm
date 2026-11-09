@@ -50,7 +50,7 @@ const SELECTOR = {
  * @param {import("playwright").Page} page
  * @param {{
  *   scene: string,
- *   rowGroups?: {selector: string, pitch?: number, pitchVar?: string, rowPitch?: boolean, count?: number, fit?: boolean}[],
+ *   rowGroups?: {selector: string, pitch?: number, pitchVar?: string, rowPitch?: boolean, count?: number, fit?: boolean, grid?: {within: string, rows: number, columns: number, gapVar: string}}[],
  *   containers?: string[],
  *   elements?: {visible?: string[], hidden?: string[], fitWithin?: {selector: string, within: string, maxHeight?: number}[]},
  *   contrast?: string[],
@@ -368,6 +368,7 @@ function measureLayout(config) {
     const elements = Array.from(document.querySelectorAll(group.selector));
     if (elements.length === 0) {
       record.rows.push({ selector: group.selector, present: false });
+      if (group.grid) push(`rows.${group.selector}.grid.present`, false, "grid cells are missing");
       continue;
     }
     const heights = elements.map((element) => n(element.getBoundingClientRect().height));
@@ -434,10 +435,95 @@ function measureLayout(config) {
       row.count = elements.length;
     }
 
+    if (group.grid) {
+      // Content-sized cards inherit the platform font's line metrics. Their
+      // contract is a regular grid with token-sized gutters, not a pixel
+      // height copied from one platform's screenshot.
+      const spec = group.grid;
+      const container = document.querySelector(spec.within);
+      const present = container && elements.every((element) => element.parentElement === container);
+      push(`rows.${group.selector}.grid.present`, present, `cells belong to ${spec.within}`);
+      const gap = container
+        ? parseFloat(getComputedStyle(container).getPropertyValue(spec.gapVar))
+        : NaN;
+      const validGap = Number.isFinite(gap) && gap >= 0;
+      push(
+        `rows.${group.selector}.grid.gapToken`,
+        validGap,
+        `${spec.gapVar}=${Number.isFinite(gap) ? gap : "missing"}`,
+      );
+      const gridRows = [];
+      for (const rect of [...boxes].sort((one, two) => one.top - two.top || one.left - two.left)) {
+        const previous = gridRows[gridRows.length - 1];
+        if (!previous || Math.abs(rect.top - previous[0].top) > limits.tolerance)
+          gridRows.push([rect]);
+        else previous.push(rect);
+      }
+      for (const cells of gridRows) cells.sort((one, two) => one.left - two.left);
+      const shape =
+        elements.length === spec.rows * spec.columns &&
+        gridRows.length === spec.rows &&
+        gridRows.every(
+          (cells) =>
+            cells.length === spec.columns &&
+            cells.every(
+              (rect, index) =>
+                rect.width > 0 &&
+                rect.height > 0 &&
+                Math.abs(rect.left - gridRows[0][index].left) <= limits.tolerance &&
+                Math.abs(rect.width - gridRows[0][index].width) <= limits.tolerance,
+            ),
+        );
+      push(
+        `rows.${group.selector}.grid.shape`,
+        shape,
+        `expected ${spec.rows}x${spec.columns}, measured rows [${gridRows.map((cells) => cells.length)}]`,
+      );
+      push(
+        `rows.${group.selector}.grid.equalHeight`,
+        Math.max(...heights) - Math.min(...heights) <= limits.tolerance,
+        `card heights [${heights.join(", ")}]`,
+      );
+      const columnGaps = gridRows.flatMap((cells) =>
+        cells.slice(1).map((rect, index) => n(rect.left - cells[index].right)),
+      );
+      const rowGaps = gridRows
+        .slice(1)
+        .map((cells, index) =>
+          n(cells[0].top - Math.max(...gridRows[index].map((rect) => rect.bottom))),
+        );
+      for (const [axis, measured] of [
+        ["column", columnGaps],
+        ["row", rowGaps],
+      ]) {
+        push(
+          `rows.${group.selector}.grid.${axis}Gap`,
+          validGap &&
+            measured.length > 0 &&
+            measured.every((value) => Math.abs(value - gap) <= limits.tolerance),
+          `${axis} gaps [${measured.join(", ")}] must match ${spec.gapVar}=${gap}`,
+        );
+      }
+      row.grid = {
+        within: spec.within,
+        gapVar: spec.gapVar,
+        expectedGap: validGap ? gap : null,
+        rowTops: gridRows.map((cells) => cells[0].top),
+        rowGaps,
+        columnGaps,
+      };
+      if (validGap) {
+        expected = n(Math.max(...heights) + gap);
+        row.expected = expected;
+      }
+    }
+
     if (group.rowPitch) {
       // Grid rows: DOM-ordered tiles share a row top, so the rhythm is the
       // distance between distinct row tops, not between consecutive boxes.
-      const tops = [...new Set(boxes.map((item) => n(item.top)))].sort((one, two) => one - two);
+      const tops =
+        row.grid?.rowTops ??
+        [...new Set(boxes.map((item) => n(item.top)))].sort((one, two) => one - two);
       const rowPitches = [];
       for (let index = 1; index < tops.length; index += 1) {
         rowPitches.push(n(tops[index] - tops[index - 1]));
