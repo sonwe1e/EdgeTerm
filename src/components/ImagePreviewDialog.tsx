@@ -223,6 +223,7 @@ export function ImagePreviewDialog({ target, onClose }: Props) {
       open
       onClose={onClose}
       title={t("imagePreview.title")}
+      ariaLabel={t("imagePreview.title")}
       contentClassName="image-preview-dialog"
     >
       <div className="image-preview-destination">

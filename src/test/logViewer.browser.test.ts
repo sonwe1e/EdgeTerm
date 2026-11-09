@@ -148,3 +148,50 @@ it("discards a slow SSH response when the viewer switches servers", async () => 
     "STALE SECRET FROM A",
   );
 });
+
+it("shows the visible tail on open and Latest, then follows appended lines", async () => {
+  await page.viewport(900, 560);
+  const longTail: LogWindow = {
+    ...newest,
+    content:
+      Array.from({ length: 200 }, (_, index) => `line ${index + 1}: ready`).join("\n") + "\n",
+  };
+  vi.mocked(api.readLogWindow).mockResolvedValue(longTail);
+  mount(
+    h(LogViewerDialog, {
+      target: { name: "worker.log", path: newest.path, sourceTabId: "ssh-A", sessionId: "ssh-A" },
+      onClose() {},
+    }),
+  );
+  await expect
+    .element(page.getByRole("dialog", { name: "Large text viewer · Read-only" }))
+    .toBeVisible();
+  await expect
+    .poll(() => document.querySelector(".log-viewer-text")?.textContent)
+    .toContain("line 200");
+  const viewport = document.querySelector<HTMLElement>(".log-viewer-content")!;
+  expect(viewport.scrollHeight).toBeGreaterThan(viewport.clientHeight);
+  const atTail = () => viewport.scrollTop + viewport.clientHeight >= viewport.scrollHeight - 1;
+  await expect.poll(atTail).toBe(true);
+  viewport.scrollTop = 0;
+  await twoFrames();
+  await userEvent.click(page.getByRole("button", { name: "Latest", exact: true }));
+  await expect.poll(atTail).toBe(true);
+  await userEvent.click(page.getByRole("button", { name: "Follow", exact: true }));
+  await expect
+    .element(page.getByRole("button", { name: "Stop follow", exact: true }))
+    .toBeVisible();
+  vi.mocked(api.readLogWindow).mockResolvedValue({
+    ...longTail,
+    start: longTail.end,
+    end: longTail.end + 14,
+    size: longTail.size + 14,
+    content: "new last line\n",
+    modifiedAt: 2000,
+  });
+  await expect
+    .poll(() => document.querySelector(".log-viewer-text")?.textContent, { timeout: 5000 })
+    .toContain("new last line");
+  await expect.poll(atTail).toBe(true);
+  await userEvent.click(page.getByRole("button", { name: "Stop follow", exact: true }));
+});
