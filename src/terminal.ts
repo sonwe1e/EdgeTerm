@@ -816,13 +816,20 @@ export class TerminalController {
     this.viewport.observeDisplayChanges();
     // IME text takes the exactly-once path in imePatch.ts. It hooks the
     // composition helper xterm creates in open(), so it goes right after.
-    patchImeInput(this.term, () => this.flushSelectionRestore());
-    // Composition is the third way to replace a selection: deleting it
-    // here lets the committed text land in the hole (Chinese input, the
-    // user's daily path). The listener rides the textarea xterm just
-    // created; the re-parenting branch above returns before this point,
-    // so it is attached exactly once per terminal.
-    this.attachSelectionCompositionEdit();
+    patchImeInput(this.term, {
+      onCompositionStart: () => {
+        // Rapid consecutive compositions may share a pending textarea read.
+        // Keep its original ownership until all of that text has settled.
+        this.imeComposition ??= {
+          revision: this.connectionRevision,
+          selectionStamp: this.imeSelectionStamp(),
+        };
+      },
+      onCompositionSettled: () => {
+        this.imeComposition = null;
+      },
+      sendText: (text) => this.sendImeText(text),
+    });
     // Inside the host (not the root) so the completion popup positions
     // against the terminal content, past the gutter, and survives
     // re-parenting above.
@@ -836,58 +843,59 @@ export class TerminalController {
     this.lineGutter.applyGutterMode();
   }
 
-  /**
-   * Deletes an editable selection when an IME composition starts on it, so
-   * the text the input method commits replaces it, and walks the shell cursor
-   * back once that text has gone out. Everything else — the exactly-once
-   * delivery of the composed text — stays in imePatch.ts; the delete goes out
-   * here, before any of the IME's events can send text, because
-   * compositionstart is the first event of a composition. The walk back waits
-   * for the commit: sending it now would put it in the hole before the text.
-   */
-  private attachSelectionCompositionEdit() {
-    const textarea = this.term.textarea;
-    if (!textarea) return;
-    textarea.addEventListener("compositionstart", () => {
-      const edit = selectionEdit(this.term, {
+  /** Nothing is deleted while an IME candidate is still tentative. */
+  private imeComposition: { revision: number; selectionStamp: string | null } | null = null;
+
+  /** Revalidate the selected input, not just its coordinates, at commit time. */
+  private imeSelectionStamp(): string | null {
+    if (
+      !selectionEdit(this.term, {
         commandRunning: this.commands.commandRunning,
         locked: this.locked,
-      });
-      if (edit !== null) {
-        this.term.input(edit.deleteSequence, true);
-        this.term.clearSelection();
-        this.queueSelectionRestore(edit.restore);
-      }
-    });
+      })
+    )
+      return null;
+    const buffer = this.term.buffer.active;
+    const cursorRow = buffer.baseY + buffer.cursorY;
+    let first = cursorRow;
+    while (first > 0 && buffer.getLine(first)?.isWrapped) first--;
+    const text: string[] = [];
+    for (let row = first; row <= cursorRow; row++)
+      text.push(buffer.getLine(row)?.translateToString(false) ?? "");
+    return JSON.stringify([
+      this.term.cols,
+      cursorRow,
+      buffer.cursorX,
+      this.term.getSelectionPosition(),
+      text,
+    ]);
   }
 
-  /** One edit's pending walk back, waiting for its committed text. */
-  private pendingSelectionRestore: { restore: string; timer: number } | null = null;
-
-  private queueSelectionRestore(restore: string) {
-    this.clearSelectionRestore();
-    if (!restore) return;
-    const pending = { restore, timer: 0 };
-    // The IME's commit arrives on a task boundary of its own; this fallback
-    // only exists so a composition that commits nothing cannot leave the walk
-    // queued to fire after some later keystroke.
-    pending.timer = window.setTimeout(() => {
-      if (this.pendingSelectionRestore === pending) this.flushSelectionRestore();
-    }, 150);
-    this.pendingSelectionRestore = pending;
-  }
-
-  private clearSelectionRestore() {
-    if (!this.pendingSelectionRestore) return;
-    window.clearTimeout(this.pendingSelectionRestore.timer);
-    this.pendingSelectionRestore = null;
-  }
-
-  private flushSelectionRestore() {
-    const pending = this.pendingSelectionRestore;
-    this.clearSelectionRestore();
-    if (!pending || this.disposed) return;
-    this.term.input(pending.restore, true);
+  /** Commit delete + replacement + cursor restoration together, without a timer. */
+  private sendImeText(text: string) {
+    const composition = this.imeComposition;
+    if (
+      this.disposed ||
+      this.locked ||
+      this.isTransferActive() ||
+      (composition && composition.revision !== this.connectionRevision)
+    )
+      return;
+    const sameSelection =
+      !composition ||
+      (composition.selectionStamp !== null &&
+        composition.selectionStamp === this.imeSelectionStamp());
+    // A composition can flush more than once; only its first text replaces
+    // the selection. Empty/cancelled compositions never reach this method.
+    if (composition) composition.selectionStamp = null;
+    const edit = sameSelection
+      ? selectionEdit(this.term, {
+          commandRunning: this.commands.commandRunning,
+          locked: this.locked,
+        })
+      : null;
+    if (edit) this.term.clearSelection();
+    this.term.input(edit ? edit.deleteSequence + text + edit.restore : text, true);
   }
 
   /**
@@ -1303,7 +1311,7 @@ export class TerminalController {
       window.clearTimeout(this.transferNoticeTimer);
       this.transferNoticeTimer = null;
     }
-    this.clearSelectionRestore();
+    this.imeComposition = null;
     this.viewport.dispose();
     this.hostResize?.disconnect();
     this.hostResize = null;

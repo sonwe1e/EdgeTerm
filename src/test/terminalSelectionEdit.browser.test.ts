@@ -209,3 +209,44 @@ it("keeps Delete on an output-line selection exactly as before", async () => {
   // byte-for-byte behavior from before the feature.
   expect(sent()).toBe("\x1b[3~");
 });
+
+// Real pointer/selection/textarea in Chromium, with replayed composition events.
+// This covers browser integration, not the native operating system's IME UI.
+it("keeps a dragged command selection intact through a long composition and replaces it at commit", async () => {
+  const controller = await fixture();
+  await output("user@edge:~$ echo hi");
+  await dragSelection(13, 17, 0);
+  const textarea = controller.term.textarea!;
+  textarea.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+  textarea.value = "zhongwen";
+  textarea.dispatchEvent(
+    new CompositionEvent("compositionupdate", { data: "zhongwen", bubbles: true }),
+  );
+  await new Promise<void>((resolve) => setTimeout(resolve, 300));
+  expect(sent()).toBe("");
+  expect(controller.term.getSelection()).toBe("echo");
+
+  textarea.value = "中文";
+  textarea.dispatchEvent(new CompositionEvent("compositionend", { data: "中文", bubbles: true }));
+  await twoFrames();
+  expect(sent()).toBe(walkAndDelete(7, 4) + "中文" + "\x1b[C".repeat(3));
+  expect(controller.term.hasSelection()).toBe(false);
+});
+
+it("keeps the original dragged command when Escape cancels composition", async () => {
+  const controller = await fixture();
+  await output("user@edge:~$ echo hi");
+  await dragSelection(13, 17, 0);
+  const textarea = controller.term.textarea!;
+  textarea.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+  textarea.value = "nihao";
+  textarea.dispatchEvent(
+    new CompositionEvent("compositionupdate", { data: "nihao", bubbles: true }),
+  );
+  await userEvent.keyboard("{Escape}");
+  textarea.value = "";
+  textarea.dispatchEvent(new CompositionEvent("compositionend", { data: "", bubbles: true }));
+  await twoFrames();
+  expect(sent()).toBe("");
+  expect(controller.term.getSelection()).toBe("echo");
+});
