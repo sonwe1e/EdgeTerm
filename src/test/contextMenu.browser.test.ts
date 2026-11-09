@@ -1,17 +1,52 @@
 import { createElement as h, useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
-import { userEvent } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { ContextMenu, type MenuItem } from "../components/ContextMenu";
+import { MenuBar } from "../components/MenuBar";
+import { useStore } from "../store";
 import { browserAfterEach, mount, twoFrames } from "./browserHarness";
 import "../styles.css";
 
-afterEach(browserAfterEach);
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({
+    isFullscreen: async () => false,
+    isMaximized: async () => false,
+    onResized: async () => () => {},
+    setTitle: async () => {},
+  }),
+}));
 
-function Fixture({ items, input }: { items: MenuItem[]; input: (key: string) => void }) {
+const initial = useStore.getState();
+afterEach(async () => {
+  await browserAfterEach();
+  useStore.setState(initial, true);
+});
+
+function Fixture({
+  items,
+  input,
+  menuClass,
+  withMenuBar,
+}: {
+  items: MenuItem[];
+  input: (key: string) => void;
+  menuClass?: string;
+  withMenuBar?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   return h(
     "div",
     null,
+    withMenuBar &&
+      h(MenuBar, {
+        onNewSession() {},
+        onFind() {},
+        onFindNext() {},
+        onFontSettings() {},
+        onKeyboardShortcuts() {},
+        onCheckForUpdates() {},
+        onAbout() {},
+      }),
     h("textarea", {
       "aria-label": "Terminal input",
       onKeyDown: (event) => input(event.key),
@@ -21,13 +56,20 @@ function Fixture({ items, input }: { items: MenuItem[]; input: (key: string) => 
       },
     }),
     h("button", { id: "outside" }, "Outside"),
-    open && h(ContextMenu, { x: 100, y: 100, items, onClose: () => setOpen(false) }),
+    open &&
+      h(ContextMenu, {
+        x: 100,
+        y: 100,
+        items,
+        className: menuClass,
+        onClose: () => setOpen(false),
+      }),
   );
 }
 
-async function open(items: MenuItem[]) {
+async function open(items: MenuItem[], menuClass?: string, withMenuBar = false) {
   const input = vi.fn();
-  mount(h(Fixture, { items, input }));
+  mount(h(Fixture, { items, input, menuClass, withMenuBar }));
   const terminal = document.querySelector("textarea")!;
   terminal.focus();
   await userEvent.click(terminal, { button: "right" });
@@ -78,4 +120,72 @@ it("keeps pointer actions working and lets an outside click take focus", async (
   await userEvent.click(document.querySelector("#outside")!);
   expect(document.querySelector(".context-menu")).toBeNull();
   expect(document.activeElement?.id).toBe("outside");
+});
+
+it("keeps a tall sessions menu open while scrolling and reveals keyboard focus", async () => {
+  await page.viewport(900, 560);
+  await open(
+    Array.from({ length: 40 }, (_, index) => ({ label: `Session ${index + 1}` })),
+    "tab-list-menu",
+  );
+  const menu = document.querySelector<HTMLElement>(".context-menu")!;
+  expect(menu.scrollHeight).toBeGreaterThan(menu.clientHeight);
+  menu.scrollTop = 100;
+  await twoFrames();
+  expect(document.querySelector(".context-menu")).toBe(menu);
+
+  await userEvent.keyboard("{End}");
+  await twoFrames();
+  expect(document.activeElement?.textContent).toBe("Session 40");
+  const last = document.activeElement as HTMLElement;
+  expect(last.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+    menu.getBoundingClientRect().bottom,
+  );
+  await userEvent.keyboard("{Home}");
+  await twoFrames();
+  expect(document.activeElement?.textContent).toBe("Session 1");
+  expect(document.activeElement!.getBoundingClientRect().top).toBeGreaterThanOrEqual(
+    menu.getBoundingClientRect().top,
+  );
+  expect(document.querySelector(".context-menu")).toBe(menu);
+});
+
+it("does not leave a stale Alt hold in the real menubar after a context menu closes", async () => {
+  await page.viewport(1100, 720);
+  useStore.setState({ language: "en" });
+  const { terminal } = await open([{ label: "Copy" }], undefined, true);
+  await userEvent.keyboard("{Alt}");
+  expect(document.querySelector(".context-menu")).not.toBeNull();
+  expect(document.querySelector(".menubar .menu-dropdown")).toBeNull();
+  await userEvent.keyboard("{Escape}");
+  await twoFrames();
+  expect(document.querySelector(".context-menu")).toBeNull();
+  expect(document.activeElement).toBe(terminal);
+
+  await userEvent.keyboard("{Alt}");
+  await twoFrames();
+  expect(document.querySelector("#menu-title-0")?.getAttribute("aria-expanded")).toBe("true");
+  expect(document.activeElement?.closest(".menubar .menu-dropdown")).not.toBeNull();
+  await userEvent.keyboard("{Escape}");
+});
+
+it("resets Alt released inside a context menu after its press started in the terminal", async () => {
+  await page.viewport(1100, 720);
+  useStore.setState({ language: "en" });
+  mount(h(Fixture, { items: [{ label: "Copy" }], input: vi.fn(), withMenuBar: true }));
+  const terminal = document.querySelector("textarea")!;
+  terminal.focus();
+  await userEvent.keyboard("{Alt>}");
+  await userEvent.click(terminal, { button: "right" });
+  await twoFrames();
+  expect(document.activeElement?.closest(".context-menu")).not.toBeNull();
+  await userEvent.keyboard("{/Alt}");
+  expect(document.querySelector(".menubar .menu-dropdown")).toBeNull();
+  await userEvent.click(document.querySelector("#outside")!);
+  expect(document.querySelector(".context-menu")).toBeNull();
+
+  await userEvent.keyboard("{Alt}");
+  await twoFrames();
+  expect(document.querySelector("#menu-title-0")?.getAttribute("aria-expanded")).toBe("true");
+  await userEvent.keyboard("{Escape}");
 });

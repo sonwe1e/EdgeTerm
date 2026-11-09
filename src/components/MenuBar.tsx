@@ -896,6 +896,8 @@ export function MenuBar(props: Props) {
   useEffect(() => {
     let altDown = false;
     let altChord = false;
+    const ownsKeyboard = (target: EventTarget | null) =>
+      target instanceof Element && target.closest("dialog[open], .context-menu") !== null;
     const toggle = () => {
       const current = openRef.current;
       if (current) {
@@ -911,8 +913,7 @@ export function MenuBar(props: Props) {
     // Observe Alt chords before xterm or an editor can stop propagation.
     // F10 remains on the bubble path so a terminal can claim it first.
     const trackAlt = (event: KeyboardEvent) => {
-      const target = event.target;
-      if (target instanceof Element && target.closest("dialog[open]")) {
+      if (ownsKeyboard(event.target)) {
         altDown = false;
         altChord = false;
         return;
@@ -934,8 +935,7 @@ export function MenuBar(props: Props) {
       if (altDown) altChord = true;
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target;
-      if (target instanceof Element && target.closest("dialog[open]")) return;
+      if (ownsKeyboard(event.target)) return;
       if (
         event.key === "F10" &&
         !event.altKey &&
@@ -950,9 +950,8 @@ export function MenuBar(props: Props) {
     };
     const onKeyUp = (event: KeyboardEvent) => {
       if (event.key !== "Alt") return;
-      // A dialog owns the keyboard while it is open; Alt belongs to it (and
-      // to the system), not to the menubar underneath.
-      if (document.activeElement?.closest("dialog[open]")) {
+      // A dialog or context menu owns its keys, not the menubar underneath.
+      if (ownsKeyboard(document.activeElement)) {
         altDown = false;
         altChord = false;
         return;
@@ -968,15 +967,23 @@ export function MenuBar(props: Props) {
       altDown = false;
       altChord = false;
     };
+    // An Alt press can start in the terminal and finish inside a menu that
+    // stops keyup propagation. Clear that hold in capture, but keep normal
+    // Alt activation on the bubble path so an owning surface can claim it.
+    const releaseOwnedAlt = (event: KeyboardEvent) => {
+      if (event.key === "Alt" && ownsKeyboard(event.target)) reset();
+    };
     document.addEventListener("keydown", trackAlt, true);
     document.addEventListener("pointerdown", onPointerDown, true);
     document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("keyup", releaseOwnedAlt, true);
     document.addEventListener("keyup", onKeyUp);
     window.addEventListener("blur", reset);
     return () => {
       document.removeEventListener("keydown", trackAlt, true);
       document.removeEventListener("pointerdown", onPointerDown, true);
       document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("keyup", releaseOwnedAlt, true);
       document.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("blur", reset);
     };
