@@ -254,6 +254,16 @@ describe("IME input on xterm", () => {
     expect(h.textarea.value).toBe("");
   });
 
+  it("does not flush preedit text when Escape cancels a composition", () => {
+    h.compositionStart();
+    h.compositionUpdate("nihao");
+    h.keydown("Escape", 27);
+    h.compositionEnd("");
+    vi.advanceTimersByTime(10);
+    expect(h.out).toEqual([]);
+    expect(h.textarea.value).toBe("");
+  });
+
   it("sends a committed word before the Enter that follows it", () => {
     h.compositionStart();
     h.compositionUpdate("nihao");

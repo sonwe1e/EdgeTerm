@@ -90,6 +90,7 @@ const settleRestore = () => new Promise<void>((resolve) => setTimeout(resolve, 5
 afterEach(() => {
   for (const controller of controllers.splice(0)) controller.dispose();
   for (const root of roots.splice(0)) root.remove();
+  vi.useRealTimers();
   vi.resetAllMocks();
 });
 
@@ -433,7 +434,7 @@ describe("paste and composition replace a selection", () => {
     expect(data.mock.calls.map(([text]) => text)).toEqual(["bye"]);
   });
 
-  it("deletes the selection when a composition starts on it", async () => {
+  it("keeps the selected command intact until an IME commits text", async () => {
     const { controller, data } = fixture();
     await write(controller, "$ echo hello");
     select(controller, 7, 0, 5);
@@ -441,9 +442,8 @@ describe("paste and composition replace a selection", () => {
     expect(textarea).toBeTruthy();
 
     textarea!.dispatchEvent(new CompositionEvent("compositionstart"));
-    expect(data).toHaveBeenCalledTimes(1);
-    expect(data).toHaveBeenCalledWith(walkAndDelete(5, 5));
-    expect(controller.term.hasSelection()).toBe(false);
+    expect(data).not.toHaveBeenCalled();
+    expect(controller.term.getSelection()).toBe("hello");
   });
 
   it("walks back after the IME's committed text, not before it", async () => {
@@ -453,17 +453,86 @@ describe("paste and composition replace a selection", () => {
     const textarea = controller.term.textarea!;
 
     textarea.dispatchEvent(new CompositionEvent("compositionstart"));
-    expect(data).toHaveBeenLastCalledWith(walkAndDelete(11, 5));
+    expect(data).not.toHaveBeenCalled();
     // What the browser does before compositionend: the committed text lands
     // in the textarea, and the IME patch reads it on the next task.
     textarea.value = "bye";
     textarea.dispatchEvent(new CompositionEvent("compositionend"));
     await new Promise<void>((resolve) => setTimeout(resolve, 30));
-    expect(data.mock.calls.map(([text]) => text)).toEqual([
-      walkAndDelete(11, 5),
-      "bye",
-      "\x1b[C".repeat(6),
-    ]);
+    expect(data.mock.calls.map(([text]) => text).join("")).toBe(
+      walkAndDelete(11, 5) + "bye" + "\x1b[C".repeat(6),
+    );
+  });
+
+  it("does not move or delete the selection while a Chinese composition takes time", async () => {
+    const { controller, data } = fixture();
+    await write(controller, "$ echo hello world");
+    select(controller, 7, 0, 5);
+    const textarea = controller.term.textarea!;
+    vi.useFakeTimers();
+
+    textarea.dispatchEvent(new CompositionEvent("compositionstart"));
+    textarea.value = "nihao";
+    textarea.dispatchEvent(new CompositionEvent("compositionupdate", { data: "nihao" }));
+    vi.advanceTimersByTime(1000);
+    expect(data).not.toHaveBeenCalled();
+    expect(controller.term.getSelection()).toBe("hello");
+
+    textarea.value = "你好";
+    textarea.dispatchEvent(new CompositionEvent("compositionend", { data: "你好" }));
+    vi.advanceTimersByTime(10);
+    expect(data.mock.calls.map(([text]) => text).join("")).toBe(
+      walkAndDelete(11, 5) + "你好" + "\x1b[C".repeat(6),
+    );
+    expect(controller.term.hasSelection()).toBe(false);
+  });
+
+  it("does not delete a selection when the user cancels the IME composition", async () => {
+    const { controller, data } = fixture();
+    await write(controller, "$ echo hello world");
+    select(controller, 7, 0, 5);
+    const textarea = controller.term.textarea!;
+    vi.useFakeTimers();
+
+    textarea.dispatchEvent(new CompositionEvent("compositionstart"));
+    textarea.value = "nihao";
+    textarea.dispatchEvent(new CompositionEvent("compositionupdate", { data: "nihao" }));
+    vi.advanceTimersByTime(1000);
+    textarea.value = "";
+    textarea.dispatchEvent(new CompositionEvent("compositionend", { data: "" }));
+    vi.advanceTimersByTime(10);
+    expect(data).not.toHaveBeenCalled();
+    expect(controller.term.getSelection()).toBe("hello");
+  });
+
+  it("drops an old composition instead of writing it to a reconnected session", async () => {
+    const { controller, data } = fixture();
+    await write(controller, "$ echo hello world");
+    select(controller, 7, 0, 5);
+    const textarea = controller.term.textarea!;
+    vi.useFakeTimers();
+
+    textarea.dispatchEvent(new CompositionEvent("compositionstart"));
+    controller.setLocked(true);
+    controller.setLocked(false);
+    textarea.value = "你好";
+    textarea.dispatchEvent(new CompositionEvent("compositionend", { data: "你好" }));
+    vi.advanceTimersByTime(1000);
+    expect(data).not.toHaveBeenCalled();
+  });
+
+  it("does not delete a command line that changed while the IME was composing", async () => {
+    const { controller, data } = fixture();
+    await write(controller, "$ echo hello world");
+    select(controller, 7, 0, 5);
+    const textarea = controller.term.textarea!;
+
+    textarea.dispatchEvent(new CompositionEvent("compositionstart"));
+    await write(controller, "\r$ echo other world");
+    textarea.value = "好";
+    textarea.dispatchEvent(new CompositionEvent("compositionend", { data: "好" }));
+    await new Promise<void>((resolve) => setTimeout(resolve, 30));
+    expect(data.mock.calls.map(([text]) => text).join("")).toBe("好");
   });
 
   it("starts a composition unchanged when the selection is not editable", async () => {

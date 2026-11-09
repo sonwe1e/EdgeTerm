@@ -71,6 +71,14 @@ const COMPOSITION_KEYCODES = new Set([
   20, // CapsLock
 ]);
 
+export interface ImeInputHooks {
+  onCompositionStart?: () => void;
+  /** Called after the last deferred read, including an empty/cancelled composition. */
+  onCompositionSettled?: () => void;
+  /** Owns the actual text write, allowing a selection edit to be one ordered write. */
+  sendText?: (text: string) => void;
+}
+
 class ImeInput implements CompositionHelperLike {
   private composing = false;
   /** Textarea offset where the active composition's text begins. */
@@ -94,8 +102,7 @@ class ImeInput implements CompositionHelperLike {
     private readonly term: Terminal,
     private readonly textarea: HTMLTextAreaElement,
     private readonly view: HTMLElement,
-    /** Called after every send, so a caller can sequence bytes behind the IME's text. */
-    private readonly onSend?: () => void,
+    private readonly hooks: ImeInputHooks = {},
   ) {}
 
   get isComposing() {
@@ -108,6 +115,7 @@ class ImeInput implements CompositionHelperLike {
     this.compositionStart = length;
     // xterm empties the textarea itself on Enter and Ctrl+C.
     if (this.sent > length) this.sent = length;
+    this.hooks.onCompositionStart?.();
     this.view.textContent = "";
     this.view.classList.add("active");
     this.updateCompositionElements();
@@ -138,6 +146,9 @@ class ImeInput implements CompositionHelperLike {
   keydown(ev: KeyboardEvent): boolean {
     if (this.composing || this.pending) {
       if (COMPOSITION_KEYCODES.has(ev.keyCode)) return false;
+      // Escape belongs to the input method while its candidate is open.
+      // Flushing here would submit the pinyin/preedit that the user cancelled.
+      if (this.composing && ev.keyCode === 27) return false;
       // A key the IME did not claim ends the composition from the
       // terminal's point of view: Enter's newline, an F-key's sequence or
       // the Japanese eisuu switch must follow the text that was being
@@ -247,11 +258,12 @@ class ImeInput implements CompositionHelperLike {
     this.sent = Math.max(start, end);
     if (text) this.send(text);
     this.clearTextarea();
+    if (!this.composing) this.hooks.onCompositionSettled?.();
   }
 
   private send(text: string) {
-    this.term.input(text, true);
-    this.onSend?.();
+    if (this.hooks.sendText) this.hooks.sendText(text);
+    else this.term.input(text, true);
   }
 
   private clearTextarea() {
@@ -266,7 +278,7 @@ class ImeInput implements CompositionHelperLike {
  * false, leaving the terminal untouched, when xterm's internals are not the
  * ones this patch was written against.
  */
-export function patchImeInput(term: Terminal, onSend?: () => void): boolean {
+export function patchImeInput(term: Terminal, hooks: ImeInputHooks = {}): boolean {
   const core = (term as unknown as { _core?: CoreLike })._core;
   const missing = (() => {
     if (!core) return "_core";
@@ -289,7 +301,7 @@ export function patchImeInput(term: Terminal, onSend?: () => void): boolean {
     return false;
   }
 
-  const ime = new ImeInput(term, term.textarea!, core._compositionView!, onSend);
+  const ime = new ImeInput(term, term.textarea!, core._compositionView!, hooks);
   core._compositionHelper = ime;
   core._inputEvent = (ev) => {
     const sent = ime.inputEvent(ev);
