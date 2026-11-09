@@ -4,7 +4,7 @@ import { page, userEvent } from "vitest/browser";
 import { ContextMenu, type MenuItem } from "../components/ContextMenu";
 import { MenuBar } from "../components/MenuBar";
 import { useStore } from "../store";
-import { browserAfterEach, mount, twoFrames } from "./browserHarness";
+import { browserAfterEach, mouse, mount, pagePoint, twoFrames } from "./browserHarness";
 import "../styles.css";
 
 vi.mock("@tauri-apps/api/window", () => ({
@@ -109,6 +109,62 @@ it("navigates nested submenus and returns to their parents, then dismisses with 
   expect(document.querySelector(".context-menu")).toBeNull();
   expect(input).not.toHaveBeenCalled();
   expect(action).not.toHaveBeenCalled();
+});
+
+it("paints and hit-tests a second-level submenu inside a roomy viewport", async () => {
+  await page.viewport(1400, 900);
+  const action = vi.fn();
+  const { input } = await open([
+    {
+      label: "Move",
+      children: [{ label: "Nested", children: [{ label: "Visible target", action }] }],
+    },
+  ]);
+  await userEvent.keyboard("{ArrowRight}");
+  await twoFrames();
+  await userEvent.keyboard("{ArrowRight}");
+  await twoFrames();
+  const menu = document.querySelector<HTMLElement>(".context-menu")!;
+  const parent = menu.querySelector<HTMLElement>('[data-submenu-key="0"] > .menu-submenu')!;
+  const child = parent.querySelector<HTMLElement>('[data-submenu-key="0.0"] > .menu-submenu')!;
+  const target = child.querySelector<HTMLButtonElement>(":scope > button")!;
+  expect(document.activeElement).toBe(target);
+  // Wait only for the real entrance animation; no scrollIntoView or click
+  // auto-scrolling may rescue a submenu clipped by its parent's scrollport.
+  await expect
+    .poll(() =>
+      menu
+        .getAnimations({ subtree: true })
+        .every((animation) => animation.playState === "finished" || animation.playState === "idle"),
+    )
+    .toBe(true);
+  const rect = target.getBoundingClientRect();
+  expect(rect.width).toBeGreaterThan(40);
+  expect(rect.height).toBeGreaterThan(10);
+  expect(rect.left).toBeGreaterThanOrEqual(0);
+  expect(rect.top).toBeGreaterThanOrEqual(0);
+  expect(rect.right).toBeLessThan(window.innerWidth);
+  expect(rect.bottom).toBeLessThan(window.innerHeight);
+  const parentStyle = getComputedStyle(parent);
+  for (const fraction of [0.1, 0.5, 0.9]) {
+    const hit = document.elementFromPoint(
+      rect.left + rect.width * fraction,
+      rect.top + rect.height / 2,
+    );
+    expect(
+      target.contains(hit),
+      `target hit at ${fraction}: ${hit?.tagName}.${hit?.className}; ` +
+        `parent overflow=${parentStyle.overflowX}/${parentStyle.overflowY}`,
+    ).toBe(true);
+  }
+  // Raw pointer coordinates do not ask Playwright to reveal a hidden target.
+  const point = pagePoint(target, 0.5, 0.5);
+  await mouse.moveTo(point.x, point.y);
+  await mouse.press(point.x, point.y);
+  await mouse.release(point.x, point.y);
+  expect(action).toHaveBeenCalledOnce();
+  expect(input).not.toHaveBeenCalled();
+  expect(document.querySelector(".context-menu")).toBeNull();
 });
 
 it("keeps pointer actions working and lets an outside click take focus", async () => {
