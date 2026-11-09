@@ -306,9 +306,10 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
                 }}
                 onKeyDown={(event) => {
                   // Enter runs, Shift+Enter adds a line. An Enter that ends an
-                  // IME composition belongs to the input method.
+                  // IME composition, and Escape dismissing its candidates,
+                  // belong to the input method rather than running/cancelling.
+                  if (event.nativeEvent.isComposing) return;
                   if (event.key === "Enter" && !event.shiftKey) {
-                    if (event.nativeEvent.isComposing) return;
                     event.preventDefault();
                     void sendCommand(text, ending);
                   } else if (event.key === "Escape" && editing) {
@@ -386,6 +387,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
               aria-label={t("sender.savedCommandTagName")}
               onChange={(event) => setTagName(event.target.value.replace(/[\r\n]+/g, ""))}
               onKeyDown={(event) => {
+                if (event.nativeEvent.isComposing) return;
                 if (event.key === "Enter") {
                   event.preventDefault();
                   openSavePicker();

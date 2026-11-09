@@ -947,6 +947,7 @@ function FilerPanelBase() {
             onChange={(event) => setDraft(event.target.value)}
             onBlur={cancelPathEdit}
             onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing) return;
               if (event.key === "Enter") commitPathEdit();
               if (event.key === "Escape") cancelPathEdit();
             }}
@@ -1088,6 +1089,7 @@ function FilerPanelBase() {
               onChange={(event) => setCreating({ ...creating, name: event.target.value })}
               onBlur={commitNewEntry}
               onKeyDown={(event) => {
+                if (event.nativeEvent.isComposing) return;
                 if (event.key === "Enter") void commitNewEntry();
                 if (event.key === "Escape") setCreating(null);
               }}
@@ -1114,6 +1116,7 @@ function FilerPanelBase() {
                   onChange={(event) => setRenaming({ ...draft, name: event.target.value })}
                   onBlur={() => void commitRename()}
                   onKeyDown={(event) => {
+                    if (event.nativeEvent.isComposing) return;
                     if (event.key === "Enter") void commitRename();
                     if (event.key === "Escape") setRenaming(null);
                   }}

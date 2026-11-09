@@ -170,3 +170,49 @@ it("localizes the expanded command's accessible name", async () => {
   await render();
   expect(host.querySelector(".sender-command-load")?.getAttribute("aria-label")).toContain("发送");
 });
+
+it("keeps IME confirmation in the tag field before opening the save menu", async () => {
+  await render();
+  type("status");
+  const tag = host.querySelector<HTMLInputElement>(".sender-label-input")!;
+  await act(async () =>
+    tag.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, key: "Enter", isComposing: true }),
+    ),
+  );
+  expect(host.querySelector(".context-menu")).toBeNull();
+  expect(api.saveSenderCommand).not.toHaveBeenCalled();
+  await act(async () =>
+    tag.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" })),
+  );
+  expect(host.querySelector(".context-menu")).not.toBeNull();
+});
+
+it.each([".sender-command-input", ".sender-label-input"])(
+  "does not cancel editing when IME Escape comes from %s",
+  async (selector) => {
+    await render();
+    type("unfinished draft");
+    await act(async () =>
+      host
+        .querySelector(".sender-command-tag")!
+        .dispatchEvent(new MouseEvent("contextmenu", { bubbles: true })),
+    );
+    await click(
+      [...document.querySelectorAll('[role="menuitem"]')].find(
+        (element) => element.textContent?.trim() === "Edit",
+      )!,
+    );
+    const tag = host.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector)!;
+    await act(async () =>
+      tag.dispatchEvent(
+        new KeyboardEvent("keydown", { bubbles: true, key: "Escape", isComposing: true }),
+      ),
+    );
+    expect(command().value).toBe("status");
+    await act(async () =>
+      tag.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape" })),
+    );
+    expect(command().value).toBe("unfinished draft");
+  },
+);
