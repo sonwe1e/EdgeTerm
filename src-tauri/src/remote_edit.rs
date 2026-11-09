@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher as _};
-use parking_lot::Mutex;
+use parking_lot::{Mutex, MutexGuard};
 use serde::Serialize;
 use tauri::async_runtime::JoinHandle;
 use tauri::{ipc::Channel, AppHandle, Emitter, Manager};
@@ -21,13 +21,26 @@ use tokio::time::timeout;
 use crate::commands::AppState;
 use crate::error::{err, AppError, Result};
 use crate::session::transfer::safe_local_child;
-use crate::session::TransferProgress;
+use crate::session::{SessionManager, TransferProgress};
 
 pub const EVENT_REMOTE_EDIT: &str = "remote-edit:state";
 
 /// Marks a leftover copy that still holds changes which never reached the
 /// server, so `clean_leftovers` leaves it for the user.
 const UNSYNCED_MARKER: &str = ".unsynced";
+/// An active editor can save before the watcher receives its notification.
+/// Keep its copy after a crash even if no dirty flag was observed in time.
+const ACTIVE_MARKER: &str = ".active";
+
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteEditPath {
+    pub path: String,
+    pub reused: bool,
+}
+
+type Snapshot = (SystemTime, u64);
 
 /// One save produces a burst of notifications (editors truncate, write and
 /// rename in steps); the upload starts once the burst has been quiet for
@@ -58,6 +71,9 @@ struct Watched {
     task: JoinHandle<()>,
     /// Set while the copy holds a save that has not reached the server.
     dirty: Arc<AtomicBool>,
+    /// The last local state confirmed uploaded, captured before the local
+    /// application is opened rather than when the async loop first runs.
+    baseline: Arc<Mutex<Option<Snapshot>>>,
     /// Dropping it ends the OS subscription.
     _watcher: RecommendedWatcher,
 }
@@ -80,7 +96,7 @@ fn clean_leftovers_in(root: &Path) {
     };
     for entry in entries.flatten() {
         let dir = entry.path();
-        if dir.join(UNSYNCED_MARKER).exists() {
+        if dir.join(UNSYNCED_MARKER).exists() || dir.join(ACTIVE_MARKER).exists() {
             continue;
         }
         if let Err(error) = std::fs::remove_dir_all(&dir) {
@@ -89,16 +105,64 @@ fn clean_leftovers_in(root: &Path) {
     }
 }
 
+fn mark_active(local: &Path) -> Result<()> {
+    let dir = local
+        .parent()
+        .ok_or_else(|| AppError::new(format!("{} has no parent folder", local.display())))?;
+    if local.file_name().is_some_and(|name| name == ACTIVE_MARKER || name == UNSYNCED_MARKER) {
+        return Err(AppError::invalid_input("the editable copy uses a reserved marker name"));
+    }
+    write_marker(dir, ACTIVE_MARKER)
+}
+
+fn write_marker(dir: &Path, name: &str) -> Result<()> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    match options.open(dir.join(name)) {
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+        Err(error) => Err(err(error)),
+    }
+}
+
+/// Closing may beat the notification's debounce. Compare the file itself as
+/// well as the flag, and retain an uncertain/missing snapshot conservatively.
+fn retain_copy(local: &Path, dirty: bool, baseline: Option<Snapshot>) -> bool {
+    dirty || baseline.is_none() || snapshot(local) != baseline
+}
+
+fn finish_copy(local: &Path, dirty: bool, baseline: Option<Snapshot>) -> bool {
+    let Some(dir) = local.parent() else {
+        return true;
+    };
+    let keep = retain_copy(local, dirty, baseline);
+    if keep {
+        // The active marker remains if writing this more precise marker
+        // fails; startup cleanup must still leave this copy alone.
+        let _ = write_marker(dir, UNSYNCED_MARKER);
+    } else if let Err(error) = std::fs::remove_dir_all(dir) {
+        eprintln!("EdgeTerm: could not remove {}: {error}", dir.display());
+    }
+    keep
+}
+
 /// Ends a watch for good. A copy whose every save reached the server is
 /// deleted along with its folder; one with unsent changes is kept and
 /// flagged, and reported so the user knows where it is.
 fn discard(app: &AppHandle, key: &(String, String), watched: Watched) {
     watched.task.abort();
-    let Some(dir) = watched.local.parent() else {
-        return;
-    };
-    if watched.dirty.load(Ordering::Relaxed) {
-        let _ = std::fs::write(dir.join(UNSYNCED_MARKER), b"");
+    drop(watched._watcher);
+    let baseline = *watched.baseline.lock();
+    if finish_copy(
+        &watched.local,
+        watched.dirty.load(Ordering::Relaxed),
+        baseline,
+    ) {
         let name = watched
             .local
             .file_name()
@@ -117,8 +181,6 @@ fn discard(app: &AppHandle, key: &(String, String), watched: Watched) {
                 )),
             },
         );
-    } else if let Err(error) = std::fs::remove_dir_all(dir) {
-        eprintln!("EdgeTerm: could not remove {}: {error}", dir.display());
     }
 }
 
@@ -129,16 +191,30 @@ pub struct RemoteEdits {
 }
 
 impl RemoteEdits {
+    /// Hold the registry through the liveness check and insertion. Tab close
+    /// removes its SessionManager handle before stop_session takes this same
+    /// lock: a concurrent watch is either drained by stop or rejected here.
+    fn watchers_for_session(
+        &self,
+        sessions: &SessionManager,
+        session_id: &str,
+    ) -> Result<MutexGuard<'_, HashMap<(String, String), Watched>>> {
+        let watchers = self.watchers.lock();
+        if !sessions.is_open(session_id) {
+            return Err(AppError::new(format!("session {session_id} is not open")));
+        }
+        Ok(watchers)
+    }
+
     /// Where the local copy of `remote` lives: the copy already being watched
     /// (so reopening a file lands in the same place), otherwise a fresh
     /// directory under the OS temp folder — one per file, so equal names from
     /// different folders cannot collide.
     ///
-    /// An existing watcher is stopped here: the caller is about to download
-    /// over the copy, and a watcher running meanwhile could mistake the
-    /// half-written download for a save and send it back. `watch` restarts
-    /// it once the download is complete.
-    pub fn local_path(&self, session_id: &str, remote: &str, name: &str) -> Result<PathBuf> {
+    /// A watched copy is reused without another download: it may hold a save
+    /// still waiting for upload. The caller only downloads and starts a
+    /// watcher for a fresh path (`reused == false`).
+    pub fn local_path(&self, session_id: &str, remote: &str, name: &str) -> Result<RemoteEditPath> {
         self.local_path_in(&edit_root(), session_id, remote, name)
     }
 
@@ -148,15 +224,27 @@ impl RemoteEdits {
         session_id: &str,
         remote: &str,
         name: &str,
-    ) -> Result<PathBuf> {
+    ) -> Result<RemoteEditPath> {
         let key = (session_id.to_string(), remote.to_string());
-        if let Some(watched) = self.watchers.lock().remove(&key) {
-            watched.task.abort();
-            return Ok(watched.local);
+        if let Some(watched) = self.watchers.lock().get(&key) {
+            return Ok(RemoteEditPath {
+                path: watched.local.to_string_lossy().into_owned(),
+                reused: true,
+            });
         }
         let dir = root.join(uuid::Uuid::new_v4().to_string());
+        // A remote dotfile must never collide with our empty lifecycle marker.
+        let local_name = if matches!(name, ACTIVE_MARKER | UNSYNCED_MARKER) {
+            format!("_{name}")
+        } else {
+            name.to_string()
+        };
+        let path = safe_local_child(&dir, &local_name)?;
         std::fs::create_dir_all(&dir).map_err(err)?;
-        safe_local_child(&dir, name)
+        Ok(RemoteEditPath {
+            path: path.to_string_lossy().into_owned(),
+            reused: false,
+        })
     }
 
     /// Starts uploading `local` to `remote` whenever it is saved, replacing
@@ -170,9 +258,20 @@ impl RemoteEdits {
         local: PathBuf,
         remote: String,
     ) -> Result<()> {
+        let key = (session_id.clone(), remote.clone());
+        let state = app.state::<AppState>();
+        let mut watchers = self.watchers_for_session(&state.sessions, &session_id)?;
+        if watchers.get(&key).is_some_and(|watched| watched.local == local) {
+            return Ok(());
+        }
         let dir = local
             .parent()
             .ok_or_else(|| AppError::new(format!("{} has no parent folder", local.display())))?;
+        let baseline = snapshot(&local)
+            .ok_or_else(|| AppError::new("the downloaded copy is not a readable regular file"))?;
+        // Written only for a completed editable download, before launching
+        // its application. No source path or file content enters the marker.
+        mark_active(&local)?;
 
         let (tx, rx) = mpsc::unbounded_channel();
         // Every notification from the folder counts, whatever path it names:
@@ -195,27 +294,30 @@ impl RemoteEdits {
             .watch(dir, RecursiveMode::NonRecursive)
             .map_err(err)?;
 
-        let key = (session_id.clone(), remote.clone());
         let dirty = Arc::new(AtomicBool::new(false));
+        let baseline = Arc::new(Mutex::new(Some(baseline)));
         let task = tauri::async_runtime::spawn(watch_loop(
-            app,
+            app.clone(),
             session_id,
             local.clone(),
             remote,
             rx,
             Arc::clone(&dirty),
+            Arc::clone(&baseline),
         ));
-        let previous = self.watchers.lock().insert(
-            key,
+        let previous = watchers.insert(
+            key.clone(),
             Watched {
                 local,
                 task,
                 dirty,
+                baseline,
                 _watcher: watcher,
             },
         );
+        drop(watchers);
         if let Some(previous) = previous {
-            previous.task.abort();
+            discard(&app, &key, previous);
         }
         Ok(())
     }
@@ -225,20 +327,21 @@ impl RemoteEdits {
     /// save made while offline is sent once the tab reconnects (reconnects
     /// reuse the session id).
     pub fn stop_session(&self, app: &AppHandle, session_id: &str) {
-        let stopped: Vec<_> = {
-            let mut watchers = self.watchers.lock();
-            let keys: Vec<_> = watchers
-                .keys()
-                .filter(|(id, _)| id == session_id)
-                .cloned()
-                .collect();
-            keys.into_iter()
-                .filter_map(|key| watchers.remove(&key).map(|watched| (key, watched)))
-                .collect()
-        };
-        for (key, watched) in stopped {
+        for (key, watched) in self.take_session(session_id) {
             discard(app, &key, watched);
         }
+    }
+
+    fn take_session(&self, session_id: &str) -> Vec<((String, String), Watched)> {
+        let mut watchers = self.watchers.lock();
+        let keys: Vec<_> = watchers
+            .keys()
+            .filter(|(id, _)| id == session_id)
+            .cloned()
+            .collect();
+        keys.into_iter()
+            .filter_map(|key| watchers.remove(&key).map(|watched| (key, watched)))
+            .collect()
     }
 
     /// Stops everything and removes the synced copies; for application exit.
@@ -253,8 +356,11 @@ impl RemoteEdits {
 /// Modification time and size, to tell a save from a notification that
 /// changed nothing (an attribute touch, the editor's own re-read). None while
 /// the file is missing, which happens for a moment when an editor replaces it.
-fn snapshot(path: &Path) -> Option<(SystemTime, u64)> {
+fn snapshot(path: &Path) -> Option<Snapshot> {
     let metadata = std::fs::metadata(path).ok()?;
+    if !metadata.is_file() {
+        return None;
+    }
     Some((metadata.modified().ok()?, metadata.len()))
 }
 
@@ -265,6 +371,7 @@ async fn watch_loop(
     remote: String,
     mut events: mpsc::UnboundedReceiver<()>,
     dirty: Arc<AtomicBool>,
+    baseline: Arc<Mutex<Option<Snapshot>>>,
 ) {
     let name = remote.rsplit('/').next().unwrap_or(&remote).to_string();
     let emit = |status: &'static str, message: Option<String>| {
@@ -280,7 +387,6 @@ async fn watch_loop(
         );
     };
 
-    let mut baseline = snapshot(&local);
     // While set, the copy holds a save that has not reached the server: it
     // is retried after a pause, or sooner if the file is saved again, and
     // `discard` knows not to delete the copy.
@@ -321,7 +427,7 @@ async fn watch_loop(
         let Some(current) = snapshot(&local) else {
             continue;
         };
-        if !is_unsent() && Some(current) == baseline {
+        if !is_unsent() && Some(current) == *baseline.lock() {
             continue;
         }
         unsent(true);
@@ -369,7 +475,7 @@ async fn watch_loop(
                 if let Some((_, job)) = pending.take() {
                     let _ = state.file_transfers.control(&job.id, "dismiss");
                 }
-                baseline = Some(current);
+                *baseline.lock() = Some(current);
                 unsent(false);
                 retry_delay = RETRY_DELAY;
                 last_error = None;
@@ -408,6 +514,85 @@ mod tests {
         }
     }
 
+    fn live_session(
+        id: &str,
+    ) -> (
+        crate::session::SessionManager,
+        mpsc::UnboundedReceiver<crate::session::SessionCommand>,
+    ) {
+        let sessions = crate::session::SessionManager::default();
+        let (tx, rx) = mpsc::unbounded_channel();
+        sessions.insert(crate::session::SessionHandle {
+            info: crate::model::SessionInfo {
+                id: id.to_string(),
+                profile_id: None,
+                name: "test".into(),
+                kind: crate::model::SessionKind::Ssh,
+                protocol: "ssh".into(),
+                address: "example.test:22".into(),
+                color: None,
+                supports_remote_files: true,
+                recording: None,
+                legacy_algorithms: Vec::new(),
+                shared_connection: false,
+            },
+            tx,
+            encoding: encoding_rs::UTF_8,
+            owner_thread: None,
+        });
+        (sessions, rx)
+    }
+
+    #[test]
+    fn watch_registration_rejects_removed_or_terminated_sessions() {
+        let edits = RemoteEdits::default();
+        let (sessions, receiver) = live_session("editing");
+        assert!(edits.watchers_for_session(&sessions, "missing").is_err());
+        assert!(edits.watchers_for_session(&sessions, "editing").is_ok());
+
+        drop(receiver);
+        assert!(edits.watchers_for_session(&sessions, "editing").is_err());
+        sessions.remove("editing");
+        assert!(edits.watchers_for_session(&sessions, "editing").is_err());
+        assert!(edits.watchers.lock().is_empty());
+    }
+
+    #[test]
+    fn registration_guard_keeps_stop_ordered_until_the_watch_is_inserted() {
+        let root = TempRoot::new();
+        let edits = RemoteEdits::default();
+        let (sessions, _receiver) = live_session("editing");
+        let local = root.0.join("notes.txt");
+        std::fs::write(&local, b"downloaded").unwrap();
+        let baseline = snapshot(&local);
+        let key = ("editing".to_string(), "/notes.txt".to_string());
+        let mut registering = edits.watchers_for_session(&sessions, "editing").unwrap();
+        assert!(edits.watchers.try_lock().is_none());
+        // close_session can remove the connection meanwhile; stop_session
+        // still takes this same registry lock, after the insertion finishes.
+        sessions.remove("editing");
+        registering.insert(
+            key,
+            Watched {
+                local,
+                task: tauri::async_runtime::spawn(std::future::pending::<()>()),
+                dirty: Arc::new(AtomicBool::new(false)),
+                baseline: Arc::new(Mutex::new(baseline)),
+                _watcher: RecommendedWatcher::new(|_| {}, notify::Config::default()).unwrap(),
+            },
+        );
+        drop(registering);
+        let stopped = edits.take_session("editing");
+        assert_eq!(stopped.len(), 1);
+        for (_, watched) in stopped {
+            watched.task.abort();
+        }
+        // The opposite order (close/stop first, download returns later) may
+        // not resurrect the registry, even under the same tab id.
+        assert!(edits.watchers_for_session(&sessions, "editing").is_err());
+        assert!(edits.watchers.lock().is_empty());
+    }
+
     #[test]
     fn local_path_isolates_folders_and_rejects_unsafe_names() {
         let root = TempRoot::new();
@@ -420,9 +605,14 @@ mod tests {
             .local_path_in(&root.0, "s1", "/var/app/config.toml", "config.toml")
             .unwrap();
 
-        assert_eq!(first.file_name().unwrap(), "config.toml");
-        assert_eq!(second.file_name().unwrap(), "config.toml");
-        assert_ne!(first.parent().unwrap(), second.parent().unwrap());
+        assert!(!first.reused);
+        assert!(!second.reused);
+        assert_eq!(Path::new(&first.path).file_name().unwrap(), "config.toml");
+        assert_eq!(Path::new(&second.path).file_name().unwrap(), "config.toml");
+        assert_ne!(
+            Path::new(&first.path).parent().unwrap(),
+            Path::new(&second.path).parent().unwrap()
+        );
 
         for unsafe_name in ["", ".", "..", "../secret", "sub/file.txt", "sub\\file.txt"] {
             assert!(
@@ -435,20 +625,114 @@ mod tests {
     }
 
     #[test]
+    fn reopening_reuses_the_watched_draft_without_stopping_its_watch() {
+        let root = TempRoot::new();
+        let edits = RemoteEdits::default();
+        let prepared = edits
+            .local_path_in(&root.0, "s1", "/notes.txt", "notes.txt")
+            .unwrap();
+        let local = PathBuf::from(&prepared.path);
+        std::fs::write(&local, b"downloaded").unwrap();
+        let baseline = Arc::new(Mutex::new(snapshot(&local)));
+        mark_active(&local).unwrap();
+        std::fs::write(&local, b"local draft waiting for upload").unwrap();
+        let dirty = Arc::new(AtomicBool::new(true));
+        let task = tauri::async_runtime::spawn(std::future::pending::<()>());
+        let watcher = RecommendedWatcher::new(|_| {}, notify::Config::default()).unwrap();
+        let key = ("s1".to_string(), "/notes.txt".to_string());
+        edits.watchers.lock().insert(
+            key.clone(),
+            Watched {
+                local: local.clone(),
+                task,
+                dirty: Arc::clone(&dirty),
+                baseline,
+                _watcher: watcher,
+            },
+        );
+
+        let reopened = edits
+            .local_path_in(&root.0, "s1", "/notes.txt", "notes.txt")
+            .unwrap();
+        assert!(reopened.reused);
+        assert_eq!(reopened.path, prepared.path);
+        assert_eq!(std::fs::read(&local).unwrap(), b"local draft waiting for upload");
+        let watched = edits.watchers.lock().remove(&key).expect("watch kept alive");
+        assert!(Arc::ptr_eq(&watched.dirty, &dirty));
+        assert!(dirty.load(Ordering::Relaxed));
+        watched.task.abort();
+    }
+
+    #[test]
+    fn close_before_debounce_preserves_a_save_without_a_dirty_notification() {
+        let root = TempRoot::new();
+        let dir = root.0.join("editable");
+        std::fs::create_dir_all(&dir).unwrap();
+        let local = dir.join("notes.txt");
+        std::fs::write(&local, b"downloaded").unwrap();
+        let baseline = snapshot(&local);
+        mark_active(&local).unwrap();
+        std::fs::write(&local, b"saved just before closing the tab").unwrap();
+
+        assert!(finish_copy(&local, false, baseline));
+        clean_leftovers_in(&root.0);
+        assert_eq!(
+            std::fs::read(&local).unwrap(),
+            b"saved just before closing the tab"
+        );
+        assert!(dir.join(UNSYNCED_MARKER).exists());
+    }
+
+    #[test]
+    fn verified_synced_close_removes_its_active_copy() {
+        let root = TempRoot::new();
+        let dir = root.0.join("editable");
+        std::fs::create_dir_all(&dir).unwrap();
+        let local = dir.join("notes.txt");
+        std::fs::write(&local, b"uploaded").unwrap();
+        mark_active(&local).unwrap();
+        assert!(!finish_copy(&local, false, snapshot(&local)));
+        assert!(!dir.exists());
+    }
+
+    #[test]
+    fn marker_names_cannot_overwrite_remote_dotfile_contents() {
+        let root = TempRoot::new();
+        let edits = RemoteEdits::default();
+        for name in [ACTIVE_MARKER, UNSYNCED_MARKER] {
+            let prepared = edits.local_path_in(&root.0, "s1", name, name).unwrap();
+            let local = Path::new(&prepared.path);
+            std::fs::write(local, b"remote dotfile contents").unwrap();
+            mark_active(local).unwrap();
+            assert!(finish_copy(local, true, snapshot(local)));
+            clean_leftovers_in(&root.0);
+            assert_eq!(std::fs::read(local).unwrap(), b"remote dotfile contents");
+        }
+    }
+
+    #[test]
     fn clean_leftovers_removes_synced_folders_and_preserves_unsynced_copies() {
         let root = TempRoot::new();
         let synced = root.0.join("synced-copy");
         let unsynced = root.0.join("unsynced-copy");
+        let active = root.0.join("active-at-crash");
         std::fs::create_dir_all(&synced).unwrap();
         std::fs::create_dir_all(&unsynced).unwrap();
+        std::fs::create_dir_all(&active).unwrap();
         std::fs::write(synced.join("notes.txt"), b"already uploaded").unwrap();
         std::fs::write(unsynced.join("notes.txt"), b"local draft").unwrap();
         std::fs::write(unsynced.join(UNSYNCED_MARKER), b"").unwrap();
+        std::fs::write(active.join("notes.txt"), b"save not yet notified").unwrap();
+        mark_active(&active.join("notes.txt")).unwrap();
 
         clean_leftovers_in(&root.0);
 
         assert!(!synced.exists());
         assert!(unsynced.exists());
+        assert_eq!(
+            std::fs::read(active.join("notes.txt")).unwrap(),
+            b"save not yet notified"
+        );
         assert_eq!(
             std::fs::read(unsynced.join("notes.txt")).unwrap(),
             b"local draft"

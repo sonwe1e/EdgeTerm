@@ -129,6 +129,15 @@ impl SessionManager {
         self.sessions.lock().remove(id)
     }
 
+    /// A live owner may accept new session-scoped work. Already-registered
+    /// background work has its own lifetime and does not consult this probe.
+    pub fn is_open(&self, id: &str) -> bool {
+        self.sessions
+            .lock()
+            .get(id)
+            .is_some_and(|handle| !handle.tx.is_closed())
+    }
+
     pub fn list(&self) -> Vec<SessionInfo> {
         self.sessions
             .lock()

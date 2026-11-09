@@ -358,11 +358,10 @@ export const commands = {
 	 */
 	openWithDialog: (path: string) => __TAURI_INVOKE<null>("open_with_dialog", { path }),
 	/**
-	 *  Where a remote file opened in a local application is downloaded to; the
-	 *  same place again while the file is still being watched. See
-	 *  `remote_edit::RemoteEdits::local_path`.
+	 *  Prepares an editable local copy. A reused path is already watched and must
+	 *  not be downloaded over or watched again.
 	 */
-	remoteEditPath: (id: string, remote: string, name: string) => __TAURI_INVOKE<string>("remote_edit_path", { id, remote, name }),
+	remoteEditPath: (id: string, remote: string, name: string) => __TAURI_INVOKE<RemoteEditPath>("remote_edit_path", { id, remote, name }),
 	/**
 	 *  Starts sending `local` back to `remote` on session `id` whenever it
 	 *  changes. Called right after the download, so the copy is the baseline.
@@ -1247,6 +1246,11 @@ export type RemoteEditEvent = {
 	 */
 	status: string,
 	message: string | null,
+};
+
+export type RemoteEditPath = {
+	path: string,
+	reused: boolean,
 };
 
 export type RowKind = "equal" | "modified" | "deleted" | "added";

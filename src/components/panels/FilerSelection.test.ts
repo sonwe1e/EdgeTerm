@@ -41,6 +41,8 @@ vi.mock("../../api", async (original) => ({
   previewImageFile: vi.fn(),
   remoteEditPath: vi.fn(),
   watchRemoteEdit: vi.fn(),
+  closeSession: vi.fn(),
+  stopRemoteEdits: vi.fn(),
   openLocalPath: vi.fn(),
   openWithDialog: vi.fn(),
   sftpDownloadDirectory: vi.fn(),
@@ -55,7 +57,7 @@ vi.mock("../../api", async (original) => ({
 import * as api from "../../api";
 import * as nativeDialog from "../../nativeDialog";
 import { useStore, type Tab } from "../../store";
-import type { FileEntry } from "../../types";
+import type { DirListing, FileEntry } from "../../types";
 import { FilerPanel } from "./FilerPanel";
 import { lastPaths, listingCache } from "./filerDirectoryCache";
 import { useFileTransfers } from "../../fileTransfers";
@@ -218,8 +220,10 @@ beforeEach(() => {
   vi.mocked(api.cancelTransfer).mockResolvedValue();
   vi.mocked(api.controlFileTransfer).mockResolvedValue();
   vi.mocked(api.previewImageFile).mockResolvedValue(Uint8Array.of(1, 2, 3));
-  vi.mocked(api.remoteEditPath).mockResolvedValue("/tmp/remote-edit.png");
+  vi.mocked(api.remoteEditPath).mockResolvedValue({ path: "/tmp/remote-edit.png", reused: false });
   vi.mocked(api.watchRemoteEdit).mockResolvedValue();
+  vi.mocked(api.closeSession).mockResolvedValue();
+  vi.mocked(api.stopRemoteEdits).mockResolvedValue();
   vi.mocked(api.openLocalPath).mockResolvedValue();
   vi.mocked(api.openWithDialog).mockResolvedValue();
   host = document.createElement("div");
@@ -357,6 +361,229 @@ describe("Filer multiple selection at the real panel entry", () => {
       "/selection/folder",
     );
   });
+
+  it("reopens the watched external draft without downloading over it or restarting its watch", async () => {
+    useRemote();
+    vi.mocked(api.remoteEditPath).mockResolvedValueOnce({
+      path: "/tmp/unsent-draft.txt",
+      reused: true,
+    });
+    await mount();
+    await doubleClick("file10.txt");
+    expect(api.remoteEditPath).toHaveBeenCalledWith(
+      "selection-ssh",
+      "/selection/file10.txt",
+      "file10.txt",
+    );
+    expect(api.sftpDownload).not.toHaveBeenCalled();
+    expect(api.watchRemoteEdit).not.toHaveBeenCalled();
+    expect(api.openLocalPath).toHaveBeenCalledWith("/tmp/unsent-draft.txt", undefined);
+  });
+
+  it("does not prepare two editable downloads from rapid duplicate activation", async () => {
+    useRemote();
+    let prepare!: (target: api.RemoteEditPath) => void;
+    vi.mocked(api.remoteEditPath).mockReturnValueOnce(
+      new Promise<api.RemoteEditPath>((resolve) => {
+        prepare = resolve;
+      }),
+    );
+    await mount();
+    act(() => {
+      for (let i = 0; i < 2; i++) {
+        row("file10.txt").dispatchEvent(new MouseEvent("dblclick", { bubbles: true, button: 0 }));
+      }
+    });
+    expect(api.remoteEditPath).toHaveBeenCalledTimes(1);
+    await act(async () => prepare({ path: "/tmp/existing.txt", reused: true }));
+    expect(api.openLocalPath).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["prepare", "download", "watch"] as const)(
+    "does not continue external editing after its tab closes during %s",
+    async (stage) => {
+      useRemote();
+      let resume!: () => void;
+      if (stage === "prepare") {
+        vi.mocked(api.remoteEditPath).mockReturnValueOnce(
+          new Promise((resolve) => {
+            resume = () => resolve({ path: "/tmp/closed-tab.txt", reused: false });
+          }),
+        );
+      } else {
+        vi.mocked(
+          stage === "download" ? api.sftpDownload : api.watchRemoteEdit,
+        ).mockReturnValueOnce(
+          new Promise<void>((resolve) => {
+            resume = resolve;
+          }),
+        );
+      }
+      await mount();
+      await doubleClick("file10.txt");
+      await act(async () => useStore.getState().closeTab("selection-ssh"));
+      expect(api.stopRemoteEdits).toHaveBeenCalledWith("selection-ssh");
+      expect(useStore.getState().tabs).toHaveLength(0);
+      await act(async () => resume());
+      if (stage === "prepare") expect(api.sftpDownload).not.toHaveBeenCalled();
+      if (stage !== "watch") expect(api.watchRemoteEdit).not.toHaveBeenCalled();
+      expect(api.openLocalPath).not.toHaveBeenCalled();
+      expect(api.openWithDialog).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["prepare", "download", "watch"] as const)(
+    "does not continue external editing while its tab is still closing during %s",
+    async (stage) => {
+      useRemote();
+      let resume!: () => void;
+      if (stage === "prepare") {
+        vi.mocked(api.remoteEditPath).mockReturnValueOnce(
+          new Promise((resolve) => {
+            resume = () => resolve({ path: "/tmp/closing-tab.txt", reused: false });
+          }),
+        );
+      } else {
+        vi.mocked(
+          stage === "download" ? api.sftpDownload : api.watchRemoteEdit,
+        ).mockReturnValueOnce(
+          new Promise<void>((resolve) => {
+            resume = resolve;
+          }),
+        );
+      }
+      let finishClose!: () => void;
+      vi.mocked(api.closeSession).mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          finishClose = resolve;
+        }),
+      );
+      await mount();
+      await doubleClick("file10.txt");
+      let closing!: Promise<void>;
+      act(() => {
+        closing = useStore.getState().closeTab("selection-ssh");
+      });
+      try {
+        expect(useStore.getState().tabs).toHaveLength(1);
+        await act(async () => resume());
+        if (stage === "prepare") expect(api.sftpDownload).not.toHaveBeenCalled();
+        if (stage !== "watch") expect(api.watchRemoteEdit).not.toHaveBeenCalled();
+        expect(api.openLocalPath).not.toHaveBeenCalled();
+      } finally {
+        await act(async () => {
+          finishClose();
+          await closing;
+        });
+      }
+    },
+  );
+
+  it("does not open a reused draft after the source tab has closed", async () => {
+    useRemote();
+    let resume!: (target: api.RemoteEditPath) => void;
+    vi.mocked(api.remoteEditPath).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resume = resolve;
+      }),
+    );
+    await mount();
+    context("file10.txt");
+    await act(async () => menuItem("Open With…").click());
+    await act(async () => useStore.getState().closeTab("selection-ssh"));
+    await act(async () => resume({ path: "/tmp/unsent-draft.txt", reused: true }));
+    expect(api.sftpDownload).not.toHaveBeenCalled();
+    expect(api.watchRemoteEdit).not.toHaveBeenCalled();
+    expect(api.openWithDialog).not.toHaveBeenCalled();
+  });
+
+  it("does not prepare a remote edit if its tab closes while choosing an application", async () => {
+    platform.mac = true;
+    useRemote();
+    let picked!: (path: string) => void;
+    vi.mocked(nativeDialog.open).mockReturnValueOnce(
+      new Promise<string>((resolve) => {
+        picked = resolve;
+      }),
+    );
+    await mount();
+    context("file10.txt");
+    await act(async () => menuItem("Open With…").click());
+    await act(async () => useStore.getState().closeTab("selection-ssh"));
+    await act(async () => picked("/Applications/Editor.app"));
+    expect(api.remoteEditPath).not.toHaveBeenCalled();
+    expect(api.openLocalPath).not.toHaveBeenCalled();
+  });
+
+  it("keeps an external edit owned by A when the user only switches to tab B", async () => {
+    useRemote();
+    let downloaded!: () => void;
+    vi.mocked(api.sftpDownload).mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        downloaded = resolve;
+      }),
+    );
+    await mount();
+    await doubleClick("file10.txt");
+    const second = remoteTab("selection-ssh-b");
+    await act(async () => {
+      useStore.setState({
+        tabs: [...useStore.getState().tabs, second],
+        activeId: second.info.id,
+        panes: [{ id: initialState.activePaneId, activeTabId: second.info.id }],
+      });
+    });
+    await act(async () => downloaded());
+    expect(api.watchRemoteEdit).toHaveBeenCalledWith(
+      "selection-ssh",
+      "/tmp/remote-edit.png",
+      "/selection/file10.txt",
+    );
+    expect(api.openLocalPath).toHaveBeenCalledWith("/tmp/remote-edit.png", undefined);
+  });
+
+  it.each([false, true])(
+    "does not release B's directory loading state when A's external download finishes (failed=%s)",
+    async (failed) => {
+      useRemote();
+      let finishDownload!: () => void;
+      let failDownload!: (error: Error) => void;
+      vi.mocked(api.sftpDownload).mockReturnValueOnce(
+        new Promise<void>((resolve, reject) => {
+          finishDownload = resolve;
+          failDownload = reject;
+        }),
+      );
+      await mount();
+      await doubleClick("file10.txt");
+      const pendingListings: (() => void)[] = [];
+      vi.mocked(api.sftpList).mockImplementation(
+        async (_id, path) =>
+          new Promise<DirListing>((resolve) => {
+            pendingListings.push(() => resolve({ path, entries }));
+          }),
+      );
+      const second = remoteTab("selection-ssh-b");
+      await act(async () => {
+        useStore.setState({
+          tabs: [...useStore.getState().tabs, second],
+          activeId: second.info.id,
+          panes: [{ id: initialState.activePaneId, activeTabId: second.info.id }],
+        });
+      });
+      expect(toolbar("Home folder").disabled).toBe(true);
+      await act(async () => {
+        if (failed) failDownload(Error("A's external download failed"));
+        else finishDownload();
+      });
+      expect(toolbar("Home folder").disabled).toBe(true);
+      expect(host.textContent).not.toContain("A's external download failed");
+      if (failed) expect(api.openLocalPath).not.toHaveBeenCalled();
+      else expect(api.openLocalPath).toHaveBeenCalledWith("/tmp/remote-edit.png", undefined);
+      await act(async () => pendingListings.forEach((finish) => finish()));
+      expect(toolbar("Home folder").disabled).toBe(false);
+    },
+  );
 
   it("previews a single local image via raw IPC without opening or copying it", async () => {
     vi.mocked(api.localList).mockImplementation(async (path) => ({
@@ -750,6 +977,50 @@ describe("Filer multiple selection at the real panel entry", () => {
     expect(api.transferFiles).not.toHaveBeenCalled();
   });
 
+  for (const stale of ["switch", "unmount"])
+    it(`starts no download when its destination listing completes after ${stale}`, async () => {
+      useRemote();
+      vi.mocked(nativeDialog.open).mockResolvedValueOnce("/downloads");
+      let finishListing!: (listing: DirListing) => void;
+      vi.mocked(api.localList).mockImplementation(async (path) =>
+        path === "/downloads"
+          ? new Promise<DirListing>((resolve) => {
+              finishListing = resolve;
+            })
+          : { path, entries },
+      );
+      await mount();
+      press("folder");
+      await act(async () => toolbar("Download file or folder").click());
+      expect(api.localList).toHaveBeenCalledWith("/downloads");
+      await act(async () => {
+        if (stale === "unmount") root.render(null);
+        else useStore.setState({ tabs: [], activeId: null });
+      });
+      await act(async () => finishListing({ path: "/downloads", entries: [] }));
+      expect(api.transferFiles).not.toHaveBeenCalled();
+    });
+
+  it("does not ask to replace files for an obsolete destination listing", async () => {
+    useRemote();
+    vi.mocked(nativeDialog.open).mockResolvedValueOnce("/downloads");
+    let finishListing!: (listing: DirListing) => void;
+    vi.mocked(api.localList).mockImplementation(async (path) =>
+      path === "/downloads"
+        ? new Promise<DirListing>((resolve) => {
+            finishListing = resolve;
+          })
+        : { path, entries },
+    );
+    await mount();
+    press("folder");
+    await act(async () => toolbar("Download file or folder").click());
+    await act(async () => useStore.setState({ tabs: [], activeId: null }));
+    await act(async () => finishListing({ path: "/downloads", entries }));
+    expect(nativeDialog.ask).not.toHaveBeenCalled();
+    expect(api.transferFiles).not.toHaveBeenCalled();
+  });
+
   it("hands every selected local path to the native drag without collapsing the group", async () => {
     await mount();
     press("file10.txt");
@@ -1074,6 +1345,60 @@ describe("Filer multiple selection at the real panel entry", () => {
         }
         expect(editor()).toBeNull();
       });
+
+    for (const failed of [false, true])
+      for (const returnToSource of [false, true])
+        it(`isolates a late rename ${failed ? "failure" : "success"} after ${
+          returnToSource ? "switching away and back" : "switching sessions"
+        }`, async () => {
+          useRemote();
+          await mount();
+          let finishRename!: () => void;
+          let failRename!: (error: Error) => void;
+          vi.mocked(api.sftpRename).mockReturnValueOnce(
+            new Promise<void>((resolve, reject) => {
+              finishRename = resolve;
+              failRename = reject;
+            }),
+          );
+          press("file2.txt");
+          act(() =>
+            list().dispatchEvent(new KeyboardEvent("keydown", { key: "F2", bubbles: true })),
+          );
+          type(editor()!, "renamed.txt");
+          await act(async () =>
+            editor()!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })),
+          );
+
+          const pendingListings: (() => void)[] = [];
+          vi.mocked(api.sftpList).mockImplementation(
+            async (_id, path) =>
+              new Promise<DirListing>((resolve) => {
+                pendingListings.push(() => resolve({ path, entries }));
+              }),
+          );
+          const source = remoteTab();
+          const other = remoteTab("other-ssh");
+          const select = (tab: Tab) =>
+            useStore.setState({
+              tabs: [source, other],
+              activeId: tab.info.id,
+              panes: [{ id: initialState.activePaneId, activeTabId: tab.info.id }],
+            });
+          await act(async () => select(other));
+          if (returnToSource) await act(async () => select(source));
+          const requestsBefore = vi.mocked(api.sftpList).mock.calls.length;
+          expect(toolbar("Home folder").disabled).toBe(true);
+          await act(async () => {
+            if (failed) failRename(Error("old session rename failed"));
+            else finishRename();
+          });
+          expect(toolbar("Home folder").disabled).toBe(true);
+          expect(api.sftpList).toHaveBeenCalledTimes(requestsBefore);
+          expect(host.textContent).not.toContain("old session rename failed");
+          await act(async () => pendingListings.forEach((finish) => finish()));
+          expect(toolbar("Home folder").disabled).toBe(false);
+        });
 
     it("renames from the toolbar and the context menu, one entry at a time", async () => {
       await mount();

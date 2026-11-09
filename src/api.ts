@@ -650,12 +650,13 @@ export const finishPromisedFile = (token: string, error: string | null) =>
 // --- remote files edited locally -------------------------------------------
 
 /**
- * Where a remote file opened in a local application is downloaded to. While
- * the file is being watched this is the same path again, so reopening it
- * refreshes the copy the editor already has.
+ * Prepares a local copy for an external editor. A reused copy may contain
+ * unsent edits, so callers must not download over it or restart its watcher.
  */
+export type RemoteEditPath = Wire.RemoteEditPath;
+
 export const remoteEditPath = (id: string, remote: string, name: string) =>
-  invoke<string>("remote_edit_path", { id, remote, name });
+  invoke<RemoteEditPath>("remote_edit_path", { id, remote, name });
 
 /**
  * From now on, every change to `local` is uploaded back to `remote`. Call it

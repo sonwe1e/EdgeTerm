@@ -1,8 +1,7 @@
 use super::*;
 
-/// Where a remote file opened in a local application is downloaded to; the
-/// same place again while the file is still being watched. See
-/// `remote_edit::RemoteEdits::local_path`.
+/// Prepares an editable local copy. A reused path is already watched and must
+/// not be downloaded over or watched again.
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
 pub fn remote_edit_path(
@@ -10,9 +9,8 @@ pub fn remote_edit_path(
     id: String,
     remote: String,
     name: String,
-) -> Result<String> {
-    let path = state.remote_edits.local_path(&id, &remote, &name)?;
-    Ok(path.to_string_lossy().into_owned())
+) -> Result<crate::remote_edit::RemoteEditPath> {
+    state.remote_edits.local_path(&id, &remote, &name)
 }
 
 /// Starts sending `local` back to `remote` on session `id` whenever it
