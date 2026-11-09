@@ -47,8 +47,29 @@ it("decodes a real Blob image and keeps its modal usable on a narrow viewport", 
   const stage = document.querySelector<HTMLElement>(".image-preview-stage")!;
   const footer = document.querySelector<HTMLElement>(".image-preview-dialog .dialog-footer")!;
   const rect = dialog.getBoundingClientRect();
-  expect(rect.width).toBeLessThanOrEqual(window.innerWidth - 31);
-  expect(rect.height).toBeLessThanOrEqual(window.innerHeight - 31);
+  expect(rect.width).toBeLessThanOrEqual(window.innerWidth - 23);
+  expect(rect.width).toBeGreaterThan(window.innerWidth * 0.9);
+  expect(rect.height).toBeLessThanOrEqual(window.innerHeight - 23);
+  expect(rect.height).toBeGreaterThan(window.innerHeight * 0.85);
   expect(stage.clientHeight).toBeGreaterThan(0);
   expect(footer.getBoundingClientRect().bottom).toBeLessThanOrEqual(window.innerHeight);
+
+  const fit = [...footer.querySelectorAll("button")].find((item) => item.textContent === "Fit")!;
+  const actual = [...footer.querySelectorAll("button")].find(
+    (item) => item.textContent === "100%",
+  )!;
+  expect(fit.getBoundingClientRect().right).toBeLessThanOrEqual(window.innerWidth);
+  expect(actual.getBoundingClientRect().right).toBeLessThanOrEqual(window.innerWidth);
+  expect(fit.getAttribute("aria-pressed")).toBe("true");
+  actual.click();
+  await expect.poll(() => actual.getAttribute("aria-pressed")).toBe("true");
+
+  const wheel = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: -120 });
+  stage.dispatchEvent(wheel);
+  expect(wheel.defaultPrevented).toBe(true);
+  await expect
+    .poll(() => Number(document.querySelector("output")?.textContent?.replace("%", "")))
+    .toBeGreaterThan(100);
+  fit.click();
+  await expect.poll(() => document.querySelector("output")?.textContent).toBe("100%");
 });
