@@ -1,7 +1,7 @@
 import * as api from "./api";
 import { useAgents } from "./agents/model";
 import { errorText } from "./errorInfo";
-import { openFileEditor } from "./fileEditor";
+import { beginFileEditorOpen, isFileEditorOpenCurrent, openFileEditor } from "./fileEditor";
 import { fontStack } from "./fonts";
 import { commandHistory } from "./history";
 import { t } from "./i18n";
@@ -596,6 +596,8 @@ async function openTerminalFileLink(
   line: number | undefined,
   cwd: string | null,
 ): Promise<void> {
+  const request = beginFileEditorOpen();
+  if (request === null) return;
   const candidates: string[] = [];
   if (path.startsWith("/")) {
     candidates.push(path);
@@ -611,8 +613,11 @@ async function openTerminalFileLink(
       }
     }
   }
+  if (!isFileEditorOpenCurrent(request)) return;
   for (const candidate of [...new Set(candidates)]) {
-    if (await openFileEditor(sessionId, candidate, { line })) {
+    const opened = await openFileEditor(sessionId, candidate, { line, request });
+    if (opened === null) return;
+    if (opened) {
       // An earlier candidate may have failed and left its reason on the status
       // line; opening the file is the outcome the user needs to see.
       useStore.getState().setStatus(t("status.fileLinkOpened", { path: candidate }));
