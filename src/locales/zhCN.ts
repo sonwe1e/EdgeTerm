@@ -241,6 +241,8 @@ export const zhCN: Catalog = {
   "quit.sessionMany": " 个活动会话",
   "quit.andMore": "…等另外 {count} 个",
   "quit.hint": "所有连接都将断开，其终端输出将被丢弃。",
+  "quit.transfers":
+    "退出将中断 {count} 个尚未完成的传输任务（含已暂停任务）。可取消退出，先到传输中心检查。",
 
   // CloseChoiceDialog —— 关闭方式为“每次询问”时，点 ✕ 弹出的选择。
   "closeChoice.title": "关闭 EdgeTerm",

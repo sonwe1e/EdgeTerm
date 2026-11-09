@@ -43,6 +43,7 @@ import { Workspace } from "./components/Workspace";
 import { FileEditorDialog } from "./components/FileEditorDialog";
 import { AgentDialog } from "./components/AgentDialog";
 import { closeFileEditor } from "./fileEditor";
+import { transferActive, useFileTransfers } from "./fileTransfers";
 import { FilerPanel } from "./components/panels/FilerPanel";
 import { SenderPanel } from "./components/panels/SenderPanel";
 import { SessionPanel } from "./components/panels/SessionPanel";
@@ -86,8 +87,9 @@ const exitSafely = async () => {
   }
 };
 
-const hasLiveSessions = () =>
-  useStore.getState().tabs.some((tab) => tab.state === "connecting" || tab.state === "connected");
+const hasQuitWork = () =>
+  useStore.getState().tabs.some((tab) => tab.state === "connecting" || tab.state === "connected") ||
+  Object.values(useFileTransfers.getState().jobs).some((job) => transferActive(job.status));
 
 /**
  * PD-01: an FTP or SFTP tab carries its own dual-pane file manager in the
@@ -412,13 +414,13 @@ export default function App() {
 
   // Closing the window (macOS ✕, the menubar Close button on Windows,
   // Alt+F4) must not silently drop live connections: hold the close and
-  // confirm while any tab is still connecting or connected. Without the
+  // confirm while any tab is live or a background transfer is unfinished. Without the
   // preventDefault the listener itself destroys the window.
   //
   // The closeAction setting routes first: "tray" hides the window with every
   // session running, "ask" opens the choice dialog, and "exit" skips the
-  // choice (but never the live-session confirm — one gesture still cannot
-  // drop every connection). Reading the setting through getState keeps the
+  // choice (but never the unfinished-work confirm — one gesture still cannot
+  // drop every connection or transfer). Reading through getState keeps the
   // listener from re-arming on every preference change.
   useEffect(() => {
     const unlisten = getCurrentWindow().onCloseRequested((event) => {
@@ -433,7 +435,7 @@ export default function App() {
         setCloseChoiceOpen(true);
         return;
       }
-      if (!hasLiveSessions()) {
+      if (!hasQuitWork()) {
         event.preventDefault();
         void exitSafely();
         return;
@@ -465,10 +467,10 @@ export default function App() {
   }, []);
 
   // ⌘Q on macOS bypasses the window close path, so the Rust menu handler
-  // forwards it here; with no live sessions just exit.
+  // forwards it here; background transfers outlive their tabs and also need a guard.
   useEffect(() => {
     const unlisten = api.onQuitRequested(() => {
-      if (hasLiveSessions()) openQuitPrompt();
+      if (hasQuitWork()) openQuitPrompt();
       else void exitSafely();
     });
     return () => {
@@ -900,7 +902,7 @@ export default function App() {
               void api.hideMainWindow();
               return;
             }
-            if (hasLiveSessions()) openQuitPrompt();
+            if (hasQuitWork()) openQuitPrompt();
             else void exitSafely();
           }}
           onCancel={() => setCloseChoiceOpen(false)}

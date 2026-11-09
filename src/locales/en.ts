@@ -263,6 +263,8 @@ export const en = {
   "quit.sessionMany": " active sessions",
   "quit.andMore": "…and {count} more",
   "quit.hint": "All connections will be disconnected and their terminal output discarded.",
+  "quit.transfers":
+    "Quitting will interrupt {count} unfinished file transfer(s), including paused tasks. Cancel to review them in the transfer center.",
 
   // CloseChoiceDialog — what the window ✕ does while the setting is "ask".
   "closeChoice.title": "Close EdgeTerm",
