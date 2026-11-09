@@ -32,6 +32,10 @@ interface Props extends DisplaySettings {
 }
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+const numberValue = (raw: string, fallback: number, min: number, max: number) => {
+  const value = raw.trim() === "" ? fallback : Number(raw);
+  return clamp(Math.round(Number.isFinite(value) ? value : fallback), min, max);
+};
 
 export function FontSizeDialog({
   panelFontSize,
@@ -45,11 +49,13 @@ export function FontSizeDialog({
   onApply,
   onClose,
 }: Props) {
-  const [panelSize, setPanelSize] = useState(panelFontSize);
-  const [bufferSize, setBufferSize] = useState(bufferFontSize);
+  // Keep incomplete keystrokes ("", "1", ...) editable. Range controls and
+  // previews use bounded values; blur/Apply normalizes the numeric draft.
+  const [panelSize, setPanelSize] = useState(String(panelFontSize));
+  const [bufferSize, setBufferSize] = useState(String(bufferFontSize));
   const [panelFamily, setPanelFamily] = useState(panelFontFamily);
   const [bufferFamily, setBufferFamily] = useState(bufferFontFamily);
-  const [scrollback, setScrollback] = useState(terminalScrollback);
+  const [scrollback, setScrollback] = useState(String(terminalScrollback));
   const [cursor, setCursor] = useState<CursorStyle>(cursorStyle);
   const [blink, setBlink] = useState(cursorBlink);
   const [gpu, setGpu] = useState(gpuRenderer);
@@ -89,36 +95,24 @@ export function FontSizeDialog({
     [probedMono, systemFonts],
   );
 
-  const updateNumber = (
-    value: number,
-    setValue: (value: number) => void,
-    min: number,
-    max: number,
-  ) => {
-    // A Backspace-cleared number field reports NaN via valueAsNumber while the
-    // raw string is "". Ignoring it leaves the old value on screen, so the
-    // field looks dead. Fall back to min so the clear is visible and the user
-    // can keep typing a replacement.
-    if (Number.isNaN(value)) {
-      setValue(min);
-      return;
-    }
-    if (Number.isFinite(value)) setValue(clamp(Math.round(value), min, max));
-  };
-
-  const updateNumberInput = (
-    raw: string,
-    valueAsNumber: number,
-    setValue: (value: number) => void,
-    min: number,
-    max: number,
-  ) => {
-    if (raw.trim() === "") {
-      setValue(min);
-      return;
-    }
-    updateNumber(valueAsNumber, setValue, min, max);
-  };
+  const panelValue = numberValue(
+    panelSize,
+    panelFontSize,
+    PANEL_FONT_SIZE.min,
+    PANEL_FONT_SIZE.max,
+  );
+  const bufferValue = numberValue(
+    bufferSize,
+    bufferFontSize,
+    BUFFER_FONT_SIZE.min,
+    BUFFER_FONT_SIZE.max,
+  );
+  const scrollbackValue = numberValue(
+    scrollback,
+    terminalScrollback,
+    TERMINAL_SCROLLBACK.min,
+    TERMINAL_SCROLLBACK.max,
+  );
 
   return (
     <ModalDialog
@@ -129,15 +123,16 @@ export function FontSizeDialog({
       dismissable={false}
     >
       <form
+        noValidate
         onSubmit={(event) => {
           event.preventDefault();
           setTerminalColdHistory(coldHistory);
           onApply({
-            panelFontSize: panelSize,
-            bufferFontSize: bufferSize,
+            panelFontSize: panelValue,
+            bufferFontSize: bufferValue,
             panelFontFamily: panelFamily.trim(),
             bufferFontFamily: bufferFamily.trim(),
-            terminalScrollback: scrollback,
+            terminalScrollback: scrollbackValue,
             cursorStyle: cursor,
             cursorBlink: blink,
             gpuRenderer: gpu,
@@ -157,8 +152,8 @@ export function FontSizeDialog({
               type="range"
               min={PANEL_FONT_SIZE.min}
               max={PANEL_FONT_SIZE.max}
-              value={panelSize}
-              onChange={(event) => setPanelSize(event.target.valueAsNumber)}
+              value={panelValue}
+              onChange={(event) => setPanelSize(event.target.value)}
             />
             <input
               aria-label={t("fontDialog.panelFontSize")}
@@ -167,15 +162,8 @@ export function FontSizeDialog({
               min={PANEL_FONT_SIZE.min}
               max={PANEL_FONT_SIZE.max}
               value={panelSize}
-              onChange={(event) =>
-                updateNumberInput(
-                  event.target.value,
-                  event.target.valueAsNumber,
-                  setPanelSize,
-                  PANEL_FONT_SIZE.min,
-                  PANEL_FONT_SIZE.max,
-                )
-              }
+              onChange={(event) => setPanelSize(event.target.value)}
+              onBlur={() => setPanelSize(String(panelValue))}
             />
             <span className="font-size-unit">px</span>
           </label>
@@ -199,8 +187,8 @@ export function FontSizeDialog({
               type="range"
               min={BUFFER_FONT_SIZE.min}
               max={BUFFER_FONT_SIZE.max}
-              value={bufferSize}
-              onChange={(event) => setBufferSize(event.target.valueAsNumber)}
+              value={bufferValue}
+              onChange={(event) => setBufferSize(event.target.value)}
             />
             <input
               aria-label={t("fontDialog.bufferFontSize")}
@@ -209,15 +197,8 @@ export function FontSizeDialog({
               min={BUFFER_FONT_SIZE.min}
               max={BUFFER_FONT_SIZE.max}
               value={bufferSize}
-              onChange={(event) =>
-                updateNumberInput(
-                  event.target.value,
-                  event.target.valueAsNumber,
-                  setBufferSize,
-                  BUFFER_FONT_SIZE.min,
-                  BUFFER_FONT_SIZE.max,
-                )
-              }
+              onChange={(event) => setBufferSize(event.target.value)}
+              onBlur={() => setBufferSize(String(bufferValue))}
             />
             <span className="font-size-unit">px</span>
           </label>
@@ -278,7 +259,7 @@ export function FontSizeDialog({
               <strong>{t("fontDialog.scrollback")}</strong>
               <small>
                 {t("fontDialog.scrollbackHint", {
-                  mb: Math.max(1, Math.round(scrollbackMegabytes(scrollback))),
+                  mb: Math.max(1, Math.round(scrollbackMegabytes(scrollbackValue))),
                 })}
               </small>
             </span>
@@ -290,15 +271,8 @@ export function FontSizeDialog({
               max={TERMINAL_SCROLLBACK.max}
               step={1000}
               value={scrollback}
-              onChange={(event) =>
-                updateNumberInput(
-                  event.target.value,
-                  event.target.valueAsNumber,
-                  setScrollback,
-                  TERMINAL_SCROLLBACK.min,
-                  TERMINAL_SCROLLBACK.max,
-                )
-              }
+              onChange={(event) => setScrollback(event.target.value)}
+              onBlur={() => setScrollback(String(scrollbackValue))}
             />
             <span className="font-size-unit">{t("fontDialog.lines")}</span>
           </label>
@@ -323,11 +297,11 @@ export function FontSizeDialog({
             type="button"
             className="btn font-size-reset"
             onClick={() => {
-              setPanelSize(PANEL_FONT_SIZE.default);
-              setBufferSize(BUFFER_FONT_SIZE.default);
+              setPanelSize(String(PANEL_FONT_SIZE.default));
+              setBufferSize(String(BUFFER_FONT_SIZE.default));
               setPanelFamily("");
               setBufferFamily("");
-              setScrollback(TERMINAL_SCROLLBACK.default);
+              setScrollback(String(TERMINAL_SCROLLBACK.default));
               setCursor("block");
               setBlink(true);
               setGpu(true);

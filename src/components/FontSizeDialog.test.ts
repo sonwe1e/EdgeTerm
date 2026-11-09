@@ -141,3 +141,62 @@ describe("display settings cold history opt-in", () => {
     expect(coldSwitch().checked).toBe(false);
   });
 });
+
+function inputValue(input: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+  act(() => {
+    setter.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
+describe("display settings numeric editing", () => {
+  it("allows clearing and typing a multi-digit font size without clamping each keystroke", () => {
+    mount();
+    const input = host.querySelector<HTMLInputElement>(".font-size-number")!;
+    inputValue(input, "");
+    expect(input.value).toBe("");
+    inputValue(input, "1");
+    expect(input.value).toBe("1");
+    inputValue(input, "14");
+    apply();
+    expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ panelFontSize: 14 }));
+  });
+
+  it("stages scrollback text and normalizes only on blur or Apply", () => {
+    mount();
+    const input = host.querySelector<HTMLInputElement>(".scrollback-number")!;
+    inputValue(input, "2");
+    expect(input.value).toBe("2");
+    inputValue(input, "25000");
+    apply();
+    expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ terminalScrollback: 25000 }));
+  });
+
+  it("keeps applied values bounded and restores the initial value for an empty field", () => {
+    mount();
+    const inputs = host.querySelectorAll<HTMLInputElement>(".font-size-number");
+    inputValue(inputs[0], "999");
+    inputValue(inputs[1], "");
+    apply();
+    expect(onApply).toHaveBeenCalledWith(
+      expect.objectContaining({ panelFontSize: 18, bufferFontSize: 13 }),
+    );
+  });
+
+  it("normalizes on blur and keeps the range control in sync", () => {
+    mount();
+    const input = host.querySelector<HTMLInputElement>(".font-size-number")!;
+    const slider = host.querySelector<HTMLInputElement>('input[type="range"]')!;
+    act(() => input.focus());
+    inputValue(input, "1");
+    expect(input.value).toBe("1");
+    act(() => input.blur());
+    expect(input.value).toBe("10");
+    expect(slider.value).toBe("10");
+    inputValue(slider, "16");
+    expect(input.value).toBe("16");
+    apply();
+    expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ panelFontSize: 16 }));
+  });
+});
