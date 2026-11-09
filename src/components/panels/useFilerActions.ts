@@ -170,13 +170,13 @@ export function useFilerActions({
     }
   };
 
-  /**
-   * A double-click does what the entry's own Open action does: enter a folder,
-   * or hand a file to its application (a remote one as a watched local copy).
-   */
+  /** Double-click and Enter share the context menu's default, read-only image action. */
   const activate = (entry: FileEntry) => {
     if (entry.isDir) void load(entry.path);
-    else if (!busy) void openEntry(entry);
+    else if (!busy) {
+      if (imagePreviewMime(entry.name)) previewImage(entry);
+      else void openEntry(entry);
+    }
   };
 
   /**
@@ -271,31 +271,38 @@ export function useFilerActions({
                 icon: "folder-opened" as const,
                 action: () => void load(entry.path),
               }
-            : {
-                label: t("filer.open"),
-                icon: "go-to-file" as const,
-                disabled: busy,
-                action: () => void openEntry(entry),
-              },
+            : imagePreviewMime(entry.name)
+              ? {
+                  label: t("filer.previewImage"),
+                  icon: "file-media" as const,
+                  disabled: busy,
+                  action: () => previewImage(entry),
+                }
+              : {
+                  label: t("filer.open"),
+                  icon: "go-to-file" as const,
+                  disabled: busy,
+                  action: () => void openEntry(entry),
+                },
           ...(entry.isDir
             ? []
             : [
+                ...(imagePreviewMime(entry.name)
+                  ? [
+                      {
+                        label: t("filer.openExternallyEditable"),
+                        icon: "link-external" as const,
+                        disabled: busy,
+                        action: () => void openEntry(entry),
+                      },
+                    ]
+                  : []),
                 {
                   label: t("fileEditor.title"),
                   icon: "edit" as const,
                   disabled: busy,
                   action: () => void openFileEditor(remoteId, entry.path),
                 },
-                ...(imagePreviewMime(entry.name)
-                  ? [
-                      {
-                        label: t("filer.previewImage"),
-                        icon: "file-media" as const,
-                        disabled: busy,
-                        action: () => previewImage(entry),
-                      },
-                    ]
-                  : []),
                 {
                   label: t("logViewer.menu"),
                   icon: "find-in-files" as const,

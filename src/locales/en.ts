@@ -760,6 +760,7 @@ export const en = {
   "filer.followStop": "Stop following the terminal's directory",
   "filer.previewInBrowser": "Preview in browser",
   "filer.previewImage": "Preview Image",
+  "filer.openExternallyEditable": "Open Externally (Editable)",
   "filer.previewStop": "Stop preview",
   "imagePreview.title": "Image preview",
   "imagePreview.loading": "Reading image…",

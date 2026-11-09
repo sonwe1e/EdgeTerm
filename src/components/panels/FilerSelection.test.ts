@@ -39,7 +39,10 @@ vi.mock("../../api", async (original) => ({
   sftpRename: vi.fn(),
   sftpDownload: vi.fn(),
   previewImageFile: vi.fn(),
+  remoteEditPath: vi.fn(),
   watchRemoteEdit: vi.fn(),
+  openLocalPath: vi.fn(),
+  openWithDialog: vi.fn(),
   sftpDownloadDirectory: vi.fn(),
   onFileTransfer: vi.fn(async () => () => {}),
   onFileTransferRemoved: vi.fn(async () => () => {}),
@@ -82,6 +85,10 @@ const chosen = () =>
 const press = (name: string, options: MouseEventInit = {}) =>
   act(() => {
     row(name).dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0, ...options }));
+  });
+const doubleClick = (name: string) =>
+  act(async () => {
+    row(name).dispatchEvent(new MouseEvent("dblclick", { bubbles: true, button: 0 }));
   });
 /** A control in the panel's own chrome: the title bar or the path bar. */
 const toolbar = (label: string) =>
@@ -211,6 +218,10 @@ beforeEach(() => {
   vi.mocked(api.cancelTransfer).mockResolvedValue();
   vi.mocked(api.controlFileTransfer).mockResolvedValue();
   vi.mocked(api.previewImageFile).mockResolvedValue(Uint8Array.of(1, 2, 3));
+  vi.mocked(api.remoteEditPath).mockResolvedValue("/tmp/remote-edit.png");
+  vi.mocked(api.watchRemoteEdit).mockResolvedValue();
+  vi.mocked(api.openLocalPath).mockResolvedValue();
+  vi.mocked(api.openWithDialog).mockResolvedValue();
   host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
@@ -246,6 +257,107 @@ const transferJob = (
 });
 
 describe("Filer multiple selection at the real panel entry", () => {
+  for (const name of ["plot.png", "CAMERA.JPG", "frame.jpeg", "anim.gif", "result.webp"])
+    it(`opens an SSH image ${name} by double-click in read-only preview`, async () => {
+      useRemote();
+      vi.mocked(api.sftpList).mockImplementation(async (_id, path) => ({
+        path,
+        entries: [{ ...entries[0], name, path: `/selection/${name}` }],
+      }));
+      await mount();
+      await doubleClick(name);
+      expect(api.previewImageFile).toHaveBeenCalledWith("selection-ssh", `/selection/${name}`);
+      expect(api.remoteEditPath).not.toHaveBeenCalled();
+      expect(api.sftpDownload).not.toHaveBeenCalled();
+      expect(api.watchRemoteEdit).not.toHaveBeenCalled();
+      expect(api.openLocalPath).not.toHaveBeenCalled();
+    });
+
+  it("opens a local image by double-click without launching an external app", async () => {
+    vi.mocked(api.localList).mockImplementation(async (path) => ({
+      path,
+      entries: [{ ...entries[0], name: "frame.PNG", path: "/selection/frame.PNG" }],
+    }));
+    await mount();
+    await doubleClick("frame.PNG");
+    expect(api.previewImageFile).toHaveBeenCalledWith(null, "/selection/frame.PNG");
+    expect(api.openLocalPath).not.toHaveBeenCalled();
+  });
+
+  it("previews the selected SSH image with Enter without enabling remote editing", async () => {
+    useRemote();
+    vi.mocked(api.sftpList).mockImplementation(async (_id, path) => ({
+      path,
+      entries: [{ ...entries[0], name: "plot.png", path: "/selection/plot.png" }],
+    }));
+    await mount();
+    press("plot.png");
+    await act(async () =>
+      host
+        .querySelector<HTMLElement>(".filer-list")!
+        .dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })),
+    );
+    expect(api.previewImageFile).toHaveBeenCalledWith("selection-ssh", "/selection/plot.png");
+    expect(api.remoteEditPath).not.toHaveBeenCalled();
+    expect(api.sftpDownload).not.toHaveBeenCalled();
+    expect(api.watchRemoteEdit).not.toHaveBeenCalled();
+    expect(api.openLocalPath).not.toHaveBeenCalled();
+  });
+
+  it("does not fall back to editable remote opening when image preview fails", async () => {
+    useRemote();
+    vi.mocked(api.sftpList).mockImplementation(async (_id, path) => ({
+      path,
+      entries: [{ ...entries[0], name: "broken.png", path: "/selection/broken.png" }],
+    }));
+    vi.mocked(api.previewImageFile).mockRejectedValueOnce(new Error("Invalid image header"));
+    await mount();
+    await doubleClick("broken.png");
+    expect(api.remoteEditPath).not.toHaveBeenCalled();
+    expect(api.sftpDownload).not.toHaveBeenCalled();
+    expect(api.watchRemoteEdit).not.toHaveBeenCalled();
+    expect(api.openLocalPath).not.toHaveBeenCalled();
+  });
+
+  it("uses read-only image preview for context Open, with explicit external editing", async () => {
+    useRemote();
+    vi.mocked(api.sftpList).mockImplementation(async (_id, path) => ({
+      path,
+      entries: [{ ...entries[0], name: "plot.png", path: "/selection/plot.png" }],
+    }));
+    await mount();
+    context("plot.png");
+    expect(
+      [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].filter(
+        (element) => element.textContent?.trim() === "Preview Image",
+      ),
+    ).toHaveLength(1);
+    await act(async () => menuItem("Preview Image").click());
+    expect(api.previewImageFile).toHaveBeenCalledWith("selection-ssh", "/selection/plot.png");
+    expect(api.remoteEditPath).not.toHaveBeenCalled();
+    context("plot.png");
+    await act(async () => menuItem("Open Externally (Editable)").click());
+    expect(api.remoteEditPath).toHaveBeenCalledWith(
+      "selection-ssh",
+      "/selection/plot.png",
+      "plot.png",
+    );
+    expect(api.sftpDownload).toHaveBeenCalled();
+    expect(api.watchRemoteEdit).toHaveBeenCalled();
+    expect(api.openLocalPath).toHaveBeenCalledWith("/tmp/remote-edit.png", undefined);
+  });
+
+  it("preserves ordinary file activation and directory navigation", async () => {
+    await mount();
+    await doubleClick("file10.txt");
+    expect(api.openLocalPath).toHaveBeenCalledWith("/selection/file10.txt", undefined);
+    expect(api.previewImageFile).not.toHaveBeenCalled();
+    await doubleClick("folder");
+    expect(vi.mocked(api.localList).mock.calls.map((call) => call[0])).toContain(
+      "/selection/folder",
+    );
+  });
+
   it("previews a single local image via raw IPC without opening or copying it", async () => {
     vi.mocked(api.localList).mockImplementation(async (path) => ({
       path,
