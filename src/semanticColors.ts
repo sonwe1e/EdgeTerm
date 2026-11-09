@@ -277,10 +277,13 @@ function permissionBitColor(index: number, ch: string): string {
 
 /**
  * Tokens that make up a shell prompt: `user@host:cwd$`, `[user@host cwd]$`,
- * `user@host cwd %` and the like. Group 4 is the prompt sign.
+ * `(base) user@host:cwd$`, `(.venv) user@host:cwd$`, `user@host cwd %` and the
+ * like. Python/Conda environments may prepend up to two short names. Keeping
+ * those prefixes non-capturing preserves the user/host/cwd/sign groups used
+ * for semantic highlighting. Group 4 is the prompt sign.
  */
 const USER_PROMPT =
-  /^\[?([A-Za-z0-9._-]+)@([A-Za-z0-9._-]+)(?::|\s+)([^\]$#>%❯]*?)\]?\s*([$#>%❯])(?=\s|$)/;
+  /^(?:\([A-Za-z0-9._-]{1,64}\)\s+){0,2}\[?([A-Za-z0-9._-]+)@([A-Za-z0-9._-]+)(?::|\s+)([^\]$#>%❯]*?)\]?\s*([$#>%❯])(?=\s|$)/;
 /**
  * Prompts without a user@host: `$ ls`, `sh-4.2$ ls`, `~ % ls`, `❯ ls`, `>>>`.
  * A bare `#` is a comment, not a root prompt, so the sign needs a prefix then.
@@ -380,9 +383,13 @@ function windtermLine(text: string): SemanticLine {
       }
     }
   };
-  const addParts = (match: RegExpMatchArray, parts: readonly (readonly [string, string])[]) => {
+  const addParts = (
+    match: RegExpMatchArray,
+    parts: readonly (readonly [string, string])[],
+    searchFrom?: number,
+  ) => {
     if (match.index === undefined) return;
-    let from = match.index;
+    let from = searchFrom ?? match.index;
     for (const [value, color] of parts) {
       if (!value) continue;
       const start = text.indexOf(value, from);
@@ -483,12 +490,20 @@ function windtermLine(text: string): SemanticLine {
     add(windowsPrompt[0].length - 1, windowsPrompt[0].length, C.rose);
     commandFrom = windowsPrompt[0].length;
   } else if (userPrompt) {
-    addParts(userPrompt, [
-      [userPrompt[1], userPrompt[1] === "root" ? C.red : C.lime],
-      [userPrompt[2], C.mint],
-      [userPrompt[3].trim(), C.yellow],
-      [userPrompt[4], C.rose],
-    ]);
+    // A named environment may contain the same text as the user (for example
+    // `(alice) alice@host`). Search for the account after the prefix so the
+    // prefix never accidentally receives the account's highlight.
+    const accountStart = userPrompt.index + userPrompt[0].indexOf(`${userPrompt[1]}@`);
+    addParts(
+      userPrompt,
+      [
+        [userPrompt[1], userPrompt[1] === "root" ? C.red : C.lime],
+        [userPrompt[2], C.mint],
+        [userPrompt[3].trim(), C.yellow],
+        [userPrompt[4], C.rose],
+      ],
+      accountStart,
+    );
     commandFrom = userPrompt[0].length;
   } else if (!wholeLine) {
     const barePrompt = BARE_PROMPT.exec(text);
