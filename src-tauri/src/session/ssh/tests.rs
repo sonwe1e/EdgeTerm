@@ -2233,7 +2233,10 @@ async fn sftp_fixture_fstat_reads_the_open_file_and_rejects_closed_handles() {
     assert_eq!(after.attrs.size, Some(7));
 
     files.close(4, handle.clone()).await.expect("close");
-    assert!(matches!(files.fstat(5, handle).await, Err(StatusCode::Failure)));
+    assert!(matches!(
+        files.fstat(5, handle).await,
+        Err(StatusCode::Failure)
+    ));
 }
 
 /// Opens the SFTP subsystem of `transport`, the way the install command does.
