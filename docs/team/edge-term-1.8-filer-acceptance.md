@@ -26,15 +26,16 @@ SFTP 基准的操作说明、安全目录校验、容量要求和参数请见 [s
 - 独立 Agent 只读复核：Rust IPC / TS binding、两种 Filer 入口、CSS、UTF-8 边界与 GBK 分页、FIFO 与 benchmark 路径检查；未发现新增 P0/P1 静态阻断。
 - 首版 PR 的 [GitHub Actions 运行 42507302114](https://github.com/sonwe1e/EdgeTerm/actions/runs/42507302114)：前端、Rust 格式与 Rust 编译／单测均通过。**这不是本次图片预览后续改动的测试结果**；后续提交须重新跑 CI。
 
-本次图片预览追加改动的 Linux 工作区检查（新版本 Rust CI 结果需在 PR 更新后补记）：
+本次图片预览追加改动的 Linux 工作区及 GitHub Actions 检查：
 
 - 生产构建 `npm run build`：通过；此前已有的 chunk 大小警告仍在。
 - 全量单测 `npm test`：**124 文件、1214 项通过；2 文件、7 项跳过**。
 - `npm run lint`：通过，生成文件 `src/bindings.ts` 仍有 2 条旧 warning；`npm run format:check`：通过。
 - `npm run test:browser -- src/test/imagePreview.browser.test.ts`：**受阻**，当前执行机缺少 Playwright 自带 Chromium 可执行文件，测试未运行，不能等同于浏览器断言失败或通过。
-- 模拟 SSH 协议回归已加入：目录浏览后预览 300 KiB，再尝试超限／不存在文件，检查同一 SFTP 子系统复用及文件内容不变；**尚待 Rust CI 实际执行确认**。
+- 模拟 SSH 协议回归已加入：目录浏览后预览 300 KiB，再尝试超限／不存在文件，检查同一 SFTP 子系统复用及文件内容不变；已在 Rust CI 中 **通过**。
+- [GitHub Actions 42550667449](https://github.com/sonwe1e/EdgeTerm/actions/runs/42550667449)：前端 TypeScript、lint、格式、Vitest、13 个提交的逐提交类型检查均通过；Rust `cargo fmt --check`、编译及单测通过，**498 项通过、31 项忽略**，含新增的 `image_preview_reuses_filer_subsystem_and_keeps_the_byte_limit` 测试。
 
-**未验收，不能标记通过：** 本地执行环境无 `cargo/rustc`；Chromium browser runner 因运行环境 socket 权限不能启动；未连接任何真实 SSH 测试服务器，没有 SSH 图片打开耗时对照、SFTP 吞吐实测或 Windows 11/WebView2 真机交互结果。本 PR 应先保持 **Draft**。
+**未验收，不能标记通过：** 本地执行环境无 `cargo/rustc`，Rust 已由 GitHub Actions 验证；当前执行机缺少 Playwright Chromium（此前另一浏览器运行环境还受 socket 权限限制）；未连接任何真实 SSH 测试服务器，没有 SSH 图片打开耗时对照、SFTP 吞吐实测或 Windows 11/WebView2 真机交互结果。本 PR 应先保持 **Draft**。
 
 ## 需要在 Windows 11 / WebView2 补齐的最小测试
 
