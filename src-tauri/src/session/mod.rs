@@ -37,6 +37,12 @@ pub enum SftpRequest {
     List {
         path: String,
     },
+    /// Read-only Filer image bytes on its already-initialized SFTP subsystem.
+    /// The caller independently validates format and pixel dimensions.
+    ReadPreview {
+        path: String,
+        limit: usize,
+    },
     Mkdir {
         path: String,
     },
@@ -61,6 +67,7 @@ pub enum SftpRequest {
 pub enum SftpResponse {
     Listing(DirListing),
     Path(String),
+    Bytes(Vec<u8>),
     Done,
 }
 

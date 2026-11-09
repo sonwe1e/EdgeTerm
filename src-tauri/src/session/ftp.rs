@@ -376,6 +376,9 @@ fn run_ftp(connection: &mut FtpConnection, request: SftpRequest) -> Result<SftpR
     match request {
         SftpRequest::Home => Ok(SftpResponse::Path(connection.home.clone())),
         SftpRequest::List { path } => list_directory(connection, &path).map(SftpResponse::Listing),
+        SftpRequest::ReadPreview { .. } => Err(AppError::invalid_input(
+            "image preview requires an SSH or SFTP session",
+        )),
         SftpRequest::Mkdir { path } => {
             connection.stream.mkdir(path)?;
             Ok(SftpResponse::Done)
