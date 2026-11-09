@@ -38,7 +38,9 @@ async function fixture(width: number) {
       },
       profile: { id: name, name, kind: "local" },
       number: index + 1,
-      ordinal: index,
+      // Every distinct ad-hoc session is its first instance. Ordinal counts
+      // duplicate opens of the same session, not its position in this strip.
+      ordinal: 0,
       state: "connected",
       commandActivity: "idle",
       activityKind: "command",
