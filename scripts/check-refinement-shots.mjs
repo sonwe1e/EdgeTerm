@@ -1,16 +1,14 @@
 // Visual evidence for the UI refinement: the surfaces the font-chain gate
 // does not reach. Real App, real stores, real production CSS — the IPC
-// boundary is a permissive stub that answers unknown commands with a safe
-// empty value and records them, because dialogs and status popovers reach far
-// more commands than a whitelist would name and a throw would abort the shot
-// halfway through.
+// boundary is an explicit synthetic fixture. Unknown commands are recorded
+// and answered with an empty value so the remaining evidence can be captured,
+// but they fail the run at the end rather than silently passing the gate.
 //
 // Pictures for a human, numbers for the machine. Each popover scene also runs
 // the reusable audit in layout-audit.mjs, and its measured geometry, row
 // rhythm, status-bar trigger metrics and text contrast land in the manifest
-// under `layout`. A missing selector stays a warning, so one absent surface
-// does not cost the others; a failed layout assertion is objective evidence of
-// a regression and turns the run red.
+// under `layout`. Missing selectors are collected without aborting the other
+// scenes, then fail the run alongside failed layout assertions and page errors.
 //
 // Boundaries: the stubbed IPC proves nothing about WebView2, GPU renderers,
 // real servers or other platforms' engines. It proves what the front end
@@ -197,6 +195,7 @@ window.__TAURI_INTERNALS__ = {
     calls.push({ command, args });
     if (command === "plugin:event|listen") return ++serial;
     if (command === "plugin:event|unlisten") return;
+    if (["list_profiles", "list_session_groups", "list_recoverable_transfers", "list_system_fonts"].includes(command)) return [];
     if (command === "list_sender_commands") return senderCommands;
     if (command === "local_list" || command === "sftp_list") {
       return listingAt(args?.path ?? "/synthetic");
@@ -211,6 +210,8 @@ window.__TAURI_INTERNALS__ = {
         encoding: "UTF-8", modifiedAt: 1700000000000 };
     }
     if (command === "local_home" || command === "sftp_home") return "/synthetic";
+    if (command === "session_cwd") return "/synthetic";
+    if (command === "resize_session") return;
     if (command === "system_monospace_family") return null;
     if (command === "portable_mode") return false;
     if (command === "local_hostname") return "synthetic-host";
@@ -226,11 +227,11 @@ window.__TAURI_INTERNALS__ = {
     if (command === "plugin:app|version") return "1.0.0";
     if (command === "plugin:window|is_maximized" || command === "plugin:window|is_fullscreen") return false;
     if (command === "plugin:updater|check") return null;
-    if (["set_startup_theme", "show_main_window", "finish_main_window",
+    if (["set_startup_theme", "set_close_to_tray", "show_main_window", "finish_main_window",
          "plugin:window|set_title", "plugin:window|set_focus"].includes(command)) return;
-    // Anything else: answer with a safe empty value rather than throwing, so a
-    // dialog or a popover can reach a command this fixture never
-    // anticipated. A command whose name starts with "list_" is answered with
+    // Unknown commands invalidate the evidence at the end. First answer with
+    // an empty value so the remaining scenes can still be inspected. A
+    // command whose name starts with "list_" is answered with
     // an empty array because every caller treats its result as a collection —
     // returning null there crashed the Sender's library on
     // savedCommands.filter(...) and took the whole React tree down with it,
@@ -1040,7 +1041,13 @@ try {
   );
   await auditScene("monitor-wide", {
     rowGroups: [
-      { selector: ".monitor-tile", fit: true, count: 4, rowPitch: true, pitch: 100.1 },
+      {
+        selector: ".monitor-tile",
+        fit: true,
+        count: 4,
+        rowPitch: true,
+        grid: { within: ".monitor-grid", rows: 2, columns: 2, gapVar: "--sp-8" },
+      },
       { selector: ".monitor-device", fit: true },
       { selector: ".monitor-controls", fit: true },
     ],
@@ -1271,7 +1278,7 @@ try {
     channel,
     tabSources: tabBaselineDir ? "supplied baseline component and stylesheet" : "current sources",
     scope:
-      "Production build (real vite.config). Real App, real stores, real CSS; permissive IPC stub that answers unknown commands with a safe empty value and records them, plus synthetic commands, PNG bytes, bounded log-window data, transfer routes and resource/forward samples. Screenshots at 1100x720 (dark) for the surfaces check-app-font-chain.mjs does not reach: dialogs, current Filer read-only viewers and the three status-bar popovers (host resources, transfers, tunnels). The viewers are opened through real remote Filer gestures, then repeated at 900x560 in the light theme, including log-search evidence. The `viewerEvidence` key records their viewport/chrome fit, accessible names, image decoding, log-tail/search visibility, selected SSH read target and absence of editable-copy, transfer or external-open IPC. This does not validate real files, backend bounds or network transport. The monitor-wide scene repeats the host-resources popover at 1440x900 so the vitals cluster itself (not only the compact fallback) is measured; tunnels-wide repeats the tunnel popover at 1440x900 in the light theme; tunnels-narrow does it at 900x560 in the dark theme. The `layout` key carries the measured geometry, row rhythm, status-bar trigger metrics, element-cluster visibility/fit and text-contrast ratios behind those screenshots; a failed layout or viewer assertion turns the run red.",
+      "Production build (real vite.config). Real App, real stores, real CSS; explicit synthetic IPC fixture with PNG bytes, bounded log-window data, transfer routes and resource/forward samples. Unknown commands are answered with an empty value so the other scenes can still be captured, but invalidate the run at the end. Screenshots at 1100x720 (dark) for the surfaces check-app-font-chain.mjs does not reach: dialogs, current Filer read-only viewers and the three status-bar popovers (host resources, transfers, tunnels). The viewers are opened through real remote Filer gestures, then repeated at 900x560 in the light theme, including log-search evidence. The `viewerEvidence` key records their viewport/chrome fit, accessible names, image decoding, log-tail/search visibility, selected SSH read target and absence of editable-copy, transfer or external-open IPC. This does not validate real files, backend bounds or network transport. The monitor-wide scene repeats the host-resources popover at 1440x900 so the vitals cluster itself (not only the compact fallback) is measured; tunnels-wide repeats the tunnel popover at 1440x900 in the light theme; tunnels-narrow does it at 900x560 in the dark theme. The `layout` key carries the measured geometry, row rhythm, status-bar trigger metrics, element-cluster visibility/fit and text-contrast ratios behind those screenshots; missing surfaces, unknown IPC, page/resource errors and failed layout or viewer assertions turn the run red.",
     shots,
     warnings,
     layout,
@@ -1289,8 +1296,11 @@ try {
       {
         shots: shots.map(({ name, file }) => ({ name, file })),
         warnings: warnings.length,
+        warningDetails: warnings,
         layoutFailures: layoutFailures.length,
+        layoutFailureDetails: layoutFailures,
         unknownIpc: unknownIpc.length,
+        unknownCommands: [...new Set(unknownIpc.map(({ command }) => command))],
         errors: errors.length,
         consoleErrors: consoleErrors.length,
         badResources: badResources.length,
@@ -1300,9 +1310,15 @@ try {
       2,
     ),
   );
-  // Missing surfaces and page errors are reported so a human decides; a failed
-  // layout assertion is an objective regression, so it turns the run red.
-  if (errors.length > 0 || badResources.length > 0 || layoutFailures.length > 0)
+  // Capture all scenes before rejecting incomplete or invalid evidence.
+  if (
+    warnings.length > 0 ||
+    unknownIpc.length > 0 ||
+    errors.length > 0 ||
+    consoleErrors.length > 0 ||
+    badResources.length > 0 ||
+    layoutFailures.length > 0
+  )
     process.exitCode = 1;
 } catch (error) {
   let unknownIpcLate = null;
