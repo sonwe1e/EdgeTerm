@@ -39,6 +39,42 @@ jobs:
         # one in a temporary worktree under .tmp/.
         run: npm run check:commits -- "$BASE..$HEAD" --typecheck
 
+  browser:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Use the hosted runner's Chrome through the repository's supported
+      # channel override; do not substitute jsdom for actual layout/input.
+      - run: google-chrome --version
+      - run: npm run test:browser
+        env:
+          PERF_BROWSER: chrome
+      - name: Capture real App font and layout evidence
+        if: success() || failure()
+        run: node scripts/run-task.mjs script scripts/check-app-font-chain.mjs ci
+        env:
+          PERF_BROWSER: chrome
+      - name: Capture readonly viewer and interaction evidence
+        if: success() || failure()
+        run: node scripts/run-task.mjs script scripts/check-refinement-shots.mjs ci-ui-audit
+        env:
+          PERF_BROWSER: chrome
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: browser-evidence
+          path: |
+            .tmp/records/implementation-03/
+            .tmp/records/refinement-shots/ci-ui-audit/
+            src/**/__screenshots__/
+          include-hidden-files: true
+          if-no-files-found: warn
+
   rust:
     runs-on: ubuntu-22.04
     steps:
@@ -59,3 +95,6 @@ jobs:
       - run: npm ci
       - run: npm run cargo -- fmt --manifest-path src-tauri/Cargo.toml -- --check
       - run: npm run test:rust
+      # Verify changes to the typed IPC contract against the Rust exporter,
+      # including return types used by remote editable-file preparation.
+      - run: npm run check:bindings
