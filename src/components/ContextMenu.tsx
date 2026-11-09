@@ -79,11 +79,21 @@ function focusMenuItem(item: HTMLElement | undefined) {
   item.focus({ preventScroll: true });
   const level = item.closest<HTMLElement>(".menu-dropdown");
   if (!level || level.scrollHeight <= level.clientHeight) return;
-  const top = level.getBoundingClientRect().top + level.clientTop;
-  const bottom = top + level.clientHeight;
-  const row = item.getBoundingClientRect();
-  if (row.top < top) level.scrollTop -= top - row.top;
-  else if (row.bottom > bottom) level.scrollTop += row.bottom - bottom;
+  // menu-in scales the viewport rects, but scrollTop stays in layout pixels.
+  // Measure in that same coordinate space, including a submenu row's wrapper,
+  // so a key pressed during the animation remains visible after it settles.
+  let top = item.offsetTop;
+  let parent = item.offsetParent;
+  while (parent instanceof HTMLElement && parent !== level) {
+    top += parent.offsetTop + parent.clientTop;
+    parent = parent.offsetParent;
+  }
+  if (parent !== level) return;
+  const bottom = top + item.offsetHeight;
+  if (top < level.scrollTop) level.scrollTop = top;
+  else if (bottom > level.scrollTop + level.clientHeight) {
+    level.scrollTop = bottom - level.clientHeight;
+  }
 }
 
 function isAction(item: MenuItem): item is MenuAction {
