@@ -25,6 +25,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # npm ci reports advisory counts without affected paths. Preserve the
+      # detail for review; this is an inventory, not a replacement for tests
+      # or an automatic/force dependency upgrade.
+      - name: Record dependency advisories (informational)
+        continue-on-error: true
+        run: npm audit --json
       - run: npm run typecheck
       - run: npm run version:check
       - run: npm run lint
