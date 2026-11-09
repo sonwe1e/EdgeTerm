@@ -18,12 +18,38 @@ const LIMIT: usize = 4 * 1024 * 1024;
 static WRITES: Mutex<()> = Mutex::new(());
 
 fn bytes(path: &Path) -> Result<Vec<u8>> {
-    let file = fs::File::open(path)?;
+    // A FIFO can block in open itself. Inspect the path first, then use a
+    // nonblocking open and inspect the handle too so a replacement between
+    // those steps cannot turn the editor into an unbounded pipe reader.
+    let path_metadata = fs::metadata(path)?;
+    if !path_metadata.is_file() || path_metadata.len() > LIMIT as u64 {
+        return Err(AppError::invalid_input(
+            "the editor opens regular text files up to 4 MiB",
+        ));
+    }
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NONBLOCK);
+    }
+    let file = options.open(path)?;
     let metadata = file.metadata()?;
     if !metadata.is_file() || metadata.len() > LIMIT as u64 {
         return Err(AppError::invalid_input(
             "the editor opens regular text files up to 4 MiB",
         ));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if path_metadata.dev() != metadata.dev() || path_metadata.ino() != metadata.ino() {
+            return Err(AppError::coded(
+                ErrorCode::Conflict,
+                "the selected file changed before it could be opened",
+            ));
+        }
     }
     let mut result = Vec::new();
     file.take((LIMIT + 1) as u64).read_to_end(&mut result)?;
@@ -226,6 +252,58 @@ fn replace(from: &Path, to: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn editor_rejects_fifo_without_waiting_for_a_writer() {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+        use std::process::{Command, Stdio};
+        use std::time::{Duration, Instant};
+
+        const CHILD_FIFO: &str = "EDGETERM_EDITOR_FIFO_TEST_PATH";
+        if let Some(path) = std::env::var_os(CHILD_FIFO) {
+            let path = Path::new(&path);
+            assert!(read(path.to_str().unwrap()).is_err());
+            fs::write(path.with_extension("checked"), b"rejected").unwrap();
+            return;
+        }
+
+        let dir = std::env::temp_dir().join(format!("edgeterm-edit-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let path = dir.join("pipe.txt");
+        let name = CString::new(path.as_os_str().as_bytes()).unwrap();
+        // SAFETY: name is a live, NUL-terminated path in this test's directory.
+        assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+
+        // Run the potentially blocking call in a child, not a detached
+        // thread: an old implementation is killed and reaped deterministically.
+        let mut child = Command::new(std::env::current_exe().unwrap())
+            .arg("--exact")
+            .arg("local_text::tests::editor_rejects_fifo_without_waiting_for_a_writer")
+            .env(CHILD_FIFO, &path)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let completed = loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                break status.success();
+            }
+            if Instant::now() >= deadline {
+                let _ = child.kill();
+                child.wait().unwrap();
+                break false;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        let checked = path.with_extension("checked").exists();
+        fs::remove_dir_all(&dir).unwrap();
+        assert!(completed && checked, "a FIFO must be rejected before opening it");
+    }
+
     #[test]
     fn roundtrip_preserves_bom_crlf_and_refuses_external_change() {
         let dir = std::env::temp_dir().join(format!("edgeterm-edit-{}", uuid::Uuid::new_v4()));

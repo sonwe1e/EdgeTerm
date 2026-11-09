@@ -4,7 +4,9 @@
 //! Everything here goes through the SSH transport a live session already
 //! owns (`session::ssh::SharedTransport`), reusing its connection rather than
 //! dialling a second one. The bound is deliberate: a text read stops at
-//! 4 MiB.
+//! 4 MiB. Editing also requires a reported file size and a successful final
+//! handle stat: incomplete or unverifiable reads are errors, never empty or
+//! partial editable documents. Servers may omit permission/type attributes.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -416,6 +418,26 @@ struct Sftp {
     posix_rename: bool,
 }
 
+fn bounded_text_size(metadata: &FileAttributes, limit: usize) -> Result<u64> {
+    if metadata.is_dir()
+        || metadata.permissions.is_some_and(|mode| {
+            let kind = mode & 0o170000;
+            kind != 0 && kind != 0o100000
+        })
+    {
+        return Err(AppError::invalid_input("select a regular text file"));
+    }
+    let size = metadata.size.ok_or_else(|| {
+        AppError::invalid_input("the server did not report a file size; the editor cannot safely read this file")
+    })?;
+    if size > limit as u64 {
+        return Err(AppError::invalid_input(format!(
+            "the file is {size} bytes, above the {limit}-byte editor limit"
+        )));
+    }
+    Ok(size)
+}
+
 impl Sftp {
     async fn open(transport: Arc<SharedTransport>) -> Result<Self> {
         let stream = transport
@@ -446,15 +468,7 @@ impl Sftp {
             .await
             .map_err(|error| AppError::invalid_input(format!("{path}: {error}")))?
             .attrs;
-        if before.is_dir() {
-            return Err(AppError::invalid_input("select a file, not a directory"));
-        }
-        let size = before.size.unwrap_or(0);
-        if size > limit as u64 {
-            return Err(AppError::invalid_input(format!(
-                "the file is {size} bytes, above the {limit}-byte editor limit"
-            )));
-        }
+        let size = bounded_text_size(&before, limit)?;
         let handle = self
             .raw
             .open(path, OpenFlags::READ, FileAttributes::empty())
@@ -465,6 +479,12 @@ impl Sftp {
         while bytes.len() < size as usize {
             let count = (size as usize - bytes.len()).min(64 * 1024) as u32;
             match self.raw.read(&handle, bytes.len() as u64, count).await {
+                Ok(data) if data.data.len() > count as usize => {
+                    let _ = self.raw.close(&handle).await;
+                    return Err(AppError::invalid_input(
+                        "the server returned more bytes than the bounded editor read requested",
+                    ));
+                }
                 Ok(data) if !data.data.is_empty() => bytes.extend_from_slice(&data.data),
                 Err(russh_sftp::client::error::Error::Status(status))
                     if status.status_code == StatusCode::Eof =>
@@ -478,18 +498,19 @@ impl Sftp {
                 }
             }
         }
-        let after = self.raw.fstat(&handle).await.map(|attrs| attrs.attrs).ok();
+        let after = self.raw.fstat(&handle).await;
         let _ = self.raw.close(&handle).await;
-        if let Some(after) = after {
-            let size_changed = after.size != before.size;
-            let mtime_changed =
-                after.mtime.is_some() && before.mtime.is_some() && after.mtime != before.mtime;
-            if size_changed || mtime_changed {
-                return Err(AppError::coded(
-                    ErrorCode::Conflict,
-                    "the file changed while it was being read; reopen it",
-                ));
-            }
+        let after = after
+            .map_err(|error| AppError::new(format!("could not confirm the completed read of {path}: {error}")))?
+            .attrs;
+        let size_changed = after.size != Some(size) || bytes.len() as u64 != size;
+        let mtime_changed =
+            after.mtime.is_some() && before.mtime.is_some() && after.mtime != before.mtime;
+        if size_changed || mtime_changed {
+            return Err(AppError::coded(
+                ErrorCode::Conflict,
+                "the file changed or its read was incomplete; reopen it before editing",
+            ));
         }
         Ok((
             bytes,

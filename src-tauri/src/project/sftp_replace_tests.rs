@@ -26,6 +26,11 @@ struct Server {
     fail_temp_rename: bool,
     /// WRITE requests fail, the way a full or read-only filesystem does.
     fail_write: bool,
+    /// Read failures retain truthful full-file metadata but return fewer bytes.
+    early_eof_after: Option<usize>,
+    oversized_read: bool,
+    fail_fstat: bool,
+    omit_size: bool,
     counts: HashMap<String, usize>,
 }
 
@@ -105,16 +110,20 @@ fn label(packet: &Packet) -> String {
         Packet::Rename(_) => "rename".into(),
         Packet::Remove(_) => "remove".into(),
         Packet::Write(_) => "write".into(),
+        Packet::Read(_) => "read".into(),
+        Packet::Open(_) => "open".into(),
+        Packet::Close(_) => "close".into(),
+        Packet::Fstat(_) => "fstat".into(),
         Packet::Extended(p) => p.request.clone(),
         _ => "other".into(),
     }
 }
 
-fn attrs(id: u32, size: usize) -> Packet {
+fn attrs(id: u32, size: usize, omit_size: bool) -> Packet {
     Packet::Attrs(Attrs {
         id,
         attrs: FileAttributes {
-            size: Some(size as u64),
+            size: (!omit_size).then_some(size as u64),
             permissions: Some(0o100644),
             mtime: Some(1),
             ..FileAttributes::empty()
@@ -136,11 +145,12 @@ fn respond(state: &Arc<Mutex<Server>>, packet: Packet) -> Option<Packet> {
             },
         }),
         Packet::Stat(p) => match server.files.get(&p.path) {
-            Some(data) => attrs(id, data.len()),
+            Some(data) => attrs(id, data.len(), server.omit_size),
             None => Packet::error(id, StatusCode::NoSuchFile),
         },
+        Packet::Fstat(_) if server.fail_fstat => Packet::error(id, StatusCode::Failure),
         Packet::Fstat(p) => match server.files.get(&p.handle) {
-            Some(data) => attrs(id, data.len()),
+            Some(data) => attrs(id, data.len(), server.omit_size),
             None => Packet::error(id, StatusCode::NoSuchFile),
         },
         Packet::Open(p) => {
@@ -160,13 +170,16 @@ fn respond(state: &Arc<Mutex<Server>>, packet: Packet) -> Option<Packet> {
         Packet::Read(p) => {
             let data = server.files.get(&p.handle)?;
             let start = p.offset as usize;
-            if start >= data.len() {
+            let readable = server.early_eof_after.unwrap_or(data.len()).min(data.len());
+            if start >= readable {
                 Packet::error(id, StatusCode::Eof)
             } else {
-                Packet::Data(Data {
-                    id,
-                    data: data[start..].to_vec(),
-                })
+                let end = start.saturating_add(p.len as usize).min(readable);
+                let mut data = data[start..end].to_vec();
+                if server.oversized_read {
+                    data.resize(p.len as usize + 1, b'x');
+                }
+                Packet::Data(Data { id, data })
             }
         }
         Packet::Write(p) => {
@@ -224,6 +237,106 @@ fn respond(state: &Arc<Mutex<Server>>, packet: Packet) -> Option<Packet> {
 const TEMP: &str = "/dir/.f.edgeterm-1.tmp";
 const BACKUP: &str = "/dir/.f.edgeterm-1.bak";
 const TARGET: &str = "/dir/f";
+
+#[tokio::test]
+async fn bounded_text_read_returns_all_packets_and_closes_the_handle() {
+    let original = vec![b'a'; 131_077];
+    let mut fixture = Fixture::new(Server {
+        files: HashMap::from([(TARGET.to_string(), original.clone())]),
+        ..Default::default()
+    })
+    .await;
+    let (content, size, _, _) = fixture.sftp().read(TARGET, TEXT_LIMIT).await.unwrap();
+    assert_eq!(content, original);
+    assert_eq!(size, 131_077);
+    assert_eq!(fixture.count("read"), 3);
+    assert_eq!(fixture.count("close"), 1);
+    assert_eq!(fixture.count("write"), 0);
+}
+
+#[tokio::test]
+async fn premature_eof_is_not_returned_as_an_editable_partial_file() {
+    let original = b"original contents".to_vec();
+    let mut fixture = Fixture::new(Server {
+        files: HashMap::from([(TARGET.to_string(), original.clone())]),
+        early_eof_after: Some(3),
+        ..Default::default()
+    })
+    .await;
+    let error = fixture.sftp().read(TARGET, TEXT_LIMIT).await.unwrap_err();
+    assert_eq!(error.code, ErrorCode::Conflict);
+    assert_eq!(fixture.file(TARGET), original);
+    assert_eq!(fixture.count("close"), 1);
+    assert_eq!(fixture.count("write"), 0);
+}
+
+#[tokio::test]
+async fn oversized_text_reply_is_rejected_and_its_handle_is_closed() {
+    let mut fixture = Fixture::new(Server {
+        files: HashMap::from([(TARGET.to_string(), b"safe".to_vec())]),
+        oversized_read: true,
+        ..Default::default()
+    })
+    .await;
+    assert!(fixture.sftp().read(TARGET, TEXT_LIMIT).await.is_err());
+    assert_eq!(fixture.file(TARGET), b"safe");
+    assert_eq!(fixture.count("close"), 1);
+    assert_eq!(fixture.count("write"), 0);
+}
+
+#[tokio::test]
+async fn failed_final_stat_does_not_turn_an_unverified_read_into_success() {
+    let mut fixture = Fixture::new(Server {
+        files: HashMap::from([(TARGET.to_string(), b"safe".to_vec())]),
+        fail_fstat: true,
+        ..Default::default()
+    })
+    .await;
+    let error = fixture.sftp().read(TARGET, TEXT_LIMIT).await.unwrap_err();
+    assert!(error.to_string().contains("confirm the completed read"));
+    assert_eq!(fixture.file(TARGET), b"safe");
+    assert_eq!(fixture.count("close"), 1);
+    assert_eq!(fixture.count("write"), 0);
+}
+
+#[tokio::test]
+async fn missing_file_size_is_not_treated_as_an_empty_editable_file() {
+    let mut fixture = Fixture::new(Server {
+        files: HashMap::from([(TARGET.to_string(), b"safe".to_vec())]),
+        omit_size: true,
+        ..Default::default()
+    })
+    .await;
+    let error = fixture.sftp().read(TARGET, TEXT_LIMIT).await.unwrap_err();
+    assert!(error.to_string().contains("did not report a file size"));
+    assert_eq!(fixture.count("open"), 0);
+    assert_eq!(fixture.file(TARGET), b"safe");
+}
+
+#[test]
+fn text_metadata_accepts_unknown_types_but_not_known_special_files_or_oversize() {
+    for permissions in [None, Some(0o644), Some(0o100644)] {
+        let metadata = FileAttributes {
+            size: Some(17),
+            permissions,
+            ..FileAttributes::empty()
+        };
+        assert_eq!(bounded_text_size(&metadata, 4_194_304).unwrap(), 17);
+    }
+    for permissions in [0o040755, 0o010600, 0o020600, 0o140600] {
+        let metadata = FileAttributes {
+            size: Some(0),
+            permissions: Some(permissions),
+            ..FileAttributes::empty()
+        };
+        assert!(bounded_text_size(&metadata, 4_194_304).is_err());
+    }
+    let metadata = FileAttributes {
+        size: Some(4_194_305),
+        ..FileAttributes::empty()
+    };
+    assert!(bounded_text_size(&metadata, 4_194_304).is_err());
+}
 
 /// The server state a save has already produced when `replace` runs.
 fn replaced_save() -> HashMap<String, Vec<u8>> {
