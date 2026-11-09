@@ -66,6 +66,7 @@ export function useFilerDownloads(
           .localList(parent)
           .then((listing) => new Set(listing.entries.map((entry) => entry.name)))
           .catch(() => new Set<string>());
+        if (!current()) return;
         const clashes = entries.filter((entry) => existing.has(entry.name));
         if (clashes.length > 0) {
           const confirmed = await ask(
@@ -87,6 +88,9 @@ export function useFilerDownloads(
           directory: entry.isDir,
         }));
       }
+      // Listing a destination can yield just like a native picker. Do not
+      // submit a stale request even when the listing found no name clashes.
+      if (!current()) return;
       const transfer = api.newTransferId();
       // Do not await completion or use the panel's one-transfer progress slot.
       // Subscription snapshots drive the transfer center even after this panel unmounts.

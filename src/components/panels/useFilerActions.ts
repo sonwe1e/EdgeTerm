@@ -2,9 +2,10 @@ import type { useFileSelection } from "../../useFileSelection";
 import { openFileEditor } from "../../fileEditor";
 import { isPreviewRunning, previewReport, stopReportPreview } from "../../previewActions";
 import { useStore } from "../../store";
+import { isConnectionClosing } from "../../sessionConnectionLifecycle";
 import { errorText } from "../../errorInfo";
 import type { Dispatch, RefObject, SetStateAction } from "react";
-import { type MouseEvent } from "react";
+import { type MouseEvent, useRef } from "react";
 import * as api from "../../api";
 import type { Translate } from "../../i18n";
 import { open as openDialog } from "../../nativeDialog";
@@ -95,6 +96,10 @@ export function useFilerActions({
   previewImage,
   onViewLog,
 }: Options) {
+  const actionContext = useRef({ remoteId, path });
+  if (actionContext.current.remoteId !== remoteId || actionContext.current.path !== path) {
+    actionContext.current = { remoteId, path };
+  }
   const removeEntries = async (chosen: readonly FileEntry[]) => {
     setPendingDelete(null);
     const sessionId = remoteId;
@@ -133,6 +138,13 @@ export function useFilerActions({
     navigator.clipboard.writeText(text).catch((e) => setError(errorText(e)));
   };
 
+  // A transfer may finish in the background after the Filer switches to B.
+  // Its owner is still A, but closing A retires the later watch/app-open steps.
+  const remoteEditSourceAvailable = () =>
+    remoteId === null ||
+    (!isConnectionClosing(remoteId) &&
+      useStore.getState().tabs.some((tab) => tab.info.id === remoteId));
+
   /**
    * The local path to hand to an application: the entry itself for local
    * sessions, otherwise a copy downloaded into the temp folder that the
@@ -141,32 +153,54 @@ export function useFilerActions({
    */
   const localCopyOf = async (entry: FileEntry): Promise<string | null> => {
     if (!remoteId) return entry.path;
+    if (busyRef.current || !remoteEditSourceAvailable()) return null;
+    const context = actionContext.current;
+    busyRef.current = true;
     setBusy(true);
     setError(null);
     const transfer = beginTransfer("download", entry.name, true);
+    const stillAvailable = () => {
+      if (remoteEditSourceAvailable()) return true;
+      finishTransfer("cancelled", transfer);
+      return false;
+    };
     try {
       const target = await api.remoteEditPath(remoteId, entry.path, entry.name);
-      await api.sftpDownload(remoteId, entry.path, target, progressFor(transfer), transfer);
-      await api.watchRemoteEdit(remoteId, target, entry.path);
+      if (!stillAvailable()) return null;
+      // Reopening an external editor must preserve the existing local draft,
+      // including saves waiting for a failed/offline upload to be retried.
+      if (!target.reused) {
+        await api.sftpDownload(remoteId, entry.path, target.path, progressFor(transfer), transfer);
+        if (!stillAvailable()) return null;
+        await api.watchRemoteEdit(remoteId, target.path, entry.path);
+        if (!stillAvailable()) return null;
+      }
       finishTransfer("complete", transfer);
-      return target;
+      return target.path;
     } catch (e) {
-      failTransfer(e, transfer);
+      if (stillAvailable()) {
+        if (actionContext.current === context) failTransfer(e, transfer);
+        else finishTransfer("error", transfer);
+      }
       return null;
     } finally {
-      if (ownsTransfer(transfer)) setBusy(false);
+      if (ownsTransfer(transfer) && actionContext.current === context) {
+        busyRef.current = false;
+        setBusy(false);
+      }
     }
   };
 
   /** Opens a file with the default application, or with `app` when given. */
   const openEntry = async (entry: FileEntry, app?: string) => {
     const target = await localCopyOf(entry);
-    if (!target) return;
+    if (!target || !remoteEditSourceAvailable()) return;
     try {
       await api.openLocalPath(target, app);
+      if (!remoteEditSourceAvailable()) return;
       if (app) setOpenWithApps(rememberOpenWithApp(app));
     } catch (e) {
-      setError(errorText(e));
+      if (remoteEditSourceAvailable() && remoteIdRef.current === remoteId) setError(errorText(e));
     }
   };
 
@@ -187,8 +221,10 @@ export function useFilerActions({
   const openEntryWith = async (entry: FileEntry) => {
     if (IS_WINDOWS) {
       const target = await localCopyOf(entry);
-      if (!target) return;
-      await api.openWithDialog(target).catch((e) => setError(errorText(e)));
+      if (!target || !remoteEditSourceAvailable()) return;
+      await api.openWithDialog(target).catch((e) => {
+        if (remoteEditSourceAvailable() && remoteIdRef.current === remoteId) setError(errorText(e));
+      });
       return;
     }
     const picked = await openDialog({
@@ -202,7 +238,7 @@ export function useFilerActions({
           }
         : { defaultPath: "/usr/bin" }),
     });
-    if (typeof picked === "string") await openEntry(entry, picked);
+    if (typeof picked === "string" && remoteEditSourceAvailable()) await openEntry(entry, picked);
   };
 
   /**
@@ -456,16 +492,20 @@ export function useFilerActions({
     busyRef.current = true;
     setBusy(true);
     setError(null);
+    const context = actionContext.current;
+    const current = () => actionContext.current === context;
     try {
       const to = remoteId ? joinRemote(path, name) : joinLocal(path, name);
       if (remoteId) await api.sftpRename(remoteId, from, to);
       else await api.localRename(from, to);
-      await load(path);
+      if (current()) await load(path);
     } catch (e) {
-      setError(errorText(e));
+      if (current()) setError(errorText(e));
     } finally {
-      busyRef.current = false;
-      setBusy(false);
+      if (current()) {
+        busyRef.current = false;
+        setBusy(false);
+      }
     }
   };
 
