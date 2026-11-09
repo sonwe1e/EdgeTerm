@@ -1,12 +1,15 @@
 import {
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
+import { createPortal } from "react-dom";
 
+import { useStableCallback } from "../useStableCallback";
 import { Icon, type IconName } from "./icons";
 import { submenuKey, useSubmenuHover } from "./submenuHover";
 
@@ -65,7 +68,11 @@ interface Props {
 
 /** Approximate submenu width, used to decide which side it opens on. */
 const SUBMENU_WIDTH = 200;
+const SUBMENU_GAP = 4;
 const EDGE_MARGIN = 6;
+
+const parentPath = (path: string) =>
+  path.includes(".") ? path.slice(0, path.lastIndexOf(".")) : null;
 
 const MENU_ITEMS = '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]';
 const levelItems = (level: HTMLElement | null) =>
@@ -178,18 +185,109 @@ export function MenuLeading({
  */
 export function ContextMenu({ x, y, items, onClose, align = "left", className }: Props) {
   const ref = useRef<HTMLDivElement>(null);
+  const menuId = useId();
+  const triggerRows = useRef(new Map<string, HTMLDivElement>());
+  const panels = useRef(new Map<string, HTMLDivElement>());
   const [placement, setPlacement] = useState<{
     left: number;
     top: number;
     flipped: boolean;
   }>({ left: x, top: y, flipped: false });
-  const submenu = useSubmenuHover();
+  const submenu = useSubmenuHover(
+    (entry) => panels.current.get(entry.dataset.submenuKey ?? "") ?? null,
+  );
   const [keyboardOpen, setKeyboardOpen] = useState<string | null | undefined>(undefined);
   const focusFrame = useRef(0);
+  const positionFrame = useRef(0);
   const shown = (path: string) =>
     keyboardOpen === undefined
       ? submenu.isOpen(path)
       : keyboardOpen === path || keyboardOpen?.startsWith(`${path}.`) === true;
+
+  // Portals remain React children of their trigger, but are not DOM children
+  // of the root menu. Native capture/focus/scroll listeners own the whole set.
+  const owns = useStableCallback(
+    (target: Node | null) =>
+      ref.current?.contains(target) === true ||
+      [...panels.current.values()].some((panel) => panel.contains(target)),
+  );
+
+  const positionSubmenus = useStableCallback(() => {
+    const root = ref.current;
+    if (!root) return;
+    const rootStyle = getComputedStyle(root);
+    // Place ancestors before descendants so each anchor uses this frame's
+    // parent position, not the previous scroll/animation frame's geometry.
+    const levels = [...panels.current].sort(([a], [b]) => a.length - b.length);
+    let hiddenPath: string | undefined;
+    for (const [path, panel] of levels) {
+      const entry = triggerRows.current.get(path);
+      const owner = entry?.closest<HTMLElement>(".menu-dropdown");
+      if (!entry || !owner) continue;
+      const anchor = entry.getBoundingClientRect();
+      const ownerBox = owner.getBoundingClientRect();
+      const scale = owner.offsetHeight > 0 ? ownerBox.height / owner.offsetHeight : 1;
+      const visibleTop = ownerBox.top + owner.clientTop * scale;
+      const visibleBottom = visibleTop + owner.clientHeight * scale;
+      if (
+        owner.style.visibility === "hidden" ||
+        (owner.clientHeight > 0 && (anchor.bottom <= visibleTop || anchor.top >= visibleBottom))
+      ) {
+        // A scrolled-away trigger must not leave an actionable floating menu.
+        // Hide synchronously before React removes the branch; do not scroll
+        // the trigger back into view just to keep a submenu alive.
+        panel.style.visibility = "hidden";
+        hiddenPath ??= path;
+        if (panel.contains(document.activeElement)) owner.focus({ preventScroll: true });
+        continue;
+      }
+      panel.style.fontFamily = rootStyle.fontFamily;
+      panel.style.fontSize = rootStyle.fontSize;
+      panel.style.lineHeight = rootStyle.lineHeight;
+      const width = panel.offsetWidth;
+      const height = panel.offsetHeight;
+      const leftRoom = anchor.left - EDGE_MARGIN;
+      const rightRoom = window.innerWidth - EDGE_MARGIN - anchor.right;
+      const preferLeft = owner.dataset.side === "left" || (owner === root && placement.flipped);
+      const flipped = preferLeft
+        ? leftRoom >= width + SUBMENU_GAP || rightRoom < width + SUBMENU_GAP
+        : rightRoom < width + SUBMENU_GAP && leftRoom > rightRoom;
+      const wantedLeft = flipped ? anchor.left - width - SUBMENU_GAP : anchor.right + SUBMENU_GAP;
+      const padding = Number.parseFloat(getComputedStyle(panel).paddingTop) || 0;
+      const wantedTop = anchor.top - panel.clientTop - padding;
+      panel.style.left = `${Math.max(
+        EDGE_MARGIN,
+        Math.min(wantedLeft, window.innerWidth - width - EDGE_MARGIN),
+      )}px`;
+      panel.style.top = `${Math.max(
+        EDGE_MARGIN,
+        Math.min(wantedTop, window.innerHeight - height - EDGE_MARGIN),
+      )}px`;
+      panel.dataset.side = flipped ? "left" : "right";
+      entry.dataset.submenuSide = panel.dataset.side;
+      panel.style.visibility = "visible";
+    }
+    if (hiddenPath !== undefined) setKeyboardOpen(parentPath(hiddenPath));
+  });
+
+  const schedulePosition = useStableCallback((): void => {
+    if (positionFrame.current || panels.current.size === 0) return;
+    positionFrame.current = requestAnimationFrame(() => {
+      positionFrame.current = 0;
+      positionSubmenus();
+      // A fixed portal escapes menu-in's containing block. Follow animated
+      // anchors only until their real animations finish, not for the whole
+      // time a menu is open and not for an assumed number of milliseconds.
+      const levels = [ref.current, ...panels.current.values()];
+      if (
+        levels.some((level) =>
+          level?.getAnimations?.().some((animation) => animation.playState === "running"),
+        )
+      ) {
+        schedulePosition();
+      }
+    });
+  });
 
   // Right-clicking a tab does not blur xterm. Own focus before the next key
   // can reach the terminal; only return it if no other control took focus.
@@ -199,9 +297,10 @@ export function ContextMenu({ x, y, items, onClose, align = "left", className }:
     (levelItems(element)[0] ?? element)?.focus({ preventScroll: true });
     return () => {
       cancelAnimationFrame(focusFrame.current);
+      cancelAnimationFrame(positionFrame.current);
       if (
         opener?.isConnected &&
-        (element?.contains(document.activeElement) || document.activeElement === document.body)
+        (owns(document.activeElement) || document.activeElement === document.body)
       ) {
         opener.focus({ preventScroll: true });
       }
@@ -212,9 +311,7 @@ export function ContextMenu({ x, y, items, onClose, align = "left", className }:
     setKeyboardOpen(path);
     cancelAnimationFrame(focusFrame.current);
     focusFrame.current = requestAnimationFrame(() => {
-      const level =
-        ref.current?.querySelector<HTMLElement>(`[data-submenu-key="${path}"] > .menu-submenu`) ??
-        null;
+      const level = panels.current.get(path) ?? null;
       focusMenuItem(levelItems(level)[0]);
     });
   };
@@ -229,10 +326,10 @@ export function ContextMenu({ x, y, items, onClose, align = "left", className }:
       return;
     }
     const item = (event.target as HTMLElement).closest<HTMLElement>(MENU_ITEMS);
-    const level = item?.closest<HTMLElement>(".menu-dropdown") ?? null;
+    const level = (event.target as HTMLElement).closest<HTMLElement>(".menu-dropdown");
     const entries = levelItems(level);
     const index = item ? entries.indexOf(item) : -1;
-    if (index < 0) return;
+    if (entries.length === 0) return;
     const focus = (next: HTMLElement) => {
       event.preventDefault();
       focusMenuItem(next);
@@ -241,7 +338,9 @@ export function ContextMenu({ x, y, items, onClose, align = "left", className }:
       case "ArrowDown":
         return focus(entries[(index + 1) % entries.length]);
       case "ArrowUp":
-        return focus(entries[(index - 1 + entries.length) % entries.length]);
+        return focus(
+          entries[index < 0 ? entries.length - 1 : (index - 1 + entries.length) % entries.length],
+        );
       case "Home":
         return focus(entries[0]);
       case "End":
@@ -254,11 +353,13 @@ export function ContextMenu({ x, y, items, onClose, align = "left", className }:
       }
       case "ArrowLeft": {
         event.preventDefault();
-        const parent = level?.closest<HTMLElement>(".menu-submenu-entry");
-        if (!parent) return;
-        const path = parent.dataset.submenuKey!;
-        setKeyboardOpen(path.includes(".") ? path.slice(0, path.lastIndexOf(".")) : null);
-        focusMenuItem(parent.querySelector<HTMLElement>(":scope > .menu-entry") ?? undefined);
+        const path = level?.dataset.submenuPath;
+        if (path === undefined) return;
+        setKeyboardOpen(parentPath(path));
+        focusMenuItem(
+          triggerRows.current.get(path)?.querySelector<HTMLElement>(":scope > .menu-entry") ??
+            undefined,
+        );
         return;
       }
       case "Enter":
@@ -283,17 +384,26 @@ export function ContextMenu({ x, y, items, onClose, align = "left", className }:
     setPlacement({ left, top, flipped });
   }, [x, y, items, align]);
 
+  useLayoutEffect(() => {
+    positionSubmenus();
+    schedulePosition();
+  });
+
   useEffect(() => {
     const onMouseDown = (event: MouseEvent) => {
-      if (!ref.current?.contains(event.target as Node)) onClose();
+      if (!owns(event.target as Node)) onClose();
     };
     const onFocus = (event: FocusEvent) => {
-      if (!ref.current?.contains(event.target as Node)) onClose();
+      if (!owns(event.target as Node)) onClose();
     };
     const onScroll = (event: Event) => {
       // Long tab lists and group submenus own their scrolling. Only a scroll
       // outside the menu can detach its fixed anchor from the underlying row.
-      if (!ref.current?.contains(event.target as Node)) onClose();
+      if (!owns(event.target as Node)) onClose();
+      else {
+        positionSubmenus();
+        schedulePosition();
+      }
     };
     document.addEventListener("mousedown", onMouseDown, true);
     document.addEventListener("scroll", onScroll, true);
@@ -308,6 +418,10 @@ export function ContextMenu({ x, y, items, onClose, align = "left", className }:
       window.removeEventListener("resize", onClose);
     };
   }, [onClose]);
+
+  // .app has no transform/filter and carries the live interface type scale.
+  // A direct child escapes all menu scrollports without losing those tokens.
+  const portalHost = ref.current?.closest(".app") ?? document.body;
 
   const renderItems = (level: MenuItem[], parent?: string) => {
     const showLeading = hasLeading(level);
@@ -330,6 +444,10 @@ export function ContextMenu({ x, y, items, onClose, align = "left", className }:
         return (
           <div
             key={key}
+            ref={(element) => {
+              if (element) triggerRows.current.set(path, element);
+              else triggerRows.current.delete(path);
+            }}
             className={`menu-submenu-entry${isOpen ? " is-open" : ""}`}
             data-submenu-key={path}
             {...hover}
@@ -341,10 +459,12 @@ export function ContextMenu({ x, y, items, onClose, align = "left", className }:
           >
             <button
               type="button"
+              id={`${menuId}-trigger-${path}`}
               className="menu-entry"
               role="menuitem"
               aria-haspopup="menu"
               aria-expanded={isOpen}
+              aria-controls={isOpen ? `${menuId}-submenu-${path}` : undefined}
               tabIndex={-1}
               disabled={item.disabled}
               onClick={() => focusInto(path)}
@@ -355,9 +475,24 @@ export function ContextMenu({ x, y, items, onClose, align = "left", className }:
                 <Icon name="chevron-right" />
               </span>
             </button>
-            <div className="menu-dropdown menu-submenu" role="menu">
-              {renderItems(item.children, path)}
-            </div>
+            {isOpen &&
+              createPortal(
+                <div
+                  ref={(element) => {
+                    if (element) panels.current.set(path, element);
+                    else panels.current.delete(path);
+                  }}
+                  id={`${menuId}-submenu-${path}`}
+                  data-submenu-path={path}
+                  className="menu-dropdown menu-submenu context-menu context-submenu"
+                  role="menu"
+                  tabIndex={-1}
+                  aria-labelledby={`${menuId}-trigger-${path}`}
+                >
+                  {renderItems(item.children, path)}
+                </div>,
+                portalHost,
+              )}
           </div>
         );
       }

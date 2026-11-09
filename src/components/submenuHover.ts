@@ -107,7 +107,9 @@ export interface SubmenuHover {
   rootProps: { onMouseMove: (event: ReactMouseEvent<HTMLElement>) => void };
 }
 
-export function useSubmenuHover(): SubmenuHover {
+export function useSubmenuHover(
+  resolveSubmenu: (entry: HTMLElement) => Element | null = submenuOf,
+): SubmenuHover {
   const [open, setOpen] = useState<string | null>(null);
   // The submenu the pointer has just left, kept open while it may be on its
   // way over; never set while the pointer is inside an open entry.
@@ -134,7 +136,7 @@ export function useSubmenuHover(): SubmenuHover {
         setOpen(key);
       },
       onMouseLeave: (event) => {
-        const submenu = submenuOf(event.currentTarget);
+        const submenu = resolveSubmenu(event.currentTarget);
         const exit = { x: event.clientX, y: event.clientY };
         grace.current = {
           key,
