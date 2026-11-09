@@ -79,6 +79,7 @@ describe("read-only, on-demand image preview modal", () => {
     api.previewImageFile.mockResolvedValue(Uint8Array.of(0x89, 0x50));
     const onClose = vi.fn();
     await render(target(), onClose);
+    expect(host.querySelector("dialog")?.getAttribute("aria-label")).toBe("Image preview");
     expect(api.previewImageFile).toHaveBeenCalledWith("ssh-tab", "/remote/one.png");
     expect(createUrl).toHaveBeenCalledOnce();
     expect(host.querySelector("img")?.getAttribute("src")).toBe("blob:preview-1");

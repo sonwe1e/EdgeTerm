@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as api from "../api";
 import { errorText } from "../errorInfo";
 import { classifyLogFollow, logMatches, MAX_LOG_MATCHES } from "../logViewer";
@@ -34,6 +34,8 @@ export function LogViewerDialog({
   const [query, setQuery] = useState("");
   const [matchIndex, setMatchIndex] = useState(0);
   const highlightRef = useRef<HTMLElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const tailScrollRequested = useRef(false);
   const requestId = useRef(0);
 
   const updatePage = useCallback((next: api.LogWindow) => {
@@ -66,6 +68,7 @@ export function LogViewerDialog({
           encoding,
         );
         if (requestId.current !== current) return;
+        if (anchor === null && before) tailScrollRequested.current = true;
         updatePage(next);
         setNotice(null);
         if (followAfter) setFollowing(true);
@@ -86,6 +89,7 @@ export function LogViewerDialog({
       // Closing, switching tabs and changing files invalidate every in-flight read.
       requestId.current += 1;
       pageRef.current = null;
+      tailScrollRequested.current = false;
     };
   }, [load]);
 
@@ -179,6 +183,17 @@ export function LogViewerDialog({
   }, [following, target.path, target.sessionId, t, updatePage]);
 
   const matches = useMemo(() => logMatches(page?.content ?? "", query), [page?.content, query]);
+  useLayoutEffect(() => {
+    if (!page || busy) return;
+    const showTail = tailScrollRequested.current || following;
+    tailScrollRequested.current = false;
+    // A deliberate search owns its visible match. Otherwise initial/Latest
+    // loads and live updates show the newest lines, not the top of the tail
+    // window. Stopping Follow leaves the user's reading position alone.
+    if (!showTail || matches.length > 0) return;
+    const content = contentRef.current;
+    if (content) content.scrollTop = Math.max(0, content.scrollHeight - content.clientHeight);
+  }, [page, busy, following, matches.length]);
   useEffect(() => setMatchIndex(0), [page?.content, query]);
   useEffect(() => {
     if (matches.length) highlightRef.current?.scrollIntoView({ block: "nearest" });
@@ -199,6 +214,7 @@ export function LogViewerDialog({
       onClose={onClose}
       dismissable={false}
       title={t("logViewer.title")}
+      ariaLabel={t("logViewer.title")}
       contentClassName="log-viewer-dialog"
       initialFocus=".log-viewer-search"
     >
@@ -265,7 +281,12 @@ export function LogViewerDialog({
           </select>
         </label>
       </div>
-      <div className="log-viewer-content" role="region" aria-label={t("logViewer.content")}>
+      <div
+        ref={contentRef}
+        className="log-viewer-content"
+        role="region"
+        aria-label={t("logViewer.content")}
+      >
         {!page && busy ? (
           <p className="file-editor-empty">{t("common.loading")}</p>
         ) : !page ? (
@@ -298,7 +319,9 @@ export function LogViewerDialog({
         <span className="log-viewer-range" role="status">
           {page
             ? `${page.start.toLocaleString()}–${page.end.toLocaleString()} / ${page.size.toLocaleString()} B · ${page.encoding}`
-            : t("common.loading")}
+            : busy
+              ? t("common.loading")
+              : t("logViewer.noContent")}
         </span>
         <button
           type="button"
