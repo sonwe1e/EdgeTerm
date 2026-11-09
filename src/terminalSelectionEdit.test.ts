@@ -162,6 +162,29 @@ describe("deleting and replacing a selection on the input line", () => {
     expect(data).toHaveBeenCalledWith(walkDelete(11, 5));
   });
 
+  it("edits the next unsubmitted Bash line after a Conda prompt changes directory", async () => {
+    const { controller, data } = fixture();
+    await write(controller, "(base) alice@server:~/old$ ");
+    controller.term.input("cd ../new", true);
+    await write(controller, "cd ../new");
+    controller.term.input("\r", true);
+
+    const prompt = "(base) alice@server:~/new$ ";
+    await write(controller, `\r\n${prompt}`);
+    await write(controller, "echo hello");
+    expect(controller.agentDiagnostics().commandRunning).toBe(false);
+    expect(controller.term.buffer.active.cursorX).toBe(prompt.length + 10);
+    select(controller, prompt.length + 5, 1, 5);
+    expect(controller.term.getSelectionPosition()).toEqual({
+      start: { x: prompt.length + 5, y: 1 },
+      end: { x: prompt.length + 10, y: 1 },
+    });
+    data.mockClear();
+
+    expect(filter(controller, press("Delete"))).toBe(false);
+    expect(data).toHaveBeenCalledWith(walkDelete(5, 5));
+  });
+
   it("deletes a second selection after the shell redraws the shortened line", async () => {
     const { controller, data } = fixture();
     // The reported defect: the first edit used to leave the shell's cursor at
@@ -310,6 +333,13 @@ describe("selections the shell must judge, not the editor", () => {
     await untouched(async ({ controller }) => {
       await write(controller, "$ echo");
       select(controller, 0, 0, 1);
+    });
+  });
+
+  it("protects the Conda prompt prefix while allowing its typed command", async () => {
+    await untouched(async ({ controller }) => {
+      await write(controller, "(base) alice@server:~/work$ echo hello");
+      select(controller, 0, 0, 6);
     });
   });
 

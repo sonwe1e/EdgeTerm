@@ -2,7 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./platform", () => ({ HAS_TRAY: true, IS_MAC: true, IS_WINDOWS: false }));
 
-import { isShellPrompt, shellPromptEnd } from "./semanticColors";
+import {
+  isShellPrompt,
+  SEMANTIC_PALETTES,
+  semanticLine,
+  setSemanticColorTheme,
+  shellPromptEnd,
+} from "./semanticColors";
 import { TerminalController } from "./terminal";
 import { isInputPrompt } from "./terminalPrompt";
 
@@ -39,6 +45,9 @@ describe("shell prompt recognition", () => {
   it.each([
     "alice@server:~/work$ ",
     "root@server /srv # ",
+    "(base) alice@server:~/work$ ",
+    "(.venv) alice@server:/srv/work$ ",
+    "(vision-2) (base) alice@server:~/work$ ",
     "~/repo ❯ ",
     "$ ",
     "PS C:\\Users\\alice> ",
@@ -48,12 +57,27 @@ describe("shell prompt recognition", () => {
     expect(isShellPrompt(prompt)).toBe(true);
   });
 
-  it.each(["# a comment", "Finished build", "progress > 50%"])(
-    "does not mistake %s for a prompt",
-    (output) => {
-      expect(isShellPrompt(output)).toBe(false);
-    },
-  );
+  it.each([
+    "# a comment",
+    "Finished build",
+    "progress > 50%",
+    "(base) this is a build log",
+    "(base alice@server:~/work$ ",
+    "(base) alice@server:~/work$ running build",
+  ])("does not mistake %s for a prompt", (output) => {
+    expect(isShellPrompt(output)).toBe(false);
+  });
+
+  it("colors the account, not an identical Conda environment name", () => {
+    setSemanticColorTheme("dark");
+    const prompt = "(alice) alice@server:~/work$ ";
+    const accountStart = prompt.indexOf("alice@server");
+    expect(semanticLine(prompt).ranges).toContainEqual({
+      start: accountStart,
+      end: accountStart + "alice".length,
+      color: SEMANTIC_PALETTES.dark.lime,
+    });
+  });
 });
 
 describe("input prompt recognition", () => {
@@ -126,6 +150,27 @@ describe("terminal command activity", () => {
     expect(states).toEqual(["running", "complete"]);
   });
 
+  it.each([
+    ["(base) alice@server:~/old$ ", "(base) alice@server:~/new$ "],
+    ["(.venv) alice@server:~/old$ ", "(.venv) alice@server:~/new$ "],
+    ["(vision-2) (base) alice@server:~/old$ ", "(vision-2) (base) alice@server:~/new$ "],
+  ])(
+    "releases command ownership after a prefixed Bash prompt changes cwd: %s",
+    async (before, after) => {
+      const states: string[] = [];
+      const controller = createController(states);
+
+      await write(controller, before);
+      controller.term.input("cd ../new", true);
+      await write(controller, "cd ../new");
+      controller.term.input("\r", true);
+      expect(states).toEqual(["running"]);
+
+      await write(controller, `\r\n${after}`);
+      expect(states).toEqual(["running", "complete"]);
+    },
+  );
+
   it("uses an exact signature for a custom prompt", async () => {
     const states: string[] = [];
     const controller = createController(states);
@@ -167,6 +212,20 @@ describe("terminal command activity", () => {
     controller.term.input("\r", true);
     await write(controller, `\r\n${prompt}`);
 
+    expect(states).toEqual(["running", "complete"]);
+  });
+
+  it("does not confuse prefixed prompt-looking output with command completion", async () => {
+    const states: string[] = [];
+    const controller = createController(states);
+    await write(controller, "(base) alice@server:~/old$ ");
+    controller.term.input("make", true);
+    await write(controller, "make");
+    controller.term.input("\r", true);
+
+    await write(controller, "\r\n(base) alice@server:~/new$ running build");
+    expect(states).toEqual(["running"]);
+    await write(controller, "\r\n(base) alice@server:~/new$ ");
     expect(states).toEqual(["running", "complete"]);
   });
 
