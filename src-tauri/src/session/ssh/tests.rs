@@ -1964,6 +1964,15 @@ impl russh_sftp::server::Handler for SftpFiles {
         })
     }
 
+    async fn fstat(&mut self, id: u32, handle: String) -> Result<Attrs, Self::Error> {
+        let file = self.open.get(&handle).ok_or(StatusCode::Failure)?;
+        let meta = file.metadata().map_err(|error| io_status(&error))?;
+        Ok(Attrs {
+            id,
+            attrs: attrs_of(&meta),
+        })
+    }
+
     async fn setstat(
         &mut self,
         id: u32,
@@ -2191,6 +2200,40 @@ impl russh_sftp::server::Handler for SftpFiles {
         std::fs::rename(self.local(&from), self.local(&to)).map_err(|error| io_status(&error))?;
         Ok(russh_sftp::protocol::Packet::Status(ok(id)))
     }
+}
+
+#[tokio::test]
+async fn sftp_fixture_fstat_reads_the_open_file_and_rejects_closed_handles() {
+    use russh_sftp::server::Handler as _;
+
+    let scratch = KnownHosts::new();
+    let root = scratch.path().parent().expect("scratch").to_path_buf();
+    let path = root.join("config.txt");
+    std::fs::write(&path, b"one").expect("fixture file");
+    let mut files = SftpFiles {
+        root,
+        ..Default::default()
+    };
+    let handle = files
+        .open(
+            1,
+            "/config.txt".into(),
+            OpenFlags::READ,
+            FileAttributes::default(),
+        )
+        .await
+        .expect("open")
+        .handle;
+    let before = files.fstat(2, handle.clone()).await.expect("fstat");
+    assert_eq!(before.id, 2);
+    assert_eq!(before.attrs.size, Some(3));
+
+    std::fs::write(&path, b"changed").expect("update fixture file");
+    let after = files.fstat(3, handle.clone()).await.expect("fresh fstat");
+    assert_eq!(after.attrs.size, Some(7));
+
+    files.close(4, handle.clone()).await.expect("close");
+    assert!(matches!(files.fstat(5, handle).await, Err(StatusCode::Failure)));
 }
 
 /// Opens the SFTP subsystem of `transport`, the way the install command does.
