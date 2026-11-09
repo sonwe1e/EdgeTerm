@@ -428,7 +428,9 @@ fn bounded_text_size(metadata: &FileAttributes, limit: usize) -> Result<u64> {
         return Err(AppError::invalid_input("select a regular text file"));
     }
     let size = metadata.size.ok_or_else(|| {
-        AppError::invalid_input("the server did not report a file size; the editor cannot safely read this file")
+        AppError::invalid_input(
+            "the server did not report a file size; the editor cannot safely read this file",
+        )
     })?;
     if size > limit as u64 {
         return Err(AppError::invalid_input(format!(
@@ -501,7 +503,11 @@ impl Sftp {
         let after = self.raw.fstat(&handle).await;
         let _ = self.raw.close(&handle).await;
         let after = after
-            .map_err(|error| AppError::new(format!("could not confirm the completed read of {path}: {error}")))?
+            .map_err(|error| {
+                AppError::new(format!(
+                    "could not confirm the completed read of {path}: {error}"
+                ))
+            })?
             .attrs;
         let size_changed = after.size != Some(size) || bytes.len() as u64 != size;
         let mtime_changed =
