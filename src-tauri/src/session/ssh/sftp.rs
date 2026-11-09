@@ -346,11 +346,9 @@ pub(super) async fn ensure_sftp(
 pub(super) async fn run_sftp(sftp: Arc<SftpSession>, request: SftpRequest) -> Result<SftpResponse> {
     match request {
         SftpRequest::Home => Ok(SftpResponse::Path(sftp.canonicalize(".").await?)),
-        SftpRequest::ReadPreview { path, limit } => {
-            read_cached_preview(&sftp, &path, limit)
-                .await
-                .map(SftpResponse::Bytes)
-        }
+        SftpRequest::ReadPreview { path, limit } => read_cached_preview(&sftp, &path, limit)
+            .await
+            .map(SftpResponse::Bytes),
         SftpRequest::List { path } => {
             let base = match sftp.canonicalize(path.clone()).await {
                 Ok(p) => p,
@@ -453,7 +451,9 @@ async fn read_cached_preview(sftp: &SftpSession, path: &str, limit: usize) -> Re
     read_result.map_err(|error| AppError::new(format!("reading {path}: {error}")))?;
 
     if bytes.len() > limit {
-        return Err(AppError::invalid_input("the image exceeds the preview size limit"));
+        return Err(AppError::invalid_input(
+            "the image exceeds the preview size limit",
+        ));
     }
     if bytes.len() as u64 != size {
         return Err(AppError::coded(

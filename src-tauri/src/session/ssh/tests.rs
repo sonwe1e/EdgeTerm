@@ -4,11 +4,10 @@ use russh::keys::PublicKey;
 
 use super::{
     auth_failure, authenticate, browse_sftp, client_config, connect_on, ensure_sftp,
-    handshake_failure, key_check, key_only_verdict, legacy_choices, open_shell,
-    replace_host_key, run_sftp, saved_answer, verify_host_key, AuthFlow, AuthPrompter,
-    Client, Endpoint, Handle, HandshakeError, Hops, KeyCheck, KeyCheckOutcome, LegacyRecord,
-    Prompt, Request, SftpRequest, SftpResponse, SharedTransport, SshTransports,
-    SAVED_PASSWORD_REJECTED,
+    handshake_failure, key_check, key_only_verdict, legacy_choices, open_shell, replace_host_key,
+    run_sftp, saved_answer, verify_host_key, AuthFlow, AuthPrompter, Client, Endpoint, Handle,
+    HandshakeError, Hops, KeyCheck, KeyCheckOutcome, LegacyRecord, Prompt, Request, SftpRequest,
+    SftpResponse, SharedTransport, SshTransports, SAVED_PASSWORD_REJECTED,
 };
 use crate::error::{AppError, ErrorCode};
 use crate::file_transfer::Control;
