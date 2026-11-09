@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { cdp, page } from "vitest/browser";
 import { createElement as h } from "react";
 import { SessionPane } from "../components/TerminalPane";
-import type { Tab } from "../store";
+import { useStore, type Tab } from "../store";
 import { TerminalController } from "../terminal";
 import {
   disposeController,
@@ -15,6 +15,7 @@ import "../styles.css";
 
 const live: { controller: TerminalController; slot: HTMLElement }[] = [];
 const previousGpu = isWebglEnabled();
+const initialStore = useStore.getState();
 const session = cdp() as unknown as {
   send(method: string, params?: Record<string, unknown>): Promise<unknown>;
 };
@@ -74,6 +75,7 @@ afterEach(async () => {
     }
     slot.remove();
   }
+  useStore.setState(initialStore, true);
   setWebglEnabled(previousGpu);
   await session.send("Emulation.clearDeviceMetricsOverride");
 });
@@ -104,8 +106,15 @@ it("measures a sidebar-size change once when the terminal grid has not changed",
     activityKind: "command",
     cols: 80,
     rows: 24,
-    paneId: "main",
+    paneId: initialStore.activePaneId,
   };
+  // SessionPane borrows a live store tab; ensureController deliberately
+  // refuses to retain terminals whose owning tab was already removed.
+  useStore.setState({
+    tabs: [tab],
+    activeId: id,
+    panes: [{ id: tab.paneId, activeTabId: id }],
+  });
   const pane = mount(
     h(SessionPane, {
       tab,
@@ -117,6 +126,9 @@ it("measures a sidebar-size change once when the terminal grid has not changed",
   await expect.poll(() => getController(id)).toBeDefined();
   const controller = getController(id)!;
   live.push({ controller, slot: pane.container });
+  await expect.poll(() => pane.container.querySelector(".xterm")).not.toBeNull();
+  expect(getController(id)).toBe(controller);
+  expect(controller.term.element?.isConnected).toBe(true);
   await wait(250);
   const grid = [controller.term.cols, controller.term.rows];
   const propose = vi.spyOn(controller.fitAddon, "proposeDimensions");

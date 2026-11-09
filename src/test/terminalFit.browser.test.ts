@@ -18,12 +18,18 @@ import { createElement } from "react";
 // session output and WebView2 are NOT covered here.
 import "../styles.css";
 import { SessionPane } from "../components/TerminalPane";
-import { getController, setWebglEnabled } from "../terminalRegistry";
+import {
+  disposeController,
+  getController,
+  isWebglEnabled,
+  setWebglEnabled,
+} from "../terminalRegistry";
 import { TerminalController } from "../terminal";
 import { IS_MAC, IS_WINDOWS } from "../platform";
-import type { Tab } from "../store";
+import { useStore, type Tab } from "../store";
 
 const live: TerminalController[] = [];
+const initialStore = useStore.getState();
 let previousWebgl: boolean | null = null;
 
 const make = (
@@ -141,7 +147,7 @@ const sessionTab = (id: string): Tab => ({
   activityKind: "command",
   cols: 80,
   rows: 24,
-  paneId: "browser-pane",
+  paneId: initialStore.activePaneId,
 });
 
 describe("TerminalController fit in a real container", () => {
@@ -156,7 +162,11 @@ describe("TerminalController fit in a real container", () => {
     while (live.length) {
       const controller = live.pop()!;
       try {
-        controller.dispose();
+        if (getController(controller.sessionId) === controller) {
+          disposeController(controller.sessionId);
+        } else {
+          controller.dispose();
+        }
       } catch (error) {
         errors.push(error);
       }
@@ -166,6 +176,7 @@ describe("TerminalController fit in a real container", () => {
     } catch (error) {
       errors.push(error);
     }
+    useStore.setState(initialStore, true);
     // The gutter geometry oracle needs the DOM renderer's real row
     // rectangles; the preference goes back whatever the previous test left.
     if (previousWebgl !== null) {
@@ -382,12 +393,35 @@ describe("TerminalController fit in a real container", () => {
       controller.term.buffer.normal.length,
       "the 199-line input really sits in the normal buffer",
     ).toBe(199);
+    // Establish the actual fitted baseline, not xterm's default 80 columns:
+    // fonts and the reserved gutter width differ between build hosts. Only
+    // startup is allowed to settle; the resize below is asserted synchronously.
+    expect(
+      await settles(() => {
+        const proposal = controller.fitAddon.proposeDimensions();
+        return (
+          proposal !== undefined &&
+          proposal.cols === controller.term.cols &&
+          proposal.rows === controller.term.rows &&
+          pixelContract(controller).ok
+        );
+      }),
+      "the initial small-buffer fit is measured and fills its real host",
+    ).toBe(true);
+    const before = { cols: controller.term.cols, rows: controller.term.rows };
 
     resizePane(pane, 780, 480);
+    const proposed = controller.fitAddon.proposeDimensions();
+    expect(proposed, "the enlarged real host has a measurable proposal").toBeDefined();
+    expect(proposed!.cols, "the wider host fits additional columns").toBeGreaterThan(before.cols);
+    expect(proposed!.rows, "the taller host fits additional rows").toBeGreaterThan(before.rows);
     controller.scheduleFit();
+    expect(
+      { cols: controller.term.cols, rows: controller.term.rows },
+      "both axes apply before scheduleFit returns, without a column-settle timer",
+    ).toEqual(proposed);
     await twoFrames();
-    expect(controller.term.cols).toBeGreaterThan(80);
-    expect(controller.term.rows).toBeGreaterThan(20);
+    expect({ cols: controller.term.cols, rows: controller.term.rows }).toEqual(proposed);
     expect(resizes[resizes.length - 1].cols).toBe(controller.term.cols);
     expect(resizes[resizes.length - 1].rows).toBe(controller.term.rows);
     const pixels = pixelContract(controller);
@@ -537,11 +571,19 @@ describe("TerminalController fit in a real container", () => {
     // rectangles: select it through the public renderer preference and put
     // the previous preference back afterwards. This is a public setting, not
     // a mock of fit or layout.
-    previousWebgl = true;
+    previousWebgl = isWebglEnabled();
     setWebglEnabled(false);
+    const tab = sessionTab(id);
+    useStore.setState({
+      tabs: [tab],
+      activeId: id,
+      panes: [{ id: tab.paneId, activeTabId: id }],
+      bufferFontSize: 14,
+      gutterMode: "both",
+    });
     const paneProps = (visible: boolean, width: number, height: number) =>
       createElement(SessionPane, {
-        tab: sessionTab(id),
+        tab,
         visible,
         focused: false,
         style: { left: "0px", top: "0px", width: `${width}px`, height: `${height}px` },
@@ -557,6 +599,9 @@ describe("TerminalController fit in a real container", () => {
     const controller = getController(id)!;
     live.push(controller);
     await twoFrames();
+    expect(getController(id)).toBe(controller);
+    expect(session.container.querySelector(".xterm")).not.toBeNull();
+    expect(controller.term.element?.isConnected).toBe(true);
     expect(controller.term.cols, "hidden pane never fit (still 80)").toBe(80);
 
     // Showing runs the component's own effect chain: setVisible(true), then
