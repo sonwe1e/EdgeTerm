@@ -695,6 +695,7 @@ export const zhCN: Catalog = {
   "filer.followStop": "停止跟随终端目录",
   "filer.previewInBrowser": "在浏览器中预览",
   "filer.previewImage": "预览图片",
+  "filer.openExternallyEditable": "在外部应用打开（可编辑）",
   "filer.previewStop": "停止预览",
   "imagePreview.title": "图片预览",
   "imagePreview.loading": "正在读取图片…",
