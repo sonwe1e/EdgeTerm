@@ -1,7 +1,7 @@
 // Visual evidence for the UI refinement: the surfaces the font-chain gate
 // does not reach. Real App, real stores, real production CSS — the IPC
 // boundary is a permissive stub that answers unknown commands with a safe
-// empty value and records them, because dialogs and the workbench reach far
+// empty value and records them, because dialogs and status popovers reach far
 // more commands than a whitelist would name and a throw would abort the shot
 // halfway through.
 //
@@ -46,11 +46,58 @@ import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import App from ${JSON.stringify(path.join(repoRoot, "src/App.tsx"))};
 import { useStore } from ${JSON.stringify(path.join(repoRoot, "src/store.ts"))};
-import { useWorkbench } from ${JSON.stringify(path.join(repoRoot, "src/workbench/store.ts"))};
 import { useFileTransfers } from ${JSON.stringify(path.join(repoRoot, "src/fileTransfers.ts"))};
 import ${JSON.stringify(path.join(repoRoot, "src/styles.css"))};
 
 const calls = [], unknown = [];
+
+// Deterministic, synthetic files reached through the production Filer. The
+// PNG is encoded by the browser, then decoded through the real Blob preview
+// path; no external image, editable copy or upload watcher is involved.
+const imageName = "preview-1280x720.png";
+const logName = "worker.log";
+const logSize = 8 * 1024 * 1024 * 1024;
+const logContent = Array.from({ length: 180 }, (_, index) =>
+  "[INFO] step " + String(index + 1).padStart(4, "0") +
+  " | synthetic worker | loss=" + (0.25 / (index + 1)).toFixed(6) +
+  " | checkpoint=" + (index % 30 === 29 ? "saved" : "pending")
+).join("\\n") + "\\n[INFO] latest result: ready\\n";
+const logLength = new TextEncoder().encode(logContent).length;
+let imageBytes;
+const readPreviewImage = async () => {
+  if (!imageBytes) {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1280;
+    canvas.height = 720;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("canvas unavailable for synthetic PNG");
+    context.fillStyle = "#16212e";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    const colors = ["#699edf", "#67b9a7", "#d5b477", "#b198d3"];
+    for (let index = 0; index < colors.length; index += 1) {
+      context.fillStyle = colors[index];
+      context.fillRect(64 + index * 296, 208, 264, 320);
+    }
+    context.fillStyle = "#e6edf3";
+    context.font = "36px monospace";
+    context.fillText("Synthetic image preview", 64, 104);
+    context.font = "24px monospace";
+    context.fillText("1280 x 720  |  Read-only fixture", 64, 152);
+    context.fillText("Fit / 100% / zoom / pan", 64, 620);
+    imageBytes = new Promise((resolve, reject) => canvas.toBlob((blob) =>
+      blob ? resolve(blob.arrayBuffer()) : reject(new Error("PNG encoding failed")), "image/png"));
+  }
+  return imageBytes;
+};
+const listingAt = (folder) => ({
+  path: folder,
+  entries: [imageName, logName].map((name) => ({
+    name, path: folder + "/" + name, isDir: false, isSymlink: false,
+    size: name === logName ? logSize : 32768, modified: 1700000000,
+    permissions: 420, owner: "dev", group: "dev",
+  })),
+  truncated: false, source: "synthetic fixture",
+});
 
 // Synthetic host vitals: each sample moves a little, so the resource
 // popover's sparklines have a trend to draw instead of a flat line. The
@@ -150,10 +197,18 @@ window.__TAURI_INTERNALS__ = {
     calls.push({ command, args });
     if (command === "plugin:event|listen") return ++serial;
     if (command === "plugin:event|unlisten") return;
-    if (command === "list_workspace_data") return { workspaces: [], experiments: [], runs: [] };
     if (command === "list_sender_commands") return senderCommands;
     if (command === "local_list" || command === "sftp_list") {
-      return { path: args?.path ?? "/synthetic", entries: [], truncated: false, source: "stub" };
+      return listingAt(args?.path ?? "/synthetic");
+    }
+    if (command === "preview_image_file") return readPreviewImage();
+    if (command === "project_read_log_window") {
+      if (args.anchor !== null && !(args.anchor === logSize && args.before === false))
+        throw new Error("unexpected synthetic log window: " + JSON.stringify(args));
+      const tail = args.anchor === null;
+      return { path: args.path, start: tail ? logSize - logLength : logSize,
+        end: logSize, size: logSize, content: tail ? logContent : "",
+        encoding: "UTF-8", modifiedAt: 1700000000000 };
     }
     if (command === "local_home" || command === "sftp_home") return "/synthetic";
     if (command === "system_monospace_family") return null;
@@ -174,7 +229,7 @@ window.__TAURI_INTERNALS__ = {
     if (["set_startup_theme", "show_main_window", "finish_main_window",
          "plugin:window|set_title", "plugin:window|set_focus"].includes(command)) return;
     // Anything else: answer with a safe empty value rather than throwing, so a
-    // dialog or the workbench can reach a command this fixture never
+    // dialog or a popover can reach a command this fixture never
     // anticipated. A command whose name starts with "list_" is answered with
     // an empty array because every caller treats its result as a collection —
     // returning null there crashed the Sender's library on
@@ -185,8 +240,7 @@ window.__TAURI_INTERNALS__ = {
   },
 };
 
-// A live local session, so the status bar has session details to show and the
-// workbench has something to call connected. The pane id is read from the
+// A live local session, so the status bar has session details to show. The pane id is read from the
 // store rather than written literally: ROOT_PANE_ID is generated, not "root".
 const paneId = useStore.getState().panes[0]?.id ?? "pane-1";
 const localTab = {
@@ -197,8 +251,7 @@ const localTab = {
   number: 1, ordinal: 0, state: "connected", commandActivity: "idle",
   activityKind: "command", cols: 120, rows: 30, paneId,
 };
-// An SSH session bound to the synthetic project's server, which is what makes
-// the workbench's ExplorerPanel count as connected.
+// A connected SSH session supplies the remote Filer and status popovers.
 const sshTab = {
   info: { id: "shot-ssh", profileId: "shot-profile", name: "build-box", kind: "ssh",
     protocol: "ssh", address: "10.0.0.5:22", color: "#6ea8fe", supportsRemoteFiles: true,
@@ -208,26 +261,6 @@ const sshTab = {
   activityKind: "command", cols: 120, rows: 30, paneId,
 };
 
-const project = {
-  id: "shot-project", name: "edge", server: { profileId: "shot-profile", name: "build-box",
-    host: "10.0.0.5", port: 22, username: "dev" },
-  root: "/work/edge", env: "", commands: [], runRoot: "/work/edge",
-  baselineExperimentId: "shot-baseline", createdAt: 1700000000000, updatedAt: 1700000000000,
-};
-const baseline = {
-  id: "shot-baseline", workspaceId: "shot-project", name: "baseline", kind: "baseline",
-  baselineId: null, root: null, branch: "main", notes: "",
-  createdAt: 1700000000000, updatedAt: 1700000000000,
-};
-const treeFiles = [
-  "Cargo.toml", "README.md", "package.json",
-  "src/main.ts", "src/store.ts", "src/terminal.ts",
-  "src/components/StatusBar.tsx", "src/components/TabStrip.tsx",
-  "src/components/panels/FilerPanel.tsx", "src/components/panels/SenderPanel.tsx",
-  "src/styles/foundation.styles.css", "src/styles/sender.styles.css",
-  "docs/engineering-standards.zh-CN.md", "docs/test-plan.zh-CN.md",
-];
-
 useStore.setState({
   language: "en", gpuRenderer: false, suggestionsEnabled: false,
   tabs: [localTab], activeId: localTab.info.id,
@@ -235,7 +268,6 @@ useStore.setState({
   panels: { sessions: true, sender: true, filer: true },
   panelDocks: { left: ["sessions"], right: ["filer"], bottom: ["sender"] },
 });
-useWorkbench.setState({ view: "terminals", status: "ready" });
 
 const root = createRoot(document.getElementById("root"));
 flushSync(() => root.render(React.createElement(App)));
@@ -244,7 +276,6 @@ const frames = () => new Promise((resolve) => requestAnimationFrame(() => reques
 window.__refinement = {
   calls, unknown,
   async terminal(patch) { flushSync(() => useStore.setState(patch)); await frames(); },
-  async workbench(patch) { flushSync(() => useWorkbench.setState(patch)); await frames(); },
   async tabs(list) { flushSync(() => useStore.setState({ tabs: list })); await frames(); },
   async frames() { await frames(); },
   /** A mix of background agents, a finished turn and a disconnected tab. */
@@ -291,31 +322,6 @@ window.__refinement = {
     move(current.transferred + 8388608, current.revision + 2);
     await frames();
   },
-  /** Puts the workbench into a connected project with a file tree on screen. */
-  async workbenchTree() {
-    flushSync(() => useStore.setState({ tabs: [localTab, sshTab], activeId: sshTab.info.id,
-      panes: [{ id: paneId, activeTabId: sshTab.info.id }] }));
-    flushSync(() => useWorkbench.setState({
-      view: "workbench", status: "ready",
-      data: { workspaces: [project], experiments: [baseline], runs: [] },
-      activeWorkspaceId: project.id, activeExperimentId: baseline.id, activeRunId: null,
-      files: { [project.id + ":" + project.root]: { root: project.root, files: treeFiles, truncated: false, source: "stub" } },
-      filesErrors: {}, git: {}, gitErrors: {},
-    }));
-    await frames();
-  },
-  /** The workbench with no projects at all — the R6.6 empty-state button. */
-  async workbenchEmpty() {
-    flushSync(() => useStore.setState({ tabs: [localTab], activeId: localTab.info.id,
-      panes: [{ id: paneId, activeTabId: localTab.info.id }] }));
-    flushSync(() => useWorkbench.setState({
-      view: "workbench", status: "ready",
-      data: { workspaces: [], experiments: [], runs: [] },
-      activeWorkspaceId: null, activeExperimentId: null, activeRunId: null,
-      files: {}, filesErrors: {}, git: {}, gitErrors: {},
-    }));
-    await frames();
-  },
   /** Back to the terminal view with every panel docked. */
   async shell() {
     flushSync(() => useStore.setState({
@@ -323,7 +329,6 @@ window.__refinement = {
       panels: { sessions: true, sender: true, filer: true },
       panelDocks: { left: ["sessions"], right: ["filer"], bottom: ["sender"] },
     }));
-    flushSync(() => useWorkbench.setState({ view: "terminals" }));
     await frames();
   },
   count(selector) { return document.querySelectorAll(selector).length; },
@@ -342,6 +347,7 @@ const badResources = [];
 // run red; a surface that is simply absent is the shot's own warning.
 const layout = {};
 const layoutFailures = [];
+const viewerEvidence = {};
 let browser;
 let server;
 let browserVersion = "";
@@ -708,29 +714,209 @@ try {
   );
 
   // The dialog is the subject of the shot above, so it has to be gone before
-  // the next one: a modal left standing covers the workbench while every
+  // the next one: a modal left standing covers the Filer while every
   // selector behind it still counts as present.
   await dismissDialog();
 
-  // 4. The workbench with no projects. Workbench replaces its whole body with
-  //    the onboarding hero in this state, so the sidebar — and any note inside
-  //    it — is not on screen; the hero's own create button is the action here.
-  await shoot("workbench-empty", () => call("workbenchEmpty"), {
-    workbench: ".wb",
-    onboarding: ".wb-onboarding",
-    createFirst: ".wb-onboarding .btn.is-primary",
-  });
+  /** Viewer checks are additional gates; the existing popover oracles below
+      stay unchanged. Deliberate image/log canvas scrolling is not overflow
+      of the surrounding dialog chrome. */
+  const auditViewer = async (name, kind, callsStart, search = false) => {
+    const record = await page.evaluate(
+      ({ kind, callsStart, search }) => {
+        const failures = [];
+        const prefix = kind === "image" ? "image-preview" : "log-viewer";
+        const surface = document.querySelector("." + prefix + "-dialog");
+        const content = surface?.querySelector(
+          kind === "image" ? ".image-preview-stage" : ".log-viewer-content",
+        );
+        const footer = surface?.querySelector(".dialog-footer");
+        const box = (node) => {
+          if (!node) return null;
+          const rect = node.getBoundingClientRect();
+          return {
+            left: rect.left,
+            top: rect.top,
+            right: rect.right,
+            bottom: rect.bottom,
+            width: rect.width,
+            height: rect.height,
+          };
+        };
+        const fits = (rect, margin = 0) =>
+          rect &&
+          rect.width > 0 &&
+          rect.height > 0 &&
+          rect.left >= margin - 1 &&
+          rect.top >= margin - 1 &&
+          rect.right <= innerWidth - margin + 1 &&
+          rect.bottom <= innerHeight - margin + 1;
+        const check = (pass, description) => {
+          if (!pass) failures.push(description);
+        };
+        const frame = box(surface),
+          stage = box(content),
+          controls = box(footer);
+        check(fits(frame, 8), "viewer frame must keep at least 8px viewport margins");
+        check(fits(stage), "viewer content viewport must have positive visible dimensions");
+        check(fits(controls), "viewer footer must remain on screen");
+        check(
+          surface && surface.scrollWidth <= surface.clientWidth + 1,
+          "dialog chrome must not overflow horizontally",
+        );
+        const buttons = Array.from(footer?.querySelectorAll("button") ?? []).map(box);
+        check(
+          buttons.length > 0 && buttons.every((rect) => fits(rect)),
+          "every viewer footer control must remain on screen",
+        );
+        const expectedName = kind === "image" ? "Image preview" : "Large text viewer · Read-only";
+        check(
+          surface?.closest("dialog")?.getAttribute("aria-label") === expectedName,
+          "viewer must have its accessible name",
+        );
+        const calls = window.__refinement.calls.slice(callsStart);
+        const expectedCommand = kind === "image" ? "preview_image_file" : "project_read_log_window";
+        const expectedPath =
+          "/synthetic/" + (kind === "image" ? "preview-1280x720.png" : "worker.log");
+        const reads = calls.filter((call) => call.command === expectedCommand);
+        check(
+          reads.some((call) => call.args?.id === "shot-ssh" && call.args?.path === expectedPath),
+          "Filer must read the selected file from its own SSH session",
+        );
+        const editableCommands = [
+          "remote_edit_path",
+          "watch_remote_edit",
+          "transfer_files",
+          "project_write_text",
+          "open_local_path",
+          "open_with_dialog",
+        ];
+        const unsafeCalls = calls.filter((call) => editableCommands.includes(call.command));
+        check(
+          unsafeCalls.length === 0,
+          "read-only viewing must not start editing, transfer or external-open IPC",
+        );
+        let decoded = null,
+          atTail = null,
+          matchVisible = null;
+        if (kind === "image") {
+          const image = surface?.querySelector("img");
+          decoded = { width: image?.naturalWidth, height: image?.naturalHeight };
+          check(
+            decoded.width === 1280 && decoded.height === 720,
+            "preview must decode the real synthetic PNG bytes",
+          );
+        } else if (content) {
+          atTail = Math.abs(content.scrollHeight - content.clientHeight - content.scrollTop) <= 1;
+          check(
+            content.scrollHeight > content.clientHeight,
+            "log fixture must exercise a scrollable tail window",
+          );
+          if (search) {
+            const match = box(surface.querySelector("mark"));
+            matchVisible = match && match.top >= stage.top - 1 && match.bottom <= stage.bottom + 1;
+            check(matchVisible, "the selected log search match must be visible");
+          } else check(atTail, "the initial log window must show its newest lines");
+        }
+        return {
+          viewport: { width: innerWidth, height: innerHeight },
+          frame,
+          stage,
+          controls,
+          buttons,
+          reads,
+          unsafeCalls,
+          decoded,
+          atTail,
+          matchVisible,
+          failures,
+        };
+      },
+      { kind, callsStart, search },
+    );
+    viewerEvidence[name] = record;
+    if (record.failures.length > 0) layoutFailures.push({ scene: name, failures: record.failures });
+  };
 
-  // 5. The workbench with a connected project — the ExplorerPanel file tree
-  //    R6.1 gave keyboard navigation.
-  await shoot("workbench-tree", () => call("workbenchTree"), {
-    workbench: ".wb",
-    tree: ".wb-tree",
-    treeitem: '[role="treeitem"]',
-    dirRow: ".wb-dir-row",
-    fileRow: ".wb-file-row",
-    sidebar: ".wb-sidebar",
-  });
+  // 4–5. Current read-only viewers replace the removed workbench scenes.
+  // Open through real Filer gestures, not a standalone dialog mount, and
+  // repeat at the minimum supported desktop size in the other palette.
+  for (const scene of [
+    { suffix: "", width: 1100, height: 720, theme: "dark" },
+    { suffix: "-narrow-light", width: 900, height: 560, theme: "light" },
+  ]) {
+    await page.setViewportSize({ width: scene.width, height: scene.height });
+    await call("theme", scene.theme);
+    await call("ssh");
+    const imageRow = page.locator(".filer-entry", { hasText: "preview-1280x720.png" });
+    await imageRow.waitFor({ state: "visible", timeout: 8000 });
+    const imageCallsStart = await page.evaluate(() => window.__refinement.calls.length);
+    const imageShot = "image-preview" + scene.suffix;
+    await shoot(
+      imageShot,
+      async () => {
+        await imageRow.dblclick();
+        await page.getByRole("dialog", { name: "Image preview", exact: true }).waitFor();
+        await page.waitForFunction(
+          () => document.querySelector(".image-preview-stage img")?.naturalWidth === 1280,
+        );
+      },
+      {
+        dialog: ".image-preview-dialog",
+        image: ".image-preview-stage img",
+        toolbar: ".image-preview-toolbar",
+      },
+    );
+    await auditViewer(imageShot, "image", imageCallsStart);
+    await page
+      .locator(".image-preview-dialog")
+      .getByRole("button", { name: "Close", exact: true })
+      .click();
+    await page.waitForSelector(".image-preview-dialog", { state: "detached" });
+
+    const logCallsStart = await page.evaluate(() => window.__refinement.calls.length);
+    const logShot = "log-viewer" + scene.suffix;
+    await shoot(
+      logShot,
+      async () => {
+        await page.locator(".filer-entry", { hasText: "worker.log" }).click({ button: "right" });
+        await page
+          .getByRole("menuitem", { name: "View large text (read-only)", exact: true })
+          .click();
+        await page
+          .getByRole("dialog", { name: "Large text viewer · Read-only", exact: true })
+          .waitFor();
+        await page.waitForFunction(() =>
+          document.querySelector(".log-viewer-text")?.textContent?.includes("latest result: ready"),
+        );
+      },
+      {
+        dialog: ".log-viewer-dialog",
+        text: ".log-viewer-text",
+        toolbar: ".log-viewer-toolbar",
+        range: ".log-viewer-range",
+      },
+    );
+    await auditViewer(logShot, "log", logCallsStart);
+    await shoot(
+      logShot + "-search",
+      async () => {
+        await page
+          .getByRole("searchbox", { name: "Find in loaded window" })
+          .fill("checkpoint=saved");
+        await page.locator(".log-viewer-text mark").waitFor();
+      },
+      { dialog: ".log-viewer-dialog", match: ".log-viewer-text mark" },
+    );
+    await auditViewer(logShot + "-search", "log", logCallsStart, true);
+    await page
+      .locator(".log-viewer-dialog")
+      .getByRole("button", { name: "Close", exact: true })
+      .click();
+    await page.waitForSelector(".log-viewer-dialog", { state: "detached" });
+  }
+  await page.setViewportSize({ width: 1100, height: 720 });
+  await call("theme", "dark");
 
   // 6. The Sender expanded — the compose row and the command library.
   await shoot(
@@ -1085,11 +1271,12 @@ try {
     channel,
     tabSources: tabBaselineDir ? "supplied baseline component and stylesheet" : "current sources",
     scope:
-      "Production build (real vite.config). Real App, real stores, real CSS; permissive IPC stub that answers unknown commands with a safe empty value and records them, plus synthetic commands, transfer routes and resource/forward samples. Screenshots at 1100x720 (dark) for the surfaces check-app-font-chain.mjs does not reach: dialogs, the workbench view and the three status-bar popovers (host resources, transfers, tunnels). The monitor-wide scene repeats the host-resources popover at 1440x900 so the vitals cluster itself (not only the compact fallback) is measured; tunnels-wide repeats the tunnel popover at 1440x900 in the light theme; tunnels-narrow does it at 900x560 in the dark theme. The `layout` key carries the measured geometry, row rhythm, status-bar trigger metrics, element-cluster visibility/fit and text-contrast ratios behind those screenshots; a failed layout assertion turns the run red.",
+      "Production build (real vite.config). Real App, real stores, real CSS; permissive IPC stub that answers unknown commands with a safe empty value and records them, plus synthetic commands, PNG bytes, bounded log-window data, transfer routes and resource/forward samples. Screenshots at 1100x720 (dark) for the surfaces check-app-font-chain.mjs does not reach: dialogs, current Filer read-only viewers and the three status-bar popovers (host resources, transfers, tunnels). The viewers are opened through real remote Filer gestures, then repeated at 900x560 in the light theme, including log-search evidence. The `viewerEvidence` key records their viewport/chrome fit, accessible names, image decoding, log-tail/search visibility, selected SSH read target and absence of editable-copy, transfer or external-open IPC. This does not validate real files, backend bounds or network transport. The monitor-wide scene repeats the host-resources popover at 1440x900 so the vitals cluster itself (not only the compact fallback) is measured; tunnels-wide repeats the tunnel popover at 1440x900 in the light theme; tunnels-narrow does it at 900x560 in the dark theme. The `layout` key carries the measured geometry, row rhythm, status-bar trigger metrics, element-cluster visibility/fit and text-contrast ratios behind those screenshots; a failed layout or viewer assertion turns the run red.",
     shots,
     warnings,
     layout,
     layoutFailures,
+    viewerEvidence,
     unknownIpc,
     errors,
     consoleErrors,
@@ -1133,6 +1320,7 @@ try {
     warnings,
     layout,
     layoutFailures,
+    viewerEvidence,
     unknownIpc: unknownIpcLate,
     errors,
     consoleErrors,
@@ -1144,5 +1332,5 @@ try {
   process.exitCode = 1;
 } finally {
   await browser?.close();
-  await new Promise((resolve) => server?.close(resolve));
+  if (server) await new Promise((resolve) => server.close(resolve));
 }
