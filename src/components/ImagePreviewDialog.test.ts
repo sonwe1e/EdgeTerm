@@ -32,6 +32,29 @@ const button = (label: string) =>
 const render = (file: ImagePreviewTarget, onClose = vi.fn()) =>
   act(async () => root.render(h(ImagePreviewDialog, { target: file, onClose })));
 
+function decodeImage(width = 2000, height = 1200, stageWidth = 800, stageHeight = 600) {
+  const stage = host.querySelector<HTMLDivElement>(".image-preview-stage")!;
+  Object.defineProperty(stage, "clientWidth", { configurable: true, value: stageWidth });
+  Object.defineProperty(stage, "clientHeight", { configurable: true, value: stageHeight });
+  vi.spyOn(stage, "getBoundingClientRect").mockReturnValue({
+    x: 0,
+    y: 0,
+    left: 0,
+    top: 0,
+    width: stageWidth,
+    height: stageHeight,
+    right: stageWidth,
+    bottom: stageHeight,
+    toJSON: () => ({}),
+  });
+  act(() => window.dispatchEvent(new Event("resize")));
+  const image = host.querySelector("img")!;
+  Object.defineProperty(image, "naturalWidth", { configurable: true, value: width });
+  Object.defineProperty(image, "naturalHeight", { configurable: true, value: height });
+  act(() => image.dispatchEvent(new Event("load", { bubbles: true })));
+  return { stage, image };
+}
+
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.clearAllMocks();
@@ -106,5 +129,77 @@ describe("read-only, on-demand image preview modal", () => {
     act(() => image.dispatchEvent(new Event("load", { bubbles: true })));
     expect(host.querySelector('[role="alert"]')?.textContent).toContain("safe preview limit");
     expect(host.querySelector("img")).toBeNull();
+  });
+
+  it("distinguishes Fit from real 100% pixels and tracks stage resize", async () => {
+    api.previewImageFile.mockResolvedValue(Uint8Array.of(1));
+    await render(target());
+    const { image, stage } = decodeImage();
+    expect(image.style.transform).toContain("scale(0.388)");
+    expect(host.querySelector("output")?.textContent).toBe("39%");
+
+    act(() => button("100%").click());
+    expect(image.style.transform).toContain("scale(1)");
+    expect(host.querySelector("output")?.textContent).toBe("100%");
+    expect(button("100%").getAttribute("aria-pressed")).toBe("true");
+
+    Object.defineProperty(stage, "clientWidth", { configurable: true, value: 1000 });
+    Object.defineProperty(stage, "clientHeight", { configurable: true, value: 700 });
+    act(() => window.dispatchEvent(new Event("resize")));
+    expect(image.style.transform).toContain("scale(1)");
+
+    act(() => button("Fit").click());
+    expect(image.style.transform).toContain("scale(0.488)");
+    expect(button("Fit").getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("zooms about the wheel pointer without scrolling and pans a larger image", async () => {
+    api.previewImageFile.mockResolvedValue(Uint8Array.of(1));
+    await render(target());
+    const { stage, image } = decodeImage();
+    const wheel = new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      deltaY: -120,
+      clientX: 600,
+      clientY: 150,
+    });
+    act(() => stage.dispatchEvent(wheel));
+    expect(wheel.defaultPrevented).toBe(true);
+    expect(Number(image.style.transform.match(/scale\(([^)]+)\)/)?.[1])).toBeGreaterThan(0.388);
+
+    act(() => button("100%").click());
+    const before = image.style.transform;
+    const down = new MouseEvent("pointerdown", {
+      bubbles: true,
+      button: 0,
+      clientX: 300,
+      clientY: 300,
+    });
+    Object.defineProperty(down, "pointerId", { value: 8 });
+    act(() => stage.dispatchEvent(down));
+    const move = new MouseEvent("pointermove", { bubbles: true, clientX: 350, clientY: 280 });
+    Object.defineProperty(move, "pointerId", { value: 8 });
+    act(() => stage.dispatchEvent(move));
+    expect(image.style.transform).not.toBe(before);
+    expect(stage.classList.contains("is-dragging")).toBe(true);
+    const up = new MouseEvent("pointerup", { bubbles: true });
+    Object.defineProperty(up, "pointerId", { value: 8 });
+    act(() => stage.dispatchEvent(up));
+    expect(stage.classList.contains("is-dragging")).toBe(false);
+  });
+
+  it("resets zoom and pan for a newly opened image", async () => {
+    api.previewImageFile.mockResolvedValue(Uint8Array.of(1));
+    await render(target());
+    const { image } = decodeImage();
+    act(() => button("100%").click());
+    expect(image.style.transform).toContain("scale(1)");
+
+    await render(target("another", "next.webp"));
+    const next = decodeImage(1600, 900);
+    expect(next.image.getAttribute("alt")).toBe("next.webp");
+    expect(next.image.style.transform).toContain("scale(0.485)");
+    expect(host.querySelector("output")?.textContent).toBe("49%");
   });
 });

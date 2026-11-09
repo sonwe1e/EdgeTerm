@@ -1634,19 +1634,27 @@ dialog.dialog-backdrop.is-fallback[open] {
   flex-shrink: 0;
 }
 
-/* One-off Filer preview, using the same modal and spacing system as the
-   editor. The image never escapes its bounded viewport on narrow windows. */
+/* The Filer's photo canvas uses most of the available desktop, while its
+   metadata and controls remain in the familiar fixed modal chrome. */
 .image-preview-dialog {
-  width: min(920px, calc(100vw - 32px));
-  height: min(720px, calc(100vh - 32px));
+  width: min(96vw, calc(100vw - 24px));
+  height: min(94vh, calc(100vh - 24px));
+  max-height: none;
 }
 .image-preview-destination {
   display: flex;
   flex: 0 0 auto;
-  flex-direction: column;
-  gap: var(--sp-4);
-  padding: var(--sp-10) var(--sp-16);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-12);
+  padding: var(--sp-8) var(--sp-16);
   border-bottom: 1px solid var(--border);
+}
+.image-preview-file {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: var(--sp-3);
 }
 .image-preview-destination strong,
 .image-preview-destination code {
@@ -1659,26 +1667,69 @@ dialog.dialog-backdrop.is-fallback[open] {
   color: var(--fg-dim);
   font-size: var(--fs-sm);
 }
+.image-preview-destination small {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
 .image-preview-stage {
+  position: relative;
   display: grid;
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
   place-items: center;
-  overflow: auto;
-  padding: var(--sp-12);
+  overflow: hidden;
+  overscroll-behavior: contain;
+  touch-action: none;
+  user-select: none;
   color: var(--fg-dim);
   background: var(--bg-terminal);
 }
+.image-preview-stage.is-pannable {
+  cursor: grab;
+}
+.image-preview-stage.is-dragging {
+  cursor: grabbing;
+}
 .image-preview-stage img {
+  position: absolute;
+  top: 50%;
+  left: 50%;
   display: block;
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
+  max-width: none;
+  max-height: none;
+  transform-origin: center;
+  pointer-events: none;
+  -webkit-user-drag: none;
 }
 .image-preview-stage .dialog-error {
   max-width: min(560px, 100%);
   overflow-wrap: anywhere;
+}
+.image-preview-footer {
+  align-items: center;
+  flex-wrap: wrap;
+}
+.image-preview-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+  margin-right: auto;
+}
+.image-preview-tool {
+  min-width: 32px;
+  padding-inline: var(--sp-8);
+}
+.image-preview-tool[aria-pressed="true"] {
+  color: var(--fg);
+  background: var(--bg-hover);
+}
+.image-preview-scale {
+  min-width: 44px;
+  color: var(--fg-dim);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-sm);
+  text-align: center;
 }
 
 /* Large remote files are read as bounded windows, never mounted in CodeMirror
