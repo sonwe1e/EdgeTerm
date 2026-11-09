@@ -15,6 +15,13 @@ import {
 } from "./storeLayout";
 import { AppStore, Tab } from "./storeTypes";
 import { disposeController, getController } from "./terminalRegistry";
+import {
+  beginTabConnectionClose,
+  closeConnection,
+  endTabConnectionClose,
+  holdConnectionCleanup,
+  isConnectionClosing,
+} from "./sessionConnectionLifecycle";
 
 export const createTabActions: StateCreator<
   AppStore,
@@ -88,38 +95,53 @@ export const createTabActions: StateCreator<
   },
 
   async closeTab(id) {
-    await api.closeSession(id).catch(() => undefined);
-    // Files from this session opened in local editors stop syncing back.
-    await api.stopRemoteEdits(id).catch(() => undefined);
-    disposeController(id);
-    // A challenge nobody will answer now would hold its half-open connection
-    // until the backend's own timeout; release it here instead.
-    for (const prompt of get().authPrompts) {
-      if (prompt.sessionId === id) {
-        void api.answerAuthPrompt(prompt.id, null).catch(() => undefined);
+    // Closed tabs bypass the confirmation dialog, so repeated clicks can
+    // arrive while their first close is still waiting for IPC cleanup.
+    if (isConnectionClosing(id) || !get().tabs.some((tab) => tab.info.id === id)) return;
+    // Retire ownership before either await: a late handshake must not turn
+    // this still-visible tab live again while its editor watchers stop.
+    beginTabConnectionClose(id);
+    getController(id)?.setLocked(true);
+    try {
+      for (const prompt of get().authPrompts) {
+        if (prompt.sessionId === id) {
+          void api.answerAuthPrompt(prompt.id, null).catch(() => undefined);
+        }
       }
+      set({
+        authPrompts: get().authPrompts.filter((prompt) => prompt.sessionId !== id),
+        hostKeyPrompt: get().hostKeyPrompt?.sessionId === id ? null : get().hostKeyPrompt,
+      });
+      const closing = closeConnection(id).catch(() => undefined);
+      holdConnectionCleanup(id, closing);
+      await closing;
+      // Files from this session opened in local editors stop syncing back.
+      await api.stopRemoteEdits(id).catch(() => undefined);
+      disposeController(id);
+      const current = get();
+      const closingTab = current.tabs.find((tab) => tab.info.id === id);
+      const remaining = current.tabs.filter((tab) => tab.info.id !== id);
+      // The pane shows its last tab next, or folds away with its last tab.
+      const settled = closingTab
+        ? settlePane({ ...paneState(current), tabs: remaining }, closingTab.paneId)
+        : { ...paneState(current), tabs: remaining };
+      const clearsSessionError = current.errorSessionId === id;
+      const closePrompt = current.closePrompt?.filter((pending) => pending !== id) ?? null;
+      set({
+        ...settled,
+        tabs: acknowledgeTab(settled.tabs, settled.activeId),
+        status: clearsSessionError ? t("status.ready") : current.status,
+        error: clearsSessionError ? null : current.error,
+        errorSessionId: clearsSessionError ? null : current.errorSessionId,
+        hostKeyPrompt: current.hostKeyPrompt?.sessionId === id ? null : current.hostKeyPrompt,
+        pastePrompt: current.pastePrompt?.sessionId === id ? null : current.pastePrompt,
+        clipboardPrompt: current.clipboardPrompt?.sessionId === id ? null : current.clipboardPrompt,
+        authPrompts: current.authPrompts.filter((prompt) => prompt.sessionId !== id),
+        closePrompt: closePrompt && closePrompt.length > 0 ? closePrompt : null,
+      });
+    } finally {
+      endTabConnectionClose(id);
     }
-    const current = get();
-    const closing = current.tabs.find((tab) => tab.info.id === id);
-    const remaining = current.tabs.filter((tab) => tab.info.id !== id);
-    // The pane shows its last tab next, or folds away with its last tab.
-    const settled = closing
-      ? settlePane({ ...paneState(current), tabs: remaining }, closing.paneId)
-      : { ...paneState(current), tabs: remaining };
-    const clearsSessionError = current.errorSessionId === id;
-    const closePrompt = current.closePrompt?.filter((pending) => pending !== id) ?? null;
-    set({
-      ...settled,
-      tabs: acknowledgeTab(settled.tabs, settled.activeId),
-      status: clearsSessionError ? t("status.ready") : current.status,
-      error: clearsSessionError ? null : current.error,
-      errorSessionId: clearsSessionError ? null : current.errorSessionId,
-      hostKeyPrompt: current.hostKeyPrompt?.sessionId === id ? null : current.hostKeyPrompt,
-      pastePrompt: current.pastePrompt?.sessionId === id ? null : current.pastePrompt,
-      clipboardPrompt: current.clipboardPrompt?.sessionId === id ? null : current.clipboardPrompt,
-      authPrompts: current.authPrompts.filter((prompt) => prompt.sessionId !== id),
-      closePrompt: closePrompt && closePrompt.length > 0 ? closePrompt : null,
-    });
   },
 
   requestCloseTab(id) {

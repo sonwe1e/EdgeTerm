@@ -13,7 +13,13 @@ import {
 } from "react";
 import { useShallow } from "zustand/react/shallow";
 
-import { acceptHostKey, revealCwdInFiler, sessionClosedNotice, splitSession } from "./actions";
+import {
+  acceptHostKey,
+  revealCwdInFiler,
+  sessionClosedNotice,
+  shouldApplySessionState,
+  splitSession,
+} from "./actions";
 import * as api from "./api";
 import { useAgents } from "./agents/model";
 import { AuthPromptDialog } from "./components/AuthPromptDialog";
@@ -351,12 +357,21 @@ export default function App() {
 
   useEffect(() => {
     const unlisten = api.onSessionState(({ id, state, message }) => {
+      if (!shouldApplySessionState(id)) return;
       applyState(id, state as SessionState, message ?? undefined);
       if (state === "closed") {
         getController(id)?.writeText(sessionClosedNotice());
       }
     });
-    const authUnlisten = api.onAuthPrompt(addAuthPrompt);
+    const authUnlisten = api.onAuthPrompt((prompt) => {
+      if (!shouldApplySessionState(prompt.sessionId)) {
+        // The native handshake can still be waiting after its tab/attempt
+        // was cancelled. Release that round without reopening a stale dialog.
+        void api.answerAuthPrompt(prompt.id, null).catch(() => undefined);
+        return;
+      }
+      addAuthPrompt(prompt);
+    });
     const stopWorkspace = startWorkspace(Promise.all([unlisten, authUnlisten]));
     return () => {
       stopWorkspace();

@@ -6,6 +6,17 @@ import { fontStack } from "./fonts";
 import { commandHistory } from "./history";
 import { t } from "./i18n";
 import { IS_WINDOWS } from "./platform";
+import {
+  beginConnectionAttempt,
+  closeConnection,
+  connectionAttemptVersion,
+  hasConnectionWork,
+  holdConnectionCleanup,
+  invalidateConnectionAttempt,
+  isBackendAttemptCurrent,
+  isConnectionClosing,
+  needsConnectionCleanup,
+} from "./sessionConnectionLifecycle";
 import { tabTitle, useStore, type HostKeyPrompt, type Tab } from "./store";
 import type { TerminalController } from "./terminal";
 import { disposeController, getController, setController } from "./terminalRegistry";
@@ -66,17 +77,23 @@ export function pendingSessionInfo(id: string, profile: SessionProfile): Session
   };
 }
 
-/** Tabs whose open_session call has not replied yet; see `connectSession`. */
-const pendingConnects = new Set<string>();
+/** Ignore cancelled owners while their handshake/cleanup is being drained. */
+export function shouldApplySessionState(id: string): boolean {
+  if (!useStore.getState().tabs.some((tab) => tab.info.id === id)) return false;
+  return isBackendAttemptCurrent(id);
+}
 
-/**
- * The connect attempt in flight per tab. Cancelling bumps the number, so a
- * late reply from the previous attempt cannot mark the tab connected again.
- */
-const connectAttempts = new Map<string, number>();
-
-/** Attempts the user cancelled while the backend was still negotiating. */
-const cancelledAttempts = new Set<string>();
+function sameConnectionIdentity(left: SessionProfile, right: SessionProfile): boolean {
+  const port = (profile: SessionProfile) =>
+    profile.port ?? (profile.kind === "ftp" ? 21 : profile.kind === "telnet" ? 23 : 22);
+  return (
+    left.kind === right.kind &&
+    (left.host ?? "").trim().toLowerCase() === (right.host ?? "").trim().toLowerCase() &&
+    port(left) === port(right) &&
+    (left.username ?? "") === (right.username ?? "") &&
+    (left.jumpProfileId ?? "") === (right.jumpProfileId ?? "")
+  );
+}
 
 /**
  * The history bucket a session's commands belong to, so suggestions can
@@ -190,7 +207,15 @@ export async function ensureController(id: string): Promise<TerminalController> 
   // A paste that would submit several commands stops here and asks; App
   // renders the dialog and pastes it once the user agrees.
   controller.onConfirmPaste((text) => useStore.getState().setPastePrompt({ sessionId: id, text }));
-  setController(id, controller);
+  // The lazy import can outlive a tab closed during startup. Its callers
+  // already check their own liveness; do not retain an orphan in the registry.
+  const tab = useStore.getState().tabs.find((item) => item.info.id === id);
+  if (tab) {
+    controller.setLocked(
+      isConnectionClosing(id) || tab.state === "closed" || tab.state === "error",
+    );
+    setController(id, controller);
+  } else controller.dispose();
   return controller;
 }
 
@@ -208,6 +233,7 @@ export async function openSession(
   attemptTabId?: string,
 ): Promise<string | null> {
   const id = attemptTabId ?? newSessionId();
+  if (isConnectionClosing(id)) return null;
   const existing = useStore.getState().tabs.find((tab) => tab.info.id === id);
   if (existing) {
     if (existing.state !== "error" && existing.state !== "closed") return null;
@@ -223,7 +249,19 @@ export async function openSession(
   } else {
     useStore.getState().addTab(pendingSessionInfo(id, profile), profile, "connecting");
   }
+  // Cancellation can happen during the first lazy terminal import, before
+  // connectSession has a backend attempt to retire. Reserve its intent now.
+  invalidateConnectionAttempt(id);
+  const version = connectionAttemptVersion(id);
   if (!isFileSession(profile.kind)) await ensureController(id);
+  const current = useStore.getState().tabs.find((tab) => tab.info.id === id);
+  if (
+    connectionAttemptVersion(id) !== version ||
+    isConnectionClosing(id) ||
+    current?.state !== "connecting"
+  ) {
+    return null;
+  }
   return connectSession(id, profile, reuseSessionId);
 }
 
@@ -274,21 +312,26 @@ export async function splitSession(id: string, side: "right" | "down"): Promise<
  */
 export async function disconnectSession(id: string): Promise<void> {
   const tab = useStore.getState().tabs.find((item) => item.info.id === id);
-  if (!tab) return;
+  if (!tab || isConnectionClosing(id)) return;
 
   // A connect that has not settled is cancellable: mark the attempt so its
   // reply is ignored, close whatever the backend already created, and park
   // the tab on the same "closed" state a normal disconnect leaves it in.
   if (tab.state === "connecting") {
-    const attempt = connectAttempts.get(id);
-    if (attempt !== undefined) cancelledAttempts.add(`${id}:${attempt}`);
-    connectAttempts.set(id, (attempt ?? 0) + 1);
+    invalidateConnectionAttempt(id);
     const store = useStore.getState();
+    for (const prompt of store.authPrompts) {
+      if (prompt.sessionId !== id) continue;
+      void api.answerAuthPrompt(prompt.id, null).catch(() => undefined);
+      store.clearAuthPrompt(prompt.id);
+    }
     const message = t("status.connectionCancelled");
     store.applyState(id, "closed", message);
     store.setStatus(message);
     getController(id)?.writeText(`\r\n\x1b[33m${message}\x1b[0m\r\n`);
-    await api.closeSession(id).catch(() => undefined);
+    const closing = closeConnection(id).catch(() => undefined);
+    holdConnectionCleanup(id, closing);
+    await closing;
     return;
   }
 
@@ -296,12 +339,15 @@ export async function disconnectSession(id: string): Promise<void> {
   // which can land before open_session's own reply. Closing in that window
   // would let the late reply mark the tab connected again over a session
   // that is already gone, so wait for the connect to settle first.
-  if (tab.state !== "connected" || pendingConnects.has(id)) return;
+  if (tab.state !== "connected" || hasConnectionWork(id)) return;
 
+  invalidateConnectionAttempt(id);
   let failure: string | null = null;
-  await api.closeSession(id).catch((e) => {
+  const closing = closeConnection(id).catch((e) => {
     failure = errorText(e);
   });
+  holdConnectionCleanup(id, closing);
+  await closing;
 
   const store = useStore.getState();
   const current = store.tabs.find((item) => item.info.id === id);
@@ -326,22 +372,28 @@ export async function disconnectSession(id: string): Promise<void> {
 export function reconnectSession(id: string): Promise<string | null> {
   const store = useStore.getState();
   const tab = store.tabs.find((item) => item.info.id === id);
-  if (!tab || (tab.state !== "closed" && tab.state !== "error")) {
+  if (!tab || isConnectionClosing(id) || (tab.state !== "closed" && tab.state !== "error")) {
     return Promise.resolve(null);
   }
   // The tab's copy is the profile as it was when the session opened. Editing
   // the saved session does not rewrite that copy (only the public-key setup
   // does), so reconnecting from it would dial the old host with the old
-  // credentials while the tree shows the new ones. Use the saved profile and
-  // keep a tab-only secret when the saved one has none.
+  // credentials while the tree shows the new ones. A tab-only secret belongs
+  // to its original endpoint/account and must not follow a profile to another.
   const saved = tab.profile.id
     ? store.profiles.find((profile) => profile.id === tab.profile.id)
     : undefined;
+  const sameAuthentication =
+    saved &&
+    sameConnectionIdentity(saved, tab.profile) &&
+    (saved.auth ?? "password") === (tab.profile.auth ?? "password");
+  const sameKey =
+    sameAuthentication && (saved?.privateKeyPath ?? "") === (tab.profile.privateKeyPath ?? "");
   const profile = saved
     ? {
         ...saved,
-        password: saved.password ?? tab.profile.password,
-        passphrase: saved.passphrase ?? tab.profile.passphrase,
+        password: saved.password ?? (sameAuthentication ? tab.profile.password : undefined),
+        passphrase: saved.passphrase ?? (sameKey ? tab.profile.passphrase : undefined),
       }
     : tab.profile;
   return connectSession(id, profile);
@@ -381,27 +433,33 @@ export async function connectSession(
 ): Promise<string | null> {
   const store = useStore.getState();
   const pending = store.tabs.find((item) => item.info.id === id);
-  const label = pending
-    ? tabTitle(pending)
-    : profile.name || profile.host || profile.portName || "session";
+  if (isConnectionClosing(id)) return null;
+  if (!pending) {
+    disposeController(id);
+    return null;
+  }
+  const label = tabTitle(pending);
 
   store.setStatus(t("status.connecting", { name: label }));
   store.setError(null);
   store.applyState(id, "connecting");
 
-  // The decoder for the profile's encoding must be in place before the
-  // first byte of the banner arrives; a reconnect may carry a re-edited
-  // profile, so it is set on every connect.
-  getController(id)?.setEncoding(profile.encoding);
-  getController(id)?.setBackspace(profile.backspace);
-
-  const attempt = (connectAttempts.get(id) ?? 0) + 1;
-  connectAttempts.set(id, attempt);
-  const attemptKey = `${id}:${attempt}`;
-  pendingConnects.add(id);
+  const attempt = beginConnectionAttempt(id);
+  const current = () =>
+    attempt.current() && useStore.getState().tabs.some((tab) => tab.info.id === id);
   try {
+    // The backend owns sessions by id, not frontend attempt. A cancelled
+    // handshake must finish and be closed before a retry may claim that id.
+    if (attempt.previous) await attempt.previous;
+    if (!current()) return null;
+    if (needsConnectionCleanup(id)) {
+      await closeConnection(id);
+      if (!current()) return null;
+    }
     let connectionProfile = profile;
-    const cwd = pending?.directories?.terminal;
+    const cwd = sameConnectionIdentity(pending.profile, profile)
+      ? pending.directories?.terminal
+      : undefined;
     if (cwd && (profile.kind === "local" || profile.kind === "ssh")) {
       let startAt = cwd;
       if (profile.kind === "local") {
@@ -415,6 +473,11 @@ export async function connectSession(
       }
       connectionProfile = { ...profile, cwd: startAt };
     }
+    if (!current()) return null;
+    // Only the current owner may change the decoder before its banner.
+    getController(id)?.setEncoding(profile.encoding);
+    getController(id)?.setBackspace(profile.backspace);
+    attempt.claimBackend();
     // The controller exists before the backend is asked to connect (see
     // openSession), so the output channel handed over here already has a
     // terminal to land its bytes on.
@@ -422,6 +485,10 @@ export async function connectSession(
       connectionProfile,
       id,
       (bytes, consumed) => {
+        if (!current()) {
+          consumed();
+          return;
+        }
         const controller = getController(id);
         if (controller) controller.write(bytes, consumed);
         else consumed();
@@ -430,12 +497,13 @@ export async function connectSession(
       useStore.getState().sshAutoReuse,
     );
 
-    // Cancelled while negotiating: close the backend session this attempt
-    // created, if any, and leave the tab on its cancellation state.
-    if (cancelledAttempts.delete(attemptKey)) {
+    // No later handshake can start until this cleanup has completed. Closing
+    // by id here therefore cannot accidentally close a successful newer retry.
+    if (!current()) {
       if (outcome.status === "connected") {
-        await api.closeSession(id).catch(() => undefined);
+        await closeConnection(id).catch(() => undefined);
       }
+      if (!useStore.getState().tabs.some((tab) => tab.info.id === id)) disposeController(id);
       return null;
     }
 
@@ -445,8 +513,9 @@ export async function connectSession(
     const tab = connectedStore.tabs.find((item) => item.info.id === id);
     if (!tab) {
       if (outcome.status === "connected") {
-        await api.closeSession(id).catch(() => undefined);
+        await closeConnection(id).catch(() => undefined);
       }
+      disposeController(id);
       return null;
     }
 
@@ -461,6 +530,7 @@ export async function connectSession(
 
     const { info } = outcome;
     connectedStore.updateTabInfo(id, info);
+    connectedStore.updateTabProfile(id, profile);
     connectedStore.applyState(id, "connected");
     const name = tabTitle({ info, ordinal: tab.ordinal });
     connectedStore.setStatus(
@@ -476,7 +546,10 @@ export async function connectSession(
     }
     return id;
   } catch (e) {
-    if (cancelledAttempts.delete(attemptKey)) return null;
+    if (!current()) {
+      if (!useStore.getState().tabs.some((tab) => tab.info.id === id)) disposeController(id);
+      return null;
+    }
     const message = errorText(e);
     if (useStore.getState().tabs.some((tab) => tab.info.id === id)) {
       failSession(id, message);
@@ -485,7 +558,7 @@ export async function connectSession(
     }
     return null;
   } finally {
-    pendingConnects.delete(id);
+    attempt.finish();
   }
 }
 
