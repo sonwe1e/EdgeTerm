@@ -1,4 +1,5 @@
 import { act, createElement, type ReactElement } from "react";
+import { createPortal } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -67,8 +68,10 @@ describe("submenuKey", () => {
 
 // A dropdown like View: a plain row, the Theme row with its submenu, another
 // plain row, then a row whose submenu holds a nested submenu.
-function Harness(): ReactElement {
-  const submenu = useSubmenuHover();
+function Harness({ portal = false }: { portal?: boolean }): ReactElement {
+  const submenu = useSubmenuHover(
+    portal ? (entry) => document.getElementById(`hover-portal-${entry.dataset.key}`) : undefined,
+  );
   const button = (label: string) =>
     createElement("button", { key: label, className: "menu-entry" }, label);
   const entry = (key: string, label: string, ...children: ReactElement[]) =>
@@ -81,7 +84,16 @@ function Harness(): ReactElement {
         ...submenu.entryProps(key),
       },
       createElement("div", { className: "menu-entry" }, label),
-      createElement("div", { className: "menu-dropdown menu-submenu" }, ...children),
+      portal
+        ? createPortal(
+            createElement(
+              "div",
+              { id: `hover-portal-${key}`, className: "menu-dropdown menu-submenu" },
+              ...children,
+            ),
+            document.body,
+          )
+        : createElement("div", { className: "menu-dropdown menu-submenu" }, ...children),
     );
   return createElement(
     "div",
@@ -164,6 +176,31 @@ describe("useSubmenuHover", () => {
     expect(isOpen("1")).toBe(true);
     // … and arrives.
     pointerMove(button("Display Settings…"), button("Light"), 230, 340);
+    expect(isOpen("1")).toBe(true);
+  });
+
+  it("keeps the safe triangle when a resolver finds a portalled submenu", () => {
+    act(() => root.render(createElement(Harness, { portal: true })));
+    const panel = document.getElementById("hover-portal-1")!;
+    expect(container.contains(panel)).toBe(false);
+    panel.getBoundingClientRect = () =>
+      ({
+        ...SUBMENU,
+        x: SUBMENU.left,
+        y: SUBMENU.top,
+        width: SUBMENU.right - SUBMENU.left,
+        height: SUBMENU.bottom - SUBMENU.top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    pointerMove(null, row("1"), 100, 314);
+    pointerMove(row("1"), button("Display Settings…"), 190, 330);
+    expect(isOpen("1")).toBe(true);
+    pointerMove(button("Display Settings…"), button("Display Settings…"), 210, 333);
+    expect(isOpen("1")).toBe(true);
+    const target = [...panel.querySelectorAll("button")].find(
+      (candidate) => candidate.textContent === "Light",
+    )!;
+    pointerMove(button("Display Settings…"), target, 230, 340);
     expect(isOpen("1")).toBe(true);
   });
 

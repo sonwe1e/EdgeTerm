@@ -406,19 +406,27 @@
   transform-origin: top right;
 }
 
-.context-menu .menu-submenu {
+.context-submenu {
+  display: block;
+  z-index: 151;
+  /* Keep measurement independent of the left/right position selected below;
+     fixed width:auto can otherwise shrink-to-fit anew after each move. */
+  width: max-content;
+  min-width: min(220px, calc(100vw - 12px));
+  max-width: calc(100vw - 12px);
   max-height: 60vh;
   overflow-y: auto;
+  /* Measured and placed before paint; never flash at the inherited submenu
+     coordinates. This panel is a portal outside its parent's scrollport. */
+  visibility: hidden;
 }
 
 /* Near the right edge (where the Filer lives) submenus open leftwards. */
-.context-menu.is-flipped .menu-submenu {
-  left: auto;
-  right: calc(100% + var(--submenu-gap));
+.context-submenu[data-side="left"] {
   transform-origin: top right;
 }
 
-.context-menu.is-flipped .menu-submenu-entry.is-open::after {
+.context-menu .menu-submenu-entry[data-submenu-side="left"].is-open::after {
   left: auto;
   right: 100%;
 }

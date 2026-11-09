@@ -37,6 +37,14 @@ const mount = (onClose: () => void, nested = false) => {
   return host.querySelector<HTMLElement>(".context-menu")!;
 };
 
+function childOf(trigger: HTMLElement) {
+  const id = trigger.getAttribute("aria-controls");
+  expect(id).toBeTruthy();
+  const child = document.getElementById(id!);
+  expect(child).not.toBeNull();
+  return child!;
+}
+
 it("keeps a scroll inside the menu open but dismisses when the page behind it scrolls", () => {
   const close = vi.fn();
   const menu = mount(close);
@@ -49,8 +57,12 @@ it("keeps a scroll inside the menu open but dismisses when the page behind it sc
 
 it("also keeps a scroll inside a nested menu open", () => {
   const close = vi.fn();
-  mount(close, true);
-  act(() => host.querySelector(".menu-submenu")!.dispatchEvent(new Event("scroll")));
+  const menu = mount(close, true);
+  const trigger = menu.querySelector<HTMLButtonElement>("button")!;
+  act(() => trigger.click());
+  const child = childOf(trigger);
+  expect(menu.contains(child)).toBe(false);
+  act(() => child.dispatchEvent(new Event("scroll")));
   expect(close).not.toHaveBeenCalled();
 });
 
@@ -161,12 +173,23 @@ it("reveals a long submenu's Home and End rows without scrolling its parent or p
   );
   const menu = host.querySelector<HTMLElement>(".context-menu")!;
   const opener = menu.querySelector<HTMLButtonElement>(".menu-submenu-entry > button")!;
-  const child = menu.querySelector<HTMLElement>(".menu-submenu")!;
-  const rows = [...child.querySelectorAll<HTMLButtonElement>(":scope > button")];
   Object.defineProperties(menu, {
     clientHeight: { configurable: true, value: 84 },
+    clientTop: { configurable: true, value: 1 },
+    offsetHeight: { configurable: true, value: 86 },
     scrollHeight: { configurable: true, value: 400 },
   });
+  // jsdom has no layout. Give the now portalled panel's visible anchor the
+  // same explicit layout contract as this test's mocked scrolling metrics.
+  vi.spyOn(menu, "getBoundingClientRect").mockReturnValue(
+    DOMRect.fromRect({ x: 100, y: 100, width: 240, height: 86 }),
+  );
+  vi.spyOn(opener.parentElement!, "getBoundingClientRect").mockReturnValue(
+    DOMRect.fromRect({ x: 107, y: 110, width: 226, height: 28 }),
+  );
+  act(() => opener.click());
+  const child = childOf(opener);
+  const rows = [...child.querySelectorAll<HTMLButtonElement>(":scope > button")];
   Object.defineProperties(child, {
     clientHeight: { configurable: true, value: 56 },
     scrollHeight: { configurable: true, value: 292 },
@@ -184,7 +207,6 @@ it("reveals a long submenu's Home and End rows without scrolling its parent or p
   document.documentElement.scrollTop = 91;
   document.body.scrollTop = 29;
   try {
-    act(() => opener.click());
     act(() => vi.advanceTimersByTime(20));
     expect(document.activeElement).toBe(rows[0]);
     expect(opener.getAttribute("aria-expanded")).toBe("true");
@@ -207,4 +229,70 @@ it("reveals a long submenu's Home and End rows without scrolling its parent or p
     document.documentElement.scrollTop = oldHtmlScroll;
     document.body.scrollTop = oldBodyScroll;
   }
+});
+
+it("owns native focus and pointer events in a portal and returns ArrowLeft to its trigger", () => {
+  vi.useFakeTimers();
+  const close = vi.fn();
+  const menu = mount(close, true);
+  const trigger = menu.querySelector<HTMLButtonElement>("button")!;
+  act(() => trigger.click());
+  act(() => vi.advanceTimersByTime(20));
+  const child = childOf(trigger);
+  const row = child.querySelector<HTMLButtonElement>("button")!;
+  expect(document.activeElement).toBe(row);
+  act(() => row.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })));
+  expect(close).not.toHaveBeenCalled();
+  act(() => row.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })));
+  expect(document.activeElement).toBe(trigger);
+  expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  expect(document.getElementById(child.id)).toBeNull();
+  expect(close).not.toHaveBeenCalled();
+  act(() => document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })));
+  expect(close).toHaveBeenCalledOnce();
+});
+
+it("repositions on its owner's scroll and removes a branch whose anchor scrolls out", () => {
+  vi.useFakeTimers();
+  const close = vi.fn();
+  const menu = mount(close, true);
+  const trigger = menu.querySelector<HTMLButtonElement>("button")!;
+  Object.defineProperties(menu, {
+    clientTop: { configurable: true, value: 1 },
+    clientHeight: { configurable: true, value: 98 },
+    offsetHeight: { configurable: true, value: 100 },
+    scrollHeight: { configurable: true, value: 400 },
+  });
+  vi.spyOn(menu, "getBoundingClientRect").mockReturnValue(
+    DOMRect.fromRect({ x: 100, y: 100, width: 240, height: 100 }),
+  );
+  vi.spyOn(trigger.parentElement!, "getBoundingClientRect").mockImplementation(() =>
+    DOMRect.fromRect({ x: 107, y: 140 - menu.scrollTop, width: 226, height: 28 }),
+  );
+  act(() => trigger.click());
+  const child = childOf(trigger);
+  Object.defineProperties(child, {
+    clientTop: { configurable: true, value: 1 },
+    offsetWidth: { configurable: true, value: 220 },
+    offsetHeight: { configurable: true, value: 100 },
+  });
+  act(() => vi.advanceTimersByTime(20));
+  expect(child.style.top).toBe("139px");
+  expect(document.activeElement).toBe(child.querySelector("button"));
+
+  menu.scrollTop = 10;
+  act(() => menu.dispatchEvent(new Event("scroll")));
+  expect(child.style.top).toBe("129px");
+  expect(child.isConnected).toBe(true);
+  expect(close).not.toHaveBeenCalled();
+
+  menu.scrollTop = 100;
+  act(() => menu.dispatchEvent(new Event("scroll")));
+  expect(child.isConnected).toBe(false);
+  expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  expect(menu.scrollTop).toBe(100);
+  expect(document.activeElement).toBe(menu);
+  expect(close).not.toHaveBeenCalled();
+  act(() => menu.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true })));
+  expect(document.activeElement).toBe(trigger);
 });
