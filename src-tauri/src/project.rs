@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::{AppError, ErrorCode, Result};
 use crate::model::SessionProfile;
 use crate::session::ssh::SharedTransport;
+use crate::session::{SftpRequest, SftpResponse};
 
 const TEXT_LIMIT: usize = 4 * 1024 * 1024;
 /// A log view moves a bounded window over an arbitrarily large file. This
@@ -796,9 +797,9 @@ pub async fn read_text(
     })
 }
 
-/// Read a bounded binary preview through the existing authenticated SSH
-/// transport. Unlike an external-editor copy, this never creates a watched
-/// local file and therefore cannot upload anything back to the server.
+/// Read a bounded binary preview on the Filer's cached authenticated SFTP
+/// subsystem. Unlike a fresh editor channel or external-editor copy, this
+/// does not start another subsystem or create a watched local file.
 pub(crate) async fn read_preview_bytes(
     state: &crate::commands::AppState,
     id: &str,
@@ -806,34 +807,26 @@ pub(crate) async fn read_preview_bytes(
     limit: usize,
 ) -> Result<Vec<u8>> {
     let path = validate_path(path)?;
-    let (_, transport) = transport_of(state, id)?;
+    // The Filer request enum is also used by FTP. Keep this preview strictly
+    // SSH-only, exactly as the previous transport-based implementation did.
+    let _ = transport_of(state, id)?;
     tokio::time::timeout(Duration::from_secs(45), async {
-        let sftp = sftp_for(transport).await?;
-        // Keep the editor's existing SFTP error wording unchanged. Only this
-        // preview call translates the exact bounded-read limit failure.
-        let (bytes, size, ..) = sftp.read(path, limit).await.map_err(|error| {
-            if error.code == ErrorCode::InvalidInput
-                && error.message.ends_with("-byte editor limit")
-            {
-                AppError::invalid_input(format!(
-                    "the image exceeds the {limit}-byte preview limit; open it externally"
-                ))
-            } else {
-                error
-            }
-        })?;
-        if bytes.len() > limit {
-            return Err(AppError::invalid_input(
-                "the image exceeds the preview size limit",
-            ));
+        match state
+            .sessions
+            .sftp(
+                id,
+                SftpRequest::ReadPreview {
+                    path: path.to_string(),
+                    limit,
+                },
+            )
+            .await?
+        {
+            SftpResponse::Bytes(bytes) => Ok(bytes),
+            _ => Err(AppError::new(
+                "SFTP returned an unexpected image preview response",
+            )),
         }
-        if bytes.len() as u64 != size {
-            return Err(AppError::coded(
-                ErrorCode::Conflict,
-                "the image was truncated while it was being read; retry preview",
-            ));
-        }
-        Ok(bytes)
     })
     .await
     .map_err(|_| AppError::timeout("the image preview read timed out"))?

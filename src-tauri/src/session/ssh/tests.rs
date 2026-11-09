@@ -3,11 +3,12 @@ use std::path::{Path, PathBuf};
 use russh::keys::PublicKey;
 
 use super::{
-    auth_failure, authenticate, client_config, connect_on, ensure_sftp, handshake_failure,
-    key_check, key_only_verdict, legacy_choices, open_shell, replace_host_key, run_sftp,
-    saved_answer, verify_host_key, AuthFlow, AuthPrompter, Client, Endpoint, Handle,
-    HandshakeError, Hops, KeyCheck, KeyCheckOutcome, LegacyRecord, Prompt, Request, SftpRequest,
-    SftpResponse, SharedTransport, SshTransports, SAVED_PASSWORD_REJECTED,
+    auth_failure, authenticate, browse_sftp, client_config, connect_on, ensure_sftp,
+    handshake_failure, key_check, key_only_verdict, legacy_choices, open_shell,
+    replace_host_key, run_sftp, saved_answer, verify_host_key, AuthFlow, AuthPrompter,
+    Client, Endpoint, Handle, HandshakeError, Hops, KeyCheck, KeyCheckOutcome, LegacyRecord,
+    Prompt, Request, SftpRequest, SftpResponse, SharedTransport, SshTransports,
+    SAVED_PASSWORD_REJECTED,
 };
 use crate::error::{AppError, ErrorCode};
 use crate::file_transfer::Control;
@@ -1641,6 +1642,9 @@ use std::io::{Read as _, Seek as _, SeekFrom, Write as _};
 #[derive(Clone)]
 struct SftpHomeServer {
     root: PathBuf,
+    /// Counts actual subsystem starts, not individual SFTP operations. A
+    /// listing followed by an image preview must need only one handshake.
+    subsystem_starts: Arc<std::sync::atomic::AtomicUsize>,
     posix_rename: bool,
     deny_posix_rename: bool,
     packet_len: Option<u64>,
@@ -1669,6 +1673,7 @@ impl SftpHomeServer {
     fn new(root: &Path) -> Self {
         Self {
             root: root.to_path_buf(),
+            subsystem_starts: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             posix_rename: true,
             deny_posix_rename: false,
             packet_len: None,
@@ -1714,6 +1719,8 @@ impl russh::server::Handler for SftpHomeServer {
         let stored = self.channels.lock().await.remove(&channel);
         match (name == "sftp", stored) {
             (true, Some(stored)) => {
+                self.subsystem_starts
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 // The delayed acknowledgement runs inside the handler, the
                 // way a loaded sshd takes its time before replying: nothing
                 // else has to flow while the client waits for it. The slow
@@ -1743,6 +1750,94 @@ impl russh::server::Handler for SftpHomeServer {
         }
         Ok(())
     }
+}
+
+#[tokio::test]
+async fn image_preview_reuses_filer_subsystem_and_keeps_the_byte_limit() {
+    let known_hosts = KnownHosts::new();
+    let home = known_hosts.path().parent().expect("scratch").join("home");
+    std::fs::create_dir_all(&home).expect("home");
+    let image = (0..(300 * 1024))
+        .map(|index| (index % 251) as u8)
+        .collect::<Vec<u8>>();
+    std::fs::write(home.join("plot.png"), &image).expect("fixture");
+
+    let server = SftpHomeServer::new(&home);
+    let starts = server.subsystem_starts.clone();
+    let address = serve_once(server, Preferred::default()).await;
+    let transport = transport_to(address, known_hosts.path()).await;
+    let slot = Arc::new(tokio::sync::Mutex::new(None));
+
+    let listing = browse_sftp(
+        transport.clone(),
+        slot.clone(),
+        SftpRequest::List { path: "/".into() },
+    )
+    .await
+    .expect("Filer lists");
+    assert!(matches!(listing, SftpResponse::Listing(_)));
+    let preview = browse_sftp(
+        transport.clone(),
+        slot.clone(),
+        SftpRequest::ReadPreview {
+            path: "/plot.png".into(),
+            limit: 16 * 1024 * 1024,
+        },
+    )
+    .await
+    .expect("the same Filer subsystem reads the image");
+    let SftpResponse::Bytes(bytes) = preview else {
+        panic!("preview returns raw image bytes");
+    };
+    assert_eq!(bytes, image, "no decoding or byte loss during SSH read");
+    assert_eq!(
+        starts.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "the preview must not start another SFTP subsystem"
+    );
+
+    let error = browse_sftp(
+        transport.clone(),
+        slot.clone(),
+        SftpRequest::ReadPreview {
+            path: "/plot.png".into(),
+            limit: 128 * 1024,
+        },
+    )
+    .await
+    .expect_err("oversized image is rejected before reading");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.to_string().contains("preview limit"), "{error}");
+
+    let missing = browse_sftp(
+        transport.clone(),
+        slot.clone(),
+        SftpRequest::ReadPreview {
+            path: "/missing.png".into(),
+            limit: 16 * 1024 * 1024,
+        },
+    )
+    .await
+    .expect_err("nonexistent image cannot be previewed");
+    assert_eq!(missing.code, ErrorCode::InvalidInput);
+
+    let repeated = browse_sftp(
+        transport,
+        slot,
+        SftpRequest::ReadPreview {
+            path: "/plot.png".into(),
+            limit: 16 * 1024 * 1024,
+        },
+    )
+    .await
+    .expect("a rejected preview must not break the cached SFTP session");
+    assert!(matches!(repeated, SftpResponse::Bytes(ref bytes) if bytes == &image));
+    assert_eq!(
+        starts.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "ordinary preview validation failures must not repeat SFTP handshake"
+    );
+    assert_eq!(std::fs::read(home.join("plot.png")).unwrap(), image);
 }
 
 /// The filesystem behind the fixture's SFTP subsystem. Paths are the

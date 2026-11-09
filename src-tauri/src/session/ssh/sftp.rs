@@ -1,4 +1,7 @@
 use super::*;
+use crate::error::ErrorCode;
+use russh_sftp::protocol::StatusCode;
+use tokio::io::AsyncReadExt;
 
 /// How often an SFTP-only session, which has no channel to read from, checks
 /// that its transport is still alive so a dropped connection is reported.
@@ -194,6 +197,10 @@ pub(super) async fn remote_cwd(handle: Arc<Handle<Client>>, token: &str) -> Resu
 /// answer in milliseconds; the deadline only bounds a stuck server.
 pub(super) const SFTP_OPERATION_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Image previews may copy up to 16 MiB. Keep the previous dedicated image
+/// read's deadline without applying it to normal directory operations.
+const SFTP_PREVIEW_TIMEOUT: Duration = Duration::from_secs(45);
+
 /// A recursive delete is one request that legitimately walks a whole tree, one
 /// round trip per entry, so it gets its own, longer deadline. Aborting it at
 /// the browsing deadline would leave the tree half deleted.
@@ -227,6 +234,7 @@ pub(super) async fn browse_sftp(
     slot: Arc<tokio::sync::Mutex<Option<Arc<SftpSession>>>>,
     request: SftpRequest,
 ) -> Result<SftpResponse> {
+    let is_preview = matches!(&request, SftpRequest::ReadPreview { .. });
     let session = {
         let mut cached = slot.lock().await;
         tokio::time::timeout(
@@ -242,12 +250,30 @@ pub(super) async fn browse_sftp(
             recursive: true,
             ..
         } => SFTP_DELETE_TIMEOUT,
+        SftpRequest::ReadPreview { .. } => SFTP_PREVIEW_TIMEOUT,
         _ => SFTP_OPERATION_TIMEOUT,
     };
     let result = tokio::time::timeout(deadline, run_sftp(session.clone(), request))
         .await
         .unwrap_or_else(|_| Err(AppError::timeout("SFTP operation timed out")));
-    if result.is_err() {
+    // A bounded image rejection is not a broken SFTP connection. Keep the
+    // warmed subsystem after an oversized/missing/changed image so the next
+    // preview does not negotiate a new channel. Transport errors and all
+    // existing Filer operations retain their previous reconnect policy.
+    let refresh = match &result {
+        Ok(_) => false,
+        Err(error)
+            if is_preview
+                && matches!(
+                    error.code,
+                    ErrorCode::InvalidInput | ErrorCode::PermissionDenied | ErrorCode::Conflict
+                ) =>
+        {
+            false
+        }
+        Err(_) => true,
+    };
+    if refresh {
         let mut cached = slot.lock().await;
         if cached
             .as_ref()
@@ -320,6 +346,11 @@ pub(super) async fn ensure_sftp(
 pub(super) async fn run_sftp(sftp: Arc<SftpSession>, request: SftpRequest) -> Result<SftpResponse> {
     match request {
         SftpRequest::Home => Ok(SftpResponse::Path(sftp.canonicalize(".").await?)),
+        SftpRequest::ReadPreview { path, limit } => {
+            read_cached_preview(&sftp, &path, limit)
+                .await
+                .map(SftpResponse::Bytes)
+        }
         SftpRequest::List { path } => {
             let base = match sftp.canonicalize(path.clone()).await {
                 Ok(p) => p,
@@ -381,6 +412,78 @@ pub(super) async fn run_sftp(sftp: Arc<SftpSession>, request: SftpRequest) -> Re
             sftp.rename(from, to).await?;
             Ok(SftpResponse::Done)
         }
+    }
+}
+
+/// The Filer already has an authenticated, cached SFTP subsystem from its
+/// directory listing. Share that subsystem for image reads rather than
+/// opening a new channel and repeating its version exchange per click.
+///
+/// Reads use READ only, are capped before and during I/O, and reject a file
+/// that changes size or modification time while being read. This function is
+/// intentionally separate from the transfer engine's pipelined write paths.
+async fn read_cached_preview(sftp: &SftpSession, path: &str, limit: usize) -> Result<Vec<u8>> {
+    let before = sftp
+        .metadata(path)
+        .await
+        .map_err(|error| preview_sftp_path_error(path, &error))?;
+    if before.is_dir() {
+        return Err(AppError::invalid_input("select a file, not a directory"));
+    }
+    let size = before.size.unwrap_or(0);
+    if size > limit as u64 {
+        return Err(AppError::invalid_input(format!(
+            "the image exceeds the {limit}-byte preview limit; open it externally"
+        )));
+    }
+
+    let mut file = sftp
+        .open_with_flags(path, OpenFlags::READ)
+        .await
+        .map_err(|error| preview_sftp_path_error(path, &error))?;
+    let mut bytes = Vec::with_capacity(size as usize);
+    // The stat could be stale: even an unexpectedly growing file cannot
+    // allocate beyond the preview's byte budget.
+    let read_result = (&mut file)
+        .take(limit as u64 + 1)
+        .read_to_end(&mut bytes)
+        .await;
+    let after = file.metadata().await.ok();
+    let _ = file.shutdown().await;
+    read_result.map_err(|error| AppError::new(format!("reading {path}: {error}")))?;
+
+    if bytes.len() > limit {
+        return Err(AppError::invalid_input("the image exceeds the preview size limit"));
+    }
+    if bytes.len() as u64 != size {
+        return Err(AppError::coded(
+            ErrorCode::Conflict,
+            "the image was truncated or grew while it was being read; retry preview",
+        ));
+    }
+    if let Some(after) = after {
+        let size_changed = after.size != before.size;
+        let mtime_changed =
+            after.mtime.is_some() && before.mtime.is_some() && after.mtime != before.mtime;
+        if size_changed || mtime_changed {
+            return Err(AppError::coded(
+                ErrorCode::Conflict,
+                "the file changed while it was being read; reopen it",
+            ));
+        }
+    }
+    Ok(bytes)
+}
+
+fn preview_sftp_path_error(path: &str, error: &russh_sftp::client::error::Error) -> AppError {
+    let message = format!("{path}: {error}");
+    match error {
+        russh_sftp::client::error::Error::Status(status) => match status.status_code {
+            StatusCode::NoSuchFile => AppError::invalid_input(message),
+            StatusCode::PermissionDenied => AppError::coded(ErrorCode::PermissionDenied, message),
+            _ => AppError::connection_failed(message),
+        },
+        _ => AppError::connection_failed(message),
     }
 }
 
