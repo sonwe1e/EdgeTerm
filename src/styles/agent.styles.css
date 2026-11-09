@@ -25,6 +25,21 @@
 .agent-compose-launch:hover {
   filter: brightness(1.15);
 }
+
+/* The pane's width is stable while the sticky actions change size. Do not
+   key this on overflow, which would make the label toggle itself on/off. */
+@container terminal-tabs (max-width: 520px) {
+  .agent-compose-launch {
+    width: var(--h-control);
+    padding: 0;
+    justify-content: center;
+  }
+
+  .agent-compose-label {
+    display: none;
+  }
+}
+
 .agent-inline {
   display: flex;
   flex-direction: column;

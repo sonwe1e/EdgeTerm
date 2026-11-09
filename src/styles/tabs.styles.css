@@ -1,6 +1,8 @@
 /* --- tabs ----------------------------------------------------------------- */
 
 .tabstrip {
+  container-name: terminal-tabs;
+  container-type: inline-size;
   flex: 0 0 var(--tabstrip-height);
   height: var(--tabstrip-height);
   display: flex;

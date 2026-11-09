@@ -18,13 +18,14 @@ export function AgentTabActions({ id }: { id: string }) {
         type="button"
         className="agent-compose-launch"
         title={t("agent.prompt")}
+        aria-label={t("agent.prompt")}
         onClick={() => {
           activate();
           showAgentComposer();
         }}
       >
         <Icon name="edit" />
-        {t("agent.prompt")}
+        <span className="agent-compose-label">{t("agent.prompt")}</span>
       </button>
     </div>
   );
