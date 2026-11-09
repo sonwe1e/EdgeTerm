@@ -24,6 +24,8 @@ try {
     "open_session",
     "write_session_bytes",
     "zmodem_read_bytes",
+    // Response carries image bytes, consumed as ArrayBuffer rather than JSON.
+    "preview_image_file",
     "zmodem_write_bytes",
     "open_local_path",
   ];
@@ -67,10 +69,38 @@ try {
   if (
     check &&
     normalize(readFileSync(target, "utf8")) !== normalize(readFileSync("src/bindings.ts", "utf8"))
-  )
-    throw new Error(
-      "Stale src/bindings.ts: run npm run bindings and review the wire contract diff",
+  ) {
+    // Only these known generated files enter the diagnostic. Disable external
+    // diff/textconv drivers and bound both collection and the CI log excerpt.
+    const diff = spawnSync(
+      "git",
+      [
+        "diff",
+        "--no-index",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--no-color",
+        "--",
+        "src/bindings.ts",
+        target,
+      ],
+      {
+        cwd: root,
+        encoding: "utf8",
+        windowsHide: true,
+        timeout: 10_000,
+        maxBuffer: 256 * 1024,
+      },
     );
+    const output = (diff.stdout ?? "").trim();
+    const excerpt =
+      output.length > 12_000
+        ? `${output.slice(0, 12_000)}\n[diff truncated after 12000 characters]`
+        : output || "[bounded generated-file diff unavailable]";
+    throw new Error(
+      `Stale src/bindings.ts: run npm run bindings and review the wire contract diff\n${excerpt}`,
+    );
+  }
   console.log(
     `${check ? "Fresh" : "Generated"} Rust bindings: ${exported.length}/${registered.length} commands, 5 events; ${manual.length} explicit exceptions.`,
   );
