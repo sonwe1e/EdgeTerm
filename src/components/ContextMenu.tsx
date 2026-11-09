@@ -73,6 +73,19 @@ const levelItems = (level: HTMLElement | null) =>
     (item) => item.closest(".menu-dropdown") === level && !item.matches(":disabled"),
   );
 
+/** Reveal only inside this menu level, without scrolling the panel underneath. */
+function focusMenuItem(item: HTMLElement | undefined) {
+  if (!item) return;
+  item.focus({ preventScroll: true });
+  const level = item.closest<HTMLElement>(".menu-dropdown");
+  if (!level || level.scrollHeight <= level.clientHeight) return;
+  const top = level.getBoundingClientRect().top + level.clientTop;
+  const bottom = top + level.clientHeight;
+  const row = item.getBoundingClientRect();
+  if (row.top < top) level.scrollTop -= top - row.top;
+  else if (row.bottom > bottom) level.scrollTop += row.bottom - bottom;
+}
+
 function isAction(item: MenuItem): item is MenuAction {
   return typeof item !== "string" && "label" in item;
 }
@@ -192,7 +205,7 @@ export function ContextMenu({ x, y, items, onClose, align = "left", className }:
       const level =
         ref.current?.querySelector<HTMLElement>(`[data-submenu-key="${path}"] > .menu-submenu`) ??
         null;
-      levelItems(level)[0]?.focus({ preventScroll: true });
+      focusMenuItem(levelItems(level)[0]);
     });
   };
 
@@ -212,7 +225,7 @@ export function ContextMenu({ x, y, items, onClose, align = "left", className }:
     if (index < 0) return;
     const focus = (next: HTMLElement) => {
       event.preventDefault();
-      next.focus({ preventScroll: true });
+      focusMenuItem(next);
     };
     switch (event.key) {
       case "ArrowDown":
@@ -235,7 +248,7 @@ export function ContextMenu({ x, y, items, onClose, align = "left", className }:
         if (!parent) return;
         const path = parent.dataset.submenuKey!;
         setKeyboardOpen(path.includes(".") ? path.slice(0, path.lastIndexOf(".")) : null);
-        parent.querySelector<HTMLElement>(":scope > .menu-entry")?.focus({ preventScroll: true });
+        focusMenuItem(parent.querySelector<HTMLElement>(":scope > .menu-entry") ?? undefined);
         return;
       }
       case "Enter":
@@ -267,16 +280,19 @@ export function ContextMenu({ x, y, items, onClose, align = "left", className }:
     const onFocus = (event: FocusEvent) => {
       if (!ref.current?.contains(event.target as Node)) onClose();
     };
-    // Capture phase: a scroll anywhere (the panel body included) would leave
-    // the fixed-position menu floating away from its row.
+    const onScroll = (event: Event) => {
+      // Long tab lists and group submenus own their scrolling. Only a scroll
+      // outside the menu can detach its fixed anchor from the underlying row.
+      if (!ref.current?.contains(event.target as Node)) onClose();
+    };
     document.addEventListener("mousedown", onMouseDown, true);
-    document.addEventListener("scroll", onClose, true);
+    document.addEventListener("scroll", onScroll, true);
     document.addEventListener("focusin", onFocus);
     window.addEventListener("blur", onClose);
     window.addEventListener("resize", onClose);
     return () => {
       document.removeEventListener("mousedown", onMouseDown, true);
-      document.removeEventListener("scroll", onClose, true);
+      document.removeEventListener("scroll", onScroll, true);
       document.removeEventListener("focusin", onFocus);
       window.removeEventListener("blur", onClose);
       window.removeEventListener("resize", onClose);
