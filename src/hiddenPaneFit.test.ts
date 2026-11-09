@@ -12,7 +12,7 @@ vi.mock("./api", async (original) => ({
 import { ensureController } from "./actions";
 import { SessionPane } from "./components/TerminalPane";
 import { useStore, type Tab } from "./store";
-import { disposeController } from "./terminalRegistry";
+import { disposeController, getController } from "./terminalRegistry";
 
 const initialState = useStore.getState();
 
@@ -47,6 +47,15 @@ let observers: (() => void)[];
 
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  useStore.setState(
+    {
+      ...initialState,
+      tabs: [tab],
+      activeId: tab.info.id,
+      panes: [{ id: tab.paneId, activeTabId: tab.info.id }],
+    },
+    true,
+  );
   observers = [];
   vi.stubGlobal(
     "ResizeObserver",
@@ -68,6 +77,7 @@ afterEach(() => {
   act(() => root.unmount());
   host.remove();
   disposeController(tab.info.id);
+  useStore.setState(initialState, true);
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -80,6 +90,9 @@ describe("a pane's resize observer, through SessionPane", () => {
     const controller = await ensureController(tab.info.id);
     const fit = vi.spyOn(controller, "scheduleFit");
     await render(true);
+    expect(getController(tab.info.id)).toBe(controller);
+    expect(host.querySelector(".xterm")).not.toBeNull();
+    expect(observers.length).toBeGreaterThan(0);
     fit.mockClear();
 
     act(() => observers.forEach((callback) => callback()));
@@ -90,6 +103,9 @@ describe("a pane's resize observer, through SessionPane", () => {
     const controller = await ensureController(tab.info.id);
     const fit = vi.spyOn(controller, "scheduleFit");
     await render(false);
+    expect(getController(tab.info.id)).toBe(controller);
+    expect(host.querySelector(".xterm")).not.toBeNull();
+    expect(observers.length).toBeGreaterThan(0);
     fit.mockClear();
 
     act(() => observers.forEach((callback) => callback()));
