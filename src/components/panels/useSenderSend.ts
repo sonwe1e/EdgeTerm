@@ -56,9 +56,15 @@ export function useSenderSend({ tabs, activeId, setStatus, t, activeTab }: Optio
   // A manual send does not outlive the panel; a schedule does.
   useEffect(() => () => stopRef.current?.stop(), []);
 
+  // Use one eligible-target list for both the actual send and its UI count.
+  // The repeating Sender follows the same connected-terminal contract.
+  const allTargetIds = tabs
+    .filter((tab) => !isFileSession(tab.info.kind) && tab.state === "connected")
+    .map((tab) => tab.info.id);
+
   const targets = (): string[] => {
     if (target === "all") {
-      return tabs.filter((tab) => !isFileSession(tab.info.kind)).map((tab) => tab.info.id);
+      return allTargetIds;
     }
     return tabs.some((tab) => tab.info.id === activeId && !isFileSession(tab.info.kind)) && activeId
       ? [activeId]
@@ -78,7 +84,7 @@ export function useSenderSend({ tabs, activeId, setStatus, t, activeTab }: Optio
     if (running) return;
     const targetIds = targets();
     if (targetIds.length === 0) {
-      setStatus(t("sender.noSession"));
+      setStatus(t(target === "all" ? "sender.noConnectedTerminals" : "sender.noSession"));
       return;
     }
 
@@ -164,6 +170,7 @@ export function useSenderSend({ tabs, activeId, setStatus, t, activeTab }: Optio
     schedule,
     target,
     setTarget,
+    allTargetCount: allTargetIds.length,
     repeatOpen,
     setRepeatOpen,
     now,

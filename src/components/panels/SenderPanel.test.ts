@@ -27,6 +27,31 @@ const saved: SavedCommand = {
   ending: "crlf",
   scope: { type: "global" },
 };
+
+const senderTab = (id: string, state: Tab["state"], kind: Tab["info"]["kind"] = "ssh"): Tab => ({
+  info: {
+    id,
+    profileId: null,
+    name: id,
+    kind,
+    protocol: kind,
+    address: "fixture",
+    color: null,
+    supportsRemoteFiles: kind === "sftp",
+    recording: null,
+    legacyAlgorithms: [],
+    sharedConnection: false,
+  },
+  profile: { id, name: id, kind },
+  number: 1,
+  ordinal: 0,
+  state,
+  commandActivity: "idle",
+  activityKind: "command",
+  cols: 80,
+  rows: 24,
+  paneId: initial.activePaneId,
+});
 let host: HTMLDivElement;
 let root: Root;
 const click = (element: Element) =>
@@ -126,6 +151,98 @@ it("sends a compact saved command with its stored ending to the active session",
     expect.any(Function),
   );
 });
+
+it("sends a manual all-target command only to connected terminal sessions", async () => {
+  useStore.setState({
+    tabs: [
+      senderTab("ssh-connected", "connected"),
+      senderTab("ssh-2-connected", "connected"),
+      senderTab("ssh-closed", "closed"),
+      senderTab("ssh-connecting", "connecting"),
+      senderTab("local-error", "error", "local"),
+      senderTab("file-connected", "connected", "sftp"),
+    ],
+    activeId: "ssh-connected",
+  });
+  await render();
+  const target = host.querySelectorAll<HTMLSelectElement>(".sender-options select")[1]!;
+  await act(async () => {
+    target.value = "all";
+    target.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  expect(host.querySelector('option[value="all"]')?.textContent).toBe("All Sessions (2)");
+  type("whoami");
+  await click(host.querySelector<HTMLButtonElement>(".sender-send:not(.is-stop)")!);
+  expect(sendUnits).toHaveBeenCalledWith(
+    ["ssh-connected", "ssh-2-connected"],
+    ["whoami\n"],
+    "lf",
+    expect.any(Object),
+    expect.any(Function),
+  );
+});
+
+it("does not send an all-target command when no terminal session is connected", async () => {
+  useStore.setState({
+    tabs: [
+      senderTab("ssh-closed", "closed"),
+      senderTab("ssh-connecting", "connecting"),
+      senderTab("file-connected", "connected", "sftp"),
+    ],
+    activeId: "ssh-closed",
+  });
+  await render();
+  const target = host.querySelectorAll<HTMLSelectElement>(".sender-options select")[1]!;
+  await act(async () => {
+    target.value = "all";
+    target.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  expect(host.querySelector('option[value="all"]')?.textContent).toBe("All Sessions (0)");
+  type("whoami");
+  await click(host.querySelector<HTMLButtonElement>(".sender-send:not(.is-stop)")!);
+  expect(sendUnits).not.toHaveBeenCalled();
+  expect(useStore.getState().status).toBe("Sender: no connected terminal sessions");
+});
+
+it("keeps the existing no-session feedback when targeting only the current session", async () => {
+  useStore.setState({ tabs: [senderTab("ssh-closed", "closed")], activeId: null });
+  await render();
+  type("whoami");
+  await click(host.querySelector<HTMLButtonElement>(".sender-send:not(.is-stop)")!);
+  expect(sendUnits).not.toHaveBeenCalled();
+  expect(useStore.getState().status).toBe("Sender: no session selected");
+});
+
+it("explains zero connected terminals in Chinese when all sessions are selected", async () => {
+  useStore.setState({ language: "zh-CN", tabs: [], activeId: null });
+  await render();
+  const target = host.querySelectorAll<HTMLSelectElement>(".sender-options select")[1]!;
+  await act(async () => {
+    target.value = "all";
+    target.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  type("whoami");
+  await click(host.querySelector<HTMLButtonElement>(".sender-send:not(.is-stop)")!);
+  expect(sendUnits).not.toHaveBeenCalled();
+  expect(useStore.getState().status).toBe("发送器：没有已连接的终端会话");
+});
+
+it.each([false, true])(
+  "shows the eligible connected terminal count in the all-target option (compact=%s)",
+  async (compact) => {
+    useStore.setState({
+      tabs: [
+        senderTab("ssh-connected", "connected"),
+        senderTab("local-connected", "connected", "local"),
+        senderTab("ssh-closed", "closed"),
+        senderTab("file-connected", "connected", "sftp"),
+      ],
+      activeId: "ssh-connected",
+    });
+    await render(compact);
+    expect(host.querySelector('option[value="all"]')?.textContent).toBe("All Sessions (2)");
+  },
+);
 
 it("reloads the mounted library after imports and discards a stale edit", async () => {
   await render();

@@ -158,6 +158,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
     schedule,
     target,
     setTarget,
+    allTargetCount,
     repeatOpen,
     setRepeatOpen,
     now,
@@ -222,7 +223,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
           schedule={schedule}
           target={target}
           setTarget={setTarget}
-          tabs={tabs}
+          allTargetCount={allTargetCount}
           openComposer={openComposer}
           editing={editing}
         />
@@ -267,7 +268,9 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
                     onChange={(event) => setTarget(event.target.value as Target)}
                   >
                     <option value="current">{t("sender.currentSession")}</option>
-                    <option value="all">{t("sender.allSessions", { count: tabs.length })}</option>
+                    <option value="all">
+                      {t("sender.allSessions", { count: allTargetCount })}
+                    </option>
                   </select>
                   <Icon name="chevron-down" className="select-chevron" />
                 </span>
