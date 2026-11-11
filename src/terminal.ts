@@ -1007,6 +1007,15 @@ export class TerminalController {
     if (this.locked === locked) return;
     this.connectionRevision += 1;
     this.locked = locked;
+    if (!locked) {
+      // A disconnected TUI cannot send its usual shutdown sequences. Reusing
+      // its xterm instance for a fresh shell would otherwise keep mouse
+      // tracking (and forward wheel/move reports as literal shell input),
+      // application cursor keys, focus reports and bracketed paste enabled.
+      // Reset only session-owned modes, retaining the normal scrollback and
+      // the previous full-screen image until the user actually reconnects.
+      this.term.write("\x1b[?1;1000;1002;1003;1004;1005;1006;1015;2004l\x1b[?1049l\x1b>");
+    }
     this.term.write(locked ? "\x1b[?25l" : "\x1b[?25h");
     if (locked) {
       this.agentKeyPassthrough = false;
