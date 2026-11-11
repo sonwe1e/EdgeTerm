@@ -4,7 +4,6 @@ import { senderColor, senderColorStyle } from "../../senderColors";
 import type { ScheduleState } from "../../senderSchedule";
 import { stopSchedule } from "../../senderSchedule";
 import { firstLine } from "../../senderUnits";
-import type { Tab } from "../../store";
 import { type LineEnding, type SavedCommand } from "../../types";
 import { Icon } from "../icons";
 import { showAgentComposer } from "../../agents/model";
@@ -37,7 +36,7 @@ interface Props {
   schedule: ScheduleState | null;
   target: Target;
   setTarget: Dispatch<SetStateAction<Target>>;
-  tabs: Tab[];
+  allTargetCount: number;
   openComposer: () => void;
   editing: Editing | null;
 }
@@ -62,7 +61,7 @@ export function SenderQuickbar({
   schedule,
   target,
   setTarget,
-  tabs,
+  allTargetCount,
   openComposer,
   editing,
 }: Props) {
@@ -189,7 +188,7 @@ export function SenderQuickbar({
           onChange={(event) => setTarget(event.target.value as Target)}
         >
           <option value="current">{t("sender.currentSession")}</option>
-          <option value="all">{t("sender.allSessions", { count: tabs.length })}</option>
+          <option value="all">{t("sender.allSessions", { count: allTargetCount })}</option>
         </select>
         <Icon name="chevron-down" className="select-chevron" />
       </label>
