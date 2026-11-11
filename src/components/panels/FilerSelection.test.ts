@@ -3,6 +3,16 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const platform = vi.hoisted(() => ({ mac: false }));
+type MockDropEvent = {
+  payload: {
+    type: "drop";
+    paths: string[];
+    position: { toLogical: (ratio: number) => { x: number; y: number } };
+  };
+};
+const webviewDrop = vi.hoisted(() => ({
+  listener: null as ((event: MockDropEvent) => void) | null,
+}));
 vi.mock("../../platform", () => ({
   HAS_TRAY: true,
   get IS_MAC() {
@@ -16,7 +26,14 @@ vi.mock("../FileIcon", () => ({ FileIcon: () => null }));
 vi.mock("../icons", () => ({ Icon: () => null }));
 vi.mock("../../actions", () => ({ revealCwdInFiler: vi.fn() }));
 vi.mock("@tauri-apps/api/webview", () => ({
-  getCurrentWebview: () => ({ onDragDropEvent: async () => () => {} }),
+  getCurrentWebview: () => ({
+    onDragDropEvent: async (listener: (event: MockDropEvent) => void) => {
+      webviewDrop.listener = listener;
+      return () => {
+        if (webviewDrop.listener === listener) webviewDrop.listener = null;
+      };
+    },
+  }),
 }));
 vi.mock("../../nativeDialog", () => ({
   ask: vi.fn(async () => true),
@@ -36,6 +53,7 @@ vi.mock("../../api", async (original) => ({
   dragStagingPath: vi.fn(),
   cancelTransfer: vi.fn(),
   localRename: vi.fn(),
+  localCopyInto: vi.fn(),
   sftpRename: vi.fn(),
   sftpDownload: vi.fn(),
   previewImageFile: vi.fn(),
@@ -184,6 +202,7 @@ beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.clearAllMocks();
   platform.mac = false;
+  webviewDrop.listener = null;
   localStorage.clear();
   useStore.setState({ ...initialState, language: "en", tabs: [], activeId: null }, true);
   useFileTransfers.setState({ jobs: {}, open: false });
@@ -207,6 +226,7 @@ beforeEach(() => {
   vi.mocked(api.localRemove).mockResolvedValue();
   vi.mocked(api.sftpRemove).mockResolvedValue();
   vi.mocked(api.localRename).mockResolvedValue();
+  vi.mocked(api.localCopyInto).mockResolvedValue({ files: 1, skipped: 0 });
   vi.mocked(api.sftpRename).mockResolvedValue();
   vi.mocked(api.transferFiles).mockResolvedValue();
   vi.mocked(api.sftpDownload).mockImplementation((id, remote, local, progress, transfer) =>
@@ -1107,6 +1127,43 @@ describe("Filer multiple selection at the real panel entry", () => {
   });
 
   describe("Filer transfer failure recovery", () => {
+    it("retries a failed local drop copy from the footer into the original folder", async () => {
+      vi.mocked(api.localCopyInto)
+        .mockRejectedValueOnce(Error("disk temporarily unavailable"))
+        .mockResolvedValueOnce({ files: 1, skipped: 0 });
+      await mount();
+      await act(async () => {
+        webviewDrop.listener?.({
+          payload: {
+            type: "drop",
+            paths: ["/incoming/notes.txt"],
+            position: { toLogical: () => ({ x: 0, y: 0 }) },
+          },
+        });
+      });
+      const retry = host.querySelector<HTMLButtonElement>(".filer-transfer-retry");
+      expect(retry).not.toBeNull();
+      expect(host.querySelector(".panel-empty.is-error")?.textContent).toContain(
+        "disk temporarily unavailable",
+      );
+      expect(api.localCopyInto).toHaveBeenCalledTimes(1);
+      await act(async () => retry!.click());
+      expect(api.localCopyInto).toHaveBeenCalledTimes(2);
+      expect(api.localCopyInto).toHaveBeenNthCalledWith(
+        2,
+        "/incoming/notes.txt",
+        "/selection",
+        expect.any(Function),
+      );
+      expect(host.querySelector(".panel-empty.is-error")).toBeNull();
+      expect(host.querySelector(".filer-transfer-retry")).toBeNull();
+      expect(host.querySelector(".filer-transfer.is-complete")).not.toBeNull();
+      const listingsBeforeRefresh = vi.mocked(api.localList).mock.calls.length;
+      const refresh = viewMenuItem("Refresh");
+      await act(async () => refresh.click());
+      expect(api.localList).toHaveBeenCalledTimes(listingsBeforeRefresh + 1);
+    });
+
     /** Picks one local file and uploads it; settles once the attempt is over. */
     const startUpload = async () => {
       vi.mocked(nativeDialog.open).mockResolvedValue(["/local/notes.txt"]);
