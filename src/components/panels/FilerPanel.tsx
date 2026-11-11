@@ -1237,6 +1237,7 @@ function FilerPanelBase() {
                   className="panel-action filer-action filer-transfer-retry"
                   title={t("filer.retryName", { name: transfer.name })}
                   aria-label={t("filer.retryName", { name: transfer.name })}
+                  onClick={retryTransfer}
                 >
                   <Icon name="debug-restart" />
                 </button>
