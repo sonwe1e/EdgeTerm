@@ -22,7 +22,9 @@ vi.mock("./platform", () => ({
 }));
 
 import { SearchOverlay } from "./components/SearchOverlay";
+import { commands } from "./bindings";
 import { useStore, type Tab } from "./store";
+import { TERMINAL_COLD_HISTORY_KEY } from "./storePreferences";
 import { TerminalController } from "./terminal";
 import { disposeController, setController } from "./terminalRegistry";
 
@@ -120,10 +122,26 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
+  window.localStorage.removeItem(TERMINAL_COLD_HISTORY_KEY);
   disposeController(SESSION_ID);
   for (const host of hosts.splice(0)) host.remove();
   document.body.replaceChildren();
 });
+
+/** SearchOverlay owns a 250 ms debounce for Rust cold-history lookups. */
+async function settleColdSearch() {
+  await act(async () => {
+    await new Promise((resolve) => window.setTimeout(resolve, 300));
+  });
+}
+
+async function setFindToggle(host: HTMLElement, label: string, enabled: boolean) {
+  const toggle = host.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
+  if (toggle.getAttribute("aria-pressed") !== String(enabled)) {
+    await act(async () => toggle.click());
+  }
+}
 
 describe("terminal search options", () => {
   it("toggles case-sensitive, whole-word and regex matching through SearchOverlay on a real xterm buffer", async () => {
@@ -283,6 +301,105 @@ describe("terminal search options", () => {
       // Esc pressed in the terminal closes it too, without reaching the shell.
       expect(escapeInTerminal(controller)).toBe(false);
       expect(onClose).toHaveBeenCalledTimes(2);
+    } finally {
+      act(() => root.unmount());
+      host.remove();
+    }
+  });
+});
+
+describe("cold-only search inside SearchOverlay", () => {
+  it("uses the live hot boundary and refreshes on hot results without flashing its count", async () => {
+    const controller = createRegisteredController();
+    await write(controller, "needle in hot\r\n");
+    window.localStorage.setItem(TERMINAL_COLD_HISTORY_KEY, "1");
+    const before = vi.spyOn(controller, "coldSearchBeforeAbs").mockReturnValue(500);
+    const lookup = vi.spyOn(commands, "historySearchBefore").mockResolvedValue([
+      { absLine: 410, column: 1 },
+      { absLine: 408, column: 1 },
+    ]);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    try {
+      await act(async () => root.render(h(SearchOverlay, { onClose() {} })));
+      await setFindToggle(host, "Match Case", true);
+      await setFindToggle(host, "Use Regular Expression", false);
+      await setFindToggle(host, "Match Whole Word", false);
+      const input = host.querySelector<HTMLInputElement>("input")!;
+      const count = host.querySelector<HTMLElement>(".search-count")!;
+      await act(async () => setInputValue(input, "needle"));
+      await settleColdSearch();
+      expect(lookup).toHaveBeenCalledWith(SESSION_ID, "needle", 200, 2000, 500);
+      expect(count.textContent).toContain("2 in history");
+
+      // A new buffer search result notifies the overlay even when the text
+      // query is unchanged. It should refetch cold ownership, but hold the
+      // existing count until the identical query's response arrives.
+      lookup.mockClear();
+      await act(async () => {
+        controller.search("needle", true, false, {
+          caseSensitive: true,
+          regex: false,
+          wholeWord: false,
+        });
+      });
+      expect(count.textContent).toContain("2 in history");
+      await settleColdSearch();
+      expect(lookup).toHaveBeenCalledTimes(1);
+      expect(before).toHaveBeenCalled();
+      expect(count.textContent).toContain("2 in history");
+
+      // Find in Selection never reports matches outside that selection.
+      controller.term.selectLines(0, 1);
+      const scope = host.querySelector<HTMLButtonElement>(
+        'button[aria-label="Find in Selection"]',
+      )!;
+      await act(async () => scope.click());
+      expect(scope.getAttribute("aria-pressed")).toBe("true");
+      expect(count.textContent).not.toContain("in history");
+      lookup.mockClear();
+      await settleColdSearch();
+      expect(lookup).not.toHaveBeenCalled();
+    } finally {
+      act(() => root.unmount());
+      host.remove();
+    }
+  });
+
+  it("discards a cold result when the hot boundary changes before its reply", async () => {
+    const controller = createRegisteredController();
+    await write(controller, "needle in hot\r\n");
+    window.localStorage.setItem(TERMINAL_COLD_HISTORY_KEY, "1");
+    const before = vi.spyOn(controller, "coldSearchBeforeAbs").mockReturnValue(500);
+    let finish: ((hits: { absLine: number; column: number }[]) => void) | undefined;
+    const lookup = vi.spyOn(commands, "historySearchBefore").mockImplementation(
+      () =>
+        new Promise<{ absLine: number; column: number }[]>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    try {
+      await act(async () => root.render(h(SearchOverlay, { onClose() {} })));
+      await setFindToggle(host, "Match Case", true);
+      await setFindToggle(host, "Use Regular Expression", false);
+      await setFindToggle(host, "Match Whole Word", false);
+      await act(async () =>
+        setInputValue(host.querySelector<HTMLInputElement>("input")!, "needle"),
+      );
+      await settleColdSearch();
+      expect(lookup).toHaveBeenCalledTimes(1);
+
+      // A page insertion or clear makes the old ownership boundary invalid.
+      // The response may arrive before the hot result refresh effect fires.
+      before.mockReturnValue(1);
+      await act(async () => finish?.([{ absLine: 410, column: 1 }]));
+      expect(host.querySelector<HTMLElement>(".search-count")!.textContent).not.toContain(
+        "in history",
+      );
     } finally {
       act(() => root.unmount());
       host.remove();

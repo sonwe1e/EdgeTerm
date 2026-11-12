@@ -13,12 +13,11 @@
  * rows still unwritten, and an exported line is never exported again).
  *
  * Resizes re-wrap the buffer and can delete or move marker rows, so a resize
- * schedules a resync that relocates the frontier by walking logical lines
- * from the bottom until one is recognized as already exported (public API
- * only). That assumes the freshest output does not repeat an already
- * exported line verbatim at the boundary — a repeat would open a gap, never
- * a duplicate. Production would match against the storage index instead of
- * the in-memory export set kept here.
+ * schedules a resync. The count of *unexported logical lines through the
+ * cursor* is invariant under a synchronous reflow, even when every log line
+ * has the same text. Relocate the frontier by counting those logical lines
+ * backward from the cursor, without interpreting content or allocating a
+ * potentially unbounded set of previous line texts.
  *
  * Boundaries: the integration layer calls notifyWriteParsed from xterm's
  * onWriteParsed — trims that happen inside one huge term.write before that
@@ -39,8 +38,10 @@ import {
 export interface HistoryCaptureOptions {
   /** Fraction of scrollback kept unwritten at the bottom before exporting. */
   scrollbackMarginRatio?: number;
-  /** Epoch time of a line, or null for time 0; must be non-decreasing. */
+  /** Legacy logical-line clock; preferably use the physical-row clock below. */
   lineTimeAt?: (absLine: number) => number | null;
+  /** Epoch time at the head physical row of an exported logical line. */
+  lineTimeAtRow?: (bufferRow: number) => number | null;
   onBatch: (bytes: Uint8Array) => void;
   onMismatch?: (detail: string) => void;
 }
@@ -52,8 +53,8 @@ export interface HistoryCapture {
   noteClear(): void;
   /**
    * Call after seamless history re-inserted `count` rows above the buffer
-   * top: the frontier marker re-parks count rows lower so those already
-   * exported rows can never be exported again.
+   * top: the frontier re-parks `count` rows lower so those already exported
+   * rows can never be exported again.
    */
   notePrepended(count: number): void;
   dispose(): void;
@@ -61,6 +62,13 @@ export interface HistoryCapture {
   exportedLines(): number;
   /** Newest exported absLine of the current epoch, or null. */
   lastExportedAbsLine(): number | null;
+  /**
+   * The oldest exported logical record with physical rows still in xterm's
+   * hot buffer. Also an exclusive upper bound for fetching older records.
+   * If none remains in hot, returns newestExportedAbsLine + 1. Returns null
+   * before any export or while the marker cannot establish the boundary.
+   */
+  oldestBufferedExportedAbsLine(): number | null;
 }
 
 // xterm 6.0's content/attribute word layout (common/buffer/Constants.ts),
@@ -154,33 +162,46 @@ export function createHistoryCapture(
 ): HistoryCapture {
   const ratio = options.scrollbackMarginRatio ?? 0.1;
   const lineTimeAt = options.lineTimeAt ?? (() => null);
+  const lineTimeAtRow = options.lineTimeAtRow;
   let exportedThroughAbs = 0;
+  let lastExportedTimeMs = 0;
   let emitted = 0;
   let frontierRow = 0;
   let marker: IMarker | null = null;
   let resyncPending = false;
+  let unexportedToCursor: number | null = 1;
+  let halted = false;
   let disposed = false;
-  // Bounded memory of what was already exported: the resize resync matches
-  // from the buffer bottom upward, so only the most recent exports can ever
-  // match. An unbounded set would hold every line's text for the session's
-  // lifetime - tens of MB on a long one - defeating the cold store's cap.
-  const RECENT_TEXTS_CAP = 20000;
-  const exportedTexts = new Set<string>();
-  const exportedOrder: string[] = [];
-  const rememberExported = (text: string) => {
-    exportedTexts.add(text);
-    exportedOrder.push(text);
-    if (exportedOrder.length > RECENT_TEXTS_CAP) {
-      exportedOrder.splice(0, exportedOrder.length - RECENT_TEXTS_CAP);
-      exportedTexts.clear();
-      for (const recent of exportedOrder) exportedTexts.add(recent);
-    }
-  };
+  // The hot buffer can begin with the wrapped tail of a partially trimmed
+  // logical line. Prepending older whole records puts a new logical line just
+  // before that tail, although its isWrapped bit remains true. Remember that
+  // insertion seam by the underlying BufferLine identity (which travels
+  // through splices/trims), so page-boundary counting does not merge them.
+  // TODO(A2): a hot buffer whose first row is only a wrapped tail still lacks
+  // the trimmed prefix of that logical line. Restoring the prefix requires
+  // merging it with the tail, not inserting another whole copy of the line.
+  const prependSeamHeads = new WeakSet<object>();
   const resizeListener = terminal.onResize(() => {
-    // Reflow re-wraps rows and can delete marker lines; relocate lazily.
-    resyncPending = true;
+    // Capture the reflow seam synchronously, *before* the next PTY write. A
+    // deferred relocation would silently skip any lines received between the
+    // resize and the next onWriteParsed callback.
     marker?.dispose();
     marker = null;
+    resyncFrontier();
+    if (!halted) {
+      if (terminal.buffer.active.type === "normal") parkMarker(frontierRow);
+      rememberFrontierDistance();
+    }
+    // Suppress cold reads until the next parsed write verifies the seam.
+    resyncPending = true;
+  });
+  const bufferListener = terminal.buffer.onBufferChange((buffer) => {
+    if (resyncPending && buffer.type === "normal" && !halted && !marker) {
+      // Returning from alternate screen can be followed by shell output in
+      // the same write. Reinstall *during* the switch, before those bytes
+      // can trim the already relocated normal-buffer frontier.
+      parkMarker(frontierRow);
+    }
   });
 
   const parkMarker = (row: number) => {
@@ -189,47 +210,74 @@ export function createHistoryCapture(
     marker = terminal.registerMarker(row - (buffer.baseY + buffer.cursorY)) ?? null;
   };
 
-  /** The visible text of the logical line spanning [head, end]. */
-  const logicalText = (head: number, end: number): string => {
-    const buffer = terminal.buffer.active;
-    let text = "";
-    for (let row = head; row <= end; row++) {
-      text += buffer.getLine(row)?.translateToString(true) ?? "";
+  /** Snapshot the logical distance from the frontier to the live cursor. */
+  const rememberFrontierDistance = () => {
+    const buffer = terminal.buffer.normal;
+    const cursor = Math.min(buffer.length - 1, buffer.baseY + buffer.cursorY);
+    if (frontierRow < 0 || cursor < frontierRow) {
+      unexportedToCursor = null;
+      return;
     }
-    return text;
+    let count = 0;
+    for (let row = frontierRow; row <= cursor; row++) {
+      const line = buffer.getLine(row);
+      if (!line) {
+        unexportedToCursor = null;
+        return;
+      }
+      if (row === frontierRow || !line.isWrapped) count++;
+    }
+    unexportedToCursor = count;
   };
 
   /**
-   * After a resize: walk logical lines from the bottom; the first one that
-   * is already exported marks the boundary — everything below it is
-   * unexported, and the frontier is that next line's head. If no exported
-   * line survived the reflow trim, the whole buffer is unexported.
+   * After reflow, the live cursor still belongs to the same logical line.
+   * Walk backward over the previously observed number of unexported logical
+   * lines; matching content alone is unsafe for repeated build/progress logs.
    */
   const resyncFrontier = () => {
     resyncPending = false;
-    const buffer = terminal.buffer.active;
-    let candidate = 0;
-    let end = buffer.length - 1;
-    while (end >= 0) {
-      let head = end;
-      while (head > 0 && (buffer.getLine(head)?.isWrapped ?? false)) head -= 1;
-      const text = logicalText(head, end);
-      if (text !== "" && exportedTexts.has(text)) {
-        frontierRow = candidate;
+    const buffer = terminal.buffer.normal;
+    const cursor = Math.min(buffer.length - 1, buffer.baseY + buffer.cursorY);
+    if (unexportedToCursor === null || unexportedToCursor <= 0 || cursor < 0) {
+      options.onMismatch?.("resize cannot locate the export frontier from the cursor");
+      halted = true;
+      return;
+    }
+    let head = cursor;
+    while (head > 0 && buffer.getLine(head)?.isWrapped) head--;
+    for (let remaining = unexportedToCursor - 1; remaining > 0; remaining--) {
+      head--;
+      if (head < 0) {
+        options.onMismatch?.("resize trimmed the unexported frontier");
+        halted = true;
         return;
       }
-      candidate = head;
-      end = head - 1;
+      while (head > 0 && buffer.getLine(head)?.isWrapped) head--;
     }
-    frontierRow = 0;
+    frontierRow = head;
   };
 
   const notifyWriteParsed = () => {
-    if (disposed) return;
+    if (disposed || halted) return;
     const buffer = terminal.buffer.active;
     if (buffer.type !== "normal") return;
     if (resyncPending) {
-      resyncFrontier();
+      // Relocated synchronously by onResize; if it happened while alternate
+      // screen was active, onBufferChange restores the normal marker before
+      // the first subsequent normal-buffer byte gets parsed.
+      resyncPending = false;
+      if (!marker) {
+        options.onMismatch?.("resized export frontier marker was not restored");
+        halted = true;
+        return;
+      }
+      if (marker?.isDisposed) {
+        options.onMismatch?.("trim reached the resized export frontier before the next write");
+        halted = true;
+        return;
+      }
+      if (marker) frontierRow = marker.line;
     } else if (marker?.isDisposed) {
       // The trim caught up with the frontier itself: unexported lines were
       // lost. Keep numbering continuous for what survives; never re-export.
@@ -247,6 +295,7 @@ export function createHistoryCapture(
       // Trims are still impossible; arm the frontier marker once a screenful
       // is in the buffer (terminalLineGutter's threshold).
       if (!marker && buffer.length > scrollback) parkMarker(frontierRow);
+      rememberFrontierDistance();
       return;
     }
     // Near the limit: export complete logical lines that sit fully above the
@@ -254,6 +303,7 @@ export function createHistoryCapture(
     // never exported.
     const limitRow = buffer.length - marginRows;
     const records: HistoryRecord[] = [];
+    let batchLastTimeMs = lastExportedTimeMs;
     let row = frontierRow;
     while (row < limitRow) {
       const sources: CellSource[] = [];
@@ -272,17 +322,27 @@ export function createHistoryCapture(
       }
       if (endRow > limitRow) break;
       const absLine = exportedThroughAbs + records.length + 1;
-      records.push(logicalLineFromCells(sources, { absLine, timeMs: lineTimeAt(absLine) ?? 0 }));
+      // The history index is in logical lines; the gutter's timestamps live
+      // in physical rows, so read the head row before advancing the frontier.
+      // A cursor-addressed repaint can date an older row after newer rows;
+      // clamp to the previous export to preserve the history codec's ordered
+      // timestamps (including across batch boundaries).
+      const observed = lineTimeAtRow?.(row) ?? lineTimeAt(absLine);
+      const validTime =
+        observed != null && Number.isSafeInteger(observed) && observed > 0 ? observed : 0;
+      batchLastTimeMs = Math.max(batchLastTimeMs, validTime);
+      records.push(logicalLineFromCells(sources, { absLine, timeMs: batchLastTimeMs }));
       row = endRow;
     }
     if (records.length > 0) {
       options.onBatch(encodeHistoryBatch(records));
+      lastExportedTimeMs = batchLastTimeMs;
       exportedThroughAbs += records.length;
       emitted += records.length;
-      for (const record of records) rememberExported(record.text);
       frontierRow = row;
     }
     parkMarker(frontierRow);
+    rememberFrontierDistance();
   };
 
   // Park at the initial frontier (row 0) immediately: a flood of writes
@@ -295,30 +355,55 @@ export function createHistoryCapture(
       marker?.dispose();
       marker = null;
       resyncPending = false;
+      unexportedToCursor = 1;
+      halted = false;
       exportedThroughAbs = 0;
+      lastExportedTimeMs = 0;
       frontierRow = 0;
-      exportedTexts.clear();
-      exportedOrder.length = 0;
       parkMarker(0);
     },
     notePrepended: (count: number) => {
-      // Seamless history re-inserts already-exported lines above the buffer
-      // top; markers do not follow insertions, so the frontier marker is
-      // re-parked count rows lower. Those rows sit above the frontier and
-      // can never be re-exported.
+      // Native markers follow CircularList insertions, but our cached
+      // frontierRow does not. Re-park against the known physical insertion
+      // count so already-exported cold rows cannot be re-exported.
       if (disposed || count <= 0) return;
+      const carried = terminal.buffer.normal.getLine(count);
+      if (carried?.isWrapped) {
+        const inner = (carried as unknown as { _line?: object })._line;
+        if (inner) prependSeamHeads.add(inner);
+      }
       marker?.dispose();
       marker = null;
       frontierRow += count;
       parkMarker(frontierRow);
+      rememberFrontierDistance();
     },
     dispose: () => {
       disposed = true;
       marker?.dispose();
       marker = null;
       resizeListener.dispose();
+      bufferListener.dispose();
     },
     exportedLines: () => emitted,
     lastExportedAbsLine: () => (exportedThroughAbs > 0 ? exportedThroughAbs : null),
+    oldestBufferedExportedAbsLine: () => {
+      if (disposed || halted || exportedThroughAbs === 0 || resyncPending) return null;
+      const buffer = terminal.buffer.active;
+      if (buffer.type !== "normal" || !marker || marker.isDisposed) return null;
+      const frontier = marker.line;
+      if (!Number.isInteger(frontier) || frontier < 0 || frontier > buffer.length) return null;
+      // The first row may be a wrapped tail of a line trimmed at the top.
+      // It is still resident and must not be reinserted as a duplicate.
+      let resident = frontier > 0 ? 1 : 0;
+      for (let row = 1; row < frontier; row++) {
+        const line = buffer.getLine(row);
+        if (!line) return null;
+        const inner = (line as unknown as { _line?: object })._line;
+        if (!line.isWrapped || (inner && prependSeamHeads.has(inner))) resident++;
+      }
+      if (resident > exportedThroughAbs) return null;
+      return exportedThroughAbs - resident + 1;
+    },
   };
 }

@@ -80,6 +80,11 @@ export class TerminalController {
     return this.searchController.onSearchResults(listener);
   }
 
+  /** Cold-history search boundary in logical record IDs, not gutter rows. */
+  coldSearchBeforeAbs(): number | null {
+    return this.coldHistory.coldSearchBeforeAbs();
+  }
+
   /**
    * Find in Selection: search only the current selection (or, when a search
    * has since moved the selection to a match, the one the user made). False
@@ -537,11 +542,10 @@ export class TerminalController {
       terminal: this.term,
       sessionId,
       enabled: () => terminalColdHistoryEnabled(),
-      onPrepended: (rows) => {
-        // The re-inserted rows predate the current first line number.
-        this.lineGutter.firstLineNumber -= rows;
-        this.lineGutter.invalidateGutter();
-      },
+      interactiveProgramActive: () =>
+        this.commands.aiTool !== null || this.clipboard.isMouseTracked(),
+      lineTimeAtRow: (row) => this.lineGutter.timestampAtPhysicalRow(row),
+      onPrepended: (rows, records) => this.lineGutter.prependHistoryRows(rows, records),
       onNotice: (text) => this.callbacks.onStatus?.(`cold history: ${text}`),
     });
 

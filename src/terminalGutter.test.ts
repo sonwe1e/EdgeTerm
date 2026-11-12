@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("./platform", () => ({ HAS_TRAY: true, IS_MAC: true, IS_WINDOWS: false }));
 
 import { TerminalController } from "./terminal";
+import type { HistoryRecord } from "./terminalHistory";
+import { prependRecords } from "./terminalHistoryMaterialize";
 
 const controllers: TerminalController[] = [];
 
@@ -107,6 +109,67 @@ afterEach(() => {
 });
 
 describe("gutter line numbering", () => {
+  it("keeps hot timestamps and physical numbers stable after wrapped cold history is prepended", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(50_000);
+    const controller = createController(5);
+    controller.term.resize(8, 5);
+    await write(controller, "warm\r\nhot\r\n");
+    const gutter = (
+      controller as unknown as {
+        lineGutter: {
+          prependHistoryRows: (rows: number, records: readonly HistoryRecord[]) => void;
+          timestampAtPhysicalRow: (row: number) => number | null;
+          trimLineMetadata: () => void;
+        };
+      }
+    ).lineGutter;
+    const first = metadata(controller).first;
+    const beforeHotTimes = recordedTimes(controller);
+    const oldHotRow = Array.from(
+      { length: controller.term.buffer.normal.length },
+      (_, i) => i,
+    ).find((index) => row(controller, index) === "hot");
+    expect(oldHotRow).toBeDefined();
+    const records: HistoryRecord[] = [
+      { absLine: 1, timeMs: 10_000, text: "abcdefghijkl", runs: [] },
+      { absLine: 2, timeMs: 20_000, text: "short", runs: [] },
+    ];
+    const rows = await prependRecords(controller.term, records);
+    expect(rows).toBe(3);
+    gutter.prependHistoryRows(rows, records);
+    expect(metadata(controller).first).toBe(first - rows);
+    expect(controller.term.buffer.normal.getLine(1)?.isWrapped).toBe(true);
+    expect([0, 1, 2].map((index) => gutter.timestampAtPhysicalRow(index))).toEqual([
+      10_000, 10_000, 20_000,
+    ]);
+    expect(gutter.timestampAtPhysicalRow(oldHotRow! + rows)).toBe(beforeHotTimes.get("hot"));
+    expect(first + oldHotRow!).toBe(metadata(controller).first + oldHotRow! + rows);
+    // A2 expands CircularList beyond the normal hot cap; it must not trim
+    // metadata for rows that xterm has not actually removed.
+    gutter.trimLineMetadata();
+    expect(metadata(controller).first).toBe(first - rows);
+  });
+
+  it("uses the unknown-time placeholder for a restored cold line without a timestamp", async () => {
+    const controller = createController(5);
+    controller.term.resize(20, 5);
+    const gutter = (
+      controller as unknown as {
+        lineGutter: {
+          prependHistoryRows: (rows: number, records: readonly HistoryRecord[]) => void;
+        };
+      }
+    ).lineGutter;
+    const records: HistoryRecord[] = [{ absLine: 1, timeMs: 0, text: "restored", runs: [] }];
+    const rows = await prependRecords(controller.term, records);
+    expect(rows).toBe(1);
+    gutter.prependHistoryRows(rows, records);
+    controller.term.scrollToTop();
+    const gutterRow = gutterRows(controller)[0];
+    expect(gutterRow.querySelector(".gutter-time")?.textContent).toBe("[--:--:--.---]");
+  });
+
   it("does not match a produced blank line with unused screen padding during reflow", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(5000);

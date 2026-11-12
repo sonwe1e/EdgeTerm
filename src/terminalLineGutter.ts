@@ -1,4 +1,5 @@
 import { Terminal, type IMarker } from "@xterm/xterm";
+import type { HistoryRecord } from "./terminalHistory";
 import { GutterMode, GutterView, LINE_TIME_SLACK, formatTime } from "./terminalShared";
 
 interface Context {
@@ -94,6 +95,44 @@ export class TerminalLineGutter {
   setLineTimes(times: number[]) {
     this.lineTimes = times;
     this.lineTimesStart = 0;
+  }
+
+  /** A physical xterm buffer row, not the cold store's logical absLine. */
+  timestampAtPhysicalRow(row: number): number | null {
+    if (!Number.isInteger(row) || row < 0) return null;
+    const time = this.lineTimes[this.lineTimesStart + row];
+    return Number.isSafeInteger(time) && time > 0 ? time : null;
+  }
+
+  /**
+   * A2 materializes whole logical records as physical rows before buffer 0.
+   * The old hot row at `i` moves to `i + rows`; keep its timestamp and
+   * absolute gutter number stable while dating each newly inserted wrap row
+   * from its owning logical record. The records arrive oldest-first, in the
+   * same order as the materializer wrote them.
+   */
+  prependHistoryRows(rows: number, records: readonly HistoryRecord[]): void {
+    if (!Number.isInteger(rows) || rows <= 0) return;
+    const buf = this.context.term.buffer.normal;
+    const times = new Array<number>(rows).fill(0);
+    let recordIndex = -1;
+    for (let index = 0; index < rows; index++) {
+      const line = buf.getLine(index);
+      if (!line) break;
+      // `isWrapped` belongs to a physical continuation row. Every new head
+      // starts a distinct logical record even if that record's text is blank.
+      if (index === 0 || !line.isWrapped) recordIndex++;
+      times[index] = records[recordIndex]?.timeMs ?? 0;
+    }
+    // If xterm changed its wrap behavior, unknown is safer than assigning a
+    // later record's clock to an unrelated earlier physical row.
+    if (recordIndex + 1 !== records.length) times.fill(0);
+    this.setLineTimes([...times, ...this.lineTimes.slice(this.lineTimesStart)]);
+    this.firstLineNumber -= rows;
+    // CircularList.splice moves xterm markers but not our cached
+    // trimMarkerLine. Re-park so an insertion cannot be mistaken for a trim.
+    this.resetTrimMarker();
+    this.invalidateGutter();
   }
 
   private recordNewRows(index: number, now: number) {
@@ -216,7 +255,13 @@ export class TerminalLineGutter {
   }
 
   trimLineMetadata() {
-    const max = this.context.term.rows + this.context.scrollback;
+    // A2 temporarily expands the xterm buffer when old rows are prepended.
+    // Trimming to the configured hot cap immediately would discard metadata
+    // for still-live cold rows before xterm itself removes those rows.
+    const max = Math.max(
+      this.context.term.rows + this.context.scrollback,
+      this.context.term.buffer.normal.length,
+    );
     this.dropLeadingLines(this.lineCount - max);
   }
 

@@ -495,6 +495,56 @@ impl HistoryStore {
         Ok(out)
     }
 
+    /// Newest-first page strictly *before* an absolute line. The caller uses
+    /// the oldest returned `abs_line` as the next exclusive cursor, so
+    /// adjacent pages cannot repeat a record even if new lines are appended
+    /// between reads. Pass `u64::MAX` for the initial page.
+    ///
+    /// Unlike `read` (whose inclusive lower-bound contract is retained), this
+    /// skips sealed blocks wholly newer than the cursor without decompressing
+    /// them. Only blocks that can contribute records are decoded.
+    pub(crate) fn read_before(
+        &self,
+        session_id: &str,
+        before_abs: u64,
+        max_lines: usize,
+    ) -> Result<Vec<HistoryLine>, HistoryError> {
+        let inner = self.inner.lock().expect("history store poisoned");
+        let session = inner
+            .sessions
+            .get(session_id)
+            .ok_or(HistoryError::UnknownSession)?;
+        let mut out = Vec::new();
+        if before_abs == 0 || max_lines == 0 {
+            return Ok(out);
+        }
+        for line in session.pending.iter().rev() {
+            if out.len() >= max_lines {
+                return Ok(out);
+            }
+            if line.abs_line < before_abs {
+                out.push(line.clone());
+            }
+        }
+        for block in session.blocks.iter().rev() {
+            if out.len() >= max_lines {
+                break;
+            }
+            if block.first_abs >= before_abs {
+                continue;
+            }
+            for line in block.lines().into_iter().rev() {
+                if out.len() >= max_lines {
+                    break;
+                }
+                if line.abs_line < before_abs {
+                    out.push(line);
+                }
+            }
+        }
+        Ok(out)
+    }
+
     /// Newest-first substring search over stored text. `budget` bounds the
     /// whole call; blocks checked after it expires are skipped, which the
     /// caller reports alongside the hits.
@@ -504,6 +554,33 @@ impl HistoryStore {
         needle: &str,
         limit: usize,
         budget: Duration,
+    ) -> Result<Vec<HistorySearchHit>, HistoryError> {
+        self.search_with_before(session_id, needle, limit, budget, None)
+    }
+
+    /// Like `search`, but search only records whose absolute line is strictly
+    /// older than `before_abs`. A hot line may already have been exported to
+    /// cold storage before xterm trims it; filtering *before* enforcing the
+    /// hit limit prevents those overlapping records from consuming the cold
+    /// result budget or being counted twice by the UI.
+    pub(crate) fn search_before(
+        &self,
+        session_id: &str,
+        needle: &str,
+        limit: usize,
+        budget: Duration,
+        before_abs: u64,
+    ) -> Result<Vec<HistorySearchHit>, HistoryError> {
+        self.search_with_before(session_id, needle, limit, budget, Some(before_abs))
+    }
+
+    fn search_with_before(
+        &self,
+        session_id: &str,
+        needle: &str,
+        limit: usize,
+        budget: Duration,
+        before_abs: Option<u64>,
     ) -> Result<Vec<HistorySearchHit>, HistoryError> {
         if needle.is_empty() {
             return Ok(Vec::new());
@@ -517,6 +594,11 @@ impl HistoryStore {
         let mut hits = Vec::new();
         let push_hits = |lines: Vec<HistoryLine>, hits: &mut Vec<HistorySearchHit>| {
             for line in lines.into_iter().rev() {
+                // The optional cursor is an exclusive upper bound; check it
+                // before counting hits, not after the limit has been filled.
+                if before_abs.is_some_and(|before| line.abs_line >= before) {
+                    continue;
+                }
                 if hits.len() >= limit {
                     return;
                 }
@@ -539,6 +621,9 @@ impl HistoryStore {
             for block in session.blocks.iter().rev() {
                 if hits.len() >= limit || Instant::now() > deadline {
                     break;
+                }
+                if before_abs.is_some_and(|before| block.first_abs >= before) {
+                    continue;
                 }
                 push_hits(block.lines(), &mut hits);
             }
@@ -754,6 +839,110 @@ mod tests {
     }
 
     #[test]
+    fn exclusive_read_pages_501_lines_without_duplicates() {
+        let store = HistoryStore::new();
+        let lines: Vec<_> = (1..=501u64).map(|i| line(i, i, "page")).collect();
+        store.append("s", &batch(&lines)).unwrap();
+
+        let first = store.read_before("s", u64::MAX, 500).unwrap();
+        assert_eq!(first.len(), 500);
+        assert_eq!(first.first().unwrap().abs_line, 501);
+        assert_eq!(first.last().unwrap().abs_line, 2);
+        let second = store.read_before("s", 2, 500).unwrap();
+        assert_eq!(second.len(), 1);
+        assert_eq!(second[0].abs_line, 1);
+        assert!(store.read_before("s", 1, 500).unwrap().is_empty());
+        assert!(store.read_before("s", 0, 500).unwrap().is_empty());
+
+        // This is a separate command contract: the original inclusive
+        // lower-bound reader still returns the newest records.
+        assert_eq!(store.read("s", 2, 1).unwrap()[0].abs_line, 501);
+    }
+
+    #[test]
+    fn exclusive_read_pages_1000_lines_and_skips_later_appends() {
+        let store = HistoryStore::new();
+        let lines: Vec<_> = (1..=1000u64).map(|i| line(i, i, "page")).collect();
+        store.append("s", &batch(&lines)).unwrap();
+
+        let first = store.read_before("s", u64::MAX, 500).unwrap();
+        assert_eq!(first.len(), 500);
+        assert_eq!(first.last().unwrap().abs_line, 501);
+        store
+            .append("s", &batch(&[line(1001, 1001, "later")]))
+            .unwrap();
+        let second = store.read_before("s", 501, 500).unwrap();
+        assert_eq!(second.len(), 500);
+        assert_eq!(second.first().unwrap().abs_line, 500);
+        assert_eq!(second.last().unwrap().abs_line, 1);
+        assert!(store.read_before("s", 1, 500).unwrap().is_empty());
+
+        let mut all: Vec<_> = first
+            .iter()
+            .chain(second.iter())
+            .map(|l| l.abs_line)
+            .collect();
+        all.dedup();
+        assert_eq!(all.len(), 1000);
+        assert_eq!(
+            store.read_before("s", u64::MAX, 1).unwrap()[0].abs_line,
+            1001
+        );
+    }
+
+    #[test]
+    fn exclusive_read_crosses_compressed_blocks_and_pending() {
+        let store = HistoryStore::new();
+        for from in [1u64, 4097] {
+            let lines: Vec<_> = (from..from + 4096).map(|i| line(i, i, "sealed")).collect();
+            store.append("s", &batch(&lines)).unwrap();
+        }
+        let tail: Vec<_> = (8193..=8292u64).map(|i| line(i, i, "pending")).collect();
+        store.append("s", &batch(&tail)).unwrap();
+
+        assert_eq!(
+            store
+                .read_before("s", u64::MAX, 150)
+                .unwrap()
+                .iter()
+                .map(|l| l.abs_line)
+                .collect::<Vec<_>>(),
+            (8143..=8292u64).rev().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            store
+                .read_before("s", 4098, 7)
+                .unwrap()
+                .iter()
+                .map(|l| l.abs_line)
+                .collect::<Vec<_>>(),
+            (4091..=4097u64).rev().collect::<Vec<_>>()
+        );
+        assert!(store.read_before("s", 1, 7).unwrap().is_empty());
+    }
+
+    #[test]
+    fn exclusive_read_handles_empty_pages_and_evicted_prefix() {
+        let store = HistoryStore::with_caps(usize::MAX, 8192, usize::MAX);
+        assert!(matches!(
+            store.read_before("missing", u64::MAX, 500),
+            Err(HistoryError::UnknownSession)
+        ));
+        for from in [1u64, 4097, 8193] {
+            let lines: Vec<_> = (from..from + 4096).map(|i| line(i, i, "line")).collect();
+            store.append("s", &batch(&lines)).unwrap();
+        }
+        assert_eq!(store.stats("s").unwrap().first_abs_line, 4097);
+        assert!(store.read_before("s", u64::MAX, 0).unwrap().is_empty());
+        assert!(store.read_before("s", 4097, 500).unwrap().is_empty());
+        let page = store.read_before("s", 8193, 4096).unwrap();
+        assert_eq!(page.len(), 4096);
+        assert_eq!(page.first().unwrap().abs_line, 8192);
+        assert_eq!(page.last().unwrap().abs_line, 4097);
+        assert!(store.read_before("s", 4097, 500).unwrap().is_empty());
+    }
+
+    #[test]
     fn append_rejects_a_batch_that_does_not_continue_the_session() {
         let store = HistoryStore::new();
         store.append("s", &batch(&[line(5, 10, "a")])).unwrap();
@@ -875,6 +1064,71 @@ mod tests {
             .search("s", "pending", 10, Duration::from_secs(10))
             .unwrap();
         assert_eq!(columned[0].column, 5);
+    }
+
+    #[test]
+    fn exclusive_search_filters_more_than_200_overlapping_hot_hits_before_limiting() {
+        let store = HistoryStore::new();
+        // Lines 51..=300 were exported early but are still present in the hot
+        // buffer. The cold-only search must count all 50 older hits despite
+        // those 250 newer hits exceeding the UI's 200-result cap.
+        let lines: Vec<_> = (1..=300u64)
+            .map(|i| line(i, i, "cold hit and overlapping hit"))
+            .collect();
+        store.append("s", &batch(&lines)).unwrap();
+
+        let original = store
+            .search("s", "hit", 200, Duration::from_secs(1))
+            .unwrap();
+        assert_eq!(original.len(), 200);
+        assert_eq!(original[0].abs_line, 300);
+        let filtered = store
+            .search_before("s", "hit", 200, Duration::from_secs(1), 51)
+            .unwrap();
+        assert_eq!(filtered.len(), 50);
+        assert_eq!(filtered.first().unwrap().abs_line, 50);
+        assert_eq!(filtered.last().unwrap().abs_line, 1);
+        assert!(filtered.iter().all(|hit| hit.abs_line < 51));
+        assert!(store
+            .search_before("s", "hit", 200, Duration::from_secs(1), 1)
+            .unwrap()
+            .is_empty());
+        assert!(store
+            .search_before("s", "", 200, Duration::from_secs(1), 51)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn exclusive_search_crosses_blocks_and_keeps_pending_budget_semantics() {
+        let store = HistoryStore::new();
+        let sealed: Vec<_> = (1..=4096u64).map(|i| line(i, i, "hit sealed")).collect();
+        store.append("s", &batch(&sealed)).unwrap();
+        let pending: Vec<_> = (4097..=4102u64)
+            .map(|i| line(i, i, "hit pending"))
+            .collect();
+        store.append("s", &batch(&pending)).unwrap();
+
+        let all = store
+            .search_before("s", "hit", 5, Duration::from_secs(1), 4099)
+            .unwrap();
+        assert_eq!(
+            all.iter().map(|hit| hit.abs_line).collect::<Vec<_>>(),
+            vec![4098, 4097, 4096, 4095, 4094]
+        );
+        // As in the unchanged search API, a spent budget still checks the
+        // pending records, but does not decompress sealed blocks.
+        let spent = store
+            .search_before("s", "hit", 200, Duration::ZERO, 4099)
+            .unwrap();
+        assert_eq!(
+            spent.iter().map(|hit| hit.abs_line).collect::<Vec<_>>(),
+            vec![4098, 4097]
+        );
+        assert!(store
+            .search_before("s", "hit", 200, Duration::from_secs(1), 0)
+            .unwrap()
+            .is_empty());
     }
 
     #[test]

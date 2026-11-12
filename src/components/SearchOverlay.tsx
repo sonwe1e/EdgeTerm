@@ -257,25 +257,45 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(function Sea
     return () => listener?.dispose();
   }, [activeId]);
 
-  // Cold-history matches are counted apart from the buffer (roadmap A2-7):
-  // the seamless store answers asynchronously, so the number arrives a beat
-  // after the buffer's own and is shown next to it instead of holding the
-  // box back. Regex and whole-word queries skip it — the store searches
-  // literal needles (see terminalColdSearch).
+  // Count only archived lines no longer in the normal hot buffer. Capture
+  // archives ahead of xterm's trim, so asking the store for every match would
+  // double-count lines that xterm still searches. A hot search refresh also
+  // invalidates this result: loading a cold page moves its matches into hot.
   const [historyCount, setHistoryCount] = useState(0);
   const historyRequest = useRef(0);
+  const historyQueryKey = useRef("");
   useEffect(() => {
     const request = ++historyRequest.current;
     const session = activeId;
-    setHistoryCount(0);
-    if (!session || !query) return;
+    const controller = session ? getController(session) : undefined;
+    const beforeAbsLine = controller?.coldSearchBeforeAbs() ?? null;
+    const key = JSON.stringify([session, query, options, inSelection, beforeAbsLine]);
+    // Hot search results can refresh on every write. Do not make the cold
+    // count disappear for 250 ms when its query and ownership have not changed.
+    if (historyQueryKey.current !== key) {
+      historyQueryKey.current = key;
+      setHistoryCount(0);
+    }
+    if (!session || !query || inSelection || !controller) return;
+    if (controller.term.buffer.active.type !== "normal") return;
+    if (beforeAbsLine === null || beforeAbsLine <= 1) return;
     const timer = window.setTimeout(() => {
-      void searchColdHistory(session, query, options).then((outcome) => {
-        if (historyRequest.current === request) setHistoryCount(outcome.count);
+      if (controller.coldSearchBeforeAbs() !== beforeAbsLine) return;
+      void searchColdHistory(session, query, options, beforeAbsLine).then((outcome) => {
+        // Queries can finish after a clear, page insertion, buffer switch,
+        // session replacement, or a subsequent hot search refresh.
+        if (historyRequest.current !== request || historyQueryKey.current !== key) return;
+        const live = getController(session);
+        if (live !== controller || live.term.buffer.active.type !== "normal") return;
+        if (live.coldSearchBeforeAbs() !== beforeAbsLine) return;
+        setHistoryCount(outcome.count);
       });
     }, 250);
-    return () => window.clearTimeout(timer);
-  }, [activeId, query, options]);
+    return () => {
+      window.clearTimeout(timer);
+      if (historyRequest.current === request) historyRequest.current++;
+    };
+  }, [activeId, query, options, inSelection, results]);
 
   // Search the seeded selection right away; the search starts at the
   // selection, so it stays the current match. Closing the box drops the
