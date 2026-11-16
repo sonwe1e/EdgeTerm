@@ -631,6 +631,7 @@ export const en = {
   "panel.moveToGroup": "Move to Group",
   "panel.noGroupsYet": "No groups yet",
   "panel.deleteEllipsis": "Delete…",
+  "panel.newSessionInGroup": "New Session…",
   "panel.newGroup": "New Group…",
   "panel.newSubgroup": "New Subgroup…",
   "panel.renameGroup": "Rename Group…",

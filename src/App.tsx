@@ -64,7 +64,7 @@ import {
 } from "./panelSizing";
 import { type PanelName, tabTitle, useStore, type Tab } from "./store";
 import { allControllers, getController, setWebglEnabled } from "./terminalRegistry";
-import { isFileSession, type SessionProfile, type SessionState } from "./types";
+import { isFileSession, type SessionGroup, type SessionProfile, type SessionState } from "./types";
 import { useT } from "./useT";
 import { useUpdater } from "./updater";
 import { REPOSITORY_URL, UPSTREAM_REPOSITORY_URL } from "./distribution";
@@ -192,7 +192,11 @@ export default function App() {
     }),
   );
 
-  const [dialog, setDialog] = useState<{ profile: SessionProfile | null } | null>(null);
+  const [dialog, setDialog] = useState<{
+    profile: SessionProfile | null;
+    /** The group a new session should land in, when one was chosen. */
+    group?: SessionGroup;
+  } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const searchRef = useRef<SearchOverlayHandle>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -481,6 +485,10 @@ export default function App() {
   // --- actions --------------------------------------------------------------
 
   const newSession = useCallback(() => setDialog({ profile: null }), []);
+  const newSessionInGroup = useCallback(
+    (group?: SessionGroup) => setDialog({ profile: null, group }),
+    [],
+  );
 
   // Opening the box focuses it via its mount effect; when it is already
   // open that effect does not re-run, so refocus it explicitly.
@@ -737,7 +745,10 @@ export default function App() {
 
   const renderPanel = (panel: PanelName) =>
     panel === "sessions" ? (
-      <SessionPanel onNewSession={newSession} onEditProfile={(profile) => setDialog({ profile })} />
+      <SessionPanel
+        onNewSession={newSessionInGroup}
+        onEditProfile={(profile) => setDialog({ profile })}
+      />
     ) : panel === "filer" ? (
       fileMode ? (
         <FilerFileSessionNotice />
@@ -861,7 +872,11 @@ export default function App() {
 
       {dialog && (
         <Suspense fallback={null}>
-          <SessionDialog initial={dialog.profile} onClose={() => setDialog(null)} />
+          <SessionDialog
+            initial={dialog.profile}
+            initialGroup={dialog.group}
+            onClose={() => setDialog(null)}
+          />
         </Suspense>
       )}
 

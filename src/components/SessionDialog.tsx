@@ -34,6 +34,7 @@ import {
   SESSION_COLORS,
   type BackspaceKey,
   type SerialPortDesc,
+  type SessionGroup,
   type SessionKind,
   type SessionProfile,
 } from "../types";
@@ -41,6 +42,8 @@ import { Icon, type IconName } from "./icons";
 
 interface Props {
   initial: SessionProfile | null;
+  /** The group a new session lands in, when the panel's menu chose one. */
+  initialGroup?: SessionGroup;
   onClose: () => void;
   onSaved?: (profile: SessionProfile) => void;
   sshOnly?: boolean;
@@ -73,6 +76,25 @@ const defaultPort = (kind: SessionKind, current?: number | null) =>
       : kind === "telnet"
         ? (current ?? 23)
         : current;
+
+/**
+ * A new session's starting profile. With a group, the group decides the kind
+ * and is preselected; a file-session group is stored under the canonical
+ * "ftp" kind, so a session created in it starts on the encrypted protocol the
+ * way picking (S)FTP by hand does.
+ */
+export function newSessionProfile(group?: SessionGroup): SessionProfile {
+  if (!group) return { ...BLANK, color: randomSessionColor() };
+  const kind: SessionKind = group.kind === "ftp" ? "sftp" : group.kind;
+  const port = defaultPort(kind);
+  return {
+    ...BLANK,
+    kind,
+    groupId: group.id,
+    ...(port === undefined ? {} : { port }),
+    color: randomSessionColor(),
+  };
+}
 
 /**
  * Protocol picker entries. FTP and SFTP share one "(S)FTP" choice, and SSH
@@ -235,7 +257,7 @@ function nextColorIndex(
   }
 }
 
-export function SessionDialog({ initial, onClose, onSaved, sshOnly = false }: Props) {
+export function SessionDialog({ initial, initialGroup, onClose, onSaved, sshOnly = false }: Props) {
   const attemptTabId = useRef<string | undefined>(undefined);
   const colorPickerRef = useRef<HTMLDivElement>(null);
   // The fields a failed Save/Connect can point at, so the caret lands where
@@ -271,7 +293,7 @@ export function SessionDialog({ initial, onClose, onSaved, sshOnly = false }: Pr
           ...initial,
           color: initial.color ?? colorForSession(initial.id || initial.name),
         }
-      : { ...BLANK, color: randomSessionColor() },
+      : newSessionProfile(initialGroup),
   );
   const [ports, setPorts] = useState<SerialPortDesc[]>([]);
   // The add-form row of the port-forward section below; kept across edits so

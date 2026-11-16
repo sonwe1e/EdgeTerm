@@ -572,6 +572,7 @@ export const zhCN: Catalog = {
   "panel.moveToGroup": "移动到分组",
   "panel.noGroupsYet": "暂无分组",
   "panel.deleteEllipsis": "删除…",
+  "panel.newSessionInGroup": "新建会话…",
   "panel.newGroup": "新建分组…",
   "panel.newSubgroup": "新建子分组…",
   "panel.renameGroup": "重命名分组…",
