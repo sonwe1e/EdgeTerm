@@ -41,6 +41,26 @@ patch-id 对应只证明补丁等效，不能证明每个中间提交可构建�
 
 本机为浅克隆，共同基线可确认，但更早的完整祖先链可能被截断。实验分支的整条 `main..branch` 数量不能直接当作新增功能数。将来清理远端前需重新核对远端 tip、开放 PR/使用方和必要归档，不直接照此快照删除。
 
+## 2026-11-16 分支清理（1.7.6）
+
+上游同步移植分支 `codex/upstream-ports-20261116` 以快进方式合入 main（`d280b92..9cd62e1`），随后建立版本提交 `c86b9c9`（annotated 标签 `v1.7.6`）并推送。核对祖先关系与 `git cherry main <branch>` 的补丁等价性后清理：
+
+| 原 origin 分支 | 核对 tip | 处置 |
+| --- | --- | --- |
+| `codex/edgeterm-reviewed-fixes` | `6994ccb` | 已合入 main（2.1 之前的 v1.2.1 内容在主线），删除远端引用 |
+| `codex/edgeterm-ux-20261111` | `51bec5e` | 0 个独有补丁，删除 |
+| `feat/edgeterm-1.8-filer-bounded-20261109` | `627f958` | 0 个独有补丁，删除 |
+| `fix/a2-off-settings-ux-20261108` | `4957615` | 0 个独有补丁，删除 |
+| `fix/agent-gutter-stability` | `976d315` | 0 个独有补丁，删除 |
+| `fix/cold-history-agent-stability-20261108` | `c136a84` | 9 个独有补丁，归档为 `archive/2026-11-16/cold-history-agent-stability` 后删除 |
+| `gpui-rewrite` | `c48a98d` | 154 个独有补丁，归档为 `archive/2026-11-16/gpui-rewrite` 后删除 |
+| `rewrite/by-feature` | `f73bad9` | 2 个独有补丁，归档为 `archive/2026-11-16/rewrite-by-feature` 后删除 |
+| `spike/p2p-term` | `9236632` | 125 个独有补丁，归档为 `archive/2026-11-16/spike-p2p-term` 后删除 |
+
+本地 `codex/release-1.3.0`、`codex/release-1.5.0`（均已合入 main）与合入后的 `codex/upstream-ports-20261116` 一并删除；`archive/2026-10-23/*` 本地归档保留。四个 `archive/2026-11-16/*` 引用已推送到 `origin`，因此远端仍可取回这些历史 tip；它们不是开发基线，不要在其上继续开发或整条合入 main。本页上一节"远端分支分类（本次保留）"是 2026-10-23 的历史快照，不代表清理后的远端状态。
+
+恢复已删原分支：`git branch <原名> <表中 tip>`，需要远端同名分支时再 `git push origin <branch>`。
+
 ## 后续规则
 
 2026-10-26 发布补记：从当时主线 `8c663d0` 建立 `codex/release-1.3.0` 准备版本；6 个未推送提交逐个通过类型及提交规范检查后，`main` 从远端 `66297b8` 快进推送到 `dd012ba965c857c0a1dc2bcb25584887640f4c22`。1.3.0 的源码标签固定在该版本提交，后续发布索引通过新的文档提交补充，不移动标签或替换已公开附件。没有改写公开主线、修改旧发布或清理上表中的归档及实验分支。此补记不将 2026-10-23 的远端分支快照改写成实时清单。
