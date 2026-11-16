@@ -56,4 +56,4 @@ Git 祖先关系仍停留在 1.0.0；选择性移植不等于已 merge 上游 1.
 
 性能方面，这批提交没有可测量的改进：排序本分支已用 `useMemo` 并复用 `Intl.Collator`，`a7d0923` 只是把组件状态外提，`1d68458` 的后端瘦身伴随功能删除。借来的两条都是体验修正，不是性能优化。
 
-验证边界：上述提交各自跑过 `npm run typecheck`、`npm run format`、`npm run lint` 与对应 Vitest 文件；完整 `npm test` 与提交检查见本次分支最终校验。浏览器用例只改了组件签名，没有运行；真实桌面与真实服务器交互未验证。
+验证边界：上述提交各自跑过 `npm run typecheck`、`npm run format`、`npm run lint` 与对应 Vitest 文件；完整 `npm test` 与提交检查见本次分支最终校验。浏览器侧新增 `src/test/findBox.browser.test.ts`（查找框落在活动窗格、随焦点移动）并通过，签名改动的 `tabActivity.browser.test.ts` 也重跑通过；其余浏览器用例未运行。真实桌面与真实服务器交互未验证。
