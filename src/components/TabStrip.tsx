@@ -33,6 +33,8 @@ const SPLIT_ZONE = 0.25;
 
 interface Props {
   paneId: string;
+  /** Opens the dialog that saves this tab's connection settings. */
+  onSaveSession: (id: string) => void;
 }
 
 /**
@@ -136,7 +138,7 @@ const dropTargetAt = (x: number, y: number, ownPaneId: string): DropTarget | nul
   return null;
 };
 
-export function TabStrip({ paneId }: Props) {
+export function TabStrip({ paneId, onSaveSession }: Props) {
   const t = useT();
   const allTabs = useStore((s) => s.tabs);
   // The strip is the pane's tabs in list order; see `placeTab` in the store.
@@ -339,6 +341,13 @@ export function TabStrip({ paneId }: Props) {
         action: () => requestCloseTabs(ids),
       },
       "separator",
+      {
+        label: t("tab.saveSession"),
+        icon: "save",
+        // A connecting tab has no settled profile to save yet.
+        disabled: !tab || tab.state === "connecting",
+        action: () => onSaveSession(id),
+      },
       // Only a live SSH tab has a connection to open another channel on.
       ...(tab && canDuplicateSshChannel(tab)
         ? [

@@ -196,6 +196,8 @@ export default function App() {
     profile: SessionProfile | null;
     /** The group a new session should land in, when one was chosen. */
     group?: SessionGroup;
+    /** The open tab whose settings are being saved, when saving one. */
+    saveSessionId?: string;
   } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const searchRef = useRef<SearchOverlayHandle>(null);
@@ -489,6 +491,13 @@ export default function App() {
     (group?: SessionGroup) => setDialog({ profile: null, group }),
     [],
   );
+  // Saves an open tab's own settings, which may have been changed after it was
+  // opened, as a profile without dialling another connection.
+  const saveSession = useCallback((id: string) => {
+    const tab = useStore.getState().tabs.find((item) => item.info.id === id);
+    if (!tab) return;
+    setDialog({ profile: tab.profile, saveSessionId: id });
+  }, []);
 
   // Opening the box focuses it via its mount effect; when it is already
   // open that effect does not re-run, so refocus it explicitly.
@@ -809,7 +818,7 @@ export default function App() {
           )}
 
           <div className="center">
-            <Workspace onNewSession={newSession}>
+            <Workspace onNewSession={newSession} onSaveSession={saveSession}>
               {searchOpen && <SearchOverlay ref={searchRef} onClose={() => setSearchOpen(false)} />}
             </Workspace>
           </div>
@@ -875,6 +884,7 @@ export default function App() {
           <SessionDialog
             initial={dialog.profile}
             initialGroup={dialog.group}
+            saveSessionId={dialog.saveSessionId}
             onClose={() => setDialog(null)}
           />
         </Suspense>

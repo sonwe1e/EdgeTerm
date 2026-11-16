@@ -283,6 +283,11 @@ export interface AppStore {
   /** Fetches saved profiles and their groups together. */
   loadProfiles: () => Promise<boolean>;
   upsertProfile: (profile: SessionProfile) => Promise<SessionProfile>;
+  /**
+   * Saves an open tab's current connection settings and links the tab to the
+   * saved profile, without dialling another connection.
+   */
+  saveTabProfile: (id: string, profile: SessionProfile) => Promise<SessionProfile>;
   /** Saves a copy of a profile right after it; resolves to the copy. */
   duplicateProfile: (id: string) => Promise<SessionProfile>;
   /** Deletes a saved profile with everything that belongs to it. */

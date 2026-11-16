@@ -29,7 +29,7 @@ it("keeps the empty workspace reachable at large type in a narrow pane", async (
         className: "app",
         style: { width: 378, height: 465, "--panel-font-size": "18px" } as CSSProperties,
       },
-      h(Workspace, { onNewSession: vi.fn() }),
+      h(Workspace, { onNewSession: vi.fn(), onSaveSession: vi.fn() }),
     ),
   );
   await twoFrames();

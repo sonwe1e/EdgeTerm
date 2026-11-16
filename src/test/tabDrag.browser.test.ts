@@ -56,7 +56,7 @@ function fixture() {
         "data-pane-id": paneId,
         style: { width: 600, height: 400 },
       },
-      h(TabStrip, { paneId }),
+      h(TabStrip, { paneId, onSaveSession: vi.fn() }),
     ),
   );
 }

@@ -11,6 +11,7 @@ export const createProfileActions: StateCreator<
     AppStore,
     | "loadProfiles"
     | "upsertProfile"
+    | "saveTabProfile"
     | "duplicateProfile"
     | "removeProfile"
     | "moveProfileToGroup"
@@ -39,6 +40,23 @@ export const createProfileActions: StateCreator<
       profiles:
         index === -1 ? [...profiles, saved] : profiles.map((p) => (p.id === saved.id ? saved : p)),
     });
+    return saved;
+  },
+
+  async saveTabProfile(id, profile) {
+    const saved = await get().upsertProfile(profile);
+    get().updateTabProfile(id, saved);
+    const tab = get().tabs.find((item) => item.info.id === id);
+    // The transport and address still describe the live connection; the
+    // edited settings take effect when that session reconnects.
+    if (tab) {
+      get().updateTabInfo(id, {
+        ...tab.info,
+        profileId: saved.id,
+        name: saved.name,
+        color: saved.color ?? null,
+      });
+    }
     return saved;
   },
 

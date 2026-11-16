@@ -56,7 +56,7 @@ function fixture() {
     h(
       "div",
       { className: "pane-stack", style: { width: 400, height: 240 } },
-      h(TabStrip, { paneId }),
+      h(TabStrip, { paneId, onSaveSession: vi.fn() }),
     ),
   );
 }

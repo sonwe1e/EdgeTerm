@@ -415,6 +415,7 @@ export const en = {
   // SessionDialog — header, identity, validation
   "session.newTitle": "New Session",
   "session.editTitle": "Edit Session",
+  "session.saveTitle": "Save Session",
   "session.noPort": "no port selected",
   "session.noHost": "no host yet",
   "session.baud": " baud",
@@ -540,6 +541,7 @@ export const en = {
 
   // SessionDialog — footer
   "session.connecting": "Connecting…",
+  "session.saving": "Saving…",
   "session.connect": "Connect",
   "session.saveConnect": "Save & connect",
   "session.connectionHelp": "Could not connect. Check the address, port, network and credentials.",
@@ -1001,6 +1003,7 @@ export const en = {
   "tab.closeLeft": "Close to the Left",
   "tab.closeRight": "Close to the Right",
   "tab.closeAll": "Close All",
+  "tab.saveSession": "Save Session…",
   "tab.duplicateSsh": "Duplicate SSH Channel",
   "tab.closeSession": "Close session",
   "tab.allSessions": "All sessions",

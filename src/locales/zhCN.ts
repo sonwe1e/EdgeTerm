@@ -374,6 +374,7 @@ export const zhCN: Catalog = {
 
   "session.newTitle": "新建会话",
   "session.editTitle": "编辑会话",
+  "session.saveTitle": "保存会话",
   "session.noPort": "未选择端口",
   "session.noHost": "尚未填写主机",
   "session.baud": " 波特",
@@ -487,6 +488,7 @@ export const zhCN: Catalog = {
     "文件是终端收到的原始输出（含转义序列），可用 cat 在终端中回放。你输入的内容只以对端回显的形式出现，因此不回显的密码不会被记录。",
 
   "session.connecting": "连接中…",
+  "session.saving": "保存中…",
   "session.connect": "连接",
   "session.saveConnect": "保存并连接",
   "session.connectionHelp": "连接未成功，请检查地址、端口、网络和认证信息。",
@@ -926,6 +928,7 @@ export const zhCN: Catalog = {
   "tab.closeLeft": "关闭左侧所有",
   "tab.closeRight": "关闭右侧所有",
   "tab.closeAll": "关闭全部",
+  "tab.saveSession": "保存会话…",
   "tab.duplicateSsh": "复制 SSH 通道",
   "tab.closeSession": "关闭会话",
   "tab.allSessions": "所有会话",

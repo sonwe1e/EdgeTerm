@@ -32,7 +32,7 @@ const entryByLabel = (label: string) =>
 
 const mount = () =>
   act(() => {
-    root.render(h(Workspace, { onNewSession: vi.fn() }));
+    root.render(h(Workspace, { onNewSession: vi.fn(), onSaveSession: vi.fn() }));
   });
 
 const chord = (over: Partial<KeyChord>): KeyChord => ({
@@ -171,7 +171,13 @@ describe("Workspace overlay (find box)", () => {
 
   const mountWithChild = () =>
     act(() => {
-      root.render(h(Workspace, { onNewSession: vi.fn() }, h("span", { id: "box" }, "find")));
+      root.render(
+        h(
+          Workspace,
+          { onNewSession: vi.fn(), onSaveSession: vi.fn() },
+          h("span", { id: "box" }, "find"),
+        ),
+      );
     });
 
   it("hosts the overlay inside the active pane's rectangle", () => {

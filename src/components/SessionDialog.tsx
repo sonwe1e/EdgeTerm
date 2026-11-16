@@ -44,6 +44,8 @@ interface Props {
   initial: SessionProfile | null;
   /** The group a new session lands in, when the panel's menu chose one. */
   initialGroup?: SessionGroup;
+  /** Save an open tab's settings without starting another connection. */
+  saveSessionId?: string;
   onClose: () => void;
   onSaved?: (profile: SessionProfile) => void;
   sshOnly?: boolean;
@@ -257,7 +259,14 @@ function nextColorIndex(
   }
 }
 
-export function SessionDialog({ initial, initialGroup, onClose, onSaved, sshOnly = false }: Props) {
+export function SessionDialog({
+  initial,
+  initialGroup,
+  saveSessionId,
+  onClose,
+  onSaved,
+  sshOnly = false,
+}: Props) {
   const attemptTabId = useRef<string | undefined>(undefined);
   const colorPickerRef = useRef<HTMLDivElement>(null);
   // The fields a failed Save/Connect can point at, so the caret lands where
@@ -317,6 +326,7 @@ export function SessionDialog({ initial, initialGroup, onClose, onSaved, sshOnly
   const [secretsHint, setSecretsHint] = useState<CredentialHint | null>(null);
 
   const upsertProfile = useStore((s) => s.upsertProfile);
+  const saveTabProfile = useStore((s) => s.saveTabProfile);
   const groups = useStore((s) => s.groups);
   const profiles = useStore((s) => s.profiles);
   const groupChoices = flattenGroups(groups, profile.kind);
@@ -858,7 +868,9 @@ export function SessionDialog({ initial, initialGroup, onClose, onSaved, sshOnly
     setBusy(true);
     setError(null);
     try {
-      const saved = await upsertProfile(candidate);
+      const saved = saveSessionId
+        ? await saveTabProfile(saveSessionId, candidate)
+        : await upsertProfile(candidate);
       onSaved?.(saved);
       onClose();
     } catch (e) {
@@ -953,7 +965,11 @@ export function SessionDialog({ initial, initialGroup, onClose, onSaved, sshOnly
           </span>
           <div className="session-dialog-heading">
             <div className="session-dialog-title">
-              {initial?.id ? t("session.editTitle") : t("session.newTitle")}
+              {saveSessionId
+                ? t("session.saveTitle")
+                : initial?.id
+                  ? t("session.editTitle")
+                  : t("session.newTitle")}
             </div>
             <div className="session-dialog-subtitle">{summary()}</div>
           </div>
@@ -1571,11 +1587,16 @@ export function SessionDialog({ initial, initialGroup, onClose, onSaved, sshOnly
         <button type="button" className="btn" onClick={onClose} disabled={busy}>
           {t(profile.id && !initial?.id ? "common.close" : "common.cancel")}
         </button>
-        <button type="button" className="btn" onClick={save} disabled={busy}>
+        <button
+          type="button"
+          className={`btn${saveSessionId ? " is-primary" : ""}`}
+          onClick={save}
+          disabled={busy}
+        >
           <Icon name="save" />
-          {t("common.save")}
+          {saveSessionId && busy ? t("session.saving") : t("common.save")}
         </button>
-        {!sshOnly && (
+        {!sshOnly && !saveSessionId && (
           <button
             type="button"
             className={`btn is-primary${busy ? " is-loading" : ""}`}

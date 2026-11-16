@@ -72,7 +72,7 @@ async function fixture(width: number) {
         h(
           "div",
           { className: "pane is-focused", style: { inset: 0 } },
-          h(TabStrip, { paneId }),
+          h(TabStrip, { paneId, onSaveSession: vi.fn() }),
           h("div", { className: "pane-stack", "data-pane-id": paneId }),
         ),
       ),
