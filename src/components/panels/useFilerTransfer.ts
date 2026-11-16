@@ -23,6 +23,8 @@ export function useFilerTransfer({ setError, error, t }: Options) {
   const transferRateSamples = useRef<TransferRateSample[]>([]);
   const activeTransfer = useRef<ActiveTransfer | null>(null);
   const visibleTransferId = useRef<string | undefined>(undefined);
+  /** The transfer a cancel already took down, so late output cannot revive it. */
+  const cancelledTransferId = useRef<string | undefined>(undefined);
   /**
    * How to run the failed transfer again, registered by the caller that
    * started it. A failure used to leave the user with an error line whose
@@ -53,6 +55,7 @@ export function useFilerTransfer({ setError, error, t }: Options) {
     retryRef.current = retry ?? null;
     activeTransfer.current = cancellable ? { id: api.newTransferId(), cancelled: false } : null;
     visibleTransferId.current = activeTransfer.current?.id;
+    cancelledTransferId.current = undefined;
     setTransfer({
       kind,
       name,
@@ -103,6 +106,9 @@ export function useFilerTransfer({ setError, error, t }: Options) {
   };
 
   const progressFor = (id: string | undefined) => (progress: api.TransferProgress) => {
+    // A cancelled copy can still report progress until the backend notices;
+    // its bar is already gone.
+    if (id !== undefined && cancelledTransferId.current === id) return;
     if (ownsTransfer(id)) updateTransferProgress(progress);
   };
 
@@ -142,7 +148,11 @@ export function useFilerTransfer({ setError, error, t }: Options) {
     const active = activeTransfer.current;
     if (!active || active.cancelled) return;
     active.cancelled = true;
-    void api.cancelTransfer(active.id);
+    cancelledTransferId.current = active.id;
+    void api.cancelTransfer(active.id).catch(() => {});
+    // The backend stops within a chunk, but a stalled read can keep the
+    // transfer's promise pending far longer than the bar should look alive.
+    finishTransfer("cancelled", active.id);
   });
 
   /** Runs the failed transfer again; a no-op when none is on offer. */
@@ -167,6 +177,9 @@ export function useFilerTransfer({ setError, error, t }: Options) {
   /** Ends the transfer a rejection belongs to: cancelled, or failed with `e`. */
   const failTransfer = (e: unknown, id = visibleTransferId.current) => {
     if (!ownsTransfer(id)) return;
+    // The cancel already took the bar down; the rejection it causes is
+    // expected and says nothing new.
+    if (id !== undefined && cancelledTransferId.current === id) return;
     if (activeTransfer.current?.cancelled || isCancelled(e)) {
       finishTransfer("cancelled");
       return;
