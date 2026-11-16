@@ -37,3 +37,23 @@ Git 祖先关系仍停留在 1.0.0；选择性移植不等于已 merge 上游 1.
 [本分支 1.2.8 发布说明](https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.2.8)记载了前端、浏览器、Rust 与移植提交检查结果，同时保留真实 WebView2 与真实 FTP/SFTP 批量传输尚待手动验证的边界。本次建立索引没有重新运行那套历史验收，表内测试路径是可核查入口，不是本次通过声明。
 
 后续同步先更新上游参照，检查每个提交的语义和依赖，再选择直接移植、适配、已有能力或暂不采用。直接 cherry-pick 用 `-x` 保留来源；适配实现的提交 body 用 `Upstream: <仓库 URL / 完整 SHA>` 写明来源与差异，并同步此表。不要自动接收上游版本号、更新公钥、下载源或功能删除，也不要用空合并伪造“全部上游改动已接受”。
+## 2026-11-16 复核：v1.0.5–v1.0.7
+
+核对方式：先用 `git ls-remote upstream` 确认上游 `main` 已到 `694d26c`，再 `git fetch upstream` 把本地 `upstream/main` 从 `ced1b63`（1.0.5）更新到该提交。范围 `051f94e..694d26c` 共 10 个提交：7 个功能/修复加 3 个版本提交。当日的核对只记录处置；处置在本分支 `codex/upstream-ports-20261116` 上执行，逐条提交如下。
+
+| 上游提交 / 首次发布 | 内容 | 本分支处置 | 对应提交与证据 |
+| --- | --- | --- | --- |
+| [870173a](https://github.com/miskin-lee/EdgeTerm/commit/870173a) · 1.0.5 · 分组右键新建会话 | 分组菜单加“新建会话”，按分组类型预填 kind、端口和分组 id | 适配移植 | `9ec6096`；`src/components/panels/sessionGroupSession.test.ts`（预填映射与菜单回调）。本地补了 `initialGroup` 与 `newSessionProfile`，文案走 `t()`；上游硬编码英文未照搬 |
+| [1d68458](https://github.com/miskin-lee/EdgeTerm/commit/1d68458) · 1.0.5 · 移除 tab 通道复用 | 删除 `reuseSessionId` 与 Duplicate SSH Channel，后端去掉 tab 通道复用 | 不采用 | 本分支保留该能力（`src/actions.ts` 的 `duplicateSshChannel`、`src/components/TabStrip.tsx` 菜单项），MFA 服务器只需输入一次验证码。上游属功能删除，不是改进 |
+| [cd492da](https://github.com/miskin-lee/EdgeTerm/commit/cd492da) · 1.0.5 · Sender 保留空行 | `splitLines` 保留空行与纯空白行，尾换行视为行终止符；`firstLine` 取首个非空行 | 直接移植（`cherry-pick -x`） | `15f693d`；`src/senderUnits.test.ts`（5 例，含 #115 的 heredoc 空回答）。仅补了本地格式 |
+| [f8a2780](https://github.com/miskin-lee/EdgeTerm/commit/f8a2780) · 1.0.6 · 查找框跟随活动窗格 | `Workspace` 加活动窗格的 `pane-overlay` 承载查找框，并允许换行、按窗格宽度收缩 | 适配移植 | `0a0be5b`；`src/components/Workspace.test.ts`（overlay 落在活动窗格矩形内、随焦点移动）。本地查找框更大，补了换行与窄窗格收缩 |
+| [dbd39c2](https://github.com/miskin-lee/EdgeTerm/commit/dbd39c2) · 1.0.6 · 标签右键保存/复制会话 | 新增 Save Session…（把标签连接设置存成 profile 并重绑，不重连）与 Duplicate Session（新连接） | 部分适配：只取 Save Session… | `659cf0f`；`src/tabSaveSession.test.ts`。Duplicate Session 不搬：本分支的 `duplicateSshChannel` 是同一连接再开通道，语义不同（上游反而在 1d68458 删掉了它） |
+| [a7d0923](https://github.com/miskin-lee/EdgeTerm/commit/a7d0923) · 1.0.6 · Filer 传输按会话隔离 | 传输、忙、错误状态移入 `src/filerActivity.ts`，按会话 id 或 `""` 分桶；取消立即撤 UI；旧目录请求不能结束新请求的忙碌态 | 已有对应能力，借“取消立即撤 UI” | 本地 `src/fileTransfers.ts` 已是带 `sessionId` 的队列，`FilerTransferSummary` 按会话汇总，另有重试。借语义的提交 `99c9a97`；`src/components/panels/filerTransferCancel.test.ts`。逐会话状态跨挂载存活未移植，仍是本地面板内的 hook 状态 |
+| [e0f4ec8](https://github.com/miskin-lee/EdgeTerm/commit/e0f4ec8) · 1.0.7 · Filer 按名称/大小/修改时间排序 | 新增 `src/fileSort.ts`、列标题按钮、右键 Sort by、工具栏按钮 | 已有对应能力，借“等值按名称 tie-break” | 本分支 `src/fileSort.ts` 早已存在（`6f723c8`），排序存进 store 持久化。借语义的提交 `81202a2`；`src/fileSort.test.ts`。默认方向（上游元数据键降序）未采用 |
+| 版本提交 `ced1b63` / `83fd059` / `694d26c` | 1.0.5 / 1.0.6 / 1.0.7 版本号 | 不采纳 | 本分支使用独立版本序列，不接收上游版本号 |
+
+结论：7 个功能/修复提交里，4 项已落地——`cd492da`（空行与 heredoc，直接移植）、`f8a2780`（查找框定位）、`870173a`（分组新建会话）、`dbd39c2` 的 Save Session… 部分。`a7d0923` 与 `e0f4ec8` 的能力本分支已有，各借了一条语义（取消即时反馈、等值 tie-break）。`1d68458` 是功能删除，没有搬运；`dbd39c2` 的 Duplicate Session 与上游的版本提交同样未采纳。
+
+性能方面，这批提交没有可测量的改进：排序本分支已用 `useMemo` 并复用 `Intl.Collator`，`a7d0923` 只是把组件状态外提，`1d68458` 的后端瘦身伴随功能删除。借来的两条都是体验修正，不是性能优化。
+
+验证边界：上述提交各自跑过 `npm run typecheck`、`npm run format`、`npm run lint` 与对应 Vitest 文件；完整 `npm test` 与提交检查见本次分支最终校验。浏览器用例只改了组件签名，没有运行；真实桌面与真实服务器交互未验证。
