@@ -48,6 +48,7 @@ patch-id 对应只证明补丁等效，不能证明每个中间提交可构建�
 | 原 origin 分支 | 核对 tip | 处置 |
 | --- | --- | --- |
 | `codex/edgeterm-reviewed-fixes` | `6994ccb` | 已合入 main（2.1 之前的 v1.2.1 内容在主线），删除远端引用 |
+| `codex/edgeterm-terminal-stability-20261111` | `d139f0b` | 已合入 main（PR #6 的合并提交 `d280b92`），删除远端引用 |
 | `codex/edgeterm-ux-20261111` | `51bec5e` | 0 个独有补丁，删除 |
 | `feat/edgeterm-1.8-filer-bounded-20261109` | `627f958` | 0 个独有补丁，删除 |
 | `fix/a2-off-settings-ux-20261108` | `4957615` | 0 个独有补丁，删除 |
@@ -57,7 +58,7 @@ patch-id 对应只证明补丁等效，不能证明每个中间提交可构建�
 | `rewrite/by-feature` | `f73bad9` | 2 个独有补丁，归档为 `archive/2026-11-16/rewrite-by-feature` 后删除 |
 | `spike/p2p-term` | `9236632` | 125 个独有补丁，归档为 `archive/2026-11-16/spike-p2p-term` 后删除 |
 
-本地 `codex/release-1.3.0`、`codex/release-1.5.0`（均已合入 main）与合入后的 `codex/upstream-ports-20261116` 一并删除；`archive/2026-10-23/*` 本地归档保留。四个 `archive/2026-11-16/*` 引用已推送到 `origin`，因此远端仍可取回这些历史 tip；它们不是开发基线，不要在其上继续开发或整条合入 main。本页上一节"远端分支分类（本次保留）"是 2026-10-23 的历史快照，不代表清理后的远端状态。
+`codex/edgeterm-terminal-stability-20261111` 在清理后的 `git fetch --prune` 中才被发现：本地远端跟踪引用此前缺失，初版快照因此漏记。该 tip 是 main 的祖先，已一并删除。本地 `codex/release-1.3.0`、`codex/release-1.5.0`（均已合入 main）与合入后的 `codex/upstream-ports-20261116` 一并删除；`archive/2026-10-23/*` 本地归档保留。四个 `archive/2026-11-16/*` 引用已推送到 `origin`，因此远端仍可取回这些历史 tip；它们不是开发基线，不要在其上继续开发或整条合入 main。本页上一节"远端分支分类（本次保留）"是 2026-10-23 的历史快照，不代表清理后的远端状态。
 
 恢复已删原分支：`git branch <原名> <表中 tip>`，需要远端同名分支时再 `git push origin <branch>`。
 
