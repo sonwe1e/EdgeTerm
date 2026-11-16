@@ -69,6 +69,34 @@ describe("sortFileEntries", () => {
     expect(desc).toEqual(["newest", "middle", "oldest", "unknown"]);
   });
 
+  it("breaks ties on the metadata keys by name so a refresh keeps the order", () => {
+    const sameSize = [
+      entry("gamma", { size: 10 }),
+      entry("alpha", { size: 10 }),
+      entry("beta", { size: 10 }),
+    ];
+    expect(names(sortFileEntries(sameSize, { key: "size", direction: "asc" }))).toEqual([
+      "alpha",
+      "beta",
+      "gamma",
+    ]);
+    expect(names(sortFileEntries(sameSize, { key: "size", direction: "desc" }))).toEqual([
+      "alpha",
+      "beta",
+      "gamma",
+    ]);
+    const sameTime = [entry("zeta", { modified: 5 }), entry("alpha", { modified: 5 })];
+    expect(names(sortFileEntries(sameTime, { key: "modified", direction: "desc" }))).toEqual([
+      "alpha",
+      "zeta",
+    ]);
+    const unknownTimes = [entry("z-unknown"), entry("a-unknown")];
+    expect(names(sortFileEntries(unknownTimes, { key: "modified", direction: "asc" }))).toEqual([
+      "a-unknown",
+      "z-unknown",
+    ]);
+  });
+
   it("sorts by size", () => {
     const entries = [
       entry("big", { size: 300 }),

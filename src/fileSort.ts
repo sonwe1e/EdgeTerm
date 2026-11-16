@@ -72,13 +72,16 @@ export function sortFileEntries(entries: readonly FileEntry[], sort: FileSort): 
       if (a.modified === null || b.modified === null) {
         // Unknown times sort last whichever way the direction points, so the
         // verdict is returned before the flip below can reverse it.
-        if (a.modified === null && b.modified === null) return 0;
+        if (a.modified === null && b.modified === null) return compareNames(a.name, b.name);
         return a.modified === null ? 1 : -1;
       }
       order = a.modified < b.modified ? -1 : a.modified > b.modified ? 1 : 0;
     } else {
       order = a.size < b.size ? -1 : a.size > b.size ? 1 : 0;
     }
+    // Equal metadata (two files of one size, say) falls back to the name, so
+    // a refresh cannot shuffle the rows a reader is following.
+    if (order === 0) return compareNames(a.name, b.name);
     return descending ? -order : order;
   });
 }
