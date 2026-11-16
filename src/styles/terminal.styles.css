@@ -2,11 +2,14 @@
 
 .terminal-search {
   position: absolute;
-  top: 38px;
+  top: 8px;
   right: 8px;
-  z-index: 10;
+  max-width: calc(100% - 16px);
+  pointer-events: auto;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--sp-4);
   padding: var(--sp-4);
   border: 1px solid var(--border-strong);
@@ -18,6 +21,8 @@
 /* The query and VS Code's three toggles share one field. */
 .terminal-search .search-field {
   display: flex;
+  flex: 1 1 228px;
+  min-width: 0;
   align-items: center;
   gap: 1px;
   width: 228px;
@@ -104,6 +109,13 @@
   flex: 1;
   min-height: 0;
   background: var(--bg-terminal);
+}
+
+/* Search follows the active session's box; the rest still takes terminal input. */
+.pane-overlay {
+  position: absolute;
+  z-index: 10;
+  pointer-events: none;
 }
 
 .pane {

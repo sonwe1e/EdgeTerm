@@ -15,6 +15,7 @@ vi.mock("../api", async (original) => ({
   listSenderCommands: vi.fn(async () => []),
 }));
 
+import { leaf } from "../layout";
 import { useStore } from "../store";
 import { chordLabel, type KeyChord } from "../shortcuts";
 import { Workspace } from "./Workspace";
@@ -142,5 +143,52 @@ describe("Workspace empty state capability entries (PD-05)", () => {
       entryByLabel("Open Sender").click();
     });
     expect(useStore.getState().panels.sender).toBe(true);
+  });
+});
+
+// The find box used to be a sibling of the workspace, so a split left it
+// pinned to the top-right of the whole terminal area while the query went to
+// the focused pane. The overlay hands the box the active pane's rectangle.
+describe("Workspace overlay (find box)", () => {
+  const split = (activePaneId: string) => {
+    act(() => {
+      useStore.setState({
+        layout: {
+          kind: "split",
+          direction: "row",
+          children: [leaf("left"), leaf("right")],
+          sizes: [0.5, 0.5],
+        },
+        panes: [
+          { id: "left", activeTabId: null },
+          { id: "right", activeTabId: null },
+        ],
+        activePaneId,
+      });
+    });
+  };
+  const overlay = () => host.querySelector<HTMLElement>(".pane-overlay")!;
+
+  const mountWithChild = () =>
+    act(() => {
+      root.render(h(Workspace, { onNewSession: vi.fn() }, h("span", { id: "box" }, "find")));
+    });
+
+  it("hosts the overlay inside the active pane's rectangle", () => {
+    mountWithChild();
+    split("right");
+    expect(overlay().querySelector("#box")?.textContent).toBe("find");
+    expect(overlay().style.left).toBe("50%");
+    expect(overlay().style.width).toBe("50%");
+    // Below the strip, so the box clears the tabs it belongs to.
+    expect(overlay().style.top).toContain("var(--tabstrip-height)");
+  });
+
+  it("follows the active pane when focus moves", () => {
+    mountWithChild();
+    split("right");
+    split("left");
+    expect(overlay().style.left).toBe("0%");
+    expect(overlay().style.width).toBe("50%");
   });
 });
