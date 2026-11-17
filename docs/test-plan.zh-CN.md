@@ -148,8 +148,10 @@ ignored 不算通过。真实服务器与 rclone 的上传/下载、大文件/�
 
 ```powershell
 node scripts/check-review-ui.mjs
-node scripts/check-file-performance.mjs
+npm run check:file-performance
 ```
+
+性能门禁走受限运行器（最多 4 CPU、jobs=2、同一时间只跑一个受管任务）；直接运行脚本仍然可行，但受管任务才是规范入口。
 
 脚本使用 Playwright，可从本地安装或 `NODE_PATH` 提供；默认运行已安装的 Edge，可用 `PERF_BROWSER` 指定 Playwright channel。它们启动自己的 Vite/浏览器，不连接正在使用的 EdgeTerm。输出在 `artifacts/performance/`；需查看截图，不能只看退出码。
 
