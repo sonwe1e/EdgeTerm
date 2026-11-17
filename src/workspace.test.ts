@@ -4,6 +4,7 @@ import { useStore } from "./store";
 import type { SessionProfile } from "./types";
 import {
   parseWorkspace,
+  readSavedWorkspace,
   snapshotWorkspace,
   WORKSPACE_STORAGE_KEY,
   type WorkspaceSnapshot,
@@ -249,5 +250,29 @@ describe("workspace persistence", () => {
     await flushed;
     finish("/late");
     await captureWorkspaceDirectories();
+  });
+});
+
+describe("reading the saved workspace", () => {
+  const storage = (raw: string | null) => ({ getItem: () => raw });
+
+  it("treats an empty slot as a fresh install, not a failure", () => {
+    expect(readSavedWorkspace(storage(null))).toEqual({ snapshot: null, unreadable: false });
+  });
+
+  it("reports a saved workspace that cannot be read", () => {
+    expect(readSavedWorkspace(storage("{ not json"))).toEqual({ snapshot: null, unreadable: true });
+    // Valid JSON that is not a snapshot is the same state to the user: the
+    // sessions are gone, not absent.
+    expect(readSavedWorkspace(storage("[]"))).toEqual({ snapshot: null, unreadable: true });
+  });
+
+  it("treats storage that refuses to answer as nothing saved", () => {
+    const blocked = {
+      getItem: () => {
+        throw new Error("storage blocked");
+      },
+    };
+    expect(readSavedWorkspace(blocked)).toEqual({ snapshot: null, unreadable: false });
   });
 });

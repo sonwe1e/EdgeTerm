@@ -5,6 +5,30 @@ import type { SessionProfile } from "./types";
 // Session history is device-local, not a transferable preference. In particular,
 // a settings import must never cause connections to another person's servers.
 export const WORKSPACE_STORAGE_KEY = "edgeterm.workspace.v1";
+
+/**
+ * Reads the saved workspace. "Nothing saved" and "saved but unreadable" are
+ * different states: the first is a fresh install and needs no explanation, the
+ * second means the user's sessions are gone and they deserve to hear why.
+ */
+export function readSavedWorkspace(storage: Pick<Storage, "getItem">): {
+  snapshot: WorkspaceSnapshot | null;
+  unreadable: boolean;
+} {
+  let raw: string | null = null;
+  try {
+    raw = storage.getItem(WORKSPACE_STORAGE_KEY);
+  } catch {
+    return { snapshot: null, unreadable: false };
+  }
+  if (raw === null) return { snapshot: null, unreadable: false };
+  try {
+    const snapshot = parseWorkspace(raw);
+    return { snapshot, unreadable: snapshot === null };
+  } catch {
+    return { snapshot: null, unreadable: true };
+  }
+}
 export const WORKSPACE_LIMIT = 128;
 
 export interface WorkspaceDirectories {

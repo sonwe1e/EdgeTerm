@@ -177,6 +177,8 @@ export const en = {
   "status.ready": "Ready",
   "status.copyError": "Copy the message",
   "status.moreFailures": "+{count} more",
+  "status.workspaceUnreadable":
+    "The saved workspace could not be read; starting with a clean layout.",
   "status.dismissError": "Dismiss error",
   "status.connectionCancelled": "Connection cancelled",
   "status.recordingStopped": "Recording stopped: {error} ({path})",

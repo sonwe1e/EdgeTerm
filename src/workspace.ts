@@ -10,8 +10,9 @@ import { useStore, type Tab } from "./store";
 import { newPaneId } from "./storeLayout";
 import { isFileSession } from "./types";
 import { getLocalFilerPath, rememberWorkspaceDirectory } from "./workspaceDirectories";
+import { translate } from "./i18n";
 import {
-  parseWorkspace,
+  readSavedWorkspace,
   snapshotWorkspace,
   WORKSPACE_STORAGE_KEY,
   type WorkspaceSnapshot,
@@ -127,9 +128,18 @@ export function startWorkspace(eventsReady: Promise<unknown>): () => void {
     const loaded = await useStore.getState().loadProfiles();
     if (stopped || !loaded) return;
     let snapshot: WorkspaceSnapshot | null = null;
+    let unreadable = false;
     try {
-      snapshot = parseWorkspace(localStorage.getItem(WORKSPACE_STORAGE_KEY));
+      const saved = readSavedWorkspace(localStorage);
+      snapshot = saved.snapshot;
+      unreadable = saved.unreadable;
     } catch {}
+    if (unreadable && !stopped) {
+      // The sessions the user left open are gone; an empty window with no
+      // explanation reads as data loss on top of the loss itself.
+      const state = useStore.getState();
+      state.setStatus(translate(state.language, "status.workspaceUnreadable"));
+    }
     // If the user already opened a session while profiles loaded, respect it.
     const restored =
       snapshot && useStore.getState().tabs === initialTabs && initialTabs.length === 0
