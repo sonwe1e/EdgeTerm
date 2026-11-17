@@ -281,6 +281,7 @@ export const zhCN: Catalog = {
   "deleteEntry.kindFile": "文件",
   "deleteEntry.kindFolder": "文件夹",
   "deleteEntry.kindLink": "链接",
+  "deleteEntry.confirmOne": "删除{kind}",
   "deleteEntry.delete": "删除",
   "deleteEntry.deleteFolder": "删除文件夹及内容",
   "deleteEntry.hintFolder": "文件夹及其中的全部内容都将被删除。此操作无法撤销。",

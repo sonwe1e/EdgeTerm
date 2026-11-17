@@ -52,6 +52,14 @@ describe("interface localisation", () => {
     }
   });
 
+  it("keeps the space a language needs between its verb and the name", () => {
+    // The delete confirmation used to branch on the language name in JSX to
+    // decide whether a space belongs there. The catalogue owns it now: English
+    // ends the entry with a space, Chinese joins the words directly.
+    expect(translate("en", "deleteEntry.confirmOne", { kind: "file" })).toBe("Delete file ");
+    expect(translate("zh-CN", "deleteEntry.confirmOne", { kind: "file" })).toBe("删除file");
+  });
+
   it("fills {name} placeholders and leaves unknown ones as written", () => {
     expect(translate("en", "menu.panelOnDock", { panel: "Filer", dock: "Right" })).toBe(
       "Filer on Right",

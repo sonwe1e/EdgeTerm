@@ -310,6 +310,7 @@ export const en = {
   "deleteEntry.kindFolder": "folder",
   "deleteEntry.kindLink": "link",
   "deleteEntry.delete": "Delete",
+  "deleteEntry.confirmOne": "Delete {kind} ",
   "deleteEntry.deleteFolder": "Delete Folder and Contents",
   "deleteEntry.hintFolder":
     "The folder and everything inside it will be deleted. This cannot be undone.",

@@ -1,5 +1,5 @@
 import type { FileEntry } from "../types";
-import { useStore } from "../store";
+
 import { useT } from "../useT";
 import { ModalDialog } from "./ModalDialog";
 
@@ -20,7 +20,7 @@ interface Props {
  */
 export function DeleteEntryDialog({ entry, entries, location, onConfirm, onCancel }: Props) {
   const t = useT();
-  const language = useStore((s) => s.language);
+
   const multiple = entries && entries.length > 1;
 
   const kind = entry.isSymlink ? "link" : entry.isDir ? "folder" : "file";
@@ -66,11 +66,11 @@ export function DeleteEntryDialog({ entry, entries, location, onConfirm, onCance
             t("deleteEntry.confirmMany", { count: entries.length })
           ) : (
             <>
-              {/* Chinese joins the verb straight to the kind word; English
-                keeps the space it has always had. */}
-              {t("deleteEntry.delete")}
-              {language === "zh-CN" ? "" : " "}
-              {kindWord} <strong>{entry.name}</strong>
+              {/* The sentence up to the name is one catalog entry: whether a
+                space belongs between the verb and the kind word is a property
+                of the language, not of this component. */}
+              {t("deleteEntry.confirmOne", { kind: kindWord })}
+              <strong>{entry.name}</strong>
               {t("common.question")}
             </>
           )}
