@@ -60,5 +60,17 @@
       },
       "preset": "none"
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["src/**", "!src/bindings.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "error"
+          }
+        }
+      }
+    }
+  ]
 }
