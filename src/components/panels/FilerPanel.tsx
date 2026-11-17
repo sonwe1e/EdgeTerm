@@ -1009,12 +1009,17 @@ function FilerPanelBase() {
       <div
         ref={listRef}
         className="panel-body filer-list"
-        // A listbox may only contain options, and while the listing has no
-        // rows the message below takes its place: an error, an offline notice,
-        // "empty folder", "loading". Keeping the role exposed an empty listbox,
-        // so a screen reader announced "0 items" and skipped the alert that
-        // said what went wrong.
-        {...(error || offlineReason || entries.length === 0
+        // A listbox may only contain options. While the listing has no rows
+        // the message below takes its place (an error, an offline notice,
+        // "empty folder", "loading"), and an in-place edit puts an input among
+        // them. Keeping the role exposed a listbox whose contents it cannot
+        // announce: a reader said "0 items" and skipped the alert that said
+        // what went wrong.
+        {...(error ||
+        offlineReason ||
+        entries.length === 0 ||
+        creating !== null ||
+        renaming !== null
           ? {}
           : {
               role: "listbox" as const,

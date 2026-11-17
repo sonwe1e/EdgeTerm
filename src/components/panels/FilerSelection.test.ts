@@ -1390,6 +1390,15 @@ describe("Filer multiple selection at the real panel entry", () => {
         );
       });
 
+    it("drops the listbox role while an entry is renamed in place", async () => {
+      await mount();
+      press("file2.txt");
+      act(() => list().dispatchEvent(new KeyboardEvent("keydown", { key: "F2", bubbles: true })));
+      expect(editor(), "the rename editor opened").toBeTruthy();
+      // A listbox may only contain options, and this editor is an input.
+      expect(document.querySelector('[role="listbox"]')).toBeNull();
+    });
+
     for (const remote of [false, true])
       it(`renames the focused ${remote ? "remote" : "local"} entry in place`, async () => {
         if (remote) useRemote();
