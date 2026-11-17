@@ -27,6 +27,7 @@ import { useStableCallback } from "../useStableCallback";
 import { useT } from "../useT";
 import type { FileEntry, ThemeMode } from "../types";
 import { FileIcon } from "./FileIcon";
+import { formatDate as rowDateFormat } from "./panels/filerPresentation";
 import { Icon } from "./icons";
 import { SortIndicator } from "./SortIndicator";
 import { useFileListKeyboard } from "./useFileListKeyboard";
@@ -489,24 +490,19 @@ export function formatBytes(bytes: number): string {
   return `${value >= 10 || index === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
 }
 
-// One formatter for every row's date: `toLocaleString` with options builds
-// an Intl.DateTimeFormat per call, and a thousand-row list re-renders its
-// dates often enough for that to show. `toLocaleString` is specified as
-// exactly this constructor plus `format`, so the output is identical.
-export const ROW_DATE = new Intl.DateTimeFormat([], {
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-});
-
 // A listing that withheld the moment says "unknown" in words, the same word
 // the Filer panel's column uses: a dash means "no value the way a folder has
 // none", and a time that was asked for and not given is not that.
+//
+// The moment itself takes the Filer column's shape rather than the machine's
+// full locale date: the two lists sit side by side, and `2026/11/18 14:32`
+// beside `11-18 14:32` makes one column wider than the other for no reason.
+// Both supported languages print the same `HH:mm`, so reading the language
+// here cannot leave a row showing a shape the user has since switched away
+// from.
 export function formatDate(seconds: number | null): string {
   if (seconds == null) return translateMsg("filer.dateUnknown");
-  return ROW_DATE.format(new Date(seconds * 1000));
+  return rowDateFormat(seconds, useStore.getState().language, new Date());
 }
 
 export function friendlyFtpError(error: unknown): string {
