@@ -8,6 +8,7 @@ import { useStore, type Tab } from "../store";
 import { Icon } from "./icons";
 import { StatusPopover } from "./StatusPopover";
 import { usePopoverDismiss } from "./usePopoverDismiss";
+import { translate } from "../i18n";
 import { useT } from "../useT";
 import { Sparkline } from "../monitor/Sparkline";
 import {
@@ -267,7 +268,12 @@ export const ResourceMonitorBar = memo(function ResourceMonitorBar({
   if (!eligible) return null;
   const update = (value: typeof settings) => {
     setSettings(value);
-    saveMonitorSettings(value);
+    if (!saveMonitorSettings(value)) {
+      // Applied to this window only. Saying so beats a setting that silently
+      // reverts the next time the bar mounts.
+      const state = useStore.getState();
+      state.setStatus(translate(state.language, "monitor.settingsNotSaved"));
+    }
   };
   const memory = sample?.memory;
   const capacity = sample?.capacity;

@@ -163,6 +163,7 @@ export const zhCN: Catalog = {
   "status.ready": "就绪",
   "status.copyError": "复制消息",
   "status.moreFailures": "另有 {count} 条",
+  "monitor.settingsNotSaved": "设置无法保存，仅在本次窗口生效。",
   "status.workspaceUnreadable": "保存的工作区无法读取，已按空白布局启动。",
   "status.dismissError": "关闭错误提示",
   "status.connectionCancelled": "已取消连接",

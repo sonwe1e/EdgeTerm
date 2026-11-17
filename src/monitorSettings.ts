@@ -18,8 +18,12 @@ export function readMonitorSettings(): MonitorSettings {
         : 2,
   };
 }
-export function saveMonitorSettings(value: MonitorSettings) {
+/** Returns whether the value reached storage; memory-only applies otherwise. */
+export function saveMonitorSettings(value: MonitorSettings): boolean {
   try {
     localStorage.setItem(RESOURCE_MONITOR_KEY, JSON.stringify(value));
-  } catch {}
+    return true;
+  } catch {
+    return false;
+  }
 }
