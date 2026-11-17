@@ -10,6 +10,9 @@ import {
 import { errorText } from "../errorInfo";
 import { GUIDE_URL } from "../distribution";
 import { getCurrentWindow, type Window as TauriWindow } from "@tauri-apps/api/window";
+
+import { translate } from "../i18n";
+import { runWindowAction } from "../menuWindowAction";
 import { openExternalLink } from "../openExternal";
 
 import appIcon from "../../src-tauri/icons/32x32.png";
@@ -48,6 +51,17 @@ import { submenuKey, useSubmenuHover } from "./submenuHover";
 //
 // The window title (`<session> - EdgeTerm`, VS Code's `<file> - <app>`
 // shape) is also pushed to the OS so the taskbar / overview shows the same.
+
+/** A window action the OS refuses used to disappear: the button did nothing and
+ * nothing said so. Every title-bar control reports through here. */
+function reportWindowError(error: unknown) {
+  const state = useStore.getState();
+  state.setError(
+    translate(state.language, "titleBar.actionFailed", {
+      error: error instanceof Error ? error.message : String(error),
+    }),
+  );
+}
 
 /** Track a boolean window property, re-reading it whenever the window resizes. */
 function useWindowFlag(enabled: boolean, read: (win: TauriWindow) => Promise<boolean>): boolean {
@@ -182,7 +196,9 @@ function WindowControls({ maximized }: { maximized: boolean }) {
           // Keep keyboard focus in the terminal on pointer press only: Tab
           // must still reach the caption buttons for keyboard users.
           onMouseDown={(event) => event.preventDefault()}
-          onClick={() => void control.action(getCurrentWindow()).catch(() => {})}
+          onClick={() =>
+            void runWindowAction(() => control.action(getCurrentWindow()), reportWindowError)
+          }
         >
           <svg viewBox="0 0 10 10" aria-hidden="true">
             {control.icon}
@@ -1008,12 +1024,10 @@ export function MenuBar(props: Props) {
       event.preventDefault();
       event.stopPropagation();
       if (event.target.classList.contains("menubar-icon")) {
-        void getCurrentWindow()
-          .close()
-          .catch(() => {});
+        void runWindowAction(() => getCurrentWindow().close(), reportWindowError);
         return;
       }
-      void windowControl("toggle-maximize").catch(() => {});
+      void runWindowAction(() => windowControl("toggle-maximize"), reportWindowError);
       return;
     }
     if (IS_MAC) return;

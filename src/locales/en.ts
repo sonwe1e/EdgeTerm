@@ -177,6 +177,7 @@ export const en = {
   "status.ready": "Ready",
   "status.copyError": "Copy the message",
   "status.moreFailures": "+{count} more",
+  "titleBar.actionFailed": "The window action failed: {error}",
   "monitor.settingsNotSaved": "Settings could not be saved; they apply to this window only.",
   "status.workspaceUnreadable":
     "The saved workspace could not be read; starting with a clean layout.",
