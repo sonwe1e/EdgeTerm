@@ -14,6 +14,7 @@ const nativeTasks = new Set([
   "tauri:build",
   "bindings",
   "check:bindings",
+  "check:clippy",
 ]);
 export function taskCommands(task, args = [], cargo = "cargo") {
   const js = (script, ...flags) => [process.execPath, [path.join(root, script), ...flags, ...args]];
@@ -59,6 +60,24 @@ export function taskCommands(task, args = [], cargo = "cargo") {
     // broken for a while before it was found (see round 1 of the quality work).
     case "check:file-performance":
       return [js("scripts/check-file-performance.mjs")];
+    // The backend's correctness lints, enforced; the style ones stay warnings
+    // because rewriting them is churn rather than quality.
+    case "check:clippy":
+      return [
+        [
+          cargo,
+          [
+            "clippy",
+            "--locked",
+            "--manifest-path",
+            "src-tauri/Cargo.toml",
+            "--all-targets",
+            "--",
+            "-D",
+            "clippy::correctness",
+          ],
+        ],
+      ];
     case "check:commits":
       return [js("scripts/check-commits.mjs")];
     case "experiment:compiler":

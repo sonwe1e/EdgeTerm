@@ -175,3 +175,11 @@ describe("resource-bounded task entry", () => {
     30000,
   );
 });
+
+// The correctness lints are enforced; the style ones stay warnings, so this
+// gate can pass today and still stop a real correctness lint tomorrow.
+const [clippy] = taskCommands("check:clippy");
+expect(clippy[0]).toBe("cargo");
+expect(clippy[1][0]).toBe("clippy");
+expect(clippy[1]).toContain("-D");
+expect(clippy[1]).toContain("clippy::correctness");

@@ -26,6 +26,7 @@
     "bindings": "node scripts/run-task.mjs bindings",
     "check:bindings": "node scripts/run-task.mjs check:bindings",
     "check:file-performance": "node scripts/run-task.mjs check:file-performance",
+    "check:clippy": "node scripts/run-task.mjs check:clippy",
     "experiment:compiler": "node scripts/run-task.mjs experiment:compiler",
     "doctor": "node scripts/run-task.mjs doctor",
     "test:rust": "node scripts/run-task.mjs test:rust",
