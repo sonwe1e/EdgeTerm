@@ -7,6 +7,9 @@ import {
   chordLabel,
   chordProblem,
   DEFAULT_SHORTCUTS,
+  MAC_DEFAULTS,
+  OTHER_DEFAULTS,
+  sameChord,
   defaultShortcuts,
   matchAppShortcut,
   parseShortcuts,
@@ -217,5 +220,31 @@ describe("storage", () => {
     };
     const parsed = parseShortcuts(shortcutOverrides(bindings), DEFAULT_SHORTCUTS);
     expect(parsed).toEqual(bindings);
+  });
+});
+
+describe("default bindings", () => {
+  // Two commands on one chord means one of them can never fire: the handler
+  // takes the first match and the other action is silently unreachable. Nothing
+  // compared the defaults against each other before.
+  const conflicts = (bindings: Record<string, { code: string } | null>) => {
+    const bound = Object.entries(bindings).filter(([, chord]) => chord !== null);
+    const clashes: string[] = [];
+    for (let i = 0; i < bound.length; i += 1) {
+      for (let j = i + 1; j < bound.length; j += 1) {
+        if (sameChord(bound[i][1] as never, bound[j][1] as never)) {
+          clashes.push(`${bound[i][0]} and ${bound[j][0]}`);
+        }
+      }
+    }
+    return clashes;
+  };
+
+  it("gives no two commands the same chord on macOS", () => {
+    expect(conflicts(MAC_DEFAULTS)).toEqual([]);
+  });
+
+  it("gives no two commands the same chord elsewhere", () => {
+    expect(conflicts(OTHER_DEFAULTS)).toEqual([]);
   });
 });
