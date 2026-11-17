@@ -1,6 +1,6 @@
 import { memo, useEffect, useState } from "react";
 
-import * as api from "../api";
+import { revealLocalPath } from "../openExternal";
 import { t as translateMsg } from "../i18n";
 import { useActiveTab, useStore } from "../store";
 import { isFileSession, type LegacyAlgorithms } from "../types";
@@ -135,7 +135,7 @@ function StatusBarBase() {
               type="button"
               className="status-item status-recording"
               title={t("status.recordingTitle", { path: recording })}
-              onClick={() => void api.openLocalPath(parentDir(recording)).catch(() => undefined)}
+              onClick={() => void revealLocalPath(parentDir(recording))}
             >
               <Icon name="record" />
               {t("status.recording")}

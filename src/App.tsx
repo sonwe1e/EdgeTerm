@@ -1,6 +1,6 @@
 import { ModalDialog } from "./components/ModalDialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openExternalLink } from "./openExternal";
 import { exit } from "@tauri-apps/plugin-process";
 import {
   lazy,
@@ -1055,9 +1055,7 @@ export default function App() {
                 href={UPSTREAM_REPOSITORY_URL}
                 onClick={(event) => {
                   event.preventDefault();
-                  void openUrl(UPSTREAM_REPOSITORY_URL).catch((error) => {
-                    console.error("Failed to open repository:", error);
-                  });
+                  void openExternalLink(UPSTREAM_REPOSITORY_URL);
                 }}
               >
                 github.com/miskin-lee/EdgeTerm
@@ -1070,7 +1068,7 @@ export default function App() {
                 href={REPOSITORY_URL}
                 onClick={(event) => {
                   event.preventDefault();
-                  void openUrl(REPOSITORY_URL).catch(console.error);
+                  void openExternalLink(REPOSITORY_URL);
                 }}
               >
                 github.com/sonwe1e/EdgeTerm

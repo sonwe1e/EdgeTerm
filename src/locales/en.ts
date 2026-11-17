@@ -187,7 +187,7 @@ export const en = {
   "status.commandHistoryCleared": "Command history cleared",
   "status.commandHistoryClearFailed": "Failed to clear command history: {error}",
   "status.defaultSettingsRestored": "Default settings restored",
-  "status.tutorialOpenFailed": "Failed to open tutorial: {error}",
+  "status.folderOpenFailed": "Could not open the folder: {error}",
   "status.logDirectoryOpenFailed": "Failed to open the log directory: {error}",
   "status.diagnosticsExported": "Diagnostics exported to {file}",
   "status.diagnosticsExportFailed": "Failed to export diagnostics: {error}",

@@ -10,7 +10,7 @@ import {
 import { errorText } from "../errorInfo";
 import { GUIDE_URL } from "../distribution";
 import { getCurrentWindow, type Window as TauriWindow } from "@tauri-apps/api/window";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openExternalLink } from "../openExternal";
 
 import appIcon from "../../src-tauri/icons/32x32.png";
 import { revealCwdInFiler, splitSession, toggleSessionConnection } from "../actions";
@@ -716,11 +716,7 @@ export function MenuBar(props: Props) {
         {
           label: t("menu.tutorial"),
           icon: "book",
-          action: () => {
-            void openUrl(GUIDE_URL).catch((error) => {
-              setStatus(t("status.tutorialOpenFailed", { error: errorText(error) }));
-            });
-          },
+          action: () => void openExternalLink(GUIDE_URL),
         },
         {
           label: t("menu.checkForUpdates"),

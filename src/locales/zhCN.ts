@@ -173,7 +173,7 @@ export const zhCN: Catalog = {
   "status.commandHistoryCleared": "命令历史已清除",
   "status.commandHistoryClearFailed": "清除命令历史失败：{error}",
   "status.defaultSettingsRestored": "已恢复默认设置",
-  "status.tutorialOpenFailed": "打开使用教程失败：{error}",
+  "status.folderOpenFailed": "无法打开文件夹：{error}",
   "status.logDirectoryOpenFailed": "打开日志目录失败：{error}",
   "status.diagnosticsExported": "诊断信息已导出到 {file}",
   "status.diagnosticsExportFailed": "导出诊断失败：{error}",
