@@ -30,7 +30,9 @@ import { FileIcon } from "./FileIcon";
 import {
   formatBytes as fileFormatBytes,
   formatDate as rowDateFormat,
+  joinLocal as fileJoinLocal,
   joinRemote as fileJoinRemote,
+  remoteParent as fileRemoteParent,
 } from "./panels/filerPresentation";
 import { Icon } from "./icons";
 import { SortIndicator } from "./SortIndicator";
@@ -470,19 +472,13 @@ export function ToolButton({
   );
 }
 
-export function remoteParent(path: string): string {
-  if (!path || path === "/") return "/";
-  const trimmed = path.replace(/\/+$/, "");
-  const slash = trimmed.lastIndexOf("/");
-  return slash <= 0 ? "/" : trimmed.slice(0, slash);
-}
+// One copy, in the Filer's module: a second implementation of a path rule is
+// how "/srv//" came to navigate differently in the two panels (see 4a16685).
+export const remoteParent = fileRemoteParent;
 
 export const joinRemote = fileJoinRemote;
 
-export function joinLocal(base: string, name: string): string {
-  const separator = base.includes("\\") && !base.includes("/") ? "\\" : "/";
-  return `${base.replace(/[\\/]+$/, "")}${separator}${name}`;
-}
+export const joinLocal = fileJoinLocal;
 
 // One shape for both panels: the Filer's column and this one sit side by side,
 // and a file just under a megabyte must not read "1024 KB" in one and "1.0 MB"

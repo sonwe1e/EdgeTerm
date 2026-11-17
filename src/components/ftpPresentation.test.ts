@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 
-import { formatBytes, formatDate, joinRemote } from "./ftpPresentation";
+import { formatBytes, formatDate, joinLocal, joinRemote, remoteParent } from "./ftpPresentation";
 
 // The FTP column used to print the machine's full locale date, so a row read
 // "2026/11/18 14:32" beside the Filer's "11-18 14:32" — a different order, and
@@ -28,4 +28,11 @@ it("joins a remote path the way the Filer does, collapsing extra separators", ()
   expect(joinRemote("/srv", "a")).toBe("/srv/a");
   // The Filer's own copy kept the doubled slash; this one collapsed it.
   expect(joinRemote("/srv//", "a")).toBe("/srv/a");
+});
+
+it("takes its path rules from the Filer's module, not a second copy", () => {
+  expect(remoteParent("/data/sub")).toBe("/data");
+  expect(remoteParent("/data")).toBe("/");
+  expect(joinLocal("/home/me", "file.txt")).toBe("/home/me/file.txt");
+  expect(joinLocal("C:\\Users", "file.txt")).toBe("C:\\Users\\file.txt");
 });
