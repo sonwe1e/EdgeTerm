@@ -1009,9 +1009,18 @@ function FilerPanelBase() {
       <div
         ref={listRef}
         className="panel-body filer-list"
-        role="listbox"
-        aria-multiselectable="true"
-        aria-activedescendant={activeDescendant ?? undefined}
+        // A listbox may only contain options, and while the listing has no
+        // rows the message below takes its place: an error, an offline notice,
+        // "empty folder", "loading". Keeping the role exposed an empty listbox,
+        // so a screen reader announced "0 items" and skipped the alert that
+        // said what went wrong.
+        {...(error || offlineReason || entries.length === 0
+          ? {}
+          : {
+              role: "listbox" as const,
+              "aria-multiselectable": true,
+              "aria-activedescendant": activeDescendant ?? undefined,
+            })}
         tabIndex={0}
         onMouseDown={(event) => {
           if (

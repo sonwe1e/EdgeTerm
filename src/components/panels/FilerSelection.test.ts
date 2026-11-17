@@ -256,6 +256,22 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 const mount = () => act(async () => root.render(h(FilerPanel)));
+
+it("does not expose a listbox for a listing that failed", async () => {
+  vi.mocked(api.sftpList).mockRejectedValue(new Error("permission denied"));
+  useRemote();
+  await mount();
+  await act(async () => {
+    await Promise.resolve();
+  });
+
+  const alert = document.querySelector('[role="alert"]');
+  expect(alert?.textContent ?? "").toContain("permission denied");
+  // A listbox may only contain options: with the error inside it, a screen
+  // reader reported "0 items" and never read the reason.
+  expect(document.querySelector('[role="listbox"]')).toBeNull();
+});
+
 const transferJob = (
   id: string,
   name: string,
