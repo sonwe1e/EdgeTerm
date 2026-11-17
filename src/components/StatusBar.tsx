@@ -24,6 +24,8 @@ const legacyTitle = (servers: LegacyAlgorithms[]): string =>
 function StatusBarBase() {
   const t = useT();
   const tab = useActiveTab();
+  // The grid lives beside the tabs, not on the tab: see `AppStore.tabSizes`.
+  const size = useStore((s) => (s.activeId ? s.tabSizes[s.activeId] : undefined));
   const status = useStore((s) => s.status);
   const error = useStore((s) => s.error);
   const setError = useStore((s) => s.setError);
@@ -141,7 +143,7 @@ function StatusBarBase() {
           )}
           {!isFileSession(tab.info.kind) && (
             <span className="status-item">
-              {t("status.window", { cols: tab.cols, rows: tab.rows })}
+              {t("status.window", { cols: size?.cols ?? 80, rows: size?.rows ?? 24 })}
             </span>
           )}
           <span

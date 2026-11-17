@@ -56,8 +56,6 @@ const tab = (id: string, state: Tab["state"]): Tab => ({
   state,
   commandActivity: "idle",
   activityKind: "command",
-  cols: 80,
-  rows: 24,
   paneId: initialState.activePaneId,
 });
 

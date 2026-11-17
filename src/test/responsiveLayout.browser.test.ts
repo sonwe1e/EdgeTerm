@@ -96,8 +96,6 @@ const tabFor = (id: string, kind: "sftp" | "ssh"): Tab => ({
   state: "connected",
   commandActivity: "idle",
   activityKind: "command",
-  cols: 80,
-  rows: 24,
   paneId: "responsive-pane",
 });
 

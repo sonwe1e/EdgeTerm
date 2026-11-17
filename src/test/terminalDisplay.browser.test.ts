@@ -104,8 +104,6 @@ it("measures a sidebar-size change once when the terminal grid has not changed",
     state: "connected",
     commandActivity: "idle",
     activityKind: "command",
-    cols: 80,
-    rows: 24,
     paneId: initialStore.activePaneId,
   };
   // SessionPane borrows a live store tab; ensureController deliberately

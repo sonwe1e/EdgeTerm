@@ -13,7 +13,7 @@ import {
   sessionKey,
   settlePane,
 } from "./storeLayout";
-import { AppStore, Tab } from "./storeTypes";
+import { AppStore, Tab, TerminalSize } from "./storeTypes";
 import { disposeController, getController } from "./terminalRegistry";
 import {
   beginTabConnectionClose,
@@ -22,6 +22,14 @@ import {
   holdConnectionCleanup,
   isConnectionClosing,
 } from "./sessionConnectionLifecycle";
+
+/** The published grids without `id`; the same record when it holds no entry. */
+const dropSize = (sizes: Record<string, TerminalSize>, id: string) => {
+  if (!(id in sizes)) return sizes;
+  const next = { ...sizes };
+  delete next[id];
+  return next;
+};
 
 export const createTabActions: StateCreator<
   AppStore,
@@ -71,8 +79,6 @@ export const createTabActions: StateCreator<
       state,
       commandActivity: "idle",
       activityKind: "command",
-      cols: 80,
-      rows: 24,
       paneId: activePaneId,
     };
     set({
@@ -138,6 +144,7 @@ export const createTabActions: StateCreator<
         clipboardPrompt: current.clipboardPrompt?.sessionId === id ? null : current.clipboardPrompt,
         authPrompts: current.authPrompts.filter((prompt) => prompt.sessionId !== id),
         closePrompt: closePrompt && closePrompt.length > 0 ? closePrompt : null,
+        tabSizes: dropSize(current.tabSizes, id),
       });
     } finally {
       endTabConnectionClose(id);
@@ -344,6 +351,11 @@ export const createTabActions: StateCreator<
   },
 
   setSize(id, cols, rows) {
-    set({ tabs: patchTab(get().tabs, id, { cols, rows }) });
+    const { tabs, tabSizes } = get();
+    // A resize that arrives after its session closed has no cell to record.
+    if (!tabs.some((tab) => tab.info.id === id)) return;
+    const previous = tabSizes[id];
+    if (previous && previous.cols === cols && previous.rows === rows) return;
+    set({ tabSizes: { ...tabSizes, [id]: { cols, rows } } });
   },
 });

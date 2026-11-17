@@ -541,8 +541,9 @@ export async function connectSession(
 
     // The pane was fitted while the backend was still connecting, so its
     // first resize command could not be delivered. Re-send the current size.
-    if (!isFileSession(info.kind)) {
-      void api.resizeSession(id, tab.cols, tab.rows).catch(() => undefined);
+    const size = useStore.getState().tabSizes[id];
+    if (!isFileSession(info.kind) && size) {
+      void api.resizeSession(id, size.cols, size.rows).catch(() => undefined);
     }
     return id;
   } catch (e) {

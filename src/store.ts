@@ -62,6 +62,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
   groups: [],
   tabs: [],
   activeId: null,
+  tabSizes: {},
   gutterMode: loadGutterMode(),
   filerSort: loadFileSort(),
   panelPreferencesRevision: 0,

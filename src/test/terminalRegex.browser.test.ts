@@ -200,8 +200,6 @@ it("shows a timeout in the search box and keeps retry and Escape usable", async 
     state: "connected",
     commandActivity: "idle",
     activityKind: "command",
-    cols: 80,
-    rows: 24,
     paneId: "main",
   };
   useStore.setState({ tabs: [tab], activeId: id, language: "en" });

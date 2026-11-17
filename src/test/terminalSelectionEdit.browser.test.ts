@@ -60,8 +60,6 @@ async function fixture() {
     state: "connected",
     commandActivity: "idle",
     activityKind: "command",
-    cols: 80,
-    rows: 24,
     paneId,
   };
   useStore.setState({

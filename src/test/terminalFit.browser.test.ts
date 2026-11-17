@@ -145,8 +145,6 @@ const sessionTab = (id: string): Tab => ({
   state: "connected",
   commandActivity: "idle",
   activityKind: "command",
-  cols: 80,
-  rows: 24,
   paneId: initialStore.activePaneId,
 });
 

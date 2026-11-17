@@ -48,8 +48,6 @@ const senderTab = (id: string, state: Tab["state"], kind: Tab["info"]["kind"] = 
   state,
   commandActivity: "idle",
   activityKind: "command",
-  cols: 80,
-  rows: 24,
   paneId: initial.activePaneId,
 });
 let host: HTMLDivElement;
@@ -134,8 +132,6 @@ it("sends a compact saved command with its stored ending to the active session",
     state: "connected",
     commandActivity: "idle",
     activityKind: "command",
-    cols: 80,
-    rows: 24,
     paneId: initial.activePaneId,
   };
   useStore.setState({ tabs: [tab], activeId: tab.info.id });

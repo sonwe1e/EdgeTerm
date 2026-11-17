@@ -52,8 +52,6 @@ beforeEach(async () => {
     state: "connected",
     commandActivity: "idle",
     activityKind: "command",
-    cols: 80,
-    rows: 24,
     paneId: initialStore.activePaneId,
   };
   useStore.setState({ ...initialStore, tabs: [tab], activeId: id }, true);

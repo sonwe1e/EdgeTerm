@@ -54,12 +54,16 @@ export interface Tab {
    */
   activityKind: ActivityKind;
   message?: string;
-  cols: number;
-  rows: number;
   /** The pane whose strip shows this tab; see `AppStore.panes`. */
   paneId: string;
   /** Last confirmed paths, independent of the connection profile and of each other. */
   directories?: WorkspaceDirectories;
+}
+
+/** The grid a session's terminal last reported; see `AppStore.tabSizes`. */
+export interface TerminalSize {
+  cols: number;
+  rows: number;
 }
 
 /**
@@ -360,6 +364,13 @@ export interface AppStore {
   markCommandCompleted: (id: string, kind?: ActivityKind) => void;
   /** Clears activity when a submitted write failed before reaching the shell. */
   clearCommandActivity: (id: string) => void;
+  /**
+   * The terminal grid each session last reported, keyed by session id. It is
+   * deliberately not a field of `Tab`: a pane drag reports a new grid every
+   * frame, so keeping it there handed every subscriber of `tabs` — the strip,
+   * the menu bar, both panels — a new tab object to re-render each frame.
+   */
+  tabSizes: Record<string, TerminalSize>;
   setSize: (id: string, cols: number, rows: number) => void;
 
   togglePanel: (panel: PanelName) => void;

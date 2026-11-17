@@ -100,8 +100,6 @@ async function fixture(kind: "local" | "ssh" = "local", width = 1100) {
     ordinal: 0,
     commandActivity: "idle",
     activityKind: "command",
-    cols: 80,
-    rows: 24,
     paneId,
   };
   useStore.setState({
@@ -436,9 +434,11 @@ it("quotes a Shift-drag selection from a mouse-owning TUI after its screen redra
   await expect.element(editor).toHaveValue("Explain this:\n\n中文 output\n  second line");
   controller.setLocked(true);
   controller.setLocked(false);
-  useStore.setState((state) => ({
-    tabs: state.tabs.map((tab) => ({ ...tab, rows: tab.rows + 1 })),
-  }));
+  // A tab-shaped store update that changes nothing visible: the dialog has to
+  // keep what it shows when a new `tabs` array arrives underneath it. The grid
+  // is no longer part of the tab, so the update goes through the tab itself.
+  const current = useStore.getState().tabs.find((tab) => tab.info.id === "agent-fixture");
+  if (current) useStore.getState().updateTabInfo(current.info.id, { ...current.info });
   await twoFrames();
   await page.getByRole("button", { name: "Add terminal selection", exact: true }).click();
   await expect

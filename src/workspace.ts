@@ -83,8 +83,6 @@ export function restoreWorkspace(snapshot: WorkspaceSnapshot): Tab[] {
       state: "connecting",
       commandActivity: "idle",
       activityKind: "command",
-      cols: 80,
-      rows: 24,
     };
   });
   const panes = snapshot.panes.map((pane) => ({
