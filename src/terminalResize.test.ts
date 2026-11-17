@@ -125,6 +125,27 @@ describe("resize policy at the terminal boundary", () => {
     expect(onResize.mock.calls.every(([width]) => width === cols)).toBe(true);
   });
 
+  it("tells its owner when it is disposed, so queued work can stop", () => {
+    const onDispose = vi.fn();
+    const controller = new TerminalController(
+      "dispose-audit",
+      {
+        onData() {},
+        onResize() {},
+        onStatus() {},
+        onCommand() {},
+        onCommandState() {},
+        suggest: () => [],
+        forgetSuggestion() {},
+        onDispose,
+      },
+      13,
+      2000,
+    );
+    controller.dispose();
+    expect(onDispose).toHaveBeenCalledTimes(1);
+  });
+
   it("drops deferred work on dispose", async () => {
     const { controller: c, propose, onResize } = await fixture(250);
     propose(110, c.term.rows);

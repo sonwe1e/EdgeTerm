@@ -22,6 +22,24 @@ import type { TerminalController } from "./terminal";
 import { disposeController, getController, setController } from "./terminalRegistry";
 import { isFileSession, type SessionInfo, type SessionProfile } from "./types";
 import { rememberWorkspaceDirectory } from "./workspaceDirectories";
+import { createResizeCoalescer, type ResizeCoalescer } from "./resizeCoalescer";
+
+/**
+ * One resize coalescer per session, so a drag's per-frame grid reports reach
+ * the backend as one call per interval; see `createResizeCoalescer`.
+ */
+const resizers = new Map<string, ResizeCoalescer>();
+
+function coalescedResize(id: string): ResizeCoalescer {
+  let resizer = resizers.get(id);
+  if (!resizer) {
+    resizer = createResizeCoalescer((cols, rows) => {
+      void api.resizeSession(id, cols, rows).catch(() => undefined);
+    });
+    resizers.set(id, resizer);
+  }
+  return resizer;
+}
 
 /**
  * Line written into a terminal when its session ends, however it ended. Built
@@ -175,7 +193,12 @@ export async function ensureController(id: string): Promise<TerminalController> 
       forgetSuggestion: (command) => commandHistory.remove(command),
       onResize: (cols, rows) => {
         useStore.getState().setSize(id, cols, rows);
-        void api.resizeSession(id, cols, rows).catch(() => undefined);
+        // A drag reports every frame; the PTY only needs the last size.
+        coalescedResize(id).request(cols, rows);
+      },
+      onDispose: () => {
+        resizers.get(id)?.cancel();
+        resizers.delete(id);
       },
       onStatus: (message, error = false) => {
         const store = useStore.getState();
@@ -543,6 +566,9 @@ export async function connectSession(
     // first resize command could not be delivered. Re-send the current size.
     const size = useStore.getState().tabSizes[id];
     if (!isFileSession(info.kind) && size) {
+      // This send has to be the last word: drop a grid still queued from the
+      // panes' own reports during the connect, or it could land after this.
+      resizers.get(id)?.cancel();
       void api.resizeSession(id, size.cols, size.rows).catch(() => undefined);
     }
     return id;

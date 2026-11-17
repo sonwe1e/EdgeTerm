@@ -399,6 +399,12 @@ export interface Callbacks {
    */
   onFileLink?: (path: string, line: number | undefined, cwd: string | null) => void;
   onResize: (cols: number, rows: number) => void;
+  /**
+   * The controller is going away. The owner drops the work it queued for this
+   * session — a resize still waiting for its trailing send, for instance —
+   * before the terminal that would have delivered it is gone.
+   */
+  onDispose?: () => void;
   onStatus: (message: string, error?: boolean) => void;
   /**
    * The session behind this terminal, read at click time so a reconnect's new

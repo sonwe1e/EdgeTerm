@@ -1334,6 +1334,8 @@ export class TerminalController {
     this.gutter = null;
     this.lineGutter.rowPool = [];
     this.semantic.stopBacklog();
+    // Last, so the owner's cleanup sees a terminal that is already gone.
+    this.callbacks.onDispose?.();
   }
 
   // --- internals ------------------------------------------------------------
