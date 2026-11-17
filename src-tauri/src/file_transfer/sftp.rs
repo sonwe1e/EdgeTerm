@@ -1794,24 +1794,64 @@ async fn commit(
     Ok(())
 }
 
+/// Removes the local partial behind each checkpoint, returning the ones that
+/// are really gone and how many could not be removed.
+///
+/// One file the OS will not release must not strand the rest of the batch: the
+/// failure is counted, and its checkpoint keeps `owns_temporary`, so the journal
+/// still records a partial that is really there. A file that is already gone
+/// counts as cleaned.
+pub(super) fn remove_local_partials(
+    checkpoints: Vec<Checkpoint>,
+    remove: impl Fn(&Path) -> std::io::Result<()>,
+) -> (Vec<Checkpoint>, usize) {
+    let mut cleaned = Vec::new();
+    let mut failed = 0;
+    for mut cp in checkpoints {
+        match remove(Path::new(&cp.temporary)) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => {
+                failed += 1;
+                continue;
+            }
+        }
+        cp.owns_temporary = false;
+        cleaned.push(cp);
+    }
+    (cleaned, failed)
+}
+
 pub async fn cleanup(job: &Job) -> TransferResult<()> {
     let checkpoints: Vec<_> = job.checkpoints.lock().values().cloned().collect();
     let mut remote_paths = Vec::new();
-    for mut cp in checkpoints {
+    let mut local_paths = Vec::new();
+    for cp in checkpoints {
         if cp.complete || !cp.owns_temporary {
             continue;
         }
         if cp.item.upload {
             remote_paths.push(cp);
         } else {
-            if Path::new(&cp.temporary).exists() {
-                std::fs::remove_file(&cp.temporary)?;
-            }
-            cp.owns_temporary = false;
-            job.save_async(&cp).await?;
+            local_paths.push(cp);
         }
     }
+    // `remove_file` is generic over `AsRef<Path>`; naming the path pins it to the
+    // signature the helper takes.
+    let (cleaned, local_failures) =
+        remove_local_partials(local_paths, |path| std::fs::remove_file(path));
+    for cp in cleaned {
+        job.save_async(&cp).await?;
+    }
     if remote_paths.is_empty() {
+        if local_failures > 0 {
+            // The journal keeps the ones that are still on disk, so a retry can
+            // try again; the message says how many are left rather than failing
+            // silently on the first.
+            return Err(Failure::local(format!(
+                "{local_failures} local partial file(s) could not be removed; they are retained in the transfer journal"
+            )));
+        }
         return Ok(());
     }
     // Cancellation never starts a new authentication conversation just to clean

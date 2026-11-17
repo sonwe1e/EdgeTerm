@@ -1041,3 +1041,54 @@ fn dismiss_keeps_a_cancelled_cleanup_retry_and_still_clears_finished_jobs() {
     assert!(!manager.jobs.lock().contains_key("cancelled-job"));
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn one_partial_the_os_will_not_release_does_not_strand_the_rest() {
+    let item = Item {
+        local: "/tmp/a.part".into(),
+        remote: "/dst/a".into(),
+        upload: false,
+        directory: false,
+    };
+    let checkpoint = |temporary: &str| Checkpoint {
+        key: "0123456789abcdef01234567".into(),
+        item: item.clone(),
+        source: Signature {
+            size: 0,
+            modified: None,
+            sample: local::digest(&[]),
+        },
+        original: None,
+        temporary: temporary.into(),
+        backup: String::new(),
+        offset: 0,
+        prefix_hash: local::digest(&[]),
+        complete: false,
+        committing: false,
+        owns_temporary: true,
+        owns_backup: false,
+    };
+    let (cleaned, failed) = crate::file_transfer::sftp::remove_local_partials(
+        vec![checkpoint("/tmp/stuck.part"), checkpoint("/tmp/gone.part")],
+        |path| {
+            if path.to_string_lossy().contains("stuck") {
+                // Held open by another process, or not ours to delete.
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "held open",
+                ))
+            } else {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "already gone",
+                ))
+            }
+        },
+    );
+    // One failure is reported, but it does not stop the batch: the second
+    // checkpoint is cleaned, and only the first still claims its partial.
+    assert_eq!(failed, 1);
+    assert_eq!(cleaned.len(), 1);
+    assert_eq!(cleaned[0].temporary, "/tmp/gone.part");
+    assert!(!cleaned[0].owns_temporary);
+}
