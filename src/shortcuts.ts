@@ -429,6 +429,12 @@ export function chordProblem(binding: KeyChord): string | null {
   if (!binding.ctrl && !binding.alt && !binding.meta && !bareShift) {
     return IS_MAC ? translateMsg("sc.problemMac") : translateMsg("sc.problemOther");
   }
+  // Shift+F10 opens the context menu on the focused surface, the way Windows
+  // and the file manager do. It carries a modifier, so the bare-chord rule let
+  // it through, and a command bound to it would answer first.
+  if (binding.shift && binding.code === "F10" && !binding.ctrl && !binding.alt && !binding.meta) {
+    return translateMsg("sc.reservedContextMenu", { chord: chordLabel(binding) });
+  }
   const reserved = RESERVED_CHORDS.find((entry) => sameChord(entry.chord, binding));
   if (reserved)
     return translateMsg("sc.reserved", {

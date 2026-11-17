@@ -248,3 +248,25 @@ describe("default bindings", () => {
     expect(conflicts(OTHER_DEFAULTS)).toEqual([]);
   });
 });
+
+describe("chordProblem", () => {
+  const bind = (
+    code: string,
+    over: Partial<{ ctrl: boolean; alt: boolean; shift: boolean; meta: boolean }> = {},
+  ) => ({
+    ctrl: false,
+    alt: false,
+    shift: false,
+    meta: false,
+    code,
+    ...over,
+  });
+
+  // Shift+F10 is the context-menu key. It carries a modifier, so the bare-chord
+  // rule let it through and a command could take the key that opens the menu.
+  it("refuses the chord that opens the context menu", () => {
+    expect(chordProblem(bind("F10", { shift: true }))).toBeTruthy();
+    // Shift+F9 has no such owner and stays available.
+    expect(chordProblem(bind("F9", { shift: true }))).toBeNull();
+  });
+});
