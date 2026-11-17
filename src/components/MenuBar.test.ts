@@ -5,6 +5,11 @@ import { useStore } from "../store";
 import { ContextMenu } from "./ContextMenu";
 import { MenuBar } from "./MenuBar";
 
+// The system opener is the only outside boundary the Help menu crosses; a
+// failing one has to reach the user instead of the console.
+const openUrl = vi.fn<(url: string) => Promise<void>>();
+vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: (url: string) => openUrl(url) }));
+
 // Only the native window boundary is replaced. Alt tracking, document
 // capture/bubble ordering, menu focus and menu dismissal are production code.
 vi.mock("@tauri-apps/api/window", () => ({
@@ -95,6 +100,20 @@ function plainAlt() {
   key("keyup", "Alt");
 }
 
+/** Opens a top-level menu by name, the way a keyboard user reaches it. */
+function openMenuNamed(name: string) {
+  plainAlt();
+  const title = [...host.querySelectorAll<HTMLElement>('[id^="menu-title-"]')].find(
+    (element) => element.textContent?.trim() === name,
+  );
+  expect(title, `the menubar has a ${name} menu`).toBeTruthy();
+  // Arrow navigation only steps between titles while a title has focus;
+  // after Alt the focus sits inside the first dropdown.
+  act(() => title!.focus());
+  key("keydown", "ArrowDown");
+  return title!;
+}
+
 function openContext() {
   act(() => {
     host.querySelector("textarea")!.dispatchEvent(
@@ -108,6 +127,22 @@ function openContext() {
   act(() => vi.advanceTimersByTime(20));
   expect(document.activeElement?.closest(".context-menu")).not.toBeNull();
 }
+
+it("reports a Help link the system could not open", async () => {
+  openUrl.mockRejectedValue(new Error("no default browser"));
+  openMenuNamed("Help");
+  const entry = [...host.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+    (element) => element.textContent?.trim() === "Tutorial",
+  );
+  expect(entry, "the Help menu lists Tutorial").toBeTruthy();
+  await act(async () => {
+    entry!.click();
+    await Promise.resolve();
+  });
+  // The status bar's error, not a console line the user never sees.
+  expect(useStore.getState().error).toContain("no default browser");
+  expect(openUrl).toHaveBeenCalledTimes(1);
+});
 
 const menubarOpen = () =>
   host.querySelector("#menu-title-0")?.getAttribute("aria-expanded") === "true";
