@@ -83,11 +83,15 @@ function StatusBarBase() {
 
   return (
     <div className="statusbar" data-focus-region="status" tabIndex={-1}>
+      {/* An explicit `aria-live` overrides the role's implicit one, so a fixed
+          `polite` held an error back behind the terminal's announcements: with
+          output streaming, the polite queue rarely drains. An error takes the
+          assertive lane; ordinary notices stay polite. */}
       <span
         className={`status-item status-message${error ? " is-error" : ""}`}
         title={error ?? status}
         role={error ? "alert" : "status"}
-        aria-live="polite"
+        aria-live={error ? "assertive" : "polite"}
       >
         <span className="status-message-text">{error ?? status}</span>
         {error && (
