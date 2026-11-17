@@ -1822,6 +1822,25 @@ pub(super) fn remove_local_partials(
     (cleaned, failed)
 }
 
+/// Combines the two halves of a cleanup so neither outcome is dropped: a batch
+/// can leave local partials behind *and* fail remotely, and the user has to hear
+/// about both to know what is still on disk.
+pub(super) fn combine_cleanup(
+    local_failures: usize,
+    remote: TransferResult<()>,
+) -> TransferResult<()> {
+    match (remote, local_failures) {
+        (Ok(()), 0) => Ok(()),
+        (Ok(()), count) => Err(Failure::local(format!(
+            "{count} local partial file(s) could not be removed; they are retained in the transfer journal"
+        ))),
+        (Err(error), 0) => Err(error),
+        (Err(error), count) => Err(Failure::local(format!(
+            "{error}; {count} local partial file(s) are also still on disk"
+        ))),
+    }
+}
+
 pub async fn cleanup(job: &Job) -> TransferResult<()> {
     let checkpoints: Vec<_> = job.checkpoints.lock().values().cloned().collect();
     let mut remote_paths = Vec::new();
@@ -1844,15 +1863,7 @@ pub async fn cleanup(job: &Job) -> TransferResult<()> {
         job.save_async(&cp).await?;
     }
     if remote_paths.is_empty() {
-        if local_failures > 0 {
-            // The journal keeps the ones that are still on disk, so a retry can
-            // try again; the message says how many are left rather than failing
-            // silently on the first.
-            return Err(Failure::local(format!(
-                "{local_failures} local partial file(s) could not be removed; they are retained in the transfer journal"
-            )));
-        }
-        return Ok(());
+        return combine_cleanup(local_failures, Ok(()));
     }
     // Cancellation never starts a new authentication conversation just to clean
     // a partial. Retain the journal and report the exact cleanup limitation.
@@ -1865,7 +1876,7 @@ pub async fn cleanup(job: &Job) -> TransferResult<()> {
         .ok_or_else(|| {
             Failure::local("remote partials retained; reconnect and cancel again to clean them")
         })?;
-    tokio::time::timeout(Duration::from_secs(5), async {
+    let remote_outcome = tokio::time::timeout(Duration::from_secs(5), async {
         let stream = transport
             .transfer_channel()
             .await
@@ -1897,7 +1908,8 @@ pub async fn cleanup(job: &Job) -> TransferResult<()> {
         Err(Failure::local(
             "remote cleanup timed out; partial paths are retained in the transfer journal",
         ))
-    })
+    });
+    combine_cleanup(local_failures, remote_outcome)
 }
 
 async fn remove_backup(

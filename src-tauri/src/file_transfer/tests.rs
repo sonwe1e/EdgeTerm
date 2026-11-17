@@ -1092,3 +1092,29 @@ fn one_partial_the_os_will_not_release_does_not_strand_the_rest() {
     assert_eq!(cleaned[0].temporary, "/tmp/gone.part");
     assert!(!cleaned[0].owns_temporary);
 }
+
+#[test]
+fn a_batch_stuck_locally_and_failing_remotely_reports_both() {
+    use crate::file_transfer::sftp::combine_cleanup;
+    use crate::file_transfer::types::Failure;
+
+    assert!(combine_cleanup(0, Ok(())).is_ok());
+
+    // Local leftovers alone.
+    let local_only = combine_cleanup(2, Ok(())).unwrap_err().to_string();
+    assert!(local_only.contains("2 local partial"), "{local_only}");
+
+    // A remote failure alone keeps its own message untouched.
+    let remote_only = combine_cleanup(0, Err(Failure::local("remote gone")))
+        .unwrap_err()
+        .to_string();
+    assert!(remote_only.contains("remote gone"), "{remote_only}");
+    assert!(!remote_only.contains("local partial"), "{remote_only}");
+
+    // Both: the remote reason survives and the local count is still named.
+    let both = combine_cleanup(1, Err(Failure::local("remote gone")))
+        .unwrap_err()
+        .to_string();
+    assert!(both.contains("remote gone"), "{both}");
+    assert!(both.contains("1 local partial"), "{both}");
+}
