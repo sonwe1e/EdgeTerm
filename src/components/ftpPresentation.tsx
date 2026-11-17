@@ -30,6 +30,7 @@ import { FileIcon } from "./FileIcon";
 import {
   formatBytes as fileFormatBytes,
   formatDate as rowDateFormat,
+  joinRemote as fileJoinRemote,
 } from "./panels/filerPresentation";
 import { Icon } from "./icons";
 import { SortIndicator } from "./SortIndicator";
@@ -476,9 +477,7 @@ export function remoteParent(path: string): string {
   return slash <= 0 ? "/" : trimmed.slice(0, slash);
 }
 
-export function joinRemote(base: string, name: string): string {
-  return base === "/" ? `/${name}` : `${base.replace(/\/+$/, "")}/${name}`;
-}
+export const joinRemote = fileJoinRemote;
 
 export function joinLocal(base: string, name: string): string {
   const separator = base.includes("\\") && !base.includes("/") ? "\\" : "/";

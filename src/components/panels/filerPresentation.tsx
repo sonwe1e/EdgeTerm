@@ -257,8 +257,10 @@ export function remoteParent(path: string): string {
 }
 
 export function joinRemote(base: string, name: string): string {
-  if (base.endsWith("/")) return `${base}${name}`;
-  return `${base}/${name}`;
+  // Collapse every trailing separator, not just one: a path that arrives as
+  // "/srv//" would otherwise build "/srv//name", and the FTP panel's copy of
+  // this helper already collapsed them, so the two lists navigated differently.
+  return base === "/" ? `/${name}` : `${base.replace(/\/+$/, "")}/${name}`;
 }
 
 export function localFileName(path: string): string {

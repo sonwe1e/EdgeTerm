@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 
-import { formatBytes, formatDate } from "./ftpPresentation";
+import { formatBytes, formatDate, joinRemote } from "./ftpPresentation";
 
 // The FTP column used to print the machine's full locale date, so a row read
 // "2026/11/18 14:32" beside the Filer's "11-18 14:32" — a different order, and
@@ -21,4 +21,11 @@ it("formats sizes the way the Filer column does", () => {
   // 1048570 bytes is 1023.99 KB: this copy of the rounding printed "1024 KB"
   // while the Filer printed "1.0 MB" for the same file.
   expect(formatBytes(1048570)).toBe("1.0 MB");
+});
+
+it("joins a remote path the way the Filer does, collapsing extra separators", () => {
+  expect(joinRemote("/", "a")).toBe("/a");
+  expect(joinRemote("/srv", "a")).toBe("/srv/a");
+  // The Filer's own copy kept the doubled slash; this one collapsed it.
+  expect(joinRemote("/srv//", "a")).toBe("/srv/a");
 });
