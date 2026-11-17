@@ -1118,3 +1118,45 @@ fn a_batch_stuck_locally_and_failing_remotely_reports_both() {
     assert!(both.contains("remote gone"), "{both}");
     assert!(both.contains("1 local partial"), "{both}");
 }
+
+#[tokio::test]
+async fn cleanup_removes_a_downloads_local_partial() {
+    let root = scratch();
+    let manager = Transfers::with_root(root.clone());
+    let job = stopped_job(&manager, &root, "cleanup-local");
+    let partial = root.join("partial.part");
+    std::fs::write(&partial, b"half a file").unwrap();
+    let item = Item {
+        local: "/local/report.txt".into(),
+        remote: "/remote/report.txt".into(),
+        upload: false,
+        directory: false,
+    };
+    let cp = Checkpoint {
+        key: "k1".into(),
+        item,
+        source: Signature {
+            size: 0,
+            modified: None,
+            sample: local::digest(&[]),
+        },
+        original: None,
+        temporary: partial.to_string_lossy().into(),
+        backup: String::new(),
+        offset: 0,
+        prefix_hash: local::digest(&[]),
+        complete: false,
+        committing: false,
+        owns_temporary: true,
+        owns_backup: false,
+    };
+    job.checkpoints.lock().insert("k1".into(), cp);
+
+    // The wiring, not just the helper: a cancelled download's partial is removed
+    // and the journal stops claiming it.
+    sftp::cleanup(&job).await.unwrap();
+
+    assert!(!partial.exists(), "the local partial is gone");
+    assert!(!job.checkpoints.lock()["k1"].owns_temporary);
+    let _ = std::fs::remove_dir_all(&root);
+}
