@@ -194,8 +194,12 @@ const forwardRoute = (spec: api.PortForwardSpec, auto: string) => {
   return `${listen} → ${host ? endpoint(host, spec.targetPort ?? 0, auto) : ""}`;
 };
 
-/** Column count of `.session-color-picker`; keep in sync with styles.css. */
-const COLOR_PICKER_COLUMNS = 8;
+/**
+ * Column count of `.session-color-picker`. The arrow keys step by this number,
+ * so it has to be the number the stylesheet actually lays out — exported for the
+ * test that compares them.
+ */
+export const COLOR_PICKER_COLUMNS = 8;
 
 const COMMON_BAUD_RATES = [
   1200, 2400, 4800, 9600, 14400, 19200, 38400, 57600, 115200, 230400, 460800, 500000, 576000,
