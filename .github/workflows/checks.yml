@@ -97,9 +97,11 @@ jobs:
             librsvg2-dev patchelf libgtk-3-dev libudev-dev
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt
+          components: rustfmt, clippy
       - run: npm ci
       - run: npm run cargo -- fmt --manifest-path src-tauri/Cargo.toml -- --check
+      # Correctness-class clippy lints only; the style ones stay warnings.
+      - run: npm run check:clippy
       - run: npm run test:rust
       # Verify changes to the typed IPC contract against the Rust exporter,
       # including return types used by remote editable-file preparation.
