@@ -1,6 +1,7 @@
 import { memo, useEffect, useState } from "react";
 
 import { revealLocalPath } from "../openExternal";
+import { writeSystemClipboard } from "../systemClipboard";
 import { t as translateMsg } from "../i18n";
 import { useActiveTab, useStore } from "../store";
 import { isFileSession, type LegacyAlgorithms } from "../types";
@@ -97,15 +98,29 @@ function StatusBarBase() {
       >
         <span className="status-message-text">{error ?? status}</span>
         {error && (
-          <button
-            type="button"
-            className="status-dismiss"
-            title={t("status.dismissError")}
-            aria-label={t("status.dismissError")}
-            onClick={() => setError(null)}
-          >
-            <Icon name="close" />
-          </button>
+          <>
+            {/* The bar shows one line of a message that can be several (a batch
+                delete lists every failure). The button is how the whole text
+                reaches a bug report. */}
+            <button
+              type="button"
+              className="status-dismiss"
+              title={t("status.copyError")}
+              aria-label={t("status.copyError")}
+              onClick={() => void writeSystemClipboard(error).catch(() => undefined)}
+            >
+              <Icon name="copy" />
+            </button>
+            <button
+              type="button"
+              className="status-dismiss"
+              title={t("status.dismissError")}
+              aria-label={t("status.dismissError")}
+              onClick={() => setError(null)}
+            >
+              <Icon name="close" />
+            </button>
+          </>
         )}
       </span>
       <ResourceMonitorBar tab={tab} />

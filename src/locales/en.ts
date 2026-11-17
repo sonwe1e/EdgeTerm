@@ -175,6 +175,7 @@ export const en = {
 
   // --- status bar and imperative notices -----------------------------------
   "status.ready": "Ready",
+  "status.copyError": "Copy the message",
   "status.dismissError": "Dismiss error",
   "status.connectionCancelled": "Connection cancelled",
   "status.recordingStopped": "Recording stopped: {error} ({path})",

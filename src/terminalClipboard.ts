@@ -1,7 +1,8 @@
 import { Terminal } from "@xterm/xterm";
-import { readClipboardText, writeClipboardText } from "./api";
+import { readClipboardText } from "./api";
 import { type ProgramClipboardMode } from "./osc52";
 import { IS_MAC, IS_WINDOWS } from "./platform";
+import { writeSystemClipboard } from "./systemClipboard";
 import { needsPasteWarning } from "./terminalPaste";
 import { beginTerminalDrag } from "./terminalDragSelection";
 import { scheduleSelectionRestore, selectionEdit } from "./terminalSelectionEdit";
@@ -281,9 +282,7 @@ export class TerminalClipboard {
    * `enable_clipboard_access`).
    */
   private writeClipboard(text: string) {
-    const write =
-      IS_MAC || IS_WINDOWS ? writeClipboardText(text) : navigator.clipboard.writeText(text);
-    void write.catch((error: unknown) => {
+    void writeSystemClipboard(text).catch((error: unknown) => {
       this.context.showTransferNotice(`Copy failed: ${errorMessage(error)}`, "error");
     });
   }

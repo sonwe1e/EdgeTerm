@@ -77,6 +77,9 @@
 .status-message.is-error .status-message-text {
   color: var(--red);
   font-weight: 500;
+  /* One line here whatever the message holds, but the full text can be
+     selected where it fits and is copied whole from the button beside it. */
+  user-select: text;
 }
 .status-dismiss {
   display: inline-flex;

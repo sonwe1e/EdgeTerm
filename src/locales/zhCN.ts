@@ -161,6 +161,7 @@ export const zhCN: Catalog = {
   "about.distribution": "本发行分支 ·",
 
   "status.ready": "就绪",
+  "status.copyError": "复制消息",
   "status.dismissError": "关闭错误提示",
   "status.connectionCancelled": "已取消连接",
   "status.recordingStopped": "录制已停止：{error}（{path}）",
