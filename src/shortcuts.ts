@@ -498,18 +498,20 @@ export function parseShortcuts(
       if (parsed) bindings[id] = parsed;
     }
   }
-  // One chord, one command — the rule the dialog keeps when it reassigns. A
-  // hand-edited or imported table can arrive with two commands on one chord,
-  // and then only the first match ever fires. The later entry keeps it and the
-  // earlier holder loses it, the same way a reassignment in the dialog moves
-  // the chord rather than leaving two rows claiming it.
-  const claimed = new Set<string>();
-  for (const { id } of [...SHORTCUT_COMMANDS].reverse()) {
+  // One chord, one command — the rule the dialog keeps when it reassigns. Only
+  // the entries the table actually mentions can take a chord: a command it
+  // never mentions keeps its default unless an explicit entry collides with
+  // it, in which case the explicit entry wins and the default's holder gives
+  // it up, exactly as when the dialog reassigns. Picking a winner any other
+  // way (by list order, say) drops the binding the user asked for and saves
+  // the loss back to storage.
+  for (const { id } of SHORTCUT_COMMANDS) {
+    if (!(id in raw)) continue;
     const chord = bindings[id];
     if (!chord) continue;
-    const key = `${chord.code}|${Number(chord.ctrl)}${Number(chord.alt)}${Number(chord.shift)}${Number(chord.meta)}`;
-    if (claimed.has(key)) bindings[id] = null;
-    else claimed.add(key);
+    for (const { id: other } of SHORTCUT_COMMANDS) {
+      if (other !== id && sameChord(bindings[other], chord)) bindings[other] = null;
+    }
   }
   return bindings;
 }
