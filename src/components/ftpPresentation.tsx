@@ -27,7 +27,10 @@ import { useStableCallback } from "../useStableCallback";
 import { useT } from "../useT";
 import type { FileEntry, ThemeMode } from "../types";
 import { FileIcon } from "./FileIcon";
-import { formatDate as rowDateFormat } from "./panels/filerPresentation";
+import {
+  formatBytes as fileFormatBytes,
+  formatDate as rowDateFormat,
+} from "./panels/filerPresentation";
 import { Icon } from "./icons";
 import { SortIndicator } from "./SortIndicator";
 import { useFileListKeyboard } from "./useFileListKeyboard";
@@ -482,13 +485,10 @@ export function joinLocal(base: string, name: string): string {
   return `${base.replace(/[\\/]+$/, "")}${separator}${name}`;
 }
 
-export function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return bytes === 0 ? "0 B" : "—";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  const value = bytes / 1024 ** index;
-  return `${value >= 10 || index === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
-}
+// One shape for both panels: the Filer's column and this one sit side by side,
+// and a file just under a megabyte must not read "1024 KB" in one and "1.0 MB"
+// in the other. That is exactly what two copies of this rounding produced.
+export const formatBytes = fileFormatBytes;
 
 // A listing that withheld the moment says "unknown" in words, the same word
 // the Filer panel's column uses: a dash means "no value the way a folder has

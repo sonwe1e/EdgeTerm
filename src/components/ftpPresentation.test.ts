@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 
-import { formatDate } from "./ftpPresentation";
+import { formatBytes, formatDate } from "./ftpPresentation";
 
 // The FTP column used to print the machine's full locale date, so a row read
 // "2026/11/18 14:32" beside the Filer's "11-18 14:32" — a different order, and
@@ -14,4 +14,11 @@ it("prints the Filer's width-stable shape, not the machine's locale date", () =>
 
 it("still says the moment is unknown rather than printing nothing", () => {
   expect(formatDate(null)).toBe("Unknown");
+});
+
+it("formats sizes the way the Filer column does", () => {
+  expect(formatBytes(1024)).toBe("1.0 KB");
+  // 1048570 bytes is 1023.99 KB: this copy of the rounding printed "1024 KB"
+  // while the Filer printed "1.0 MB" for the same file.
+  expect(formatBytes(1048570)).toBe("1.0 MB");
 });
