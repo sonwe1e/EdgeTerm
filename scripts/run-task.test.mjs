@@ -56,6 +56,12 @@ describe("resource-bounded task entry", () => {
     expect(taskCommands("cargo", ["check"], "C:/rust/cargo.exe")).toEqual([
       ["C:/rust/cargo.exe", ["check"]],
     ]);
+    // The performance gate is a first-class task, so it is run the same way as
+    // every other check instead of through a remembered script path.
+    const [gate] = taskCommands("check:file-performance");
+    expect(gate[0]).toBe(process.execPath);
+    expect(gate[1].some((part) => part.endsWith("check-file-performance.mjs"))).toBe(true);
+
     expect(() => taskCommands("script", ["../escape.mjs"])).toThrow();
   });
 

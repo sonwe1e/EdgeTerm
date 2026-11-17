@@ -25,6 +25,7 @@
     "format:check": "node scripts/run-task.mjs format:check",
     "bindings": "node scripts/run-task.mjs bindings",
     "check:bindings": "node scripts/run-task.mjs check:bindings",
+    "check:file-performance": "node scripts/run-task.mjs check:file-performance",
     "experiment:compiler": "node scripts/run-task.mjs experiment:compiler",
     "doctor": "node scripts/run-task.mjs doctor",
     "test:rust": "node scripts/run-task.mjs test:rust",

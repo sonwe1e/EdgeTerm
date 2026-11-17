@@ -55,6 +55,10 @@ export function taskCommands(task, args = [], cargo = "cargo") {
       return [js("scripts/bindings.mjs")];
     case "check:bindings":
       return [js("scripts/bindings.mjs", "--check")];
+    // A gate nobody can run with one command rots unnoticed: this one was
+    // broken for a while before it was found (see round 1 of the quality work).
+    case "check:file-performance":
+      return [js("scripts/check-file-performance.mjs")];
     case "check:commits":
       return [js("scripts/check-commits.mjs")];
     case "experiment:compiler":
