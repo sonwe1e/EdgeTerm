@@ -20,11 +20,16 @@ const root = createRoot(document.getElementById('root'));
 const entries = Array.from({length:10000},(_,i) => ({name:'file'+i+'.dat',path:'/test/file'+i+'.dat',
   isDir:i%10===0,isSymlink:false,size:i*1000,modified:1700000000+i,permissions:null,owner:null,group:null}));
 const noop=()=>{};
+// Every required prop of FileBrowserProps (see
+// src/components/ftpPresentation.tsx) is supplied here: a new required prop
+// has to be added in this one object, and a missing one is reported below as
+// "harness fixture is out of date" instead of surfacing as a render TypeError.
+const EMPTY_SELECTION={paths:[],anchor:null};
 const browserProps=(title)=>({title,subtitle:'SFTP',path:'/test',draft:'/test',
-  selected:null,loading:false,error:null,side:'remote',draggingPath:null,dropHover:null,
+  selection:EMPTY_SELECTION,loading:false,error:null,side:'remote',draggingPath:null,dropHover:null,
   onItemPointerDown:(side,entry,event)=>event.currentTarget.setPointerCapture(event.pointerId),
   onItemPointerMove:noop,onItemPointerUp:noop,onDragCancel:noop,onDraftChange:noop,onOpenPath:noop,
-  onHome:noop,onParent:noop,onRefresh:noop,onSelect:noop,onActivate:noop});
+  onHome:noop,onParent:noop,onRefresh:noop,onSelectionChange:noop,onActivate:noop});
 window.showFiles=(count=10000)=>flushSync(()=>root.render(React.createElement(FileBrowser,
   {...browserProps('Remote'),entries:entries.slice(0,count)})));
 window.showFiler=(font)=>{
@@ -116,6 +121,13 @@ try {
   const waitFrames = () =>
     page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
   await waitFrames();
+  // A fixture that no longer matches FileBrowserProps fails here, before any
+  // measurement, rather than as an opaque render error halfway through.
+  if (errors.length > 0) {
+    throw new Error(
+      "harness fixture is out of date with the component's props: " + errors.join("; "),
+    );
+  }
   const layout = () =>
     page.evaluate(() => {
       const scroller = document.querySelector(".ftp-browser-list,.filer-list");
