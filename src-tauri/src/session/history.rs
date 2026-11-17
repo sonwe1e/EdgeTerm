@@ -333,6 +333,19 @@ impl HistoryStore {
         }
     }
 
+    /**
+     * The store's single lock. A panic elsewhere must not take the whole
+     * process's history down with it: the guard comes back from a poisoned
+     * mutex instead of panicking at every later call. What such a panic can
+     * leave behind is a half-applied batch, and `append`'s line-numbering
+     * check rejects the next batch rather than writing over the gap.
+     */
+    fn lock(&self) -> std::sync::MutexGuard<'_, StoreInner> {
+        self.inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     /// Appends one encoded batch. The batch must continue the session's line
     /// numbering (`absLine` strictly greater than everything stored so far),
     /// which is what a hot window exporting its trimmed lines guarantees.
@@ -342,7 +355,7 @@ impl HistoryStore {
         batch: &[u8],
     ) -> Result<AppendOutcome, HistoryError> {
         let lines = decode_batch(batch)?;
-        let mut inner = self.inner.lock().expect("history store poisoned");
+        let mut inner = self.lock();
         let session = inner
             .sessions
             .entry(session_id.to_string())
@@ -462,7 +475,7 @@ impl HistoryStore {
         from_abs: u64,
         max_lines: usize,
     ) -> Result<Vec<HistoryLine>, HistoryError> {
-        let inner = self.inner.lock().expect("history store poisoned");
+        let inner = self.lock();
         let session = inner
             .sessions
             .get(session_id)
@@ -509,7 +522,7 @@ impl HistoryStore {
             return Ok(Vec::new());
         }
         let deadline = Instant::now() + budget;
-        let inner = self.inner.lock().expect("history store poisoned");
+        let inner = self.lock();
         let session = inner
             .sessions
             .get(session_id)
@@ -547,14 +560,14 @@ impl HistoryStore {
     }
 
     pub(crate) fn clear(&self, session_id: &str) {
-        let mut inner = self.inner.lock().expect("history store poisoned");
+        let mut inner = self.lock();
         if let Some(session) = inner.sessions.remove(session_id) {
             inner.global_compressed -= session.compressed_bytes.min(inner.global_compressed);
         }
     }
 
     pub(crate) fn stats(&self, session_id: &str) -> Result<HistoryStats, HistoryError> {
-        let inner = self.inner.lock().expect("history store poisoned");
+        let inner = self.lock();
         let session = inner
             .sessions
             .get(session_id)
@@ -569,10 +582,7 @@ impl HistoryStore {
     }
 
     pub(crate) fn global_compressed_bytes(&self) -> usize {
-        self.inner
-            .lock()
-            .expect("history store poisoned")
-            .global_compressed
+        self.lock().global_compressed
     }
 }
 
@@ -751,6 +761,28 @@ mod tests {
         let filtered = store.read("s", 4090, 7).unwrap();
         assert!(filtered.iter().all(|l| l.abs_line >= 4090));
         assert_eq!(filtered.len(), 7);
+    }
+
+    /// A panic inside the store must not disable history for the whole process.
+    /// Before this, every later call panicked on the poisoned mutex: one bad
+    /// writer took the store away from every session until a restart.
+    #[test]
+    fn a_panicking_writer_leaves_history_usable() {
+        let store = HistoryStore::new();
+        store.append("s", &batch(&[line(1, 1, "before")])).unwrap();
+
+        let died = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = store.inner.lock().expect("the test holds the store's lock");
+            panic!("a writer died while holding the lock");
+        }));
+        assert!(died.is_err(), "the closure panicked while holding the lock");
+
+        // The store that was there before the panic still reads, and the next
+        // batch still lands.
+        assert_eq!(store.stats("s").unwrap().total_records, 1);
+        store.append("s", &batch(&[line(2, 2, "after")])).unwrap();
+        assert_eq!(store.stats("s").unwrap().total_records, 2);
+        assert_eq!(store.read("s", 1, 2).unwrap().len(), 2);
     }
 
     #[test]
