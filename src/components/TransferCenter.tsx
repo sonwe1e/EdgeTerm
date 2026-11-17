@@ -27,9 +27,9 @@ import type { MessageKey } from "../i18n";
 /** Exported for the test that keeps it in step with `.transfer-job`'s height. */
 export const JOB_ROW_HEIGHT = 100;
 /** A recovery row carries a name line and one metadata line; no progress. */
-const RECOVERY_ROW_HEIGHT = 56;
+export const RECOVERY_ROW_HEIGHT = 56;
 /** One failed file per line, ellipsised. */
-const FAILURE_ROW_HEIGHT = 24;
+export const FAILURE_ROW_HEIGHT = 24;
 
 /** KiB/s the user typed, or 0 for unlimited; the backend stores bytes per second. */
 function rateKib(options: api.TransferOptions): number {
