@@ -81,6 +81,12 @@
      selected where it fits and is copied whole from the button beside it. */
   user-select: text;
 }
+.status-message-more {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  color: var(--red);
+  opacity: 0.8;
+}
 .status-dismiss {
   display: inline-flex;
   flex: 0 0 auto;

@@ -81,6 +81,13 @@ function StatusBarBase() {
     )}:${pad(clock.getMinutes())}`;
   }
 
+  // A batch operation reports every failure as one message joined by newlines,
+  // and the bar shows one line of it. Say how many more there are, so a single
+  // visible line does not read as a single failure; the copy button takes the
+  // rest to wherever it is needed.
+  const errorLines = error ? error.split("\n") : [];
+  const errorRest = Math.max(0, errorLines.length - 1);
+
   const recording = tab?.state === "connected" ? tab.info.recording : null;
   const legacy = tab?.state === "connected" ? tab.info.legacyAlgorithms : [];
 
@@ -96,7 +103,12 @@ function StatusBarBase() {
         role={error ? "alert" : "status"}
         aria-live={error ? "assertive" : "polite"}
       >
-        <span className="status-message-text">{error ?? status}</span>
+        <span className="status-message-text">{error ? errorLines[0] : status}</span>
+        {errorRest > 0 && (
+          <span className="status-message-more">
+            {t("status.moreFailures", { count: errorRest })}
+          </span>
+        )}
         {error && (
           <>
             {/* The bar shows one line of a message that can be several (a batch

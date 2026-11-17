@@ -16,6 +16,7 @@ import { useStore } from "../store";
 import { StatusBar } from "./StatusBar";
 
 const initial = useStore.getState();
+const message = ["delete failed: /a", "rename failed: /b", "copy failed: /c"].join("\n");
 let host: HTMLDivElement;
 let root: Root;
 
@@ -34,13 +35,23 @@ afterEach(() => {
   clipboard.writeSystemClipboard.mockClear();
 });
 
-it("copies a multi-line failure the bar shows one line of", async () => {
-  const message = ["delete failed: /a", "rename failed: /b", "copy failed: /c"].join("\n");
-  act(() => useStore.getState().setError(message));
-  act(() => root.render(h(StatusBar)));
+const render = () => act(() => root.render(h(StatusBar)));
 
-  // The whole text is in the bar; the bar's one line and ellipsis are styling.
-  expect(host.textContent ?? "").toContain("copy failed: /c");
+it("says how many failures the one visible line stands for", () => {
+  act(() => useStore.getState().setError(message));
+  render();
+
+  expect(host.textContent ?? "").toContain("delete failed: /a");
+  // One line of the batch is shown; the count keeps it from reading as one
+  // failure, and the rest stays one press away.
+  expect(host.textContent ?? "").toContain("+2 more");
+  expect(host.textContent ?? "").not.toContain("copy failed: /c");
+  expect(host.querySelector(".status-message")?.getAttribute("title")).toBe(message);
+});
+
+it("copies the joined failure, including the lines the bar cannot show", async () => {
+  act(() => useStore.getState().setError(message));
+  render();
 
   const copy = host.querySelector<HTMLButtonElement>('[aria-label="Copy the message"]');
   expect(copy, "the error area offers a copy button").toBeTruthy();
@@ -51,8 +62,14 @@ it("copies a multi-line failure the bar shows one line of", async () => {
   expect(clipboard.writeSystemClipboard).toHaveBeenCalledWith(message);
 });
 
-it("offers no copy button for an ordinary notice", () => {
+it("shows no count for a single failure and no copy button for a notice", () => {
+  act(() => useStore.getState().setError("connection refused"));
+  render();
+  expect(host.textContent ?? "").toContain("connection refused");
+  expect(host.textContent ?? "").not.toContain("more");
+
+  act(() => useStore.getState().setError(null));
   act(() => useStore.getState().setStatus("Connected"));
-  act(() => root.render(h(StatusBar)));
+  render();
   expect(host.querySelector('[aria-label="Copy the message"]')).toBeNull();
 });

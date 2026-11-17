@@ -162,6 +162,7 @@ export const zhCN: Catalog = {
 
   "status.ready": "就绪",
   "status.copyError": "复制消息",
+  "status.moreFailures": "另有 {count} 条",
   "status.dismissError": "关闭错误提示",
   "status.connectionCancelled": "已取消连接",
   "status.recordingStopped": "录制已停止：{error}（{path}）",
