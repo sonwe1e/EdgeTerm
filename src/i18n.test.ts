@@ -36,6 +36,22 @@ describe("interface localisation", () => {
     }
   });
 
+  it("uses the same placeholders in every language", () => {
+    // A catalogue that drops {key} or renames {count} renders a sentence with a
+    // hole in it and no error: the empty state's shortcut chip disappears, a
+    // dialog shows a bare number where its noun should be. The English
+    // catalogue is the source of truth, so this compares against it.
+    const placeholders = (text: string) =>
+      [...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
+    for (const key of enKeys as MessageKey[]) {
+      const expected = placeholders(CATALOGS.en[key]);
+      if (expected.length === 0) continue;
+      for (const language of LANGUAGES) {
+        expect(placeholders(CATALOGS[language][key]), `${language}: ${key}`).toEqual(expected);
+      }
+    }
+  });
+
   it("fills {name} placeholders and leaves unknown ones as written", () => {
     expect(translate("en", "menu.panelOnDock", { panel: "Filer", dock: "Right" })).toBe(
       "Filer on Right",
