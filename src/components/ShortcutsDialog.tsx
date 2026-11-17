@@ -1,5 +1,6 @@
 import { useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
+import { KEY_REFERENCE } from "../keyReference";
 import { IS_MAC } from "../platform";
 import {
   chordFromEvent,
@@ -151,6 +152,20 @@ export function ShortcutsDialog({ bindings, onApply, onClose }: Props) {
               </span>
             ))}
           </div>
+
+          {/* The keys the surface under the pointer answers. They cannot be
+              rebound, so they are listed rather than editable; without this
+              they were only discoverable by trying (see src/keyReference.ts). */}
+          {KEY_REFERENCE.map((group) => (
+            <div key={group.titleKey} className="shortcuts-fixed">
+              <strong>{t(group.titleKey)}</strong>
+              {group.entries.map((entry) => (
+                <span key={entry.labelKey}>
+                  <kbd>{entry.keys.join(" / ")}</kbd> {t(entry.labelKey)}
+                </span>
+              ))}
+            </div>
+          ))}
         </div>
         <div className="dialog-footer shortcuts-dialog-footer">
           <button
