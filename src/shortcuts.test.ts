@@ -14,6 +14,7 @@ import {
   matchAppShortcut,
   parseShortcuts,
   setActiveShortcuts,
+  SHORTCUT_COMMANDS,
   shortcutOverrides,
   type KeyChord,
   type ShortcutKeyEvent,
@@ -268,5 +269,34 @@ describe("chordProblem", () => {
     expect(chordProblem(bind("F10", { shift: true }))).toBeTruthy();
     // Shift+F9 has no such owner and stays available.
     expect(chordProblem(bind("F9", { shift: true }))).toBeNull();
+  });
+});
+
+describe("parseShortcuts", () => {
+  const bind = (
+    code: string,
+    over: Partial<{ ctrl: boolean; alt: boolean; shift: boolean; meta: boolean }> = {},
+  ) => ({
+    ctrl: false,
+    alt: false,
+    shift: false,
+    meta: false,
+    code,
+    ...over,
+  });
+
+  // The dialog never lets two commands share a chord, but an imported or
+  // hand-edited table can, and then one of the two can never fire.
+  it("keeps one command per chord when the table repeats one", () => {
+    const parsed = parseShortcuts(
+      { find: bind("KeyG", { ctrl: true }), findNext: bind("KeyG", { ctrl: true }) },
+      DEFAULT_SHORTCUTS,
+    )!;
+
+    const held = SHORTCUT_COMMANDS.filter(({ id }) =>
+      sameChord(parsed[id], bind("KeyG", { ctrl: true })),
+    ).map(({ id }) => id);
+    expect(held).toEqual(["findNext"]); // the later entry keeps it
+    expect(parsed.find).toBeNull();
   });
 });

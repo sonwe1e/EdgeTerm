@@ -498,6 +498,19 @@ export function parseShortcuts(
       if (parsed) bindings[id] = parsed;
     }
   }
+  // One chord, one command — the rule the dialog keeps when it reassigns. A
+  // hand-edited or imported table can arrive with two commands on one chord,
+  // and then only the first match ever fires. The later entry keeps it and the
+  // earlier holder loses it, the same way a reassignment in the dialog moves
+  // the chord rather than leaving two rows claiming it.
+  const claimed = new Set<string>();
+  for (const { id } of [...SHORTCUT_COMMANDS].reverse()) {
+    const chord = bindings[id];
+    if (!chord) continue;
+    const key = `${chord.code}|${Number(chord.ctrl)}${Number(chord.alt)}${Number(chord.shift)}${Number(chord.meta)}`;
+    if (claimed.has(key)) bindings[id] = null;
+    else claimed.add(key);
+  }
   return bindings;
 }
 
