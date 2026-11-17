@@ -78,12 +78,18 @@ export const CURSOR_STYLE_KEY = "edgeterm.cursorStyle";
 
 export const CURSOR_BLINK_KEY = "edgeterm.cursorBlink";
 
+import { TERMINAL_COLD_HISTORY_KEY } from "./persistKeys";
+
 /**
  * Seamless cold history (roadmap A2, D14): trimmed lines spill into the
  * Rust-side compressed store behind this opt-in switch, and scrolling to the
  * buffer top re-inserts them. Default off until the A2 acceptance gates pass.
+ *
+ * The key itself lives in `persistKeys.ts`, where settings reset and export
+ * read it. A second literal here could drift to a different storage entry, and
+ * the switch would then silently stop persisting with nothing to show for it.
  */
-export const TERMINAL_COLD_HISTORY_KEY = "edgeterm.terminalColdHistory";
+export { TERMINAL_COLD_HISTORY_KEY };
 
 /** Non-reactive read for terminal controllers (the dialog writes the key). */
 export function terminalColdHistoryEnabled(): boolean {
