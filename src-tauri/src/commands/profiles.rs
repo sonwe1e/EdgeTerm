@@ -18,7 +18,7 @@ pub fn credential_store_status(state: State<'_, AppState>) -> CredentialStoreSta
     state.store.credential_store_status()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 #[cfg_attr(feature = "bindings", specta::specta)]
 pub fn save_profile(state: State<'_, AppState>, profile: SessionProfile) -> Result<SessionProfile> {
     state.store.save(profile)
@@ -86,7 +86,7 @@ pub fn list_command_history(state: State<'_, AppState>) -> Vec<CommandHistoryEnt
     state.store.list_command_history()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 #[cfg_attr(feature = "bindings", specta::specta)]
 pub fn record_command(state: State<'_, AppState>, command: String, host: String) -> Result<()> {
     state.store.record_command(&command, &host)
