@@ -297,6 +297,33 @@ describe("gutter line numbering", () => {
     expect(carried).toBeGreaterThan(5);
   });
 
+  it("writes only the rows a frame changed", async () => {
+    const controller = createController(100);
+    await write(controller, lines(1, 6));
+    const rows = gutterRows(controller);
+    expect(rows.length).toBe(controller.term.rows);
+    const gutter = (controller as unknown as { gutter: HTMLElement }).gutter;
+
+    const records: MutationRecord[] = [];
+    const observer = new MutationObserver((batch) => records.push(...batch));
+    observer.observe(gutter, {
+      childList: true,
+      characterData: true,
+      attributes: true,
+      subtree: true,
+    });
+    await write(controller, "line 7\r\n");
+    gutterRows(controller);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    observer.disconnect();
+
+    // One row gained text and the cursor moved to the next one. Rewriting
+    // every row's identical value would cost two text-node replacements per
+    // row, so a full repaint cannot come in under the row count.
+    expect(records.length).toBeLessThan(rows.length);
+    expect(records.length).toBeLessThanOrEqual(12);
+  });
+
   it("compacts the trimmed times away instead of growing", async () => {
     const controller = createController(5);
     const max = controller.term.rows + 5;

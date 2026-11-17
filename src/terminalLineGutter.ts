@@ -51,6 +51,21 @@ export class TerminalLineGutter {
    */
   private gutterPainted: GutterView | null = null;
 
+  /**
+   * What each pooled row's DOM already shows. A streaming command moves the
+   * cursor every frame, which makes `gutterPainted`'s same-view check fail, yet
+   * such a frame usually changes one or two rows: comparing the value per row
+   * keeps the other rows off the DOM. Values are what was written, so a stale
+   * entry cannot hide a change; entries are dropped whenever the pool shrinks,
+   * because a regrown row is a fresh element.
+   */
+  private rowPaint: Array<{
+    empty: boolean | null;
+    cursor: boolean | null;
+    time: string | null;
+    line: string | null;
+  }> = [];
+
   /** Agent TUIs and alternate-screen programs have no meaningful gutter rows. */
   private gutterContentSuppressed = false;
 
@@ -285,7 +300,7 @@ export class TerminalLineGutter {
     }
   }
 
-  /** Marks the gutter rows stale; the next sync repaints unconditionally. */
+  /** Marks the gutter rows stale; the next sync recomputes every row's value. */
   invalidateGutter() {
     this.gutterPainted = null;
   }
@@ -358,6 +373,9 @@ export class TerminalLineGutter {
     while (this.rowPool.length > rows) {
       this.rowPool.pop()?.remove();
     }
+    // A row removed from the pool takes its cache with it: the element that
+    // grows back into that index is new and starts blank.
+    if (this.rowPaint.length > rows) this.rowPaint.length = rows;
 
     for (let i = 0; i < rows; i++) {
       const row = this.rowPool[i];
@@ -366,17 +384,33 @@ export class TerminalLineGutter {
       // `buf.length` spans the viewport, and line feeds can put timestamps
       // on padding rows. The content limit keeps that blank suffix hidden.
       const written = !suppressContent && index < this.lineCount && index <= contentEnd;
-      row.classList.toggle("is-empty", !written);
-      row.classList.toggle("is-cursor", written && index === cursorIndex);
-
+      const cursor = written && index === cursorIndex;
       const time = row.children[0] as HTMLElement;
       const line = row.children[1] as HTMLElement;
-      if (written) {
-        time.textContent = formatTime(this.lineTimes[this.lineTimesStart + index]);
-        line.textContent = String(this.firstLineNumber + index);
-      } else {
-        time.textContent = "";
-        line.textContent = "";
+      const timeText = written ? formatTime(this.lineTimes[this.lineTimesStart + index]) : "";
+      const lineText = written ? String(this.firstLineNumber + index) : "";
+      let painted = this.rowPaint[i];
+      if (!painted) {
+        painted = { empty: null, cursor: null, time: null, line: null };
+        this.rowPaint[i] = painted;
+      }
+      if (painted.empty !== !written) {
+        row.classList.toggle("is-empty", !written);
+        painted.empty = !written;
+      }
+      if (painted.cursor !== cursor) {
+        row.classList.toggle("is-cursor", cursor);
+        painted.cursor = cursor;
+      }
+      // Assigning the same string still replaces the text node and dirties
+      // layout, so an unchanged row must not be written at all.
+      if (painted.time !== timeText) {
+        time.textContent = timeText;
+        painted.time = timeText;
+      }
+      if (painted.line !== lineText) {
+        line.textContent = lineText;
+        painted.line = lineText;
       }
     }
   }
