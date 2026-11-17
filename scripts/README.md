@@ -174,6 +174,10 @@ Playwright's own Chromium (`npx playwright install chromium` on a clean
 machine); setting `PERF_BROWSER` drives a system channel instead, e.g.
 `PERF_BROWSER=msedge` for the installed Microsoft Edge.
 
+Run it as `npm run check:file-performance`; the bare script path still works,
+but the managed task is the canonical entry point and the one the commit checks
+document.
+
 `check-file-performance.mjs` additionally gates two timings, each the median of
 5 samples, and exits 1 when one is breached (it prints
 `FAIL <name>: <measured> ms (gate <limit> ms)` and writes every sample, median
