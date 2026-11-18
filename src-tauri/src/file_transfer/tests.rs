@@ -1160,3 +1160,64 @@ async fn cleanup_removes_a_downloads_local_partial() {
     assert!(!job.checkpoints.lock()["k1"].owns_temporary);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// A journal row keeps the path the user typed while every planned path has
+/// been through the engine's parent canonicalization. Comparing the raw
+/// components refused the whole journal when the two spellings differed, so an
+/// interrupted folder transfer could not be claimed at all.
+#[test]
+fn a_planned_child_belongs_to_a_root_written_otherwise() {
+    // Windows only: the fixture relies on a path keeping its meaning in another
+    // case, which is exactly the difference the engine's canonicalization
+    // removes and a raw component comparison does not.
+    #[cfg(not(windows))]
+    return;
+    #[cfg(windows)]
+    {
+        let root = std::env::temp_dir().join(format!(
+            "EDGETERM-JOURNAL-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let folder = root.join("dir");
+        std::fs::create_dir_all(&folder).unwrap();
+
+        // What the user typed keeps the case they typed; every planned path has
+        // been through the engine's canonicalization, which comes back in the
+        // disk's own case.
+        let typed = folder.to_string_lossy().to_lowercase();
+        let child = local::normalize(&folder.join("child.txt").to_string_lossy()).unwrap();
+        assert_ne!(
+            typed, child,
+            "the fixture needs two spellings of the same folder"
+        );
+
+        let row = Item {
+            local: typed.clone(),
+            remote: "/site".into(),
+            upload: true,
+            directory: true,
+        };
+        let planned = Item {
+            local: child,
+            remote: "/site/child.txt".into(),
+            upload: true,
+            directory: false,
+        };
+        assert!(super::checkpoint_belongs(&planned, &[row.clone()]));
+
+        // A sibling folder is still not covered.
+        let elsewhere = Item {
+            local: format!("{typed}-other"),
+            remote: "/site".into(),
+            upload: true,
+            directory: true,
+        };
+        assert!(!super::checkpoint_belongs(&planned, &[elsewhere]));
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+}

@@ -31,7 +31,7 @@ pub(super) fn checkpoint_belongs(item: &Item, items: &[Item]) -> bool {
                 && same_local(&row.local, &item.local);
         }
         let (Some(local), Some(remote)) = (
-            local_child(&item.local, &row.local),
+            local_child_canonical(&item.local, &row.local),
             posix_child(&item.remote, &row.remote),
         ) else {
             return false;
@@ -101,6 +101,21 @@ pub(super) fn local_child(child: &str, parent: &str) -> Option<Vec<String>> {
         return None;
     }
     Some(child[parent.len()..].to_vec())
+}
+
+/// `local_child` for a planned parent that may name the same place as the
+/// journal row in a different spelling: a junction, a differently-cased
+/// ancestor or a short name make the raw components differ even though the
+/// paths are the same. Both sides go through the engine's own `normalize`
+/// (the parent canonicalization every planned path has already had) before
+/// comparing, which keeps an interrupted folder transfer claimable.
+pub(super) fn local_child_canonical(child: &str, parent: &str) -> Option<Vec<String>> {
+    if let Some(parts) = local_child(child, parent) {
+        return Some(parts);
+    }
+    let child = local::normalize(child).ok()?;
+    let parent = local::normalize(parent).ok()?;
+    local_child(&child, &parent)
 }
 
 /// `local_child` for remote paths, which are always POSIX: split on `/`,
