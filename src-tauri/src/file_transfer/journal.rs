@@ -298,7 +298,27 @@ pub(super) fn recoverable_from(directory: &Path, id: &str) -> Option<Recoverable
 
 pub(super) fn target_key(profile: &SessionProfile, item: &Item) -> String {
     if item.upload {
-        format!("remote:{}:{}", endpoint_key(profile), item.remote)
+        // The destination, not the route to it. Two sessions can reach the same
+        // server by different roads — one direct, one through a jump host, one
+        // signed in as another user — and they still write the same file, so
+        // they have to contend for one lock. `endpoint_key` deliberately keeps
+        // the route because a journal is matched to the session that owns it;
+        // reusing it here let two jobs commit over each other.
+        format!(
+            "remote:{}:{}:{}:{}",
+            if profile.kind == SessionKind::Ftp {
+                "ftp"
+            } else {
+                "sftp"
+            },
+            profile.host.as_deref().unwrap_or("").trim().to_lowercase(),
+            profile.port.unwrap_or(if profile.kind == SessionKind::Ftp {
+                21
+            } else {
+                22
+            }),
+            item.remote
+        )
     } else {
         #[cfg(windows)]
         let path = item.local.to_lowercase();

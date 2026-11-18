@@ -1221,3 +1221,50 @@ fn a_planned_child_belongs_to_a_root_written_otherwise() {
         std::fs::remove_dir_all(&root).unwrap();
     }
 }
+
+/// Two sessions to the same server write the same file, whether they went
+/// direct or through a jump host and whoever they signed in as: one lock has to
+/// cover both, or two jobs commit over each other.
+#[test]
+fn the_target_lock_ignores_the_route_to_the_server() {
+    let item = Item {
+        local: "C:/tmp/a.txt".into(),
+        remote: "/srv/a.txt".into(),
+        upload: true,
+        directory: false,
+    };
+    let mut direct = sftp_profile();
+    // Spelling of the host must not split the lock either.
+    direct.host = Some("Example.COM ".into());
+    direct.port = Some(22);
+    let mut routed = direct.clone();
+    routed.jump_profile_id = Some("jump-1".into());
+    routed.username = Some("other-user".into());
+
+    assert_eq!(
+        super::target_key(&direct, &item),
+        super::target_key(&routed, &item)
+    );
+
+    // A different server, port or path is a different file.
+    let mut elsewhere = direct.clone();
+    elsewhere.host = Some("other.example.com".into());
+    assert_ne!(
+        super::target_key(&direct, &item),
+        super::target_key(&elsewhere, &item)
+    );
+    let mut other_port = direct.clone();
+    other_port.port = Some(2222);
+    assert_ne!(
+        super::target_key(&direct, &item),
+        super::target_key(&other_port, &item)
+    );
+    let other_path = Item {
+        remote: "/srv/b.txt".into(),
+        ..item.clone()
+    };
+    assert_ne!(
+        super::target_key(&direct, &item),
+        super::target_key(&direct, &other_path)
+    );
+}
