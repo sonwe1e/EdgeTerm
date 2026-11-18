@@ -1020,7 +1020,8 @@ export const zhCN: Catalog = {
 
   "data.fileFilter": "EdgeTerm 数据",
   "data.exportTitle": "导出 EdgeTerm 数据",
-  "data.exportDone": "已导出 {summary} 及设置到 {file}（不包含密码）",
+  "data.exportDone":
+    "已导出 {summary} 和设置到 {file}。不含密码与口令，但包含主机名、用户名、私钥路径和 Sender 命令，请按私密文件保管。",
   "data.exportFailed": "导出失败：{error}",
   "data.importTitle": "导入 EdgeTerm 数据",
   "data.notDataFile": "导入失败：“{file}”不是 EdgeTerm 数据文件（应为 .{ext}）",

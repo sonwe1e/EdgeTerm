@@ -76,8 +76,12 @@ it("summarises an export with the active language's plurals", async () => {
     skippedSenderCommands: 0,
   });
   await exportAppData();
+  // The line used to name only the passwords, which read as "this file is safe
+  // to share" while it carries hosts, user names, key paths and the commands.
   expect(setStatus).toHaveBeenLastCalledWith(
-    "Exported 2 sessions, 1 group, 3 Sender commands and settings to out.edgeterm (passwords are not included)",
+    "Exported 2 sessions, 1 group, 3 Sender commands and settings to out.edgeterm. " +
+      "Passwords and passphrases are not included, but host names, user names, key paths " +
+      "and Sender commands are, so keep the file private.",
   );
 });
 

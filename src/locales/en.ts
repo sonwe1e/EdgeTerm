@@ -1101,7 +1101,8 @@ export const en = {
   // TransferCenter
   "data.fileFilter": "EdgeTerm data",
   "data.exportTitle": "Export EdgeTerm Data",
-  "data.exportDone": "Exported {summary} and settings to {file} (passwords are not included)",
+  "data.exportDone":
+    "Exported {summary} and settings to {file}. Passwords and passphrases are not included, but host names, user names, key paths and Sender commands are, so keep the file private.",
   "data.exportFailed": "Export failed: {error}",
   "data.importTitle": "Import EdgeTerm Data",
   "data.notDataFile": "Import failed: “{file}” is not an EdgeTerm data file (expected .{ext})",
