@@ -44,3 +44,17 @@ it("leaves the defaults alone when the table mentions nothing that collides", ()
   expect(imported.findNext).toBeNull();
   expect(sameChord(imported.find, taken)).toBe(true);
 });
+
+it("never lets an unusable entry take the chord a usable one asks for", () => {
+  // `find` is malformed (no modifiers) and keeps its default chord; `findNext`
+  // asks for that same chord. The broken entry must not claim anything, so the
+  // usable one gets the chord.
+  const claimed = DEFAULT_SHORTCUTS.find!;
+  const imported = parseShortcuts(
+    { find: { code: "KeyF" }, findNext: { ...claimed } },
+    DEFAULT_SHORTCUTS,
+  )!;
+
+  expect(sameChord(imported.findNext, claimed)).toBe(true);
+  expect(imported.find).toBeNull();
+});

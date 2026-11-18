@@ -425,16 +425,16 @@ export function chordProblem(binding: KeyChord): string | null {
   if (binding.code === "F6" && !binding.ctrl && !binding.alt && !binding.meta) {
     return null;
   }
+  // Checked before the modifier rule so the reason is the menu rather than
+  // "hold Ctrl as well", which would only get the user refused again: the rows
+  // that open the menu test `shiftKey` and the key alone, so every combination
+  // reaches it and none is free for a command.
+  if ((binding.shift && binding.code === "F10") || binding.code === "ContextMenu") {
+    return translateMsg("sc.reservedContextMenu", { chord: chordLabel(binding) });
+  }
   const bareShift = binding.shift && SHIFT_ONLY_KEYS.test(binding.code);
   if (!binding.ctrl && !binding.alt && !binding.meta && !bareShift) {
     return IS_MAC ? translateMsg("sc.problemMac") : translateMsg("sc.problemOther");
-  }
-  // Shift+F10 and the menu key open the context menu on the focused surface,
-  // the way Windows and the file manager do. The rows that answer them test
-  // `shiftKey` and the key alone, so every modifier combination reaches the
-  // menu and no combination is free for a command.
-  if ((binding.shift && binding.code === "F10") || binding.code === "ContextMenu") {
-    return translateMsg("sc.reservedContextMenu", { chord: chordLabel(binding) });
   }
   const reserved = RESERVED_CHORDS.find((entry) => sameChord(entry.chord, binding));
   if (reserved)
@@ -501,8 +501,10 @@ export function parseShortcuts(
     if (entry === null) bindings[id] = null;
     else {
       const parsed = parseChord(entry);
-      if (!parsed) continue;
-      if (chordProblem(parsed)) refused.add(id);
+      // An entry that cannot be used leaves the command on the binding it
+      // already had — and must not claim a chord on its way out, or a broken
+      // entry for one command could evict the valid entry for another.
+      if (!parsed || chordProblem(parsed)) refused.add(id);
       else bindings[id] = parsed;
     }
   }
