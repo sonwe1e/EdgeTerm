@@ -211,15 +211,12 @@ impl Forwards {
             incoming: sender,
         });
         let row = job.snapshot();
-        {
-            let mut jobs = self.jobs.lock();
-            if jobs.len() >= 256 || jobs.values().filter(|job| !*job.done.borrow()).count() >= 64 {
-                return Err(AppError::new(
-                    "tunnel limit reached; remove finished tunnels first",
-                ));
-            }
-            jobs.insert(row.id.clone(), job.clone());
+        if !self.has_room() {
+            return Err(AppError::new(
+                "tunnel limit reached; remove finished tunnels first",
+            ));
         }
+        self.jobs.lock().insert(row.id.clone(), job.clone());
         tauri::async_runtime::spawn(async move {
             let result = run(job.clone(), transport, incoming).await;
             job.state(
@@ -230,6 +227,26 @@ impl Forwards {
         });
         Ok(row)
     }
+    /// Whether one more tunnel may start, after dropping the records of tunnels
+    /// that already finished. Those rows are only kept so the user can read why;
+    /// they must not be what stops the next tunnel. Without this, enough closed
+    /// sessions reach the 256-row cap and every later tunnel — including the
+    /// forwards a profile restores on login — is refused.
+    fn has_room(&self) -> bool {
+        self.prune_finished();
+        let jobs = self.jobs.lock();
+        jobs.len() < 256 && jobs.values().filter(|job| !*job.done.borrow()).count() < 64
+    }
+
+    /// Drops the records of tunnels that have finished. Returns how many went,
+    /// so a caller can say so if it needs to.
+    fn prune_finished(&self) -> usize {
+        let mut jobs = self.jobs.lock();
+        let before = jobs.len();
+        jobs.retain(|_, job| !*job.done.borrow());
+        before - jobs.len()
+    }
+
     pub fn list(&self) -> Vec<Snapshot> {
         let mut rows: Vec<_> = self
             .jobs
@@ -714,6 +731,39 @@ mod tests {
             received: AtomicU64::new(0),
             incoming: mpsc::channel(1).0,
         }
+    }
+
+    /// Records of finished tunnels are what the user reads; they must not be the
+    /// thing that stops the next tunnel. Reconnecting a profile enough times
+    /// used to fill the 256-row cap and refuse every later tunnel, including the
+    /// ones the login itself was restoring.
+    #[test]
+    fn finished_tunnels_are_pruned_before_the_limit() {
+        let manager = Forwards::default();
+        {
+            let mut jobs = manager.jobs.lock();
+            for index in 0..256 {
+                let job = job_fixture(&format!("done-{index}"));
+                job.state("stopped", None);
+                job.done.send_replace(true);
+                jobs.insert(job.snapshot().id.clone(), std::sync::Arc::new(job));
+            }
+            let live = job_fixture("live-1");
+            live.state("listening", None);
+            jobs.insert(live.snapshot().id.clone(), std::sync::Arc::new(live));
+        }
+        assert_eq!(manager.list().len(), 257);
+
+        // The predicate `start` asks before adding a row: with 256 finished
+        // records it must still let the next tunnel through, and the prune it
+        // performs is what makes that true.
+        assert!(
+            manager.has_room(),
+            "finished records must not block a new tunnel"
+        );
+        let left = manager.list();
+        assert_eq!(left.len(), 1, "only the running tunnel survives");
+        assert_eq!(left[0].id, "live-1");
     }
 
     /// A tunnel that ends while Stop is being pressed must keep its final state:
