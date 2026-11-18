@@ -43,6 +43,33 @@ pub fn logs_dir() -> PathBuf {
 /// what matters and older lines are summarized away.
 const EXPORT_TAIL_BYTES: usize = 256 * 1024;
 
+/// Whether a failure is the user stopping the operation rather than something
+/// going wrong. Only the two error types that reach `record_result` implement
+/// it; each answers from the code it already carries.
+pub trait StoppedOutcome {
+    /// The outcome label to log for a stop, e.g. `cancelled` or `paused`.
+    fn stopped_as(&self) -> Option<&'static str>;
+}
+
+impl StoppedOutcome for crate::error::AppError {
+    fn stopped_as(&self) -> Option<&'static str> {
+        match self.code {
+            crate::error::ErrorCode::Cancelled => Some("cancelled"),
+            _ => None,
+        }
+    }
+}
+
+impl StoppedOutcome for crate::file_transfer::Failure {
+    fn stopped_as(&self) -> Option<&'static str> {
+        match self.code.as_str() {
+            "cancelled" => Some("cancelled"),
+            "paused" => Some("paused"),
+            _ => None,
+        }
+    }
+}
+
 /// The diagnostics report: what this build is, where its logs live and a
 /// bounded tail of the newest log text. Built separately from writing it so a
 /// test can check exactly what a user would hand to support.
@@ -449,7 +476,10 @@ impl Request {
 
     /// Records outcomes for domains with their own error type, including
     /// transfer pause/cancel results produced outside the connection future.
-    pub fn record_result<T, E: std::fmt::Display>(&self, result: &std::result::Result<T, E>) {
+    pub fn record_result<T, E: std::fmt::Display + StoppedOutcome>(
+        &self,
+        result: &std::result::Result<T, E>,
+    ) {
         self.log_start();
         let duration_ms = self.started.elapsed().as_millis() as u64;
         match result {
@@ -463,17 +493,35 @@ impl Request {
                 outcome = "ok",
                 "finished"
             ),
-            Err(error) => tracing::error!(
-                request_id = %self.id,
-                operation = self.operation,
-                session_id = self.session_id.as_deref().unwrap_or(""),
-                transfer_id = self.transfer_id.as_deref().unwrap_or(""),
-                phase = "end",
-                duration_ms,
-                outcome = "error",
-                error = %error,
-                "failed"
-            ),
+            // A stop the user asked for is not a fault: logging it at error
+            // level puts normal "Cancel" presses in the same bucket as real
+            // failures, which is what a reader is scanning the log for.
+            Err(error) => match error.stopped_as() {
+                Some(outcome) => tracing::info!(
+                    request_id = %self.id,
+                    operation = self.operation,
+                    session_id = self.session_id.as_deref().unwrap_or(""),
+                    transfer_id = self.transfer_id.as_deref().unwrap_or(""),
+                    phase = "end",
+                    duration_ms,
+                    outcome,
+                    // Still worth saying why it stopped: a cancel and a pause
+                    // share the shape and a reader needs to tell them apart.
+                    reason = %error,
+                    "stopped"
+                ),
+                None => tracing::error!(
+                    request_id = %self.id,
+                    operation = self.operation,
+                    session_id = self.session_id.as_deref().unwrap_or(""),
+                    transfer_id = self.transfer_id.as_deref().unwrap_or(""),
+                    phase = "end",
+                    duration_ms,
+                    outcome = "error",
+                    error = %error,
+                    "failed"
+                ),
+            },
         }
     }
 }
@@ -734,6 +782,39 @@ mod tests {
         // complete (empty) tail.
         let healthy = report_with(&dir, None);
         assert!(healthy.contains("complete"), "{healthy}");
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    /// Pressing Cancel is not a fault. At error level a normal stop is
+    /// indistinguishable from a real failure when someone scans the log.
+    #[test]
+    fn a_stopped_transfer_is_logged_as_a_stop() {
+        use crate::file_transfer::Failure;
+        let dir = scratch_dir();
+        let (subscriber, guard) = build(&dir).unwrap();
+        {
+            let _default = tracing::subscriber::set_default(subscriber);
+            let request = Request::begin("transfer_connect").with_transfer("job-1");
+            let stopped: std::result::Result<(), Failure> =
+                Err(Failure::new("cancelled", "transfer cancelled", false));
+            request.record_result(&stopped);
+            let failed: std::result::Result<(), Failure> =
+                Err(Failure::network("connection reset by peer"));
+            request.record_result(&failed);
+        }
+        drop(guard);
+        let content = wait_for(&dir, "connection reset by peer").replace('"', "");
+        let stop = content
+            .lines()
+            .find(|line| line.contains("outcome=cancelled"))
+            .unwrap_or_else(|| panic!("no stop line in: {content}"));
+        assert!(!stop.contains("ERROR"), "a cancel is not an error: {stop}");
+        assert!(
+            content
+                .lines()
+                .any(|line| line.contains("outcome=error") && line.contains("ERROR")),
+            "a real failure still logs at error level: {content}"
+        );
         std::fs::remove_dir_all(dir).ok();
     }
 

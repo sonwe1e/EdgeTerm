@@ -50,7 +50,14 @@ async fn transfer_connection_failures_and_cancellation_have_end_events() {
                 .find(|line| line.contains("phase=\"end\""))
                 .expect("transfer connection must end even on failure or cancellation");
             assert!(end.contains(&job.id));
-            assert!(end.contains("outcome=\"error\""));
+            // A cancel is the user stopping, not a fault: it logs its own
+            // outcome, and only a real failure reads as an error.
+            let outcome = if cancel {
+                "outcome=\"cancelled\""
+            } else {
+                "outcome=\"error\""
+            };
+            assert!(end.contains(outcome), "unexpected end event: {end}");
             assert!(end.contains("duration_ms="));
             if cancel {
                 assert!(end.contains("transfer cancelled"));
