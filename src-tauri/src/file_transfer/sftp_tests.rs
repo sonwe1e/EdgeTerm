@@ -3760,3 +3760,136 @@ async fn a_failed_placeholder_open_does_not_claim_the_file_it_found() {
         "the file that was already there is left alone"
     );
 }
+
+/// The ordinary overwrite upload: the destination already holds the file this
+/// job set out to replace. A first open that failed leaves no partial, and the
+/// retry has to start over — the destination being present is expected here,
+/// because it is the job's own `original`.
+#[tokio::test]
+async fn a_retry_starts_over_when_the_destination_is_the_one_it_meant_to_replace() {
+    let f = Fixture::new(Server::default()).await;
+    let bytes = b"the new file".to_vec();
+    let item = f.upload(&bytes);
+    let job = f.job();
+    let original = f
+        .remote
+        .source_signature("/target", &job.control)
+        .await
+        .unwrap_or(None);
+    // The file already there when the job started.
+    f.state
+        .lock()
+        .files
+        .insert("/target".into(), b"the old file".to_vec());
+    let original = match original {
+        Some(signature) => Some(signature),
+        None => f
+            .remote
+            .source_signature("/target", &job.control)
+            .await
+            .unwrap(),
+    };
+    let cp = Checkpoint {
+        key: job.key(&item),
+        item: item.clone(),
+        source: local::signature(Path::new(&item.local)).unwrap(),
+        original,
+        temporary: format!("/.edgeterm-{}.part", job.key(&item)),
+        backup: String::new(),
+        offset: 0,
+        prefix_hash: local::digest(&[]),
+        complete: false,
+        committing: false,
+        owns_temporary: true,
+        owns_backup: false,
+    };
+    job.save(&cp).unwrap();
+
+    copy(&job, &f.remote, item.clone(), 4, &Semaphore::new(2))
+        .await
+        .expect("the retry starts over instead of conflicting");
+
+    assert_eq!(f.state.lock().files["/target"], bytes);
+    assert!(job.checkpoint(&job.key(&item)).unwrap().complete);
+}
+
+/// Recreating a partial is creating one: the claim has to be back on, or the
+/// cleanup skips a file this job made.
+#[tokio::test]
+async fn a_recreated_partial_is_claimed_again() {
+    let f = Fixture::new(Server {
+        // The write after the recreate fails, so the job stops with the partial
+        // still on the server and its claim observable.
+        fail_write_at: Some(0),
+        ..Server::default()
+    })
+    .await;
+    let bytes = b"payload".to_vec();
+    let item = f.upload(&bytes);
+    let job = f.job();
+    let temporary = format!("/.edgeterm-{}.part", job.key(&item));
+    let cp = Checkpoint {
+        key: job.key(&item),
+        item: item.clone(),
+        source: local::signature(Path::new(&item.local)).unwrap(),
+        original: None,
+        temporary: temporary.clone(),
+        backup: String::new(),
+        offset: 0,
+        prefix_hash: local::digest(&[]),
+        complete: false,
+        committing: false,
+        // What a failed first open leaves behind.
+        owns_temporary: false,
+        owns_backup: false,
+    };
+    job.save(&cp).unwrap();
+
+    assert!(copy(&job, &f.remote, item.clone(), 4, &Semaphore::new(2))
+        .await
+        .is_err());
+    assert!(f.state.lock().files.contains_key(&temporary));
+    assert!(
+        job.checkpoint(&job.key(&item)).unwrap().owns_temporary,
+        "the recreated partial belongs to this job again"
+    );
+}
+
+/// A resume never truncates a partial the journal does not own.
+#[tokio::test]
+async fn a_resume_leaves_a_partial_it_does_not_own_alone() {
+    let f = Fixture::new(Server::default()).await;
+    let bytes = b"payload".to_vec();
+    let item = f.upload(&bytes);
+    let job = f.job();
+    let temporary = format!("/.edgeterm-{}.part", job.key(&item));
+    f.state
+        .lock()
+        .files
+        .insert(temporary.clone(), b"someone else's".to_vec());
+    let cp = Checkpoint {
+        key: job.key(&item),
+        item: item.clone(),
+        source: local::signature(Path::new(&item.local)).unwrap(),
+        original: None,
+        temporary: temporary.clone(),
+        backup: String::new(),
+        offset: 0,
+        prefix_hash: local::digest(&[]),
+        complete: false,
+        committing: false,
+        owns_temporary: false,
+        owns_backup: false,
+    };
+    job.save(&cp).unwrap();
+
+    let error = copy(&job, &f.remote, item, 4, &Semaphore::new(2))
+        .await
+        .expect_err("refused");
+    assert!(format!("{error:?}").contains("does not own"), "{error:?}");
+    assert_eq!(
+        f.state.lock().files[&temporary],
+        b"someone else's"[..],
+        "the foreign partial is untouched"
+    );
+}

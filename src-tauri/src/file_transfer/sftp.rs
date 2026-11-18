@@ -1368,6 +1368,14 @@ async fn upload(
         _ => {
             match remote.attrs(&cp.temporary, &job.control).await? {
                 Some(meta) => {
+                    // A partial this job never claimed is not a resume: at
+                    // offset zero nothing has been written, so appending to a
+                    // file somebody else put there would truncate it.
+                    if !cp.owns_temporary && cp.offset == 0 {
+                        return Err(Failure::conflict(
+                            "a partial this job does not own is already there",
+                        ));
+                    }
                     if meta.is_symlink() || meta.is_dir() || meta.size.unwrap_or(0) < cp.offset {
                         return Err(Failure::conflict("remote partial is invalid"));
                     }
@@ -1402,20 +1410,39 @@ async fn upload(
                     if cp.offset != 0 {
                         return Err(Failure::conflict("remote partial disappeared"));
                     }
-                    // Only when nothing is at the destination either. A
-                    // destination that exists and does not match what this job
-                    // wrote belongs to someone else, and starting over would
-                    // put this job's bytes in its place.
-                    if remote.attrs(&cp.item.remote, &job.control).await?.is_some() {
+                    // The destination may hold something only in two shapes:
+                    // nothing, or the file this job set out to replace. An
+                    // overwrite upload always starts with the latter, and
+                    // refusing it would turn the ordinary case into a
+                    // permanent conflict; anything else belongs to someone
+                    // else, and starting over would put this job's bytes in
+                    // its place.
+                    if remote.signature(&cp.item.remote, &job.control).await? != cp.original {
                         return Err(Failure::conflict("remote partial disappeared"));
                     }
-                    remote
+                    // Recreating is creating: the claim has to be back before
+                    // the file exists, or cleanup skips what is now this job's.
+                    if !cp.owns_temporary {
+                        cp.owns_temporary = true;
+                        job.save_async(&cp).await?;
+                    }
+                    let opened = remote
                         .open(
                             &cp.temporary,
                             OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE,
                             &job.control,
                         )
-                        .await?
+                        .await;
+                    match opened {
+                        Ok(handle) => handle,
+                        Err(error) => {
+                            if cp.owns_temporary {
+                                cp.owns_temporary = false;
+                                let _ = job.save_async(&cp).await;
+                            }
+                            return Err(error);
+                        }
+                    }
                 }
             }
         }
