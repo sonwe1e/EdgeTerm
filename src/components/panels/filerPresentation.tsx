@@ -281,9 +281,8 @@ export interface PathSegment {
 /**
  * The ancestors of `path`, outermost first, the way a file manager's address
  * bar shows them: `/var/log/nginx` becomes `/`, `var`, `log`, `nginx`, and
- * `C:\Users\me` becomes `C:`, `Users`, `me`. The Windows drives root is not
- * a real path and has no ancestors, so it yields nothing; the panel draws no
- * trail for it either.
+ * `C:\Users\me` becomes `C:`, `Users`, `me`, and a drive root `C:\` is one stop
+ * leading back to itself.
  */
 export function pathSegments(path: string): PathSegment[] {
   if (!path || path === "This PC") return [];
@@ -297,8 +296,11 @@ export function pathSegments(path: string): PathSegment[] {
   for (const part of parts) {
     target = windows
       ? target === ""
-        ? part
-        : `${target}\\${part}`
+        ? // `C:\\` and not `C:`: Windows reads a drive letter with no root as
+          // "the current directory on that drive", so the trail would lead
+          // somewhere else than the drive it names.
+          `${part}\\`
+        : `${target.replace(/\\$/, "")}\\${part}`
       : `${target === "/" ? "" : target}/${part}`;
     segments.push({ label: part, target });
   }

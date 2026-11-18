@@ -6,6 +6,7 @@ import {
   formatBytes,
   formatDate,
   formatDateParts,
+  pathSegments,
   rowLocale,
 } from "./filerPresentation";
 
@@ -154,5 +155,36 @@ describe("rowLocale", () => {
     expect(rowLocale()).toBe("zh-CN");
     document.documentElement.lang = "";
     expect(rowLocale()).toBeUndefined();
+  });
+});
+
+/**
+ * The breadcrumb is the only way back up the tree with a mouse, so every stop
+ * has to lead where its label says.
+ */
+describe("pathSegments", () => {
+  it("roots a Windows drive stop at the drive itself", () => {
+    // `C:` is the drive root; Windows reads `C:` alone as "the current
+    // directory on C:", which is a different folder.
+    expect(pathSegments("C:\\Users\\me")).toEqual([
+      { label: "C:", target: "C:\\" },
+      { label: "Users", target: "C:\\Users" },
+      { label: "me", target: "C:\\Users\\me" },
+    ]);
+    expect(pathSegments("C:\\")).toEqual([{ label: "C:", target: "C:\\" }]);
+  });
+
+  it("keeps a POSIX trail rooted and free of doubled separators", () => {
+    expect(pathSegments("/var/log/nginx")).toEqual([
+      { label: "/", target: "/" },
+      { label: "var", target: "/var" },
+      { label: "log", target: "/var/log" },
+      { label: "nginx", target: "/var/log/nginx" },
+    ]);
+  });
+
+  it("draws no trail for a root that has nothing above it", () => {
+    expect(pathSegments("")).toEqual([]);
+    expect(pathSegments("This PC")).toEqual([]);
   });
 });

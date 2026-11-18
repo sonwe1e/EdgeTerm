@@ -1327,7 +1327,9 @@ describe("Filer multiple selection at the real panel entry", () => {
       const crumbs = [...host.querySelectorAll<HTMLElement>(".filer-crumb")];
       expect(crumbs.map((crumb) => crumb.textContent)).toEqual(["C:", "Users", "me"]);
       expect(crumbs.map((crumb) => crumb.getAttribute("title"))).toEqual([
-        "C:",
+        // The drive stop leads to the drive root: `C:` alone is Windows'
+        // "current directory on C:", a different folder.
+        "C:\\",
         "C:\\Users",
         "C:\\Users\\me",
       ]);
