@@ -708,6 +708,24 @@ pub async fn cleanup(job: Arc<Job>) -> TransferResult<()> {
                 Ok(())
             })();
             if let Err(error) = removed {
+                // A connection that has gone bad cannot be trusted with the
+                // next command: an FTP answer carries no request id, so a late
+                // reply to the failed one can be read as the answer to the
+                // next. Stop here and leave the rest of the batch to the next
+                // cleanup; a refused name (a 550) is safe to skip and carry on.
+                // A refused name leaves the channel healthy; a broken one has
+                // to stop the batch. The reply to the failed command is already
+                // lost, so ask the server something harmless: if that does not
+                // come back, nothing after it can be trusted.
+                let healthy = match remote.as_mut() {
+                    Some(connection) => connection.stream.noop().is_ok(),
+                    // Nothing was opened: a local partial failed, no channel to
+                    // distrust.
+                    None => true,
+                };
+                if error.retryable || !healthy {
+                    return Err(error);
+                }
                 failures.push(format!("{}: {error}", cp.temporary));
                 continue;
             }

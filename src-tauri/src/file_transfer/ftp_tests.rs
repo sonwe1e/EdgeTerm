@@ -21,6 +21,8 @@ struct Server {
     counts: HashMap<String, usize>,
     /// Files the server refuses to delete, for cleanup failures.
     refuse_dele: std::collections::HashSet<String>,
+    /// A command whose answer never comes because the connection closes.
+    drop_on: Option<String>,
 }
 
 #[test]
@@ -155,6 +157,11 @@ fn serve(mut stream: TcpStream, state: Arc<Mutex<Server>>) -> std::io::Result<()
             .split_once(' ')
             .unwrap_or((line.trim_end(), ""));
         *state.lock().counts.entry(command.to_string()).or_default() += 1;
+        if state.lock().drop_on.as_deref() == Some(command) {
+            // The control connection is gone. A client that keeps issuing
+            // commands would read whatever arrives next as their answer.
+            return Ok(());
+        }
         let response = match command {
             "USER" => "331 Password".to_string(),
             "PASS" => "230 Logged in".into(),
@@ -1046,4 +1053,59 @@ async fn a_partial_the_server_will_not_delete_does_not_strand_the_rest() {
     assert!(!files.contains_key("/.fine.part"), "the rest was cleaned");
     assert!(job.checkpoint("stuck").unwrap().owns_temporary);
     assert!(!job.checkpoint("fine").unwrap().owns_temporary);
+}
+
+/// A control connection that drops cannot be used for the rest of the batch:
+/// an answer carries no request id, so the next command would read whatever
+/// arrives as its own. The cleanup stops with the connection's own error, and
+/// the untouched partials stay in the journal for the next attempt.
+#[tokio::test]
+async fn a_dropped_control_connection_stops_the_cleanup() {
+    let f = Fixture::new(Server {
+        drop_on: Some("DELE".into()),
+        ..Server::default()
+    });
+    let job = f.job();
+    let item = Item {
+        local: f.root.join("source").to_string_lossy().into(),
+        remote: "/target".into(),
+        upload: true,
+        directory: false,
+    };
+    std::fs::write(&item.local, b"payload").unwrap();
+    let source = super::super::local::signature(std::path::Path::new(&item.local)).unwrap();
+    let checkpoint = |name: &str, temporary: &str| Checkpoint {
+        key: name.into(),
+        item: item.clone(),
+        source: source.clone(),
+        original: None,
+        temporary: temporary.into(),
+        backup: String::new(),
+        offset: 0,
+        prefix_hash: super::super::local::digest(&[]),
+        complete: false,
+        committing: false,
+        owns_temporary: true,
+        owns_backup: false,
+    };
+    {
+        let mut state = f.state.lock();
+        state.files.insert("/.first.part".into(), b"x".to_vec());
+        state.files.insert("/.second.part".into(), b"x".to_vec());
+    }
+    job.save(&checkpoint("first", "/.first.part")).unwrap();
+    job.save(&checkpoint("second", "/.second.part")).unwrap();
+
+    let error = super::cleanup(job.clone()).await.expect_err("reported");
+    assert_ne!(
+        error.code, "local",
+        "the connection's own error, not an aggregate: {error:?}"
+    );
+    let files = f.state.lock().files.clone();
+    assert!(files.contains_key("/.first.part"));
+    assert!(
+        files.contains_key("/.second.part"),
+        "the rest was left for the next cleanup"
+    );
+    assert!(job.checkpoint("second").unwrap().owns_temporary);
 }
