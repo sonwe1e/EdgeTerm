@@ -565,6 +565,47 @@ impl Store {
         }
     }
 
+    /// Writes the configuration the import is about to replace into a data file
+    /// beside the configuration, and keeps the newest few. An import overwrites
+    /// same-id entries with no undo, and the file that would restore them exists
+    /// only if the user thought to export beforehand.
+    fn back_up_before_import(&self) -> Result<()> {
+        let parent = self
+            .path
+            .parent()
+            .ok_or_else(|| AppError::new("config directory has no parent"))?;
+        std::fs::create_dir_all(parent)?;
+        let stamp = chrono::Local::now().format("%Y-%m-%dT%H-%M-%S");
+        let backup = parent.join(format!("import-backup-{stamp}.{APP_DATA_EXTENSION}"));
+        let mut data = self.snapshot();
+        data.exported_at = Some(chrono::Local::now().to_rfc3339());
+        write_owner_only(&backup, &serde_json::to_string_pretty(&data)?)?;
+        self.prune_import_backups(parent, 5);
+        Ok(())
+    }
+
+    /// Keeps the newest `keep` import backups so a long-lived install does not
+    /// fill its configuration directory with them.
+    fn prune_import_backups(&self, parent: &Path, keep: usize) {
+        let Ok(entries) = std::fs::read_dir(parent) else {
+            return;
+        };
+        let mut backups: Vec<PathBuf> = entries
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with("import-backup-"))
+            })
+            .collect();
+        // The stamp sorts lexicographically, so the newest are the last.
+        backups.sort();
+        for stale in backups.iter().rev().skip(keep) {
+            let _ = std::fs::remove_file(stale);
+        }
+    }
+
     /// Merges an exported file into the store. Entries are matched by id: a
     /// known id replaces the local entry, everything else is added, and
     /// nothing local is deleted. Credentials in the file are ignored — an
@@ -586,6 +627,7 @@ impl Store {
         // as not imported — and the next save wrote that half-import over the
         // real configuration. Keep the three lists so a failed write can put
         // them back.
+        self.back_up_before_import()?;
         let groups_before = self.groups.lock().clone();
         let profiles_before = self.profiles.lock().clone();
         let commands_before = self.sender_commands.lock().clone();

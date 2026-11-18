@@ -1065,6 +1065,61 @@ fn a_failed_config_write_leaves_the_previous_file_intact() {
 /// files. When one write fails the app used to keep the merged data and report
 /// the import as failed; the next save then wrote that half-import over the real
 /// configuration.
+
+/// An import replaces same-id entries with no undo. The configuration it
+/// overwrites has to exist somewhere first, or the only restore path is one the
+/// user would have had to think of beforehand.
+#[test]
+fn an_import_leaves_a_backup_of_what_it_replaced() {
+    let dir = temp_dir("import-backup");
+    let store = Store::load_from_test(dir.join("sessions.json"));
+    let mut local = profile(SessionKind::Ssh);
+    local.id = "keep-1".into();
+    local.name = "before the import".into();
+    store.save(local.clone()).expect("save");
+
+    let mut incoming = profile(SessionKind::Ssh);
+    incoming.id = "keep-1".into();
+    incoming.name = "after the import".into();
+    store
+        .import_data(AppData {
+            app: APP_DATA_APP.into(),
+            format: APP_DATA_FORMAT,
+            exported_at: None,
+            settings: None,
+            profiles: vec![incoming],
+            groups: vec![],
+            sender_commands: vec![],
+        })
+        .expect("import");
+
+    let backups: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
+        .unwrap()
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("import-backup-"))
+        })
+        .collect();
+    assert_eq!(backups.len(), 1, "one backup per import: {backups:?}");
+    assert!(
+        is_data_file_path(&backups[0]),
+        "the backup must be importable"
+    );
+
+    let saved: AppData =
+        serde_json::from_str(&std::fs::read_to_string(&backups[0]).unwrap()).unwrap();
+    assert!(saved.exported_at.is_some());
+    let restored = saved
+        .profiles
+        .iter()
+        .find(|p| p.id == "keep-1")
+        .expect("the replaced profile is in the backup");
+    assert_eq!(restored.name, "before the import");
+    std::fs::remove_dir_all(&dir).ok();
+}
 #[test]
 fn a_failed_import_write_leaves_the_running_state_alone() {
     let dir = temp_dir("import-rollback");
