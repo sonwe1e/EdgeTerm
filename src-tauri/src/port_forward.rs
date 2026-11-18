@@ -533,7 +533,20 @@ async fn bridge(job: Arc<Job>, channel: russh::ChannelStream<Msg>, socket: TcpSt
 /// codes, exactly as `ssh -D` refuses them.
 async fn serve_socks5(job: Arc<Job>, transport: Arc<SharedTransport>, socket: TcpStream) {
     if let Err(error) = socks5(&job, &transport, socket).await {
+        note_client_failure(&job, transport.is_closed(), &error);
+    }
+}
+
+/// Records a failed SOCKS5 client on the tunnel only when the tunnel itself is
+/// gone. A Dynamic forward serves whoever connects: a port scanner, a client
+/// that changes its mind, a request for a command SOCKS5 cannot carry. Reporting
+/// any of those on the tunnel paints an error over a forward that is still
+/// serving every other client.
+fn note_client_failure(job: &Job, transport_closed: bool, error: &AppError) {
+    if transport_closed {
         job.snapshot.lock().error = Some(error.to_string());
+    } else {
+        tracing::debug!(error = %error, "SOCKS5 client went away");
     }
 }
 
@@ -737,6 +750,28 @@ pub async fn discover(request: ScanRequest, transport: Arc<SharedTransport>) -> 
 
 #[cfg(test)]
 mod tests {
+
+    /// A Dynamic forward serves whoever connects. A client that is not speaking
+    /// SOCKS5 says nothing about the tunnel, and reporting it would paint an
+    /// error over a forward that is still serving everyone else.
+    #[test]
+    fn a_bad_socks_client_does_not_mark_the_tunnel() {
+        let job = job_fixture("dynamic-bad-client");
+        let error = AppError::new("client is not speaking SOCKS5");
+
+        note_client_failure(&job, false, &error);
+        assert!(
+            job.snapshot.lock().error.is_none(),
+            "one client's mistake is not the tunnel's"
+        );
+
+        // A closed transport is the tunnel's own failure and must be reported.
+        note_client_failure(&job, true, &error);
+        assert_eq!(
+            job.snapshot.lock().error.as_deref(),
+            Some("client is not speaking SOCKS5")
+        );
+    }
 
     fn job_fixture(id: &str) -> Job {
         Job {
