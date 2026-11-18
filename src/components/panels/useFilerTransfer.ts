@@ -149,10 +149,15 @@ export function useFilerTransfer({ setError, error, t }: Options) {
     if (!active || active.cancelled) return;
     active.cancelled = true;
     cancelledTransferId.current = active.id;
-    void api.cancelTransfer(active.id).catch(() => {});
-    // The backend stops within a chunk, but a stalled read can keep the
-    // transfer's promise pending far longer than the bar should look alive.
-    finishTransfer("cancelled", active.id);
+    // The backend answers whether it stopped anything: a job that had already
+    // finished is left alone, and calling it cancelled here would contradict
+    // the transfer centre, which shows the files complete. A stalled read can
+    // keep the transfer's own promise pending far longer than that answer, so
+    // the bar still comes down on the reply rather than on the promise.
+    void api.cancelTransfer(active.id).then(
+      (stopped) => finishTransfer(stopped ? "cancelled" : "complete", active.id),
+      () => finishTransfer("cancelled", active.id),
+    );
   });
 
   /** Runs the failed transfer again; a no-op when none is on offer. */

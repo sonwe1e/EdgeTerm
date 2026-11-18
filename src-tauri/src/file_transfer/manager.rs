@@ -343,18 +343,33 @@ impl Transfers {
         }
         Ok(())
     }
-    pub fn cancel(&self, id: &str) {
+    /// Whether this cancel stopped a transfer that was still running. A job
+    /// that had already finished is left alone, and the caller is told so:
+    /// reporting it as cancelled would contradict the list, which shows it
+    /// complete after the files landed.
+    pub fn cancel(&self, id: &str) -> bool {
         let jobs = self.jobs.lock();
-        if jobs.contains_key(id) {
+        if let Some(job) = jobs.get(id).cloned() {
             drop(jobs);
+            let finished = {
+                let snapshot = job.snapshot.lock();
+                snapshot.status == "complete"
+                    || (snapshot.status == "cancelled" && snapshot.error.is_none())
+            };
+            if finished {
+                return false;
+            }
             let _ = self.control(id, "cancel");
-            return;
+            return true;
         }
         let mut early = self.early_cancels.lock();
         early.retain(|_, time| time.elapsed() < Duration::from_secs(60));
         if early.len() < 128 {
             early.insert(id.into(), Instant::now());
         }
+        // Recorded before the job exists: the start path reads it and stops
+        // there, so the caller's cancel is honoured.
+        true
     }
 
     /// The profile `session_id` last connected with, while that session is

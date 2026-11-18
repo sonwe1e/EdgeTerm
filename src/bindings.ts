@@ -155,7 +155,7 @@ export const commands = {
 	 *  Interrupts pending I/O and asks the background worker to remove its owned
 	 *  partial files. Existing destination files are preserved.
 	 */
-	cancelTransfer: (transfer: string) => __TAURI_INVOKE<void>("cancel_transfer", { transfer }),
+	cancelTransfer: (transfer: string) => __TAURI_INVOKE<boolean>("cancel_transfer", { transfer }),
 	listFileTransfers: () => __TAURI_INVOKE<FileTransfer[]>("list_file_transfers"),
 	controlFileTransfer: (transfer: string, action: string) => __TAURI_INVOKE<null>("control_file_transfer", { transfer, action }),
 	/**

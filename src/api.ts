@@ -509,7 +509,8 @@ export const newTransferId = (): string =>
  * transfer's promise rejects. Only for a transfer whose promise is still
  * pending; a cancel after it settled would linger in the backend's list.
  */
-export const cancelTransfer = (transfer: string) => invoke<void>("cancel_transfer", { transfer });
+export const cancelTransfer = (transfer: string) =>
+  invoke<boolean>("cancel_transfer", { transfer });
 
 // --- local filesystem -------------------------------------------------------
 

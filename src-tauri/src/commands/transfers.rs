@@ -74,8 +74,8 @@ pub async fn sftp_rename(
 /// partial files. Existing destination files are preserved.
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
-pub fn cancel_transfer(state: State<'_, AppState>, transfer: String) {
-    state.file_transfers.cancel(&transfer);
+pub fn cancel_transfer(state: State<'_, AppState>, transfer: String) -> bool {
+    state.file_transfers.cancel(&transfer)
 }
 
 #[tauri::command]

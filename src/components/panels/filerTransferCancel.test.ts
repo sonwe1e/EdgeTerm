@@ -1,8 +1,9 @@
-// Cancelling a Filer copy sent the request and waited for the backend's
-// rejection before touching the footer, so a stalled network read left the
-// progress bar "running" with its Cancel button until the read gave up. The
-// bar now stops when the user cancels; the late rejection and progress of
-// that copy are dropped.
+// Cancelling a Filer copy used to wait for the copy's own promise to reject, so
+// a stalled read left the bar "running" with its Cancel button. The bar now
+// comes down on the cancel call's answer — which also says whether anything was
+// stopped: a copy that had already finished must not be reported as cancelled,
+// because the transfer centre shows those files complete. The late rejection
+// and progress of a cancelled copy are dropped.
 import { act, createElement as h, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,8 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../api", async (original) => ({
   ...(await original<typeof import("../../api")>()),
   newTransferId: vi.fn(() => "t-1"),
-  // A cancel that never answers: the stalled read this regression is about.
-  cancelTransfer: vi.fn(() => new Promise<void>(() => {})),
+  cancelTransfer: vi.fn(async () => true),
   onRemoteEditState: vi.fn(async () => () => {}),
 }));
 
@@ -60,25 +60,34 @@ afterEach(() => {
 });
 
 describe("cancelling a Filer transfer", () => {
-  it("takes the bar down as soon as the user cancels", () => {
+  it("takes the bar down when the backend confirms the stop", async () => {
     let id: string | undefined;
     act(() => {
       id = hook.beginTransfer("upload", "notes.txt", true);
     });
     expect(status()).toBe("running");
 
-    act(() => hook.cancelTransfer());
-    // The backend has not answered: `cancelTransfer` never resolves.
+    await act(async () => hook.cancelTransfer());
     expect(status()).toBe("cancelled");
     expect(api.cancelTransfer).toHaveBeenCalledWith(id);
   });
 
-  it("ignores the late rejection and progress of the cancelled copy", () => {
+  it("does not claim a cancel when the copy had already finished", async () => {
+    vi.mocked(api.cancelTransfer).mockResolvedValueOnce(false);
+    act(() => {
+      hook.beginTransfer("upload", "notes.txt", true);
+    });
+    await act(async () => hook.cancelTransfer());
+    // The files landed: the footer says so instead of contradicting the list.
+    expect(status()).not.toBe("cancelled");
+  });
+
+  it("ignores the late rejection and progress of the cancelled copy", async () => {
     let id: string | undefined;
     act(() => {
       id = hook.beginTransfer("upload", "notes.txt", true);
     });
-    act(() => hook.cancelTransfer());
+    await act(async () => hook.cancelTransfer());
 
     act(() => hook.failTransfer(new Error("stream failed"), id));
     expect(status()).toBe("cancelled");

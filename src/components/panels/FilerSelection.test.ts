@@ -235,7 +235,7 @@ beforeEach(() => {
   );
   vi.mocked(api.startFileDrag).mockResolvedValue();
   vi.mocked(api.dragStagingPath).mockImplementation(async (name) => `/staging/${name}`);
-  vi.mocked(api.cancelTransfer).mockResolvedValue();
+  vi.mocked(api.cancelTransfer).mockResolvedValue(true);
   vi.mocked(api.controlFileTransfer).mockResolvedValue();
   vi.mocked(api.previewImageFile).mockResolvedValue(Uint8Array.of(1, 2, 3));
   vi.mocked(api.remoteEditPath).mockResolvedValue({ path: "/tmp/remote-edit.png", reused: false });
