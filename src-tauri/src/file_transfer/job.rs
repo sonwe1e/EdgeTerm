@@ -173,6 +173,24 @@ impl Job {
             .push(format!("{path}: {}", error.message));
     }
     pub(super) fn status(&self, status: &str, error: Option<Failure>) {
+        // The UI learns a job's fate from the event this emits; the diagnostics
+        // log has to learn it too, or a report about a transfer that failed at
+        // 90% has nothing in it about that transfer.
+        match (&error, status) {
+            (Some(failure), _) => tracing::error!(
+                transfer_id = %self.id,
+                outcome = %status,
+                code = %failure.code,
+                "transfer {}",
+                failure.message
+            ),
+            (None, "complete") => {
+                tracing::info!(transfer_id = %self.id, outcome = "complete", "transfer complete")
+            }
+            (None, other) => {
+                tracing::info!(transfer_id = %self.id, outcome = %other, "transfer stopped")
+            }
+        }
         let mut snapshot = self.snapshot.lock();
         snapshot.status = status.into();
         snapshot.error = error;

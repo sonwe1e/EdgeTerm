@@ -69,6 +69,38 @@ async fn transfer_connection_failures_and_cancellation_have_end_events() {
         }
     }
 }
+
+/// A job's terminal state only reached the UI. A user reporting "the transfer
+/// failed" had no line in the diagnostics log about that transfer at all.
+#[test]
+fn a_finished_transfer_reaches_the_log() {
+    let root = std::env::temp_dir().join(format!("edgeterm-job-log-{}", uuid::Uuid::new_v4()));
+    let job = test_job(root.clone());
+    let logs = root.join("logs");
+    let (subscriber, guard) = crate::diagnostics::build(&logs).unwrap();
+    {
+        let _default = tracing::subscriber::set_default(subscriber);
+        job.status("error", Some(Failure::network("connection reset by peer")));
+        job.status("complete", None);
+    }
+    drop(guard);
+    let content: String = std::fs::read_dir(&logs)
+        .unwrap()
+        .map(|entry| std::fs::read_to_string(entry.unwrap().path()).unwrap())
+        .collect();
+    assert!(
+        content.contains(&job.id),
+        "the job id must identify the lines: {content}"
+    );
+    assert!(content.contains("connection reset by peer"), "{content}");
+    assert!(
+        content.contains("ERROR"),
+        "a failed job logs at error level: {content}"
+    );
+    assert!(content.contains("transfer complete"), "{content}");
+    drop(job);
+    std::fs::remove_dir_all(root).ok();
+}
 #[test]
 fn shell_and_file_sessions_share_limits_and_target_locks() {
     let mut profile: SessionProfile = serde_json::from_value(
