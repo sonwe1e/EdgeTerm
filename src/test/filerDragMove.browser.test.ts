@@ -120,6 +120,80 @@ it("moves every selected row onto the folder", async () => {
     ["/drag/b.txt", "/drag/folder/b.txt"],
   ]);
 });
+
+it("moves nothing when the file is dropped on the folder it is already in", async () => {
+  await page.viewport(900, 720);
+  mount(
+    h(
+      "div",
+      { style: { width: 440, height: 650, display: "flex", margin: "24px auto" } },
+      h(FilerPanel),
+    ),
+  );
+  await expect.poll(() => Boolean(row("a.txt"))).toBe(true);
+  await twoFrames();
+
+  // The path bar shows the folder the listing is in; dropping a row there asks
+  // to move it into its own parent, which must be a quiet no-op rather than a
+  // rename onto itself or an error.
+  const crumb = [...document.querySelectorAll<HTMLElement>(".filer-crumb")].find(
+    (element) => element.dataset.dropFolder === "/drag",
+  )!;
+  expect(crumb, "the path bar names the folder the rows are in").toBeTruthy();
+  const before = useStore.getState().status;
+  const from = pagePoint(row("a.txt"));
+  const onto = pagePoint(crumb);
+  await mouse.press(from.x, from.y);
+  await mouse.moveTo(from.x + 30, from.y);
+  await mouse.moveTo(onto.x, onto.y);
+  await twoFrames();
+  // The crumb is the drop target only if the gesture recognised it: without
+  // this the rest of the test proves nothing about the no-op rule.
+  expect(
+    crumb.classList.contains("is-drop-target"),
+    "the path bar accepts the rows before the release",
+  ).toBe(true);
+  await mouse.release(onto.x, onto.y);
+  await twoFrames();
+
+  expect(vi.mocked(api.localRename)).not.toHaveBeenCalled();
+  expect(vi.mocked(api.startFileDrag)).not.toHaveBeenCalled();
+  expect(document.querySelector('.filer-panel [role="alert"]')).toBeNull();
+  expect(useStore.getState().status, "a no-op says nothing").toBe(before);
+});
+
+it("cancels quietly when released where no folder accepts the rows", async () => {
+  await page.viewport(900, 720);
+  mount(
+    h(
+      "div",
+      { style: { width: 440, height: 650, display: "flex", margin: "24px auto" } },
+      h(FilerPanel),
+    ),
+  );
+  await expect.poll(() => Boolean(row("a.txt"))).toBe(true);
+  await twoFrames();
+
+  // Empty space in the list: no folder, but still inside the panel.
+  const list = document.querySelector<HTMLElement>(".filer-list")!.getBoundingClientRect();
+  const before = useStore.getState().status;
+  const listings = vi.mocked(api.localList).mock.calls.length;
+  const from = pagePoint(row("a.txt"));
+  await mouse.press(from.x, from.y);
+  await mouse.moveTo(from.x + 30, from.y);
+  await mouse.moveTo(list.left + 20, list.bottom - 20);
+  await twoFrames();
+  await mouse.release(list.left + 20, list.bottom - 20);
+  await twoFrames();
+
+  expect(vi.mocked(api.localRename)).not.toHaveBeenCalled();
+  expect(vi.mocked(api.startFileDrag)).not.toHaveBeenCalled();
+  // No destination, so no move is attempted at all: the panel does not even
+  // list a folder to check names against.
+  expect(vi.mocked(api.localList).mock.calls.length, "no move was attempted").toBe(listings);
+  expect(document.querySelector('.filer-panel [role="alert"]')).toBeNull();
+  expect(useStore.getState().status, "a cancelled drag says nothing").toBe(before);
+});
 it("hands the file to the system when the pointer leaves the panel", async () => {
   await page.viewport(900, 720);
   mount(

@@ -538,11 +538,24 @@ export function useFilerActions({
     const sessionId = remoteId;
     const destination = path;
     const separator = remoteId ? "/" : "\\";
-    const parentOf = (entryPath: string) =>
-      entryPath.slice(0, Math.max(entryPath.lastIndexOf(separator), 0)) || separator;
-    const moving = chosen.filter(
-      (entry) => parentOf(entry.path) !== folder && !folder.startsWith(entry.path + separator),
-    );
+    // A path may arrive with either separator: the backend lists local files
+    // with backslashes, but the address bar accepts a typed "C:/dir" and every
+    // listing under it then carries forward slashes. Reading the parent from
+    // the path itself keeps "already in that folder" true either way, instead
+    // of turning a no-op into a name-collision error.
+    const withoutTrailing = (value: string) => value.replace(/[\\/]+$/, "");
+    const parentOf = (entryPath: string) => {
+      const cut = Math.max(entryPath.lastIndexOf("/"), entryPath.lastIndexOf("\\"));
+      return cut > 0 ? entryPath.slice(0, cut) : separator;
+    };
+    const destinationPath = withoutTrailing(folder);
+    const moving = chosen.filter((entry) => {
+      if (parentOf(entry.path) === destinationPath) return false;
+      const ownPath = withoutTrailing(entry.path);
+      return (
+        !destinationPath.startsWith(`${ownPath}/`) && !destinationPath.startsWith(`${ownPath}\\`)
+      );
+    });
     if (!moving.length) return;
     busyRef.current = true;
     setBusy(true);
