@@ -89,6 +89,9 @@ export function useFilerDrag({
     const hit = document.elementFromPoint?.(x, y);
     return hit?.closest<HTMLElement>("[data-drop-folder]")?.dataset.dropFolder ?? null;
   };
+  /** Whether the pointer is still over the rows of this listing. */
+  const thisRowUnderPointer = (x: number, y: number): boolean =>
+    Boolean(document.elementFromPoint?.(x, y)?.closest("[data-file-path]"));
   const trackMove = useStableCallback((entries: FileEntry[] | null, folder: string | null) => {
     moveDragRef.current = entries ? { entries } : null;
     moveOverRef.current = folder;
@@ -363,8 +366,6 @@ export function useFilerDrag({
     ) {
       return;
     }
-    dragPress.current = null;
-    collapseSelection.current = null;
     // A folder under the pointer takes the drop inside this listing. The
     // capture stays: the pointer never leaves the webview, and the release
     // arrives on the row that started the gesture.
@@ -373,6 +374,16 @@ export function useFilerDrag({
     // the window: starting a move on top of a deletion or a transfer would put
     // two writers on the same listing.
     const folder = busyRef.current ? null : folderAt(event.clientX, event.clientY);
+    if (!folder && thisRowUnderPointer(event.clientX, event.clientY)) {
+      // The threshold is crossed while the pointer is still inside the list —
+      // which it almost always is, rows being 24px tall. Handing the rows to
+      // the system here would take the gesture away before it could ever reach
+      // a folder, so the drag waits: a folder under the pointer turns it into a
+      // move, and leaving the rows hands it over.
+      return;
+    }
+    dragPress.current = null;
+    collapseSelection.current = null;
     if (folder) {
       trackMove(selected.has(press.entry.path) ? selectedEntries : [press.entry], folder);
       return;

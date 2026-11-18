@@ -133,8 +133,12 @@ it("preserves a group during native drag and confirms every selected deletion", 
   await add(2);
   const at = pagePoint(row(0));
   await mouse.press(at.x, at.y);
+  // Inside the list a drag waits (it may still become a move onto a folder);
+  // leaving the rows is what hands the rows to the system.
   await mouse.moveTo(at.x + 20, at.y);
-  await mouse.release(at.x + 20, at.y);
+  const away = pagePoint(document.querySelector(".filer-footer")!);
+  await mouse.moveTo(away.x, away.y);
+  await mouse.release(away.x, away.y);
   expect(api.startFileDrag).toHaveBeenCalledWith(
     ["/selection-browser/file0.txt", "/selection-browser/file2.txt"],
     expect.any(Function),
