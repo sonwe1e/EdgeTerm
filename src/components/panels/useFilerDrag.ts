@@ -368,7 +368,11 @@ export function useFilerDrag({
     // A folder under the pointer takes the drop inside this listing. The
     // capture stays: the pointer never leaves the webview, and the release
     // arrives on the row that started the gesture.
-    const folder = folderAt(event.clientX, event.clientY);
+    //
+    // A running operation owns the panel, exactly as it does for a drag out of
+    // the window: starting a move on top of a deletion or a transfer would put
+    // two writers on the same listing.
+    const folder = busyRef.current ? null : folderAt(event.clientX, event.clientY);
     if (folder) {
       trackMove(selected.has(press.entry.path) ? selectedEntries : [press.entry], folder);
       return;
