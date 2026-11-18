@@ -7,6 +7,8 @@ import type { SessionProfile } from "./types";
 export const WORKSPACE_STORAGE_KEY = "edgeterm.workspace.v1";
 /** Where an unreadable snapshot is kept before the first save replaces it. */
 export const WORKSPACE_UNREADABLE_KEY = "edgeterm.workspace.v1.unreadable";
+/** Where a readable snapshot is kept when the restore could not run in time. */
+export const WORKSPACE_SUPERSEDED_KEY = "edgeterm.workspace.v1.superseded";
 
 /**
  * Reads the saved workspace. "Nothing saved" and "saved but unreadable" are

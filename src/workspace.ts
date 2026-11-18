@@ -16,6 +16,7 @@ import {
   readSavedWorkspace,
   snapshotWorkspace,
   WORKSPACE_STORAGE_KEY,
+  WORKSPACE_SUPERSEDED_KEY,
   WORKSPACE_UNREADABLE_KEY,
   type WorkspaceSnapshot,
 } from "./workspaceSnapshot";
@@ -168,7 +169,14 @@ export function startWorkspace(eventsReady: Promise<unknown>): () => void {
       const state = useStore.getState();
       state.setStatus(translate(state.language, "status.workspaceUnreadable"));
     }
-    // If the user already opened a session while profiles loaded, respect it.
+    // If the user already opened a session while profiles loaded, their window
+    // wins — but the first save below then replaces the snapshot that was not
+    // restored. Keep a copy, the same way an unreadable one is kept.
+    if (snapshot && useStore.getState().tabs !== initialTabs) {
+      try {
+        if (stored) localStorage.setItem(WORKSPACE_SUPERSEDED_KEY, stored);
+      } catch {}
+    }
     const restored =
       snapshot && useStore.getState().tabs === initialTabs && initialTabs.length === 0
         ? restoreWorkspace(snapshot)

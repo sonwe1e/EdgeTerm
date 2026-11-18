@@ -7,6 +7,7 @@ import {
   readSavedWorkspace,
   snapshotWorkspace,
   WORKSPACE_STORAGE_KEY,
+  WORKSPACE_SUPERSEDED_KEY,
   WORKSPACE_UNREADABLE_KEY,
   type WorkspaceSnapshot,
 } from "./workspaceSnapshot";
@@ -340,4 +341,25 @@ it("says once when the layout cannot be written", async () => {
   expect(useStore.getState().status).toContain("quota exceeded");
   stop();
   setItem.mockRestore();
+});
+
+it("keeps the snapshot it could not restore because a session was already open", async () => {
+  let loaded!: (value: boolean) => void;
+  useStore.setState({
+    loadProfiles: () =>
+      new Promise((resolve) => {
+        loaded = resolve;
+      }),
+  });
+  const raw = JSON.stringify(fixture());
+  localStorage.setItem(WORKSPACE_STORAGE_KEY, raw);
+  start();
+  await vi.waitFor(() => expect(loaded).toBeTypeOf("function"));
+  useStore.setState({ tabs: [] });
+  loaded(true);
+  await vi.waitFor(() => expect(stored().tabs).toHaveLength(0));
+
+  // The saved workspace was not restored, and the save above replaced it;
+  // the bytes have to survive somewhere.
+  expect(localStorage.getItem(WORKSPACE_SUPERSEDED_KEY)).toBe(raw);
 });
