@@ -72,10 +72,12 @@ export function taskCommands(task, args = [], cargo = "cargo") {
             "--manifest-path",
             "src-tauri/Cargo.toml",
             "--all-targets",
+            // Extra arguments are cargo's own clippy options (`--fix`,
+            // `--no-deps`); rustc receives only what follows `--`.
+            ...args,
             "--",
             "-D",
             "clippy::correctness",
-            ...args,
           ],
         ],
       ];

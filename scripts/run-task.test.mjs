@@ -183,3 +183,8 @@ expect(clippy[0]).toBe("cargo");
 expect(clippy[1][0]).toBe("clippy");
 expect(clippy[1]).toContain("-D");
 expect(clippy[1]).toContain("clippy::correctness");
+// `--fix` and `--no-deps` are cargo's options: they must precede the `--` that
+// hands the rest to rustc, or cargo rejects them.
+const withFlag = taskCommands("check:clippy", ["--fix"])[0][1];
+expect(withFlag.indexOf("--fix")).toBeGreaterThan(-1);
+expect(withFlag.indexOf("--fix")).toBeLessThan(withFlag.indexOf("--"));
