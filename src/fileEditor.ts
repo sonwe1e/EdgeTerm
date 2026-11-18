@@ -194,7 +194,16 @@ export async function saveFileEditor() {
       bom: file.bom,
     });
     if (!ownsTarget()) return;
-    if (result.uncertain) throw new Error(result.note || t("fileEditor.uncertain"));
+    if (result.uncertain) {
+      // The replacement went through but could not be confirmed, and the backup
+      // the save kept is then the only copy of what the file held before. The
+      // note does not name it, so a user told to check the file would not know
+      // where to look for what it replaced.
+      const note = result.note || t("fileEditor.uncertain");
+      throw new Error(
+        result.backup ? `${note} ${t("fileEditor.backupKept", { path: result.backup })}` : note,
+      );
+    }
     // Keep any edits typed while the save was in flight dirty against this snapshot.
     useFileEditor.setState({
       file: { ...file, path: result.path, content, hash: result.hash, size: result.size },

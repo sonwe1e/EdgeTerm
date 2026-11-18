@@ -518,6 +518,7 @@ export const zhCN: Catalog = {
   "fileEditor.saved": "已保存",
   "fileEditor.conflict": "文件已被其他操作修改。草稿已保留，请先复制需要的内容再重新读取。",
   "fileEditor.uncertain": "无法确认是否保存成功，草稿已保留。",
+  "fileEditor.backupKept": "上次内容已保留在 {path}。",
   "fileEditor.textOnly":
     "支持不超过 4 MiB 的文本。本地文件需使用 UTF-8，远程文件也支持会话设置中的编码。",
   "fileEditor.ftpUnsupported":

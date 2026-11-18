@@ -172,6 +172,24 @@ it("does not report an uncertain remote write as saved", async () => {
   });
 });
 
+it("names the copy an unverified save kept of the previous content", async () => {
+  await openFileEditor("server", "/config.txt");
+  useFileEditor.setState({ content: "draft" });
+  // The backend kept the old content beside the file; the note alone would
+  // leave the user without the one path that still holds it.
+  vi.mocked(api.writeText).mockResolvedValue({
+    path: "/config.txt",
+    hash: "unknown",
+    size: 0,
+    uncertain: true,
+    temp: null,
+    backup: "/.config.txt.edgeterm-ab12.bak",
+    note: "verify the server",
+  });
+  await saveFileEditor();
+  expect(useFileEditor.getState().error).toContain("/.config.txt.edgeterm-ab12.bak");
+});
+
 function deferredRead() {
   let resolve!: (value: Awaited<ReturnType<typeof api.readText>>) => void;
   let reject!: (error: unknown) => void;

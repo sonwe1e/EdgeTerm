@@ -574,6 +574,7 @@ export const en = {
   "fileEditor.conflict":
     "The file changed outside this editor. Your draft is kept; copy it before reloading.",
   "fileEditor.uncertain": "The save could not be verified. Your draft is kept.",
+  "fileEditor.backupKept": "The previous content is kept at {path}.",
   "fileEditor.textOnly":
     "Text files up to 4 MiB. Local files must be UTF-8; remote files also support the session encoding.",
   "fileEditor.ftpUnsupported":
