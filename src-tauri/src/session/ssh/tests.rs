@@ -141,6 +141,7 @@ async fn shell_and_sftp_open_through_a_jump_host() {
                 known_hosts: Some(known_hosts),
             },
             &request(),
+            super::transport::HANDSHAKE_TIMEOUT,
         )
         .await
         .expect("connect through the jump host")
@@ -232,6 +233,7 @@ async fn shell_and_sftp_open_through_a_jump_host() {
                 known_hosts: Some(scratch.path()),
             },
             &request(),
+            super::transport::HANDSHAKE_TIMEOUT,
         ),
     )
     .await
@@ -3705,4 +3707,62 @@ async fn a_key_check_tunnels_through_the_sessions_own_jump_host() {
         ["0:none", "1:none", "1:publickey"],
         "the check is a fresh connection to the target"
     );
+}
+
+/// A peer that accepts the connection and then says nothing must not leave the
+/// attempt running for ever: the tab would sit on "connecting", and with
+/// auto-reuse on the host's single leader slot would stay taken, so every later
+/// attempt would queue behind it.
+#[tokio::test]
+async fn a_peer_that_never_answers_the_handshake_times_out() {
+    use super::transport::{connect_handle, Dial};
+    use crate::error::ErrorCode;
+    use std::time::{Duration, Instant};
+    use tokio::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    let peer = tokio::spawn(async move {
+        let (_socket, _) = listener.accept().await.expect("accept");
+        // Say nothing at all, and stay connected.
+        tokio::time::sleep(Duration::from_secs(10)).await;
+    });
+
+    let mut profile = crate::tests::profile(SessionKind::Ssh);
+    profile.host = Some("127.0.0.1".into());
+    profile.port = Some(port);
+    profile.username = Some("nobody".into());
+    let scratch = KnownHosts::new();
+    let user = Mutex::new(CannedAnswers::default());
+    let prompter = AuthPrompter::canned(&user);
+
+    let started = Instant::now();
+    let handshake = connect_handle(
+        &profile,
+        &[],
+        &prompter,
+        Dial {
+            flow: AuthFlow::Interactive,
+            known_hosts: Some(scratch.path()),
+        },
+        &request(),
+        Duration::from_millis(200),
+    )
+    .await;
+    let elapsed = started.elapsed();
+    let failure = match handshake {
+        Err(error) => error,
+        Ok(_) => panic!("a silent peer cannot succeed"),
+    };
+
+    assert_eq!(failure.code, ErrorCode::Timeout, "{failure:?}");
+    assert!(
+        elapsed < Duration::from_secs(5),
+        "gave up in {elapsed:?}, not at the deadline"
+    );
+    assert!(
+        failure.to_string().contains("did not answer within"),
+        "{failure}"
+    );
+    peer.abort();
 }

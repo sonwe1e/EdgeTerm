@@ -433,12 +433,21 @@ impl Dial<'_> {
 /// `direct-tcpip` channel of the previous, and the profile's own handshake
 /// runs through the last. A refused host key anywhere in the chain stops it
 /// there and reports that host, so the user can accept it and try again.
+/// How long one host may take to answer: the dial, the key exchange and
+/// authentication. A peer that accepts the connection and then says nothing —
+/// the wrong port, a proxy that waits for a request, a machine whose sshd is
+/// hung — otherwise leaves the tab connecting for ever, and with auto-reuse on
+/// it also holds that host's single leader slot, so every later attempt waits
+/// behind it.
+pub(super) const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(30);
+
 pub(super) async fn connect_handle(
     profile: &SessionProfile,
     jumps: &[SessionProfile],
     prompter: &AuthPrompter<'_>,
     dial: Dial<'_>,
     request: &Request,
+    deadline: Duration,
 ) -> Result<HandleOutcome> {
     let mut hops: Vec<(Handle<Client>, String)> = Vec::with_capacity(jumps.len());
     let mut legacy = Vec::new();
@@ -447,7 +456,13 @@ pub(super) async fn connect_handle(
             handle: &hops[previous].0,
             label: jumps[previous].address(),
         });
-        match connect_hop(jump, via.as_ref(), prompter, dial, request).await? {
+        match handshake(
+            jump,
+            connect_hop(jump, via.as_ref(), prompter, dial, request),
+            deadline,
+        )
+        .await?
+        {
             HopOutcome::Ready {
                 handle,
                 legacy: weak,
@@ -465,7 +480,13 @@ pub(super) async fn connect_handle(
         handle: &hops.last().expect("one hop per jump host").0,
         label: jump.address(),
     });
-    match connect_hop(profile, via.as_ref(), prompter, dial, request).await? {
+    match handshake(
+        profile,
+        connect_hop(profile, via.as_ref(), prompter, dial, request),
+        deadline,
+    )
+    .await?
+    {
         HopOutcome::Ready {
             handle,
             legacy: weak,
@@ -481,6 +502,27 @@ pub(super) async fn connect_handle(
             }))
         }
         HopOutcome::HostKeyChanged(change) => Ok(HandleOutcome::HostKeyChanged(change)),
+    }
+}
+
+/// Waits for one hop's handshake, and gives up on it rather than waiting for
+/// ever. Dropping the future closes the socket it dialled, so the peer sees the
+/// connection go away instead of an abandoned half-open connection.
+async fn handshake(
+    hop: &SessionProfile,
+    attempt: impl std::future::Future<Output = Result<HopOutcome>>,
+    deadline: Duration,
+) -> Result<HopOutcome> {
+    match tokio::time::timeout(deadline, attempt).await {
+        Ok(outcome) => outcome,
+        Err(_) => Err(AppError::coded(
+            crate::error::ErrorCode::Timeout,
+            format!(
+                "{} did not answer within {} seconds; the address, port or connection path may be wrong",
+                hop.address(),
+                deadline.as_secs_f64().ceil()
+            ),
+        )),
     }
 }
 
@@ -645,7 +687,16 @@ pub async fn connect(
         handle,
         hops,
         legacy,
-    } = match connect_handle(profile, jumps, prompter, Dial::session(), request).await? {
+    } = match connect_handle(
+        profile,
+        jumps,
+        prompter,
+        Dial::session(),
+        request,
+        HANDSHAKE_TIMEOUT,
+    )
+    .await?
+    {
         HandleOutcome::Ready(transport) => transport,
         HandleOutcome::HostKeyChanged(change) => {
             return Ok(ConnectOutcome::HostKeyChanged(change));
