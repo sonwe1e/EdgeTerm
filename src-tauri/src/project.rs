@@ -968,6 +968,39 @@ async fn canonical_target(sftp: &Sftp, path: &str) -> String {
     }
 }
 
+/// The bytes a save writes: the text with the file's line endings, its
+/// encoding and its BOM. Text past `TEXT_LIMIT` is refused here, before
+/// anything is created or replaced — the reader refuses the same size, so a
+/// write past it would leave a file this editor cannot open, reload or save
+/// again, locking the user out of their own file.
+fn write_bytes(request: &TextWrite) -> Result<Vec<u8>> {
+    let text = apply_eol(&request.content, &request.eol);
+    let encoding = request
+        .encoding
+        .as_deref()
+        .and_then(|label| encoding_rs::Encoding::for_label(label.as_bytes()))
+        .unwrap_or(encoding_rs::UTF_8);
+    let (encoded, _, had_errors) = encoding.encode(&text);
+    if had_errors {
+        return Err(AppError::invalid_input(format!(
+            "some characters cannot be written as {}; change the file encoding or the text",
+            encoding.name()
+        )));
+    }
+    let mut bytes = Vec::new();
+    if request.bom && encoding == encoding_rs::UTF_8 {
+        bytes.extend_from_slice(&[0xef, 0xbb, 0xbf]);
+    }
+    bytes.extend_from_slice(&encoded);
+    if bytes.len() > TEXT_LIMIT {
+        return Err(AppError::invalid_input(format!(
+            "the file would be {} bytes, above the {TEXT_LIMIT}-byte editor limit; shorten it, or edit it outside this editor",
+            bytes.len()
+        )));
+    }
+    Ok(bytes)
+}
+
 pub async fn write_text(
     state: &crate::commands::AppState,
     ops: &ProjectOps,
@@ -1017,24 +1050,7 @@ pub async fn write_text(
         _ => {}
     }
 
-    let text = apply_eol(&request.content, &request.eol);
-    let encoding = request
-        .encoding
-        .as_deref()
-        .and_then(|label| encoding_rs::Encoding::for_label(label.as_bytes()))
-        .unwrap_or(encoding_rs::UTF_8);
-    let (encoded, _, had_errors) = encoding.encode(&text);
-    if had_errors {
-        return Err(AppError::invalid_input(format!(
-            "some characters cannot be written as {}; change the file encoding or the text",
-            encoding.name()
-        )));
-    }
-    let mut bytes = Vec::new();
-    if request.bom && encoding == encoding_rs::UTF_8 {
-        bytes.extend_from_slice(&[0xef, 0xbb, 0xbf]);
-    }
-    bytes.extend_from_slice(&encoded);
+    let bytes = write_bytes(&request)?;
     let hash = sha256_hex(&bytes);
     let size = bytes.len() as u64;
 

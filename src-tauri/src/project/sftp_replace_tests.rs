@@ -514,3 +514,38 @@ fn recovery_note_names_what_the_server_holds() {
     assert!(!restored.contains(BACKUP));
     assert!(restored.contains("partial"));
 }
+
+/// A save past the reader's limit is refused before anything is written: the
+/// file the editor could no longer open would otherwise be its own doing.
+#[test]
+fn a_save_past_the_editor_limit_is_refused_rather_than_written() {
+    let at_limit = TextWrite {
+        path: "/target".into(),
+        content: "x".repeat(TEXT_LIMIT),
+        expected_hash: None,
+        eol: String::new(),
+        bom: false,
+        force: true,
+        encoding: Some("utf-8".into()),
+    };
+    // Exactly the limit still goes through, so the bound is not off by one.
+    assert_eq!(write_bytes(&at_limit).unwrap().len(), TEXT_LIMIT);
+
+    let past = TextWrite {
+        content: "x".repeat(TEXT_LIMIT + 1),
+        ..at_limit.clone()
+    };
+    let error = write_bytes(&past).expect_err("refused");
+    assert!(
+        format!("{error}").contains("above the 4194304-byte editor limit"),
+        "{error}"
+    );
+
+    // The BOM counts too: it is part of what the reader would refuse.
+    let with_bom = TextWrite {
+        content: "x".repeat(TEXT_LIMIT),
+        bom: true,
+        ..at_limit
+    };
+    assert!(write_bytes(&with_bom).is_err());
+}
