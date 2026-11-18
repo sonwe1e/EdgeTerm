@@ -104,18 +104,28 @@ pub(super) fn local_child(child: &str, parent: &str) -> Option<Vec<String>> {
 }
 
 /// `local_child` for a planned parent that may name the same place as the
-/// journal row in a different spelling: a junction, a differently-cased
-/// ancestor or a short name make the raw components differ even though the
-/// paths are the same. Both sides go through the engine's own `normalize`
-/// (the parent canonicalization every planned path has already had) before
-/// comparing, which keeps an interrupted folder transfer claimable.
+/// journal row in a different spelling. The engine's `normalize` canonicalizes
+/// only the *parent* of the path it is given, which settles an ancestor written
+/// another way but leaves the folder's own component alone — and for a folder
+/// row that component is the last one. Both sides are therefore resolved in
+/// full: the row itself, and the parent of the planned child, which is the same
+/// folder. Only reached once the raw components already differ, so the ordinary
+/// case costs no filesystem call.
 pub(super) fn local_child_canonical(child: &str, parent: &str) -> Option<Vec<String>> {
     if let Some(parts) = local_child(child, parent) {
         return Some(parts);
     }
-    let child = local::normalize(child).ok()?;
-    let parent = local::normalize(parent).ok()?;
-    local_child(&child, &parent)
+    let planned = Path::new(child);
+    let resolved_child = planned
+        .parent()?
+        .canonicalize()
+        .ok()?
+        .join(planned.file_name()?);
+    let resolved_parent = Path::new(parent).canonicalize().ok()?;
+    local_child(
+        &resolved_child.to_string_lossy(),
+        &resolved_parent.to_string_lossy(),
+    )
 }
 
 /// `local_child` for remote paths, which are always POSIX: split on `/`,

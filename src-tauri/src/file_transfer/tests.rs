@@ -1268,3 +1268,56 @@ fn the_target_lock_ignores_the_route_to_the_server() {
         super::target_key(&direct, &other_path)
     );
 }
+
+/// The folder's own name is the one component \`normalize\` leaves alone: it
+/// canonicalizes the parent only. A journal row that spells the folder itself
+/// in another case (or through a junction or short name) still names the same
+/// folder, so the planned child belongs to it.
+#[test]
+fn a_planned_child_belongs_to_a_root_whose_own_name_is_written_otherwise() {
+    #[cfg(not(windows))]
+    return;
+    #[cfg(windows)]
+    {
+        let root = std::env::temp_dir().join(format!(
+            "EDGETERM-JOURNAL-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let folder = root.join("MixedCase");
+        std::fs::create_dir_all(&folder).unwrap();
+
+        // The row keeps the folder in another case; the planned path has been
+        // through the engine and carries the real one.
+        let typed = folder.to_string_lossy().to_lowercase();
+        let child = local::normalize(&folder.join("child.txt").to_string_lossy()).unwrap();
+        assert!(typed.ends_with("mixedcase"), "the final component differs");
+
+        let row = Item {
+            local: typed.clone(),
+            remote: "/site".into(),
+            upload: true,
+            directory: true,
+        };
+        let planned = Item {
+            local: child,
+            remote: "/site/child.txt".into(),
+            upload: true,
+            directory: false,
+        };
+        assert!(super::checkpoint_belongs(&planned, &[row.clone()]));
+
+        let elsewhere = Item {
+            local: format!("{typed}-other"),
+            remote: "/site".into(),
+            upload: true,
+            directory: true,
+        };
+        assert!(!super::checkpoint_belongs(&planned, &[elsewhere]));
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+}
