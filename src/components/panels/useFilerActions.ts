@@ -60,6 +60,16 @@ interface Options {
   onViewLog: (entry: FileEntry) => void;
 }
 
+/** Whether names on this side compare the way a case-insensitive volume does. */
+function foldForLocal(remoteId: string | null): boolean {
+  return !remoteId && (IS_MAC || IS_WINDOWS);
+}
+
+/** The same-name test both inline editors use, with the volume's case rules. */
+function sameName(candidate: string, name: string, foldCase: boolean): boolean {
+  return foldCase ? candidate.toLowerCase() === name.toLowerCase() : candidate === name;
+}
+
 export function useFilerActions({
   setPendingDelete,
   remoteId,
@@ -441,7 +451,9 @@ export function useFilerActions({
       setError(t("filer.invalidName", { name, kind: kindWord }));
       return;
     }
-    if (entries.some((entry) => entry.name === name)) {
+    // A volume that ignores case treats `A.TXT` and `a.txt` as one file: the
+    // server would answer with a raw failure instead of this message.
+    if (entries.some((entry) => sameName(entry.name, name, foldForLocal(remoteId)))) {
       setError(t("filer.alreadyExists", { name }));
       return;
     }
@@ -484,7 +496,15 @@ export function useFilerActions({
       setError(t("filer.invalidName", { name, kind: kindWord }));
       return;
     }
-    if (entries.some((entry) => entry.name === name)) {
+    // The rename replaces its target, so the same-name check has to fold case
+    // the way the local volume does: `A.TXT` next to `a.txt` is that file, not
+    // a free name. The entry being renamed is left out — changing only its own
+    // spelling is a rename, not a collision.
+    if (
+      entries.some(
+        (entry) => entry.path !== from && sameName(entry.name, name, foldForLocal(remoteId)),
+      )
+    ) {
       setError(t("filer.alreadyExists", { name }));
       return;
     }
