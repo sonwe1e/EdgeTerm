@@ -529,5 +529,68 @@ export function useFilerActions({
     }
   };
 
-  return { activate, openMenu, entryMenu, folderMenu, commitNewEntry, commitRename, removeEntries };
+  /**
+   * Moves `chosen` into `folder`, the target of a drag onto that row. A name
+   * already taken in the target stops the whole move: the one outcome a drag
+   * must not produce is a file silently replaced by whatever landed on it.
+   */
+  const moveEntries = async (chosen: readonly FileEntry[], folder: string) => {
+    const sessionId = remoteId;
+    const destination = path;
+    const separator = remoteId ? "/" : "\\";
+    const parentOf = (entryPath: string) =>
+      entryPath.slice(0, Math.max(entryPath.lastIndexOf(separator), 0)) || separator;
+    const moving = chosen.filter(
+      (entry) => parentOf(entry.path) !== folder && !folder.startsWith(entry.path + separator),
+    );
+    if (!moving.length) return;
+    busyRef.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const taken = new Set(
+        (await (remoteId ? api.sftpList(remoteId, folder) : api.localList(folder))).entries.map(
+          (entry) => entry.name,
+        ),
+      );
+      const collision = moving.find((entry) => taken.has(entry.name));
+      if (collision) {
+        setError(t("filer.moveExists", { name: collision.name }));
+        return;
+      }
+      const failed: { entry: FileEntry; error: unknown }[] = [];
+      for (const entry of moving) {
+        try {
+          const to = remoteId ? joinRemote(folder, entry.name) : joinLocal(folder, entry.name);
+          if (remoteId) await api.sftpRename(remoteId, entry.path, to);
+          else await api.localRename(entry.path, to);
+        } catch (error) {
+          failed.push({ entry, error });
+        }
+      }
+      if (remoteIdRef.current === sessionId && pathRef.current === destination)
+        await load(destination);
+      if (remoteIdRef.current === sessionId && pathRef.current === destination && failed.length) {
+        selection.replace(failed.map(({ entry }) => entry.path));
+        setError(failed.map(({ entry, error }) => `${entry.name}: ${errorText(error)}`).join("\n"));
+      }
+    } catch (error) {
+      if (remoteIdRef.current === sessionId && pathRef.current === destination)
+        setError(errorText(error));
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  };
+
+  return {
+    activate,
+    openMenu,
+    entryMenu,
+    folderMenu,
+    commitNewEntry,
+    commitRename,
+    removeEntries,
+    moveEntries,
+  };
 }

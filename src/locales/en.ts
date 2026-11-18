@@ -892,6 +892,7 @@ export const en = {
   "filer.transferQueuePaused": " · {count} paused",
   "filer.transferQueueFailed": " · {count} failed",
   "filer.newFile": "New File…",
+  "filer.moveExists": "「{name}」 already exists in that folder, so nothing was moved.",
   "filer.newFolder": "New Folder…",
   "filer.uploadFiles": "Upload Files…",
   "filer.uploadFolder": "Upload Folder…",

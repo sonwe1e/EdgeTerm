@@ -257,6 +257,46 @@ afterEach(() => {
 });
 const mount = () => act(async () => root.render(h(FilerPanel)));
 
+it("moves a file dragged onto a folder into it", async () => {
+  vi.mocked(api.localList).mockImplementation(async (path) => ({
+    path,
+    entries: path === "/selection/folder" ? [] : entries,
+  }));
+  await mount();
+  const folderRow = row("folder");
+  expect(folderRow.dataset.dropFolder, "a folder can take a drop").toBe("/selection/folder");
+  expect(row("file2.txt").dataset.dropFolder, "a file cannot").toBeUndefined();
+
+  // The pointer ends up over the folder row; jsdom has no layout, so the hit
+  // test is the one part of the gesture a test has to supply.
+  Object.defineProperty(document, "elementFromPoint", {
+    configurable: true,
+    value: () => folderRow,
+  });
+  const file = row("file2.txt");
+  file.setPointerCapture = vi.fn();
+  file.hasPointerCapture = () => true;
+  await act(async () => {
+    file.dispatchEvent(
+      new MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 0, clientY: 0 }),
+    );
+    file.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 40, clientY: 0 }));
+  });
+  expect(row("folder").classList.contains("is-drop-target"), "the folder lights up").toBe(true);
+
+  await act(async () => {
+    file.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, button: 0 }));
+    await Promise.resolve();
+  });
+  expect(api.localRename).toHaveBeenCalledWith(
+    "/selection/file2.txt",
+    "/selection/folder/file2.txt",
+  );
+  // The stub outlives the test otherwise, and every later drag in this file
+  // would be measured against a row from this one.
+  delete (document as unknown as Record<string, unknown>).elementFromPoint;
+});
+
 it("does not expose a listbox for a listing that failed", async () => {
   vi.mocked(api.sftpList).mockRejectedValue(new Error("permission denied"));
   useRemote();

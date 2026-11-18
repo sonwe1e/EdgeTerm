@@ -819,6 +819,7 @@ export const zhCN: Catalog = {
   "filer.transferQueuePaused": " · {count} 个已暂停",
   "filer.transferQueueFailed": " · {count} 个失败",
   "filer.newFile": "新建文件…",
+  "filer.moveExists": "该文件夹里已经有「{name}」，没有移动任何文件。",
   "filer.newFolder": "新建文件夹…",
   "filer.uploadFiles": "上传文件…",
   "filer.uploadFolder": "上传文件夹…",

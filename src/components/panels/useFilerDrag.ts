@@ -42,6 +42,8 @@ interface Options {
   ) => void;
   cancelTransfer: () => void;
   busy: boolean;
+  /** Moves these entries into the folder they were dropped on. */
+  moveInto: (entries: FileEntry[], folder: string) => Promise<void>;
 }
 
 export function useFilerDrag({
@@ -68,9 +70,31 @@ export function useFilerDrag({
   selectEntry,
   cancelTransfer,
   busy,
+  moveInto,
 }: Options) {
   const [dragOver, setDragOver] = useState<DropVerdict | null>(null);
   const [dragOut, setDragOut] = useState<DragOutState | null>(null);
+  /**
+   * A drag that started on a row and is hovering a folder in the same listing:
+   * releasing it moves the rows there instead of handing them to the system.
+   * Kept in a ref as well because the pointer handlers read it before React
+   * has re-rendered.
+   */
+  const [moveDrag, setMoveDrag] = useState<{ entries: FileEntry[] } | null>(null);
+  const moveDragRef = useRef<{ entries: FileEntry[] } | null>(null);
+  const [moveOver, setMoveOver] = useState<string | null>(null);
+  const moveOverRef = useRef<string | null>(null);
+  /** The folder row under the pointer, if any row there can take a drop. */
+  const folderAt = (x: number, y: number): string | null => {
+    const hit = document.elementFromPoint?.(x, y);
+    return hit?.closest<HTMLElement>("[data-drop-folder]")?.dataset.dropFolder ?? null;
+  };
+  const trackMove = useStableCallback((entries: FileEntry[] | null, folder: string | null) => {
+    moveDragRef.current = entries ? { entries } : null;
+    moveOverRef.current = folder;
+    setMoveDrag(entries ? { entries } : null);
+    setMoveOver(folder);
+  });
   const panelRef = useRef<HTMLDivElement>(null);
   const dropFilesRef = useRef<(paths: string[]) => void>(() => {});
   /** Read from the drop handler, which must not act during our own drag. */
@@ -302,6 +326,15 @@ export function useFilerDrag({
     }
   };
 
+  /** Releasing a move carries it out; releasing a plain drag changes nothing. */
+  const onEntryPointerUp = useStableCallback(() => {
+    const moving = moveDragRef.current;
+    const folder = moveOverRef.current;
+    if (!moving) return;
+    trackMove(null, null);
+    if (folder) void moveInto(moving.entries, folder);
+  });
+
   const onEntryPointerDown = (entry: FileEntry, event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey) return;
     pointerHeld.current = true;
@@ -317,6 +350,11 @@ export function useFilerDrag({
   };
 
   const onEntryPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    // Already carrying rows to a folder: only the highlight follows the pointer.
+    if (moveDragRef.current) {
+      trackMove(moveDragRef.current.entries, folderAt(event.clientX, event.clientY));
+      return;
+    }
     const press = dragPress.current;
     if (!press || press.pointerId !== event.pointerId) return;
     if (
@@ -327,6 +365,14 @@ export function useFilerDrag({
     }
     dragPress.current = null;
     collapseSelection.current = null;
+    // A folder under the pointer takes the drop inside this listing. The
+    // capture stays: the pointer never leaves the webview, and the release
+    // arrives on the row that started the gesture.
+    const folder = folderAt(event.clientX, event.clientY);
+    if (folder) {
+      trackMove(selected.has(press.entry.path) ? selectedEntries : [press.entry], folder);
+      return;
+    }
     // The system drag needs the pointer itself; a capture would keep every
     // event inside the webview.
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
@@ -344,6 +390,9 @@ export function useFilerDrag({
     collapseSelection.current = null;
     pointerHeld.current = false;
     dragPress.current = null;
+    // The row's own release handles a move; this covers a release that lands
+    // outside it, where nothing would ever clear the highlight.
+    trackMove(null, null);
     // A drag that ends while its copy is still downloading was never
     // going to drop anything: an accidental few pixels of travel used to
     // download a whole folder that nobody could stop (#45).
@@ -412,5 +461,14 @@ export function useFilerDrag({
     if (busy) setDragOver(null);
   }, [busy]);
 
-  return { onEntryPointerDown, onEntryPointerMove, panelRef, dragOver, dragOut };
+  return {
+    onEntryPointerDown,
+    onEntryPointerMove,
+    onEntryPointerUp,
+    panelRef,
+    dragOver,
+    dragOut,
+    moveDrag,
+    moveOver,
+  };
 }

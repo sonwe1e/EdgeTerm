@@ -94,6 +94,7 @@ export const FilerRow = memo(function FilerRow({
   entry,
   selected,
   draggingOut,
+  dropTarget,
   theme,
   t,
   setSize,
@@ -102,11 +103,14 @@ export const FilerRow = memo(function FilerRow({
   onActivate,
   onPointerDown,
   onPointerMove,
+  onPointerUp,
   onContextMenu,
 }: {
   entry: FileEntry;
   selected: boolean;
   draggingOut: boolean;
+  /** A row drag is hovering this folder: dropping here moves into it. */
+  dropTarget: boolean;
   theme: ThemeMode;
   /** Bound to the language, so a switch re-renders every row's labels. */
   t: Translate;
@@ -118,13 +122,17 @@ export const FilerRow = memo(function FilerRow({
   onActivate: (entry: FileEntry) => void;
   onPointerDown: (entry: FileEntry, event: ReactPointerEvent<HTMLDivElement>) => void;
   onPointerMove: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onPointerUp: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onContextMenu: (event: MouseEvent, entry: FileEntry) => void;
 }) {
   const kind = entryKind(entry);
   return (
     <div
-      className={`row filer-entry is-${kind}${selected ? " is-active" : ""}${draggingOut ? " is-dragging-out" : ""}`}
+      className={`row filer-entry is-${kind}${selected ? " is-active" : ""}${draggingOut ? " is-dragging-out" : ""}${dropTarget ? " is-drop-target" : ""}`}
       role="option"
+      // Where a drag of other rows may land. Only a folder can take one; the
+      // drag hook reads this attribute from the element under the pointer.
+      {...(entry.isDir ? { "data-drop-folder": entry.path } : {})}
       aria-selected={selected}
       // Only a window of the list is mounted, so each row has to say how long
       // the whole list is: without these a 5000-file folder is announced as
@@ -134,6 +142,8 @@ export const FilerRow = memo(function FilerRow({
       onMouseDown={(event) => onSelect(entry.path, event)}
       onPointerDown={(event) => onPointerDown(entry, event)}
       onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
       onDoubleClick={() => onActivate(entry)}
       onContextMenu={(event) => onContextMenu(event, entry)}
       title={entryTitle(entry, t)}

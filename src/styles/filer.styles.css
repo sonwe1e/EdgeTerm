@@ -246,6 +246,14 @@
   opacity: 0.5;
 }
 
+/* A folder a dragged row may be dropped into. The ring is drawn inside the row
+   so the list's scroll height does not change while the pointer moves. */
+.filer-entry.is-drop-target {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
 /* The listing's own states — loading, error, empty — mount as fresh nodes
    inside the scroller. The rules themselves live on `.panel-empty` in
    panels.styles.css, which is shared with the other panels; this scoped rule

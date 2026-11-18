@@ -288,7 +288,72 @@ function FilerPanelBase() {
     t,
   });
 
-  const { onEntryPointerDown, onEntryPointerMove, panelRef, dragOver, dragOut } = useFilerDrag({
+  const {
+    activate,
+    openMenu,
+    entryMenu,
+    folderMenu,
+    commitNewEntry,
+    commitRename,
+    removeEntries,
+    moveEntries,
+  } = useFilerActions({
+    setPendingDelete,
+    remoteId,
+    path,
+    busyRef,
+    setBusy,
+    setError: reportError,
+    remoteIdRef,
+    pathRef,
+    load,
+    selection,
+    beginTransfer,
+    progressFor,
+    finishTransfer,
+    failTransfer,
+    ownsTransfer,
+    setOpenWithApps,
+    busy,
+    t,
+    setMenu,
+    openWithApps,
+    remote,
+    choosingDownload,
+    downloadEntries,
+    atDrivesRoot,
+    setCreating,
+    startRename,
+    renaming,
+    setRenaming,
+    upload,
+    uploadFolder,
+    creating,
+    entries,
+    previewImage: (entry) =>
+      setImagePreview({
+        id: crypto.randomUUID(),
+        tabId: tab?.info.id ?? null,
+        sessionId: remoteId,
+        path: entry.path,
+        name: entry.name,
+      }),
+    onViewLog: (entry) => {
+      setLogTarget({ sessionId: remoteId, path: entry.path, name: entry.name, sourceTabId });
+    },
+  });
+
+  const {
+    onEntryPointerDown,
+    onEntryPointerMove,
+    onEntryPointerUp,
+    panelRef,
+    dragOver,
+    dragOut,
+    moveDrag,
+    moveOver,
+  } = useFilerDrag({
+    moveInto: moveEntries,
     remoteId,
     uploadPaths,
     copyPaths,
@@ -313,52 +378,6 @@ function FilerPanelBase() {
     cancelTransfer,
     busy,
   });
-  const { activate, openMenu, entryMenu, folderMenu, commitNewEntry, commitRename, removeEntries } =
-    useFilerActions({
-      setPendingDelete,
-      remoteId,
-      path,
-      busyRef,
-      setBusy,
-      setError: reportError,
-      remoteIdRef,
-      pathRef,
-      load,
-      selection,
-      beginTransfer,
-      progressFor,
-      finishTransfer,
-      failTransfer,
-      ownsTransfer,
-      setOpenWithApps,
-      busy,
-      t,
-      setMenu,
-      openWithApps,
-      remote,
-      choosingDownload,
-      downloadEntries,
-      atDrivesRoot,
-      setCreating,
-      startRename,
-      renaming,
-      setRenaming,
-      upload,
-      uploadFolder,
-      creating,
-      entries,
-      previewImage: (entry) =>
-        setImagePreview({
-          id: crypto.randomUUID(),
-          tabId: tab?.info.id ?? null,
-          sessionId: remoteId,
-          path: entry.path,
-          name: entry.name,
-        }),
-      onViewLog: (entry) => {
-        setLogTarget({ sessionId: remoteId, path: entry.path, name: entry.name, sourceTabId });
-      },
-    });
 
   const remoteTitle = (label: string) => (remote ? label : `${label}${t("filer.sshOnly")}`);
   // The Windows drive list is virtual: drives can be opened but not created,
@@ -398,6 +417,7 @@ function FilerPanelBase() {
     selectEntry(path, { toggle, range: event.shiftKey });
   });
   const rowActivate = useStableCallback((entry: FileEntry) => activate(entry));
+  const rowPointerUp = useStableCallback(() => onEntryPointerUp());
   const rowPointerDown = useStableCallback(
     (entry: FileEntry, event: ReactPointerEvent<HTMLDivElement>) =>
       onEntryPointerDown(entry, event),
@@ -1156,7 +1176,10 @@ function FilerPanelBase() {
                 key={entry.path}
                 entry={entry}
                 selected={selected.has(entry.path)}
-                draggingOut={dragOut?.path === entry.path}
+                draggingOut={
+                  dragOut?.path === entry.path || Boolean(moveDrag && selected.has(entry.path))
+                }
+                dropTarget={moveOver === entry.path}
                 theme={theme}
                 t={t}
                 setSize={sortedEntries.length}
@@ -1165,6 +1188,7 @@ function FilerPanelBase() {
                 onActivate={rowActivate}
                 onPointerDown={rowPointerDown}
                 onPointerMove={rowPointerMove}
+                onPointerUp={rowPointerUp}
                 onContextMenu={rowContextMenu}
               />
             );
