@@ -1026,9 +1026,24 @@ fn config_path() -> PathBuf {
 
 pub(crate) fn write_owner_only(path: &Path, contents: &str) -> Result<()> {
     use std::io::Write;
+    write_atomically(path, |file| file.write_all(contents.as_bytes()))
+}
+
+/// Writes through a temporary file beside the target and renames it into place
+/// once the bytes are on disk. Opening the target directly and truncating it
+/// destroys the previous contents before the new ones exist: a full disk, a
+/// locked file or a crash mid-write then leaves unparsable JSON where the
+/// configuration was, which blocks saving and can make the next import fail.
+pub(crate) fn write_atomically(
+    path: &Path,
+    write: impl FnOnce(&mut std::fs::File) -> std::io::Result<()>,
+) -> Result<()> {
+    let dir = path.parent().unwrap_or_else(|| Path::new("."));
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    let temp = dir.join(format!(".{name}.tmp-{}", uuid::Uuid::new_v4().simple()));
 
     let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
+    options.write(true).create_new(true);
 
     #[cfg(unix)]
     {
@@ -1036,9 +1051,19 @@ pub(crate) fn write_owner_only(path: &Path, contents: &str) -> Result<()> {
         options.mode(0o600);
     }
 
-    let mut file = options.open(path)?;
-    file.write_all(contents.as_bytes())?;
-    file.sync_all()?;
+    let written = (|| -> std::io::Result<()> {
+        let mut file = options.open(&temp)?;
+        write(&mut file)?;
+        file.sync_all()
+    })();
+    if let Err(error) = written {
+        let _ = std::fs::remove_file(&temp);
+        return Err(error.into());
+    }
+    if let Err(error) = std::fs::rename(&temp, path) {
+        let _ = std::fs::remove_file(&temp);
+        return Err(error.into());
+    }
     restrict_permissions(path);
     Ok(())
 }

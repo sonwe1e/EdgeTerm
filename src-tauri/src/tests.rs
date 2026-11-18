@@ -18,7 +18,7 @@ use crate::session::{join_remote, sort_entries, TransferProgress};
 use crate::ssh_config::{self, SshConfigEntry};
 use crate::store::{
     is_data_file_path, portable_data_dir_in, save_startup_theme_at, save_window_geometry_at,
-    startup_theme_at, startup_window_at, Store, WindowGeometry,
+    startup_theme_at, startup_window_at, write_atomically, write_owner_only, Store, WindowGeometry,
 };
 
 fn temp_dir(tag: &str) -> PathBuf {
@@ -1021,6 +1021,45 @@ fn store_snapshot_never_carries_credentials() {
 /// being replaced. If that definition now names another endpoint, the secret
 /// must not follow it — an SSH password sent to a telnet prompt goes out in
 /// clear, and one sent to a new host goes somewhere nobody typed it for.
+
+/// A configuration write that fails must not destroy the file it replaces:
+/// truncating first leaves unparsable JSON, and the app then refuses to save
+/// profiles or to import a backup.
+#[test]
+fn a_failed_config_write_leaves_the_previous_file_intact() {
+    let dir = temp_dir("atomic-write");
+    let path = dir.join("sessions.json");
+    std::fs::write(&path, "{\"profiles\":[]}").unwrap();
+
+    let failed = write_atomically(&path, |file| {
+        use std::io::Write;
+        file.write_all(b"{\"profiles\":[")?;
+        Err(std::io::Error::other("disk full"))
+    });
+    assert!(failed.is_err(), "the write must report the failure");
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        "{\"profiles\":[]}",
+        "the previous file must survive a failed write"
+    );
+
+    write_owner_only(&path, "{\"profiles\":[1]}").expect("write");
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        "{\"profiles\":[1]}"
+    );
+    let leftovers: Vec<String> = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.contains(".tmp-"))
+        .collect();
+    assert!(
+        leftovers.is_empty(),
+        "temporary files left behind: {leftovers:?}"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
 #[test]
 fn store_import_drops_a_secret_whose_endpoint_moved() {
     let dir = temp_dir("import-moved");
