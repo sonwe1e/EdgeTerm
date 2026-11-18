@@ -4,9 +4,24 @@ import * as api from "./api";
 import { useFileTransfers } from "./fileTransfers";
 import { t } from "./i18n";
 import { ask, open, save } from "./nativeDialog";
+import { IS_MAC, IS_WINDOWS } from "./platform";
 import { useStore } from "./store";
 import type { FileEntry } from "./types";
 import { useStableCallback } from "./useStableCallback";
+
+/**
+ * The names a download would replace in `parent`. A local volume that ignores
+ * case treats `README.md` as the existing `readme.md`, so the question has to be
+ * asked there too — otherwise the engine writes over the file without one.
+ */
+export function downloadClashes(
+  names: readonly string[],
+  present: readonly string[],
+  foldCase: boolean,
+): string[] {
+  const taken = new Set(present.map((name) => (foldCase ? name.toLowerCase() : name)));
+  return names.filter((name) => taken.has(foldCase ? name.toLowerCase() : name));
+}
 
 /** Only choosing a destination blocks this entry; submitted jobs belong to the backend queue. */
 export function useFilerDownloads(
@@ -62,12 +77,16 @@ export function useFilerDownloads(
         // same-named file in place, with no dialog of its own. Ask once when
         // the destination already has any of these names; a failed listing
         // (permission, not mounted) must not block the transfer.
-        const existing = await api
+        const present = await api
           .localList(parent)
-          .then((listing) => new Set(listing.entries.map((entry) => entry.name)))
-          .catch(() => new Set<string>());
+          .then((listing) => listing.entries.map((entry) => entry.name))
+          .catch(() => [] as string[]);
         if (!current()) return;
-        const clashes = entries.filter((entry) => existing.has(entry.name));
+        const clashes = downloadClashes(
+          entries.map((entry) => entry.name),
+          present,
+          IS_MAC || IS_WINDOWS,
+        );
         if (clashes.length > 0) {
           const confirmed = await ask(
             t("filer.downloadReplaceConfirm", { count: clashes.length }),
