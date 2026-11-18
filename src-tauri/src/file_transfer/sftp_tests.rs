@@ -19,6 +19,8 @@ struct Server {
     stall_writes: bool,
     short_reads: bool,
     writes: Vec<u64>,
+    /// Partial paths the server refuses to remove, for cleanup failures.
+    refuse_remove: std::collections::HashSet<String>,
     pending: usize,
     peak: usize,
     /// Answers one request at a time and only then reads the next, sleeping
@@ -550,7 +552,11 @@ fn response(server: &mut Server, packet: Packet) -> (Option<Packet>, u64) {
             Packet::error(id, StatusCode::Ok)
         }
         Packet::Remove(p) => {
-            if server.files.remove(&p.filename).is_some() {
+            if server.refuse_remove.contains(&p.filename) {
+                // A partial the server will not let go: a read-only file, or a
+                // permission the transfer's account lacks.
+                Packet::error(id, StatusCode::Failure)
+            } else if server.files.remove(&p.filename).is_some() {
                 Packet::error(id, StatusCode::Ok)
             } else {
                 Packet::error(id, StatusCode::NoSuchFile)
@@ -3606,4 +3612,53 @@ async fn a_retry_starts_over_when_the_partial_was_never_created() {
 
     assert_eq!(f.state.lock().files["/target"], bytes);
     assert!(job.checkpoint(&job.key(&item)).unwrap().complete);
+}
+
+/// One remote partial the server will not let go must not stop the others:
+/// the rest of the batch is still cleaned, and the journal keeps owning the one
+/// that stayed so the next attempt tries it again.
+#[tokio::test]
+async fn a_partial_the_server_will_not_release_does_not_strand_the_rest() {
+    let f = Fixture::new(Server::default()).await;
+    let item = f.upload(b"payload");
+    let job = f.job();
+    let source = local::signature(std::path::Path::new(&item.local)).unwrap();
+    let make = |temporary: &str| Checkpoint {
+        key: format!("k-{temporary}"),
+        item: item.clone(),
+        source: source.clone(),
+        original: None,
+        temporary: temporary.to_string(),
+        backup: String::new(),
+        offset: 0,
+        prefix_hash: local::digest(&[]),
+        complete: false,
+        committing: false,
+        owns_temporary: true,
+        owns_backup: false,
+    };
+    {
+        let mut state = f.state.lock();
+        state.files.insert("/.stuck.part".into(), b"x".to_vec());
+        state.files.insert("/.fine.part".into(), b"x".to_vec());
+        state.refuse_remove.insert("/.stuck.part".into());
+    }
+
+    let error = cleanup_remote(
+        &f.remote,
+        vec![make("/.stuck.part"), make("/.fine.part")],
+        None,
+    )
+    .await
+    .expect_err("the refused partial is reported");
+    assert!(
+        format!("{error:?}").contains("/.stuck.part"),
+        "the report names the partial that stayed: {error:?}"
+    );
+    let files = f.state.lock().files.clone();
+    assert!(
+        files.contains_key("/.stuck.part"),
+        "left for the next cleanup"
+    );
+    assert!(!files.contains_key("/.fine.part"), "the rest was cleaned");
 }

@@ -1975,6 +1975,7 @@ async fn cleanup_remote(
     job: Option<&Job>,
 ) -> TransferResult<()> {
     let control = Control::default();
+    let mut failures: Vec<String> = Vec::new();
     for mut cp in checkpoints {
         if cp.committing && cp.owns_backup {
             let current = remote.signature(&cp.item.remote, &control).await?;
@@ -2010,7 +2011,7 @@ async fn cleanup_remote(
             }
             remove_backup(remote, &mut cp, &control).await?;
         }
-        remote
+        let removed = remote
             .exchange(&control, async {
                 match remote.raw.remove(&cp.temporary).await {
                     Ok(_) => Ok(()),
@@ -2018,11 +2019,26 @@ async fn cleanup_remote(
                     Err(e) => Err(e.into()),
                 }
             })
-            .await?;
+            .await;
+        // One partial the server will not release must not strand the rest:
+        // the journal keeps owning it, so the next cleanup tries it again.
+        if let Err(error) = removed {
+            failures.push(format!("{}: {error}", cp.temporary));
+            continue;
+        }
         cp.owns_temporary = false;
         if let Some(job) = job {
-            job.save_async(&cp).await?;
+            if let Err(error) = job.save_async(&cp).await {
+                failures.push(format!("{}: {error}", cp.temporary));
+            }
         }
     }
-    Ok(())
+    if failures.is_empty() {
+        return Ok(());
+    }
+    Err(Failure::local(format!(
+        "could not remove {} remote partial(s): {}",
+        failures.len(),
+        failures.join("; ")
+    )))
 }
