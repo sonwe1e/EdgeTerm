@@ -981,6 +981,23 @@ async fn canonical_target(sftp: &Sftp, path: &str) -> String {
     }
 }
 
+/// What a save that stopped before replacing anything left on the server. The
+/// temporary is named only when removing it failed, and the backup only when
+/// the target already existed, so the message never points at a file that is
+/// not there.
+fn kept_after_failed_save(temp_kept: bool, had_original: bool, temp: &str, backup: &str) -> String {
+    let previous = if had_original {
+        format!("the previous content is at {backup}")
+    } else {
+        "the target did not exist before".to_string()
+    };
+    if temp_kept {
+        format!("the new content is at {temp} and {previous}")
+    } else {
+        format!("nothing was written to the target and {previous}")
+    }
+}
+
 /// The bytes a save writes: the text with the file's line endings, its
 /// encoding and its BOM. Text past `TEXT_LIMIT` is refused here, before
 /// anything is created or replaced — the reader refuses the same size, so a
@@ -1110,19 +1127,37 @@ pub async fn write_text(
     // below still wins, because SFTP has no compare-and-swap and POSIX rename
     // is atomic but unconditional.
     let now = match sftp.raw.stat(&path).await {
-        Ok(_) => Some(sftp.read(&path, TEXT_LIMIT).await?.0),
+        Ok(_) => match sftp.read(&path, TEXT_LIMIT).await {
+            Ok((bytes, ..)) => Some(bytes),
+            Err(error) => {
+                // Nothing was replaced, but the copies the save already made
+                // are on the server: say which of them survived, rather than
+                // reporting a bare read failure and leaving them unmentioned.
+                let kept = sftp.raw.remove(&temp).await.is_err();
+                return Err(AppError::coded(
+                    ErrorCode::RemoteWriteUncertain,
+                    format!(
+                        "the target could not be re-read before replacing it ({error}); {}",
+                        kept_after_failed_save(kept, existing.is_some(), &temp, &backup)
+                    ),
+                ));
+            }
+        },
         Err(russh_sftp::client::error::Error::Status(status))
             if status.status_code == StatusCode::NoSuchFile =>
         {
             None
         }
         Err(error) => {
-            let _ = sftp.raw.remove(&temp).await;
+            // The temporary may refuse to go: a dead connection, a directory
+            // the account cannot write any more. Only claim it is there when
+            // it is.
+            let kept = sftp.raw.remove(&temp).await.is_err();
             return Err(AppError::coded(
                 ErrorCode::RemoteWriteUncertain,
                 format!(
-                    "the target could not be re-read before replacing it ({error}); \
-                     the new content is at {temp} and the previous content at {backup}"
+                    "the target could not be re-read before replacing it ({error}); {}",
+                    kept_after_failed_save(kept, existing.is_some(), &temp, &backup)
                 ),
             ));
         }

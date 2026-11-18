@@ -593,3 +593,25 @@ async fn a_save_through_a_symlink_targets_the_file_it_points_at() {
         "/link-new"
     );
 }
+
+/// The recovery message may only name copies that are still on the server:
+/// the temporary when removing it failed, the backup only when there was an
+/// original to keep.
+#[test]
+fn a_failed_save_names_only_the_copies_that_survive() {
+    let both = kept_after_failed_save(true, true, "/dir/.t.tmp", "/dir/.b.bak");
+    assert!(both.contains("/dir/.t.tmp"), "{both}");
+    assert!(both.contains("/dir/.b.bak"), "{both}");
+
+    let temp_gone = kept_after_failed_save(false, true, "/dir/.t.tmp", "/dir/.b.bak");
+    assert!(!temp_gone.contains(".t.tmp"), "{temp_gone}");
+    assert!(temp_gone.contains("/dir/.b.bak"), "{temp_gone}");
+
+    let nothing_kept = kept_after_failed_save(false, false, "/dir/.t.tmp", "/dir/.b.bak");
+    assert!(!nothing_kept.contains(".t.tmp"), "{nothing_kept}");
+    assert!(!nothing_kept.contains(".b.bak"), "{nothing_kept}");
+
+    let new_file = kept_after_failed_save(true, false, "/dir/.t.tmp", "/dir/.b.bak");
+    assert!(new_file.contains("/dir/.t.tmp"), "{new_file}");
+    assert!(!new_file.contains(".b.bak"), "{new_file}");
+}
