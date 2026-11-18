@@ -1060,6 +1060,47 @@ fn a_failed_config_write_leaves_the_previous_file_intact() {
     );
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// The merge changes the running state and then reaches the disk in three
+/// files. When one write fails the app used to keep the merged data and report
+/// the import as failed; the next save then wrote that half-import over the real
+/// configuration.
+#[test]
+fn a_failed_import_write_leaves_the_running_state_alone() {
+    let dir = temp_dir("import-rollback");
+    let store = Store::load_from_test(dir.join("sessions.json"));
+    let kept = store.save(profile(SessionKind::Ssh)).expect("save");
+    let before_profiles = store.list().len();
+
+    // A directory where the command file belongs makes that write fail, after
+    // the group and profile writes have already succeeded.
+    std::fs::create_dir(dir.join("sender_commands.json")).unwrap();
+
+    let mut incoming = profile(SessionKind::Ssh);
+    incoming.id = "imported-1".into();
+    let failed = store.import_data(AppData {
+        app: APP_DATA_APP.into(),
+        format: APP_DATA_FORMAT,
+        exported_at: None,
+        settings: None,
+        profiles: vec![incoming],
+        groups: vec![group("Imported", SessionKind::Ssh, None)],
+        sender_commands: vec![],
+    });
+
+    assert!(failed.is_err(), "the write failure must be reported");
+    assert_eq!(
+        store.list().len(),
+        before_profiles,
+        "the imported profile must not stay in memory"
+    );
+    assert!(store.list().iter().all(|p| p.id == kept.id));
+    assert!(
+        store.list_groups().is_empty(),
+        "the imported group must be gone too"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
 #[test]
 fn store_import_drops_a_secret_whose_endpoint_moved() {
     let dir = temp_dir("import-moved");

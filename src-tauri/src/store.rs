@@ -580,6 +580,19 @@ impl Store {
         validate_app_data(&data)?;
         let mut summary = DataSummary::default();
 
+        // The merge below changes the running state and reaches the disk in
+        // three files. Today the merge happened first and the writes after it,
+        // so a write that failed left the app holding data it had just reported
+        // as not imported — and the next save wrote that half-import over the
+        // real configuration. Keep the three lists so a failed write can put
+        // them back.
+        let groups_before = self.groups.lock().clone();
+        let profiles_before = self.profiles.lock().clone();
+        let commands_before = self.sender_commands.lock().clone();
+        // Credential drops are part of committing, not of merging: a file that
+        // never lands must not take the passwords with it.
+        let mut dropped_credentials: Vec<String> = Vec::new();
+
         {
             let mut groups = self.groups.lock();
             for mut group in data.groups {
@@ -630,10 +643,10 @@ impl Store {
                         // password would otherwise be sent to a telnet prompt,
                         // or to a host nobody typed it for.
                         let moved = names_another_endpoint(existing, &profile);
-                        *existing = profile;
                         if moved {
-                            self.credentials.remove(&existing.id);
+                            dropped_credentials.push(existing.id.clone());
                         }
+                        *existing = profile;
                     }
                     None => profiles.push(profile),
                 }
@@ -669,9 +682,19 @@ impl Store {
             }
         }
 
-        self.persist_groups()?;
-        self.persist()?;
-        self.persist_sender_commands()?;
+        let written = self
+            .persist_groups()
+            .and_then(|()| self.persist())
+            .and_then(|()| self.persist_sender_commands());
+        if let Err(error) = written {
+            *self.groups.lock() = groups_before;
+            *self.profiles.lock() = profiles_before;
+            *self.sender_commands.lock() = commands_before;
+            return Err(error);
+        }
+        for id in dropped_credentials {
+            self.credentials.remove(&id);
+        }
         Ok(summary)
     }
 
