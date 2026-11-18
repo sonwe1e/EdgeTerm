@@ -257,6 +257,45 @@ afterEach(() => {
 });
 const mount = () => act(async () => root.render(h(FilerPanel)));
 
+it("moves a file dragged onto a folder in a remote listing too", async () => {
+  // The same gesture has to work through the SSH/SFTP transport, and its
+  // rename call is a different command from the local one.
+  useRemote();
+  vi.mocked(api.sftpList).mockImplementation(async (_id, path) => {
+    const base = path.replace(/\/$/, "");
+    const listing = base.endsWith("/folder")
+      ? []
+      : entries.map((entry) => ({ ...entry, path: `${base}/${entry.name}` }));
+    return { path, entries: listing };
+  });
+  await mount();
+  const folderRow = row("folder");
+  Object.defineProperty(document, "elementFromPoint", {
+    configurable: true,
+    value: () => folderRow,
+  });
+  const file = row("file2.txt");
+  file.setPointerCapture = vi.fn();
+  file.hasPointerCapture = () => true;
+  await act(async () => {
+    file.dispatchEvent(
+      new MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 0, clientY: 0 }),
+    );
+    file.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 40, clientY: 0 }));
+  });
+  await act(async () => {
+    file.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, button: 0 }));
+    await Promise.resolve();
+  });
+  expect(api.sftpRename).toHaveBeenCalledWith(
+    "selection-ssh",
+    "/selection/file2.txt",
+    "/selection/folder/file2.txt",
+  );
+  expect(api.localRename).not.toHaveBeenCalled();
+  delete (document as unknown as Record<string, unknown>).elementFromPoint;
+});
+
 it("moves a file dragged onto a parent folder in the path bar", async () => {
   // Inside /selection/folder, dragging the file onto the "/selection" crumb
   // takes it up one level — the move an empty folder row cannot offer.
