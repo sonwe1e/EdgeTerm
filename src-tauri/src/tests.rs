@@ -1073,6 +1073,49 @@ fn a_failed_config_write_leaves_the_previous_file_intact() {
 /// The dialog has to say how many entries an import overwrites, and the count
 /// has to come from the merge that actually happened.
 
+/// A file whose entries carry no ids cannot name what it means, so importing it
+/// twice used to add a second copy of every group, session and command.
+#[test]
+fn importing_the_same_idless_file_twice_keeps_one_of_each() {
+    let dir = temp_dir("import-idless");
+    let store = Store::load_from_test(dir.join("sessions.json"));
+
+    let mut group = group("Prod", SessionKind::Ssh, None);
+    group.id = String::new();
+    let mut session = profile(SessionKind::Ssh);
+    session.id = String::new();
+    session.name = "web".into();
+    session.host = Some("web.example".into());
+    let mut tag = command("Restart", "systemctl restart nginx");
+    tag.id = String::new();
+    let file = || AppData {
+        app: APP_DATA_APP.into(),
+        format: APP_DATA_FORMAT,
+        exported_at: None,
+        settings: None,
+        profiles: vec![session.clone()],
+        groups: vec![group.clone()],
+        sender_commands: vec![tag.clone()],
+    };
+
+    store.import_data(file()).expect("first import");
+    let once = (
+        store.list().len(),
+        store.list_groups().len(),
+        store.list_sender_commands().len(),
+    );
+    store.import_data(file()).expect("second import");
+    let twice = (
+        store.list().len(),
+        store.list_groups().len(),
+        store.list_sender_commands().len(),
+    );
+
+    assert_eq!(once, (1, 1, 1), "one of each after the first import");
+    assert_eq!(twice, once, "a second import of the same file adds nothing");
+
+    std::fs::remove_dir_all(&dir).ok();
+}
 /// An imported file goes through the same jump-host rules the editor applies:
 /// a reference that points nowhere is dropped, and a chain that loops is refused
 /// before any of it is written.

@@ -679,7 +679,18 @@ impl Store {
                     continue;
                 }
                 if group.id.is_empty() {
-                    group.id = uuid::Uuid::new_v4().to_string();
+                    // A file without ids cannot say which entry it means, so a
+                    // second import used to mint fresh ids and add a copy of
+                    // every group. Match on what the entry is instead.
+                    group.id = groups
+                        .iter()
+                        .find(|existing| {
+                            existing.name == group.name
+                                && same_group_category(existing.kind, group.kind)
+                                && existing.parent_id == group.parent_id
+                        })
+                        .map(|existing| existing.id.clone())
+                        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
                 }
                 if group.parent_id.as_deref() == Some("") {
                     group.parent_id = None;
@@ -702,7 +713,16 @@ impl Store {
             for profile in data.profiles {
                 let mut profile = redact_profile(profile);
                 if profile.id.is_empty() {
-                    profile.id = uuid::Uuid::new_v4().to_string();
+                    profile.id = profiles
+                        .iter()
+                        .find(|existing| {
+                            existing.name == profile.name
+                                && existing.kind == profile.kind
+                                && existing.host == profile.host
+                                && existing.port == profile.port
+                        })
+                        .map(|existing| existing.id.clone())
+                        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
                 }
                 if let Some(group_id) = &profile.group_id {
                     let valid = groups.iter().any(|group| {
@@ -758,7 +778,15 @@ impl Store {
             let mut commands = self.sender_commands.lock();
             for mut command in resolved {
                 if command.id.is_empty() {
-                    command.id = uuid::Uuid::new_v4().to_string();
+                    command.id = commands
+                        .iter()
+                        .find(|existing| {
+                            existing.name == command.name
+                                && existing.text == command.text
+                                && existing.scope == command.scope
+                        })
+                        .map(|existing| existing.id.clone())
+                        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
                 }
                 if let Some(index) = commands.iter().position(|saved| saved.id == command.id) {
                     commands[index] = command;
