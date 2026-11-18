@@ -266,7 +266,7 @@ describe("chordProblem", () => {
   // Shift+F10 is the context-menu key. It carries a modifier, so the bare-chord
   // rule let it through and a command could take the key that opens the menu.
   it("refuses the chord that opens the context menu", () => {
-    expect(chordProblem(bind("F10", { shift: true }))).toBeTruthy();
+    expect(chordProblem(bind("F10", { shift: true }))).toMatch(/context menu/);
     // The rows answer Shift+F10 and the menu key whatever else is held down.
     expect(chordProblem(bind("F10", { shift: true, ctrl: true }))).toBeTruthy();
     expect(chordProblem(bind("F10", { shift: true, alt: true }))).toBeTruthy();

@@ -12,7 +12,10 @@ import { FAILURE_ROW_HEIGHT, JOB_ROW_HEIGHT, RECOVERY_ROW_HEIGHT } from "./Trans
 function declaredHeight(className: string): number {
   const rule = transferStyles.match(new RegExp(`\\.${className}\\s*\\{([^}]*)\\}`));
   expect(rule, `the .${className} rule exists`).toBeTruthy();
-  const height = rule![1].match(/height:\s*(\d+)px/);
+  // Not `\bheight:`: that also matches `line-height:`, and the failure-row
+  // rule carries a line-height of the same value — losing the fixed height
+  // there would still read as a pass.
+  const height = rule![1].match(/(?:^|[;\s])height:\s*(\d+)px/);
   expect(height, `.${className} declares a pixel height`).toBeTruthy();
   return Number(height![1]);
 }

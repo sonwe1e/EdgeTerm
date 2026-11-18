@@ -16,7 +16,7 @@ const MARKER = "__seeded__";
 it("restores every preference this module defines", async () => {
   // A guard on the guard: if the export naming ever changes, this test would
   // otherwise pass by finding no keys at all.
-  expect(PREFERENCE_KEYS.length).toBeGreaterThanOrEqual(20);
+  expect(PREFERENCE_KEYS.length).toBeGreaterThanOrEqual(22);
 
   for (const key of PREFERENCE_KEYS) localStorage.setItem(key, MARKER);
 
