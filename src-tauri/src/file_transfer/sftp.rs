@@ -1133,19 +1133,39 @@ async fn copy(
         let mut handle: Option<String> = None;
         if item.upload {
             if !resumed {
-                let h = remote
-                    .open(
-                        &cp.temporary,
-                        OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE,
-                        &job.control,
-                    )
-                    .await?;
-                if !cp.owns_temporary {
+                // Claim the path before the open creates it. The open is
+                // create-only, so the claim is exact, and a crash between the
+                // two can no longer leave a partial the journal does not own —
+                // cleanup skips those, and the file would stay on the server
+                // for good.
+                let claimed = !cp.owns_temporary;
+                if claimed {
                     cp.owns_temporary = true;
                     if !coalesced {
                         job.save_async(&cp).await?;
                     }
                 }
+                let opened = remote
+                    .open(
+                        &cp.temporary,
+                        OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE,
+                        &job.control,
+                    )
+                    .await;
+                let h = match opened {
+                    Ok(h) => h,
+                    Err(error) => {
+                        // Nothing was created here, so give the claim back —
+                        // whether this attempt made it or the checkpoint
+                        // carried it from its creation: whatever sits at that
+                        // path was not this job's to remove.
+                        if cp.owns_temporary {
+                            cp.owns_temporary = false;
+                            let _ = job.save_async(&cp).await;
+                        }
+                        return Err(error);
+                    }
+                };
                 // The write path keeps this handle: closing the placeholder
                 // only to reopen it costs two round trips per file.
                 handle = Some(h);

@@ -3728,3 +3728,35 @@ async fn a_resumed_download_rejects_a_source_changed_inside_its_prefix() {
     );
     assert!(!target.exists(), "nothing is committed");
 }
+
+/// The claim on a partial is journalled before the open creates it, and given
+/// back when the open fails: a path this job never created must not be removed
+/// by its cleanup.
+#[tokio::test]
+async fn a_failed_placeholder_open_does_not_claim_the_file_it_found() {
+    let f = Fixture::new(Server::default()).await;
+    let bytes = b"the whole file".to_vec();
+    let item = f.upload(&bytes);
+    let job = f.job();
+    let temporary = format!("/.edgeterm-{}.part", job.key(&item));
+    // Someone else's file already sits where the placeholder would go, so the
+    // create-only open fails.
+    f.state
+        .lock()
+        .files
+        .insert(temporary.clone(), b"not ours".to_vec());
+
+    assert!(copy(&job, &f.remote, item.clone(), 4, &Semaphore::new(2))
+        .await
+        .is_err());
+    let cp = job.checkpoint(&job.key(&item)).unwrap();
+    assert!(
+        !cp.owns_temporary,
+        "the claim is given back when nothing was created"
+    );
+    assert_eq!(
+        f.state.lock().files[&temporary],
+        b"not ours"[..],
+        "the file that was already there is left alone"
+    );
+}
