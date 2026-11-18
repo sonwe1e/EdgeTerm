@@ -116,4 +116,22 @@ describe.each(["Enter", "Escape"])("Filer keeps IME %s inside the input method",
     await press(input, "Enter");
     expect(api.localRename).toHaveBeenCalledWith("/ime/original.txt", "/ime/中文.txt");
   });
+
+  it("gives the list its focus back when an inline editor closes", async () => {
+    await mount();
+    const list = host.querySelector<HTMLElement>(".filer-list")!;
+    const row = host.querySelector(".filer-entry")!;
+    await act(async () => {
+      row.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+      list.dispatchEvent(new KeyboardEvent("keydown", { key: "F2", bubbles: true }));
+    });
+    const input = host.querySelector<HTMLInputElement>(".filer-new-entry input")!;
+    expect(document.activeElement).toBe(input);
+
+    // Escape closes the editor. Without the focus going back to the list, the
+    // next arrow key landed on <body> and did nothing.
+    await press(input, "Escape");
+    expect(host.querySelector(".filer-new-entry")).toBeNull();
+    expect(document.activeElement).toBe(list);
+  });
 });

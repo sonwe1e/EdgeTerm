@@ -217,6 +217,17 @@ function FilerPanelBase() {
   const busyRef = useRef(busy);
   /** The listbox: the rows' scroll container and the single Tab stop. */
   const listRef = useRef<HTMLDivElement>(null);
+  // An inline editor (rename, new entry, the path bar) takes the focus when it
+  // opens, and the browser hands it to <body> when the editor goes away. Every
+  // key after that went nowhere: the list's own handler never saw it. Whatever
+  // closed the editor — Escape, Enter, a navigation that cancels it — the list
+  // takes the focus back.
+  const inlineEditorOpen = renaming !== null || creating !== null || editingPath;
+  const inlineEditorWasOpen = useRef(inlineEditorOpen);
+  useEffect(() => {
+    if (inlineEditorWasOpen.current && !inlineEditorOpen) listRef.current?.focus();
+    inlineEditorWasOpen.current = inlineEditorOpen;
+  }, [inlineEditorOpen]);
 
   /**
    * The row the keyboard acts on. It rides alongside the selection instead of
