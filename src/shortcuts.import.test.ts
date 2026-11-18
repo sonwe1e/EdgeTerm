@@ -17,6 +17,22 @@ it("lets an imported binding win over a default it collides with", () => {
   expect(imported.findNext).toBeNull();
 });
 
+it("drops a stored binding the dialog would have refused", () => {
+  const menuKey = { ctrl: false, alt: false, shift: true, meta: false, code: "F10" };
+  const imported = parseShortcuts(
+    {
+      find: menuKey,
+      findNext: { ctrl: false, alt: false, shift: false, meta: false, code: "KeyJ" },
+    },
+    DEFAULT_SHORTCUTS,
+  )!;
+
+  // Both are refused in the dialog: the menu key and a bare key. The refused
+  // entries are dropped, and the commands keep the bindings they already had.
+  expect(imported.find).toEqual(DEFAULT_SHORTCUTS.find);
+  expect(imported.findNext).toEqual(DEFAULT_SHORTCUTS.findNext);
+});
+
 it("leaves the defaults alone when the table mentions nothing that collides", () => {
   const imported = parseShortcuts({ find: { ...taken } }, DEFAULT_SHORTCUTS)!;
   const untouched = Object.entries(DEFAULT_SHORTCUTS).filter(

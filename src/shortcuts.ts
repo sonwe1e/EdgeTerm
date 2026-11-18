@@ -429,10 +429,11 @@ export function chordProblem(binding: KeyChord): string | null {
   if (!binding.ctrl && !binding.alt && !binding.meta && !bareShift) {
     return IS_MAC ? translateMsg("sc.problemMac") : translateMsg("sc.problemOther");
   }
-  // Shift+F10 opens the context menu on the focused surface, the way Windows
-  // and the file manager do. It carries a modifier, so the bare-chord rule let
-  // it through, and a command bound to it would answer first.
-  if (binding.shift && binding.code === "F10" && !binding.ctrl && !binding.alt && !binding.meta) {
+  // Shift+F10 and the menu key open the context menu on the focused surface,
+  // the way Windows and the file manager do. The rows that answer them test
+  // `shiftKey` and the key alone, so every modifier combination reaches the
+  // menu and no combination is free for a command.
+  if ((binding.shift && binding.code === "F10") || binding.code === "ContextMenu") {
     return translateMsg("sc.reservedContextMenu", { chord: chordLabel(binding) });
   }
   const reserved = RESERVED_CHORDS.find((entry) => sameChord(entry.chord, binding));
@@ -489,13 +490,20 @@ export function parseShortcuts(
   if (!value || typeof value !== "object") return null;
   const raw = value as Record<string, unknown>;
   const bindings = { ...base };
+  // The dialog refuses chords the surface already answers — the context menu
+  // key, the platform's own chords, bare keys. A stored or imported table
+  // never went through that check, so it is applied here too; a refused entry
+  // is dropped and the command keeps the binding it already had.
+  const refused = new Set<string>();
   for (const { id } of SHORTCUT_COMMANDS) {
     if (!(id in raw)) continue;
     const entry = raw[id];
     if (entry === null) bindings[id] = null;
     else {
       const parsed = parseChord(entry);
-      if (parsed) bindings[id] = parsed;
+      if (!parsed) continue;
+      if (chordProblem(parsed)) refused.add(id);
+      else bindings[id] = parsed;
     }
   }
   // One chord, one command — the rule the dialog keeps when it reassigns. Only
@@ -506,7 +514,7 @@ export function parseShortcuts(
   // way (by list order, say) drops the binding the user asked for and saves
   // the loss back to storage.
   for (const { id } of SHORTCUT_COMMANDS) {
-    if (!(id in raw)) continue;
+    if (!(id in raw) || refused.has(id)) continue;
     const chord = bindings[id];
     if (!chord) continue;
     for (const { id: other } of SHORTCUT_COMMANDS) {

@@ -267,6 +267,11 @@ describe("chordProblem", () => {
   // rule let it through and a command could take the key that opens the menu.
   it("refuses the chord that opens the context menu", () => {
     expect(chordProblem(bind("F10", { shift: true }))).toBeTruthy();
+    // The rows answer Shift+F10 and the menu key whatever else is held down.
+    expect(chordProblem(bind("F10", { shift: true, ctrl: true }))).toBeTruthy();
+    expect(chordProblem(bind("F10", { shift: true, alt: true }))).toBeTruthy();
+    expect(chordProblem(bind("ContextMenu"))).toBeTruthy();
+    expect(chordProblem(bind("ContextMenu", { ctrl: true }))).toBeTruthy();
     // Shift+F9 has no such owner and stays available.
     expect(chordProblem(bind("F9", { shift: true }))).toBeNull();
   });
