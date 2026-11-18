@@ -1226,6 +1226,21 @@ async fn download(
     if local::hex(hash.clone().finish().as_ref()) != cp.prefix_hash {
         return Err(Failure::conflict("local partial content changed"));
     }
+    if cp.offset > 0 {
+        // The remote half of the same prefix. Without this, a source rewritten
+        // in place inside the bytes already on disk is spliced onto them: the
+        // commit's size, second-resolution mtime and head/tail sample all
+        // still agree, so the mixed file is committed as a success. The upload
+        // direction already re-reads its own partial this way.
+        job.phase("verifying resume prefix");
+        if remote
+            .hash(&cp.item.remote, cp.offset, &job.control)
+            .await?
+            != cp.prefix_hash
+        {
+            return Err(Failure::conflict("source prefix changed"));
+        }
+    }
     let mut target = tokio::fs::OpenOptions::new()
         .write(true)
         .open(&cp.temporary)

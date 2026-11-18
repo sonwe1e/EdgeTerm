@@ -1517,8 +1517,9 @@ async fn sampled_download_resumes_the_confirmed_prefix_and_discards_its_tail() {
     assert_eq!(std::fs::read(target).unwrap(), bytes);
     assert!(job.checkpoint(&key).unwrap().complete);
     assert!(!partial.exists());
-    // One sample to build the saved checkpoint and two in the resumed copy.
-    assert_eq!(f.count("read"), 3);
+    // One sample to build the saved checkpoint, one reread of the remote prefix
+    // the resume is about to build on, and two in the resumed copy.
+    assert_eq!(f.count("read"), 4);
 }
 
 /// Uploads a real folder to a real SFTP server through the production
@@ -3661,4 +3662,69 @@ async fn a_partial_the_server_will_not_release_does_not_strand_the_rest() {
         "left for the next cleanup"
     );
     assert!(!files.contains_key("/.fine.part"), "the rest was cleaned");
+}
+
+/// A source rewritten in place inside the bytes already downloaded is spliced
+/// onto them otherwise: the length, the second-resolution mtime and the
+/// head/tail sample all still agree, so the mixed file commits as a success.
+#[tokio::test]
+async fn a_resumed_download_rejects_a_source_changed_inside_its_prefix() {
+    // Large enough that the downloaded prefix reaches past the head/tail
+    // sample the commit compares: the change has to land where nothing else
+    // looks.
+    let bytes = payload(5 * 1024 * 1024);
+    let offset = 3 * 1024 * 1024;
+    let f = Fixture::new(Server {
+        files: HashMap::from([("/source".into(), bytes.clone())]),
+        ..Server::default()
+    })
+    .await;
+    let job = f.job();
+    let target = f.root.join("download");
+    let item = Item {
+        local: target.to_string_lossy().into(),
+        remote: "/source".into(),
+        upload: false,
+        directory: false,
+    };
+    let key = job.key(&item);
+    let partial = local::sibling(&target, &key, "part").unwrap();
+    std::fs::write(&partial, &bytes[..offset]).unwrap();
+    let cp = Checkpoint {
+        key: key.clone(),
+        item: item.clone(),
+        source: f
+            .remote
+            .source_signature("/source", &job.control)
+            .await
+            .unwrap()
+            .unwrap(),
+        original: None,
+        temporary: partial.to_string_lossy().into(),
+        backup: String::new(),
+        offset: offset as u64,
+        prefix_hash: local::digest(&bytes[..offset]),
+        complete: false,
+        committing: false,
+        owns_temporary: true,
+        owns_backup: false,
+    };
+    job.save(&cp).unwrap();
+    // The same length, changed only inside the already-downloaded region and
+    // outside the head and tail the commit samples.
+    let mut tampered = bytes.clone();
+    tampered[1_500_000..1_500_008].copy_from_slice(b"tampered");
+    f.state
+        .lock()
+        .files
+        .insert("/source".into(), tampered.clone());
+
+    let error = copy(&job, &f.remote, item, 4, &Semaphore::new(2))
+        .await
+        .expect_err("the mixed file must not be committed");
+    assert!(
+        format!("{error:?}").contains("source prefix changed"),
+        "the refusal names the prefix: {error:?}"
+    );
+    assert!(!target.exists(), "nothing is committed");
 }
