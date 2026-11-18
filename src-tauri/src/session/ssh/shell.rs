@@ -25,15 +25,36 @@ impl ShellReader {
 #[derive(Default)]
 struct ScriptedWriter {
     sent: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+    /// When set, every write waits for a permit before returning: a window the
+    /// server never refills, without needing a server to stall it.
+    gate: Option<std::sync::Arc<tokio::sync::Semaphore>>,
 }
 
 #[cfg(test)]
 impl ScriptedWriter {
     async fn data(&mut self, data: Vec<u8>) -> std::result::Result<(), String> {
         self.sent.lock().expect("recorded").extend(data);
+        if let Some(gate) = &self.gate {
+            let permit = gate.acquire().await.expect("the gate is never closed");
+            permit.forget();
+        }
         Ok(())
     }
 }
+
+/// One input write the loop is waiting on: it returns the writer it borrowed,
+/// whether the write worked, and the reply a confirmed write owes its caller.
+type Writing = std::pin::Pin<
+    Box<
+        dyn std::future::Future<
+                Output = (
+                    ShellWriter,
+                    std::result::Result<(), String>,
+                    Option<tokio::sync::oneshot::Sender<crate::error::Result<()>>>,
+                ),
+            > + Send,
+    >,
+>;
 
 /// The write side of the same channel, or a scripted stand-in that records what
 /// was sent and can be held open, which is how a stalled write is reproduced.
@@ -158,66 +179,82 @@ async fn drive(
     let mut lost: Option<String> = None;
     // Set when the frontend asked for the close; see `emit_state`.
     let mut close_requested = false;
+    // A write can block for a long time: the remote stops reading its input,
+    // the channel window never refills, and russh waits for the server's
+    // window update with no deadline. Awaiting it inline froze the session —
+    // the loop could not poll the remote's output, flush what it already had,
+    // or notice a Close — so the write now runs beside the loop instead of in
+    // front of it. The writer is owned by the loop while it is idle and by the
+    // in-flight write while one is running; a command that needs the writer
+    // waits for it, which is what the channel window makes it do anyway.
+    let mut writer_slot: Option<ShellWriter> = Some(writer);
+    let mut writing: Option<Writing> = None;
 
     loop {
-        if pump.is_closed() {
-            let _ = writer.close().await;
+        if pump.is_closed() && writing.is_none() {
+            if let Some(mut writer) = writer_slot.take() {
+                let _ = writer.close().await;
+            }
             break;
+        }
+        if let Some(write) = writing.as_mut() {
+            tokio::select! {
+                msg = reader.wait(), if pump.can_read() => {
+                    if read_output(msg, pump, &mut exit_status, &mut lost) {
+                        break;
+                    }
+                }
+                _ = pump.ready(), if !pump.is_empty() => pump.flush(),
+                (writer, result, reply) = write => {
+                    writing = None;
+                    if let Some(reply) = reply {
+                        let _ = reply.send(result.clone().map_err(AppError::new));
+                    }
+                    match result {
+                        Ok(()) => writer_slot = Some(writer),
+                        Err(e) => {
+                            lost = Some(format!("the connection was lost while sending input: {e}"));
+                            let mut writer = writer;
+                            let _ = writer.close().await;
+                            break;
+                        }
+                    }
+                }
+            }
+            continue;
         }
         tokio::select! {
             msg = reader.wait(), if pump.can_read() => {
-                match msg {
-                    Some(ChannelMsg::Data { data }) => pump.push(&data),
-                    Some(ChannelMsg::ExtendedData { data, .. }) => pump.push(&data),
-                    Some(ChannelMsg::ExitStatus { exit_status: code }) => exit_status = Some(code),
-                    // The remote closed the shell — a normal exit, or the
-                    // channel closing — whose exit status, if any, is the
-                    // reason reported below.
-                    Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) => break,
-                    // The transport ended with no channel close: a dropped
-                    // connection, not a clean exit, so it is reported lost.
-                    None => {
-                        lost = Some("the connection was lost".to_string());
-                        break;
-                    }
-                    Some(_) => {}
+                if read_output(msg, pump, &mut exit_status, &mut lost) {
+                    break;
                 }
             }
             cmd = rx.recv() => {
                 match cmd {
                     Some(SessionCommand::Write(data)) => {
-                        if let Err(e) = writer.data(data).await {
-                            lost = Some(format!(
-                                "the connection was lost while sending input: {e}"
-                            ));
-                            break;
-                        }
+                        let mut writer = writer_slot.take().expect("idle writer");
+                        writing = Some(Box::pin(async move {
+                            let result = writer.data(data).await;
+                            (writer, result, None)
+                        }));
                     }
                     Some(SessionCommand::WriteConfirmed { data, reply }) => {
-                        let result = writer
-                            .data(data)
-                            .await
-                            .map_err(|e| AppError::new(e.to_string()));
-                        let failed = result.is_err();
-                        if let Err(e) = &result {
-                            lost = Some(format!(
-                                "the connection was lost while sending input: {e}"
-                            ));
-                        }
-                        let _ = reply.send(result);
-                        if failed {
-                            break;
-                        }
+                        let mut writer = writer_slot.take().expect("idle writer");
+                        writing = Some(Box::pin(async move {
+                            let result = writer.data(data).await;
+                            (writer, result, Some(reply))
+                        }));
                     }
                     Some(SessionCommand::Resize { cols, rows }) => {
-                        let _ = writer.resize(cols as u32, rows as u32).await;
+                        if let Some(writer) = writer_slot.as_mut() {
+                            let _ = writer.resize(cols as u32, rows as u32).await;
+                        };
                     }
                     Some(SessionCommand::Sftp { request, reply }) => match transport.clone() {
                         Some(transport) => {
                             let slot = sftp.clone();
                             tauri::async_runtime::spawn(async move {
-                                let _ =
-                                    reply.send(browse_sftp(transport, slot, request).await);
+                                let _ = reply.send(browse_sftp(transport, slot, request).await);
                             });
                         }
                         None => {
@@ -226,27 +263,24 @@ async fn drive(
                             )));
                         }
                     },
-                    Some(SessionCommand::QueryCwd { reply }) => {
-                        // Its own exec channel, off the session loop, so
-                        // the shell channel is neither written to nor
-                        // held up.
-                        match handle.clone() {
-                            Some(handle) => {
-                                let cwd_token = cwd_token.clone();
-                                tauri::async_runtime::spawn(async move {
-                                    let _ = reply.send(remote_cwd(handle, &cwd_token).await);
-                                });
-                            }
-                            None => {
-                                let _ = reply.send(Err(AppError::new(
-                                    "this session has no connection to ask",
-                                )));
-                            }
+                    Some(SessionCommand::QueryCwd { reply }) => match handle.clone() {
+                        Some(handle) => {
+                            let cwd_token = cwd_token.clone();
+                            tauri::async_runtime::spawn(async move {
+                                let _ = reply.send(remote_cwd(handle, &cwd_token).await);
+                            });
                         }
-                    }
+                        None => {
+                            let _ = reply.send(Err(AppError::new(
+                                "this session has no connection to ask",
+                            )));
+                        }
+                    },
                     Some(SessionCommand::Close) | None => {
                         close_requested = true;
-                        let _ = writer.close().await;
+                        if let Some(mut writer) = writer_slot.take() {
+                            let _ = writer.close().await;
+                        }
                         break;
                     }
                 }
@@ -260,6 +294,31 @@ async fn drive(
         exit_status,
         close_requested,
     }
+}
+
+/// Takes one message from the remote while the session runs. Returns whether
+/// the session is over: a clean close, or a transport that went away.
+fn read_output(
+    msg: Option<ChannelMsg>,
+    pump: &mut OutputPump,
+    exit_status: &mut Option<u32>,
+    lost: &mut Option<String>,
+) -> bool {
+    match msg {
+        Some(ChannelMsg::Data { data }) => pump.push(&data),
+        Some(ChannelMsg::ExtendedData { data, .. }) => pump.push(&data),
+        Some(ChannelMsg::ExitStatus { exit_status: code }) => *exit_status = Some(code),
+        // The remote closed the shell — a normal exit, or the channel closing.
+        Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) => return true,
+        // The transport ended with no channel close: a dropped connection, not
+        // a clean exit, so it is reported lost.
+        None => {
+            *lost = Some("the connection was lost".to_string());
+            return true;
+        }
+        Some(_) => {}
+    }
+    false
 }
 
 /// What a shell session reports when it ends on its own: the reason the
@@ -376,4 +435,76 @@ async fn settle(ready: impl Fn() -> bool) {
         );
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
+}
+
+/// A write the server never acknowledges must not freeze the session: the
+/// remote's output has to keep arriving, and a Close has to be honoured, while
+/// the write is still in flight. Awaiting the write inline did neither — the
+/// loop was parked inside `data`, so the terminal showed nothing new and the
+/// tab could not be closed.
+#[tokio::test]
+async fn a_stalled_write_does_not_freeze_the_output_or_the_close() {
+    use std::sync::Arc;
+    use tauri::ipc::InvokeResponseBody;
+
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let (reader_tx, reader_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (command_tx, command_rx) = tokio::sync::mpsc::unbounded_channel();
+    // No permits: the write records the bytes and then waits for ever.
+    let gate = Arc::new(tokio::sync::Semaphore::new(0));
+    let writer = ScriptedWriter {
+        sent: Arc::new(std::sync::Mutex::new(Vec::new())),
+        gate: Some(gate.clone()),
+    };
+    let sent = writer.sent.clone();
+
+    let running = {
+        let seen = seen.clone();
+        tokio::spawn(async move {
+            let streams = crate::session::output::OutputStreams::default();
+            let channel = tauri::ipc::Channel::new(move |body| {
+                if let InvokeResponseBody::Raw(bytes) = body {
+                    seen.lock().expect("captured").extend(bytes);
+                }
+                Ok(())
+            });
+            let mut pump = crate::session::OutputPump::new(
+                streams.open("t", "tok".into(), channel).expect("opened"),
+                None,
+            );
+            let end = drive(
+                ShellReader::Scripted(reader_rx),
+                ShellWriter::Scripted(writer),
+                command_rx,
+                &mut pump,
+                None,
+                None,
+                String::new(),
+            )
+            .await;
+            pump.finish().await;
+            end
+        })
+    };
+
+    command_tx
+        .send(SessionCommand::Write(b"pasted".to_vec()))
+        .expect("queued input");
+    // The write is now parked on the gate.
+    settle(|| sent.lock().expect("read").as_slice() == b"pasted").await;
+
+    reader_tx
+        .send(russh::ChannelMsg::Data {
+            data: bytes::Bytes::from_static(b"prompt"),
+        })
+        .expect("queued output");
+    settle(|| seen.lock().expect("read").as_slice() == b"prompt").await;
+
+    gate.add_permits(1);
+    command_tx
+        .send(SessionCommand::Close)
+        .expect("queued close");
+    let end = running.await.expect("the loop finished");
+    assert!(end.close_requested);
+    assert!(end.lost.is_none(), "{:?}", end.lost);
 }
