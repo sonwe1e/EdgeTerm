@@ -199,3 +199,38 @@ describe("filer sort persistence", () => {
     expect(loadFileSort()).toEqual(DEFAULT_FILE_SORT);
   });
 });
+
+/**
+ * A name sort has to be a total order: two names the collator treats as equal
+ * must still have one fixed order, or a refresh shows them swapped.
+ */
+describe("sorting names the collator considers equal", () => {
+  const byName: FileSort = { key: "name", direction: "asc", explicit: true };
+
+  it("orders names that differ only in case one fixed way", () => {
+    const upper = entry("README");
+    const lower = entry("readme");
+    // Whichever order the listing arrives in, the display keeps one.
+    expect(sortFileEntries([upper, lower], byName).map((item) => item.name)).toEqual([
+      "README",
+      "readme",
+    ]);
+    expect(sortFileEntries([lower, upper], byName).map((item) => item.name)).toEqual([
+      "README",
+      "readme",
+    ]);
+  });
+
+  it("orders numerically equal names one fixed way", () => {
+    const padded = entry("file02");
+    const plain = entry("file2");
+    expect(sortFileEntries([padded, plain], byName).map((item) => item.name)).toEqual([
+      "file02",
+      "file2",
+    ]);
+    expect(sortFileEntries([plain, padded], byName).map((item) => item.name)).toEqual([
+      "file02",
+      "file2",
+    ]);
+  });
+});

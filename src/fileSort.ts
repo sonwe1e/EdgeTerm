@@ -40,7 +40,13 @@ const NAME_COLLATOR = new Intl.Collator(undefined, {
 
 function compareNames(a: string, b: string): number {
   // Numeric so file2 sorts before file10, the way Explorer and Finder do.
-  return NAME_COLLATOR.compare(a, b);
+  const collated = NAME_COLLATOR.compare(a, b);
+  // The collator ignores case, so `README` and `readme` compare equal and the
+  // listing's own order decided which came first: a refresh could swap the two
+  // rows a reader was following. The exact spelling breaks the tie, so the
+  // order is the listing's own only when the names are identical.
+  if (collated !== 0) return collated;
+  return a < b ? -1 : a > b ? 1 : 0;
 }
 
 /**
