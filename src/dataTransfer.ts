@@ -3,6 +3,7 @@ import { errorText } from "./errorInfo";
 import { t } from "./i18n";
 import { ask, open as openDialog, save as saveDialog } from "./nativeDialog";
 import { useStore } from "./store";
+import { IMPORT_PROTECTED_SETTINGS } from "./storePreferenceActions";
 import type { AppData } from "./types";
 
 // Session → Export Data… / Import Data…: one `.edgeterm` file (plain JSON
@@ -117,12 +118,20 @@ export async function importAppData(): Promise<void> {
 
     const result = await api.importAppData(data);
     if (hasSettings) store.applySettings(data.settings);
+    // The file's own wording cannot switch these off; say they were kept so the
+    // imported settings are not mistaken for a full restore.
+    const kept =
+      hasSettings &&
+      IMPORT_PROTECTED_SETTINGS.some((key) =>
+        Object.prototype.hasOwnProperty.call(data.settings, key),
+      );
     await store.loadProfiles();
     store.bumpSenderLibrary();
     let status = t("data.imported", {
       summary: describe(result),
       andSettings: hasSettings ? t("data.importAndSettings") : "",
     });
+    if (kept) status += t("data.importSettingsKept");
     if (result.skippedSenderCommands === 1) {
       status += t("data.importSkippedOne");
     } else if (result.skippedSenderCommands > 1) {

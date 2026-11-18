@@ -64,6 +64,14 @@ import {
 } from "./storePreferences";
 import { AppSettings, AppStore } from "./storeTypes";
 
+/**
+ * Settings an imported data file never applies. Both exist to stop a paste or a
+ * remote program doing something the user did not ask for; a file that flips
+ * them would do so behind a dialog that never mentions them. The user can still
+ * change them in Settings, where they are looking at the consequences.
+ */
+export const IMPORT_PROTECTED_SETTINGS = ["pasteWarning", "programClipboard"] as const;
+
 export const createPreferenceActions: StateCreator<
   AppStore,
   [],
@@ -404,6 +412,13 @@ export const createPreferenceActions: StateCreator<
   applySettings(settings) {
     if (!settings || typeof settings !== "object") return;
     const values = settings as Partial<Record<keyof AppSettings, unknown>>;
+    for (const key of IMPORT_PROTECTED_SETTINGS) delete values[key as keyof AppSettings];
+    // An imported file is not a place to switch these off: both protect the
+    // user from a paste or a remote program doing something they did not ask
+    // for, and the dialog in front of the import says nothing about them. The
+    // file's other settings still apply, and these two stay reachable in
+    // Settings where the user is looking at them.
+
     const state = get();
     // Each setter validates and persists the way the menus do, so a partial
     // or hand-edited file can only ever change the fields it names.

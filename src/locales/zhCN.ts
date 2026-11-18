@@ -1023,6 +1023,7 @@ export const zhCN: Catalog = {
     "相同 id 的条目会替换本地条目，其他内容不会被删除。数据文件从不包含会话密码，因此导入的会话会重新询问密码。",
   "data.importOk": "导入",
   "data.imported": "已导入 {summary}{andSettings}",
+  "data.importSettingsKept": "，但粘贴警告与剪贴板保护保持原样",
   "data.importSkippedOne": "；跳过 1 条发送命令（库已满）",
   "data.importSkippedMany": "；跳过 {count} 条发送命令（库已满）",
   "data.importFailed": "导入失败：{error}",

@@ -1101,6 +1101,8 @@ export const en = {
     "Entries with the same id replace the local ones; nothing else is removed. Data files never contain session passwords, so imported sessions will ask for theirs again.",
   "data.importOk": "Import",
   "data.imported": "Imported {summary}{andSettings}",
+  "data.importSettingsKept":
+    ", but the paste warning and clipboard protection were kept as they are",
   "data.importSkippedOne": "; skipped 1 Sender command (library full)",
   "data.importSkippedMany": "; skipped {count} Sender commands (library full)",
   "data.importFailed": "Import failed: {error}",
