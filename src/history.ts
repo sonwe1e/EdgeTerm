@@ -120,11 +120,20 @@ class CommandHistory {
   }
 
   /** Forgets `command` on every host (suggestions are per command text). */
-  remove(command: string) {
+  async remove(command: string): Promise<void> {
+    const before = this.entries;
     this.change(() => {
       this.entries = this.entries.filter((entry) => entry.command !== command);
     });
-    void api.deleteCommandHistory(command).catch(() => undefined);
+    try {
+      await api.deleteCommandHistory(command);
+    } catch (error) {
+      // The entry is still in the file, so it would come back on the next
+      // launch. Put it back here too rather than let this session show a
+      // forgetful list the file disagrees with — and let the caller say so.
+      this.entries = before;
+      throw error;
+    }
   }
 
   clear(): Promise<void> {

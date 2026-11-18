@@ -201,7 +201,14 @@ export async function ensureController(id: string): Promise<TerminalController> 
         else store.clearCommandActivity(id);
       },
       suggest: (input) => commandHistory.suggest(input, historyHost(id)),
-      forgetSuggestion: (command) => commandHistory.remove(command),
+      forgetSuggestion: (command) =>
+        void commandHistory
+          .remove(command)
+          .catch((error: unknown) =>
+            useStore
+              .getState()
+              .setStatus(t("status.commandHistoryForgetFailed", { error: errorText(error) })),
+          ),
       onResize: (cols, rows) => {
         useStore.getState().setSize(id, cols, rows);
         // A drag reports every frame; the PTY only needs the last size.

@@ -192,6 +192,8 @@ export const en = {
   "status.failed": "Failed: {message}",
   "status.commandHistoryCleared": "Command history cleared",
   "status.commandHistoryClearFailed": "Failed to clear command history: {error}",
+  "status.commandHistoryForgetFailed":
+    "Failed to forget that command, so it will come back after a restart: {error}",
   "status.defaultSettingsRestored": "Default settings restored",
   "status.folderOpenFailed": "Could not open the folder: {error}",
   "status.logDirectoryOpenFailed": "Failed to open the log directory: {error}",

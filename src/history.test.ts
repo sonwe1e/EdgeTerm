@@ -106,3 +106,18 @@ it("retries a failed load and accepts the backend snapshot after a failed clear"
   ]);
   expect(api.listCommandHistory).toHaveBeenCalledTimes(2);
 });
+
+it("puts a forgotten command back when the delete cannot be written", async () => {
+  vi.mocked(api.listCommandHistory).mockResolvedValueOnce([
+    { command: "deploy --token abc", host: "", count: 1, lastUsed: 5 },
+  ]);
+  const { commandHistory } = await import("./history");
+  await commandHistory.load();
+  vi.mocked(api.deleteCommandHistory).mockRejectedValueOnce(new Error("disk full"));
+
+  await expect(commandHistory.remove("deploy --token abc")).rejects.toThrow("disk full");
+  // The file still holds it, so this session must not pretend otherwise.
+  expect(commandHistory.suggest("deploy", "").map((item) => item.command)).toEqual([
+    "deploy --token abc",
+  ]);
+});
