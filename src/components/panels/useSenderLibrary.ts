@@ -81,7 +81,12 @@ export function useSenderLibrary({
       .then((commands) => {
         if (cancelled) return;
         setSavedCommands(commands);
-        setEditing(null);
+        // Dropping the edit target while the inputs keep the edited text turns
+        // the next Save into a second copy of a command that still exists. Keep
+        // editing the row that survived; only let go when it is really gone.
+        setEditing((current) =>
+          current && commands.some((saved) => saved.id === current.command.id) ? current : null,
+        );
       })
       .catch((error) => {
         if (!cancelled) setStatus(t("sender.loadFailed", { error: errorText(error) }));

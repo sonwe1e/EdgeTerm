@@ -329,3 +329,30 @@ it.each([".sender-command-input", ".sender-label-input"])(
     expect(command().value).toBe("unfinished draft");
   },
 );
+
+it("keeps the update target when the library reloads mid-edit", async () => {
+  await render();
+  await act(async () =>
+    host
+      .querySelector(".sender-command-tag")!
+      .dispatchEvent(new MouseEvent("contextmenu", { bubbles: true })),
+  );
+  const edit = [...document.querySelectorAll('[role="menuitem"]')].find(
+    (entry) => entry.textContent?.trim() === "Edit",
+  )!;
+  await click(edit);
+  expect(host.textContent).toContain("Update");
+
+  // A profile is deleted or data is imported while the command is being edited;
+  // the row is still there, so the edit must still be an update. Dropping it
+  // would turn the next save into a second copy of "status".
+  await act(async () => {
+    useStore.getState().bumpSenderLibrary();
+    await Promise.resolve();
+  });
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(host.textContent).toContain("Update");
+  expect(host.textContent).not.toContain("Save");
+});
