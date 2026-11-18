@@ -1010,12 +1010,15 @@ function FilerPanelBase() {
                 <button
                   key={segment.target}
                   type="button"
-                  className="filer-crumb"
+                  className={`filer-crumb${moveOver === segment.target ? " is-drop-target" : ""}`}
                   // The full path rides along: a deep segment is ellipsised in
                   // a narrow panel, and its target is the one thing worth showing.
                   title={segment.target}
                   disabled={busy}
                   aria-current={index === breadcrumbs.length - 1 ? "location" : undefined}
+                  // A crumb is a folder too: dragging rows onto it moves them
+                  // there, which is how a file goes up one level.
+                  data-drop-folder={segment.target}
                   onClick={() => void load(segment.target)}
                 >
                   {segment.label}

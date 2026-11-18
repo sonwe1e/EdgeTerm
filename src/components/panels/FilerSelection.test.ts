@@ -257,6 +257,54 @@ afterEach(() => {
 });
 const mount = () => act(async () => root.render(h(FilerPanel)));
 
+it("moves a file dragged onto a parent folder in the path bar", async () => {
+  // Inside /selection/folder, dragging the file onto the "/selection" crumb
+  // takes it up one level — the move an empty folder row cannot offer.
+  // The parent must not already hold the name: that collision is refused, and
+  // this test is about the drop landing at all.
+  vi.mocked(api.localList).mockImplementation(async (path) => ({
+    path,
+    entries:
+      path === "/selection"
+        ? entries.filter((entry) => entry.name !== "file2.txt")
+        : entries.map((entry) => ({ ...entry, path: `${path}/${entry.name}` })),
+  }));
+  await mount();
+  await doubleClick("folder");
+  await vi.waitFor(() =>
+    expect(
+      [...host.querySelectorAll<HTMLElement>(".filer-crumb")].map((c) => c.dataset.dropFolder),
+    ).toContain("/selection"),
+  );
+  const crumb = [...host.querySelectorAll<HTMLElement>(".filer-crumb")].find(
+    (candidate) => candidate.dataset.dropFolder === "/selection",
+  )!;
+
+  Object.defineProperty(document, "elementFromPoint", {
+    configurable: true,
+    value: () => crumb,
+  });
+  const file = row("file2.txt");
+  file.setPointerCapture = vi.fn();
+  file.hasPointerCapture = () => true;
+  await act(async () => {
+    file.dispatchEvent(
+      new MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 0, clientY: 0 }),
+    );
+    file.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 40, clientY: 0 }));
+  });
+  expect(crumb.classList.contains("is-drop-target"), "the crumb lights up").toBe(true);
+  await act(async () => {
+    file.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, button: 0 }));
+    await Promise.resolve();
+  });
+  expect(api.localRename).toHaveBeenCalledWith(
+    "/selection/folder/file2.txt",
+    "/selection/file2.txt",
+  );
+  delete (document as unknown as Record<string, unknown>).elementFromPoint;
+});
+
 it("moves a file dragged onto a folder into it", async () => {
   vi.mocked(api.localList).mockImplementation(async (path) => ({
     path,

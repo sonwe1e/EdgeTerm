@@ -248,7 +248,8 @@
 
 /* A folder a dragged row may be dropped into. The ring is drawn inside the row
    so the list's scroll height does not change while the pointer moves. */
-.filer-entry.is-drop-target {
+.filer-entry.is-drop-target,
+.filer-crumb.is-drop-target {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
   background: color-mix(in srgb, var(--accent) 18%, transparent);
