@@ -47,10 +47,28 @@ const EXPORT_TAIL_BYTES: usize = 256 * 1024;
 /// bounded tail of the newest log text. Built separately from writing it so a
 /// test can check exactly what a user would hand to support.
 pub fn report() -> String {
-    report_from(&logs_dir())
+    report_with(&logs_dir(), logging_unavailable())
+}
+
+/// Why the log subscriber could not be installed, when it could not. The report
+/// has to say so: an empty tail with `complete` next to it reads as "this build
+/// simply had nothing to log", which is the one thing it is not.
+static UNAVAILABLE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+fn logging_unavailable() -> Option<&'static str> {
+    UNAVAILABLE.get().map(String::as_str)
+}
+
+/// Records that diagnostics are off, for the report to repeat.
+pub(crate) fn note_logging_unavailable(reason: impl std::fmt::Display) {
+    let _ = UNAVAILABLE.set(reason.to_string());
 }
 
 fn report_from(dir: &Path) -> String {
+    report_with(dir, None)
+}
+
+fn report_with(dir: &Path, unavailable: Option<&str>) -> String {
     let mut report = String::new();
     report.push_str("EdgeTerm diagnostics\n");
     report.push_str(&format!(
@@ -64,6 +82,9 @@ fn report_from(dir: &Path) -> String {
         std::env::consts::ARCH
     ));
     report.push_str(&format!("log directory: {}\n", dir.display()));
+    if let Some(reason) = unavailable {
+        report.push_str(&format!("logging: disabled ({reason})\n"));
+    }
     let files = log_files(dir);
     if files.is_empty() {
         report.push_str("log files: none\n");
@@ -77,9 +98,12 @@ fn report_from(dir: &Path) -> String {
     let (tail, truncated) = log_tail(&files);
     report.push_str(&format!(
         "\n--- log tail ({}) ---\n",
-        match truncated {
-            true => format!("newest {EXPORT_TAIL_BYTES} bytes; older lines omitted"),
-            false => "complete".to_string(),
+        match (unavailable, truncated) {
+            // What is here was written before logging stopped; nothing since.
+            (Some(_), _) =>
+                "logging was disabled; nothing was written after the failure".to_string(),
+            (None, true) => format!("newest {EXPORT_TAIL_BYTES} bytes; older lines omitted"),
+            (None, false) => "complete".to_string(),
         }
     ));
     report.push_str(&tail);
@@ -171,7 +195,11 @@ pub fn init() {
                 "diagnostics started"
             );
         }
-        Err(error) => eprintln!("EdgeTerm: diagnostics are disabled ({error})"),
+        Err(error) => {
+            // stderr is invisible in an installed build; the report is read.
+            note_logging_unavailable(&error);
+            eprintln!("EdgeTerm: diagnostics are disabled ({error})");
+        }
     }
 }
 
@@ -689,6 +717,23 @@ mod tests {
             start.contains("tab-7"),
             "start line lacks the session: {start}"
         );
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    /// An export taken while logging is off has to say so: an empty tail with
+    /// `complete` next to it reads as "nothing happened", which is the one
+    /// thing a report from a broken log directory must not claim.
+    #[test]
+    fn the_report_says_when_logging_is_disabled() {
+        let dir = scratch_dir();
+        let report = report_with(&dir, Some("the log directory could not be opened"));
+        assert!(report.contains("logging: disabled"), "{report}");
+        assert!(report.contains("could not be opened"), "{report}");
+        assert!(!report.contains("complete"), "{report}");
+        // With logging working, the same empty directory still reads as a
+        // complete (empty) tail.
+        let healthy = report_with(&dir, None);
+        assert!(healthy.contains("complete"), "{healthy}");
         std::fs::remove_dir_all(dir).ok();
     }
 
