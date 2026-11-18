@@ -19,6 +19,7 @@ import {
 } from "./sessionConnectionLifecycle";
 import { tabTitle, useStore, type HostKeyPrompt, type Tab } from "./store";
 import type { TerminalController } from "./terminal";
+import { bufferPendingInput, clearPendingInput, takePendingInput } from "./pendingInput";
 import { disposeController, getController, setController } from "./terminalRegistry";
 import { isFileSession, type SessionInfo, type SessionProfile } from "./types";
 import { rememberWorkspaceDirectory } from "./workspaceDirectories";
@@ -144,7 +145,17 @@ export async function ensureController(id: string): Promise<TerminalController> 
   const controller = new TerminalController(
     id,
     {
-      onData: (data) => void api.writeSession(id, data).catch(() => undefined),
+      onData: (data) => {
+        // The tab takes input before the backend has a session to write to;
+        // dropping those bytes made the first keystrokes of a slow handshake
+        // silently disappear. They wait here instead.
+        const tab = useStore.getState().tabs.find((item) => item.info.id === id);
+        if (tab?.state === "connecting") {
+          bufferPendingInput(id, data);
+          return;
+        }
+        void api.writeSession(id, data).catch(() => undefined);
+      },
       onBinary: (data) => void api.writeSessionBytes(id, data).catch(() => undefined),
       // Read at click time: a reconnect replaces the tab's state, and a link
       // in a dead session must not open a tunnel that has no transport.
@@ -562,6 +573,13 @@ export async function connectSession(
         : t("status.connected", { name }),
     );
 
+    // Whatever was typed while the handshake ran goes out now that there is a
+    // session to receive it.
+    const typedWhileConnecting = takePendingInput(id);
+    if (typedWhileConnecting) {
+      void api.writeSession(id, typedWhileConnecting).catch(() => undefined);
+    }
+
     // The pane was fitted while the backend was still connecting, so its
     // first resize command could not be delivered. Re-send the current size.
     const size = useStore.getState().tabSizes[id];
@@ -578,6 +596,9 @@ export async function connectSession(
       return null;
     }
     const message = errorText(e);
+    // The attempt is over and nothing will write these bytes: forgetting them
+    // is better than replaying them into a later, unrelated session.
+    clearPendingInput(id);
     if (useStore.getState().tabs.some((tab) => tab.info.id === id)) {
       failSession(id, message);
     } else {

@@ -13,6 +13,7 @@ vi.mock("./api", async (original) => ({
 
 import * as api from "./api";
 import {
+  connectSession,
   disconnectSession,
   ensureController,
   openSession,
@@ -306,6 +307,41 @@ describe("connection attempt ownership", () => {
     await expect(retry).resolves.toBe(id);
     expect(api.openSession).toHaveBeenCalledTimes(1);
     expect(useStore.getState().tabs.find((tab) => tab.info.id === id)?.state).toBe("connected");
+  });
+
+  it("holds keystrokes typed while connecting and sends them once connected", async () => {
+    const id = "typed-while-connecting";
+    ids.push(id);
+    useStore.setState({ tabs: [makeTab(id, "connecting")], activeId: id });
+    const controller = await ensureController(id);
+
+    // The terminal takes input before the handshake finishes; without a
+    // buffer these bytes were dropped by writeSession and never arrived.
+    press(controller, "ls -l");
+    expect(api.writeSession).not.toHaveBeenCalled();
+
+    vi.mocked(api.openSession).mockResolvedValue(connected(id));
+    await connectSession(id, profile(id));
+
+    expect(api.writeSession).toHaveBeenCalledTimes(1);
+    expect(api.writeSession).toHaveBeenCalledWith(id, "ls -l");
+  });
+
+  it("forgets keystrokes typed into an attempt that fails", async () => {
+    const id = "typed-into-a-failed-connect";
+    ids.push(id);
+    useStore.setState({ tabs: [makeTab(id, "connecting")], activeId: id });
+    const controller = await ensureController(id);
+    press(controller, "never sent");
+
+    vi.mocked(api.openSession).mockRejectedValue(new Error("handshake failed"));
+    await connectSession(id, profile(id));
+    expect(api.writeSession).not.toHaveBeenCalled();
+
+    // A later session must not receive what was typed for the failed one.
+    vi.mocked(api.openSession).mockResolvedValue(connected(id, "a new session"));
+    await connectSession(id, profile(id));
+    expect(api.writeSession).not.toHaveBeenCalled();
   });
 
   it("locks a controller first created after its tab already ended", async () => {
