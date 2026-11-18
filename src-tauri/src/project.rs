@@ -946,6 +946,19 @@ fn normalize_remote_path(path: &str) -> String {
 /// lock key and the same reported path as one reached directly. The file name
 /// itself is not resolved when the file does not exist yet.
 async fn canonical_target(sftp: &Sftp, path: &str) -> String {
+    // A file that exists is resolved whole, so a symlink is followed to the
+    // file it names. Resolving only the parent is not enough: POSIX rename
+    // replaces the last component without following it, so a save through a
+    // link would swap the link for a plain file and leave the real target
+    // untouched — while reporting success.
+    if let Ok(response) = sftp.raw.realpath(path).await {
+        if let Some(file) = response.files.first() {
+            let resolved = file.filename.trim_end_matches('/');
+            if !resolved.is_empty() {
+                return resolved.to_string();
+            }
+        }
+    }
     let (parent, name) = match path.rsplit_once('/') {
         Some((parent, name)) if !name.is_empty() => {
             (if parent.is_empty() { "/" } else { parent }, name)

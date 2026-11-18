@@ -26,6 +26,8 @@ struct Server {
     fail_temp_rename: bool,
     /// WRITE requests fail, the way a full or read-only filesystem does.
     fail_write: bool,
+    /// Symlinks the fake filesystem resolves: a path here names its target.
+    links: HashMap<String, String>,
     /// Read failures retain truthful full-file metadata but return fewer bytes.
     early_eof_after: Option<usize>,
     oversized_read: bool,
@@ -144,6 +146,22 @@ fn respond(state: &Arc<Mutex<Server>>, packet: Packet) -> Option<Packet> {
                 HashMap::new()
             },
         }),
+        Packet::RealPath(p) => {
+            let mut path = p.path.trim_end_matches('/').to_string();
+            if path.is_empty() {
+                path = "/".into();
+            }
+            // One hop is all the fixture needs: a link names a file directly.
+            let resolved = server.links.get(&path).cloned().unwrap_or(path);
+            Packet::Name(russh_sftp::protocol::Name {
+                id,
+                files: vec![russh_sftp::protocol::File {
+                    filename: resolved,
+                    longname: String::new(),
+                    attrs: FileAttributes::empty(),
+                }],
+            })
+        }
         Packet::Stat(p) => match server.files.get(&p.path) {
             Some(data) => attrs(id, data.len(), server.omit_size),
             None => Packet::error(id, StatusCode::NoSuchFile),
@@ -548,4 +566,30 @@ fn a_save_past_the_editor_limit_is_refused_rather_than_written() {
         ..at_limit
     };
     assert!(write_bytes(&with_bom).is_err());
+}
+
+/// Saving through a symlink must write the file it points at. POSIX rename does
+/// not follow the last component, so resolving only the parent would replace
+/// the link with a plain file and leave the real target untouched — with the
+/// dialog reporting success either way.
+#[tokio::test]
+async fn a_save_through_a_symlink_targets_the_file_it_points_at() {
+    let mut fixture = Fixture::new(Server {
+        files: HashMap::from([("/real".to_string(), b"old".to_vec())]),
+        links: HashMap::from([("/link".to_string(), "/real".to_string())]),
+        ..Default::default()
+    })
+    .await;
+
+    assert_eq!(
+        canonical_target(fixture.sftp(), "/link").await,
+        "/real",
+        "the link is resolved to what it points at"
+    );
+
+    // A path that does not exist yet keeps the parent-resolved spelling.
+    assert_eq!(
+        canonical_target(fixture.sftp(), "/link-new").await,
+        "/link-new"
+    );
 }
