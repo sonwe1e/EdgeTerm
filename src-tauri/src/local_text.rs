@@ -216,9 +216,37 @@ pub fn write(request: TextWrite) -> Result<WriteOutcome> {
         })
     })();
     if result.is_err() && created {
-        let _ = fs::remove_file(&temp);
+        if !failed_replace_left_only_copy(&path) {
+            // The original is still there, so the temporary is only scratch.
+            let _ = fs::remove_file(&temp);
+        } else {
+            // A failed replace can take the original with it: Windows reports
+            // 1176 once it has deleted the replaced file and 1177 once it has
+            // moved it aside, and on either the temporary holds the only copy
+            // of what the user wrote. Deleting it would leave neither the old
+            // file nor the new one, so it stays and the message names it.
+            let detail = match &result {
+                Err(error) => error.to_string(),
+                Ok(_) => String::new(),
+            };
+            return Err(AppError::coded(
+                ErrorCode::Unknown,
+                format!(
+                    "{detail}; the file it was replacing is gone, and the new content is kept at {}",
+                    temp.display()
+                ),
+            ));
+        }
     }
     result
+}
+
+/// Whether a failed replace left the temporary file as the only copy of what
+/// the user wrote. Windows reports 1176 after it has deleted the file being
+/// replaced and 1177 after it has moved that file aside, so "the target is
+/// still there" is the only proof that the original survives.
+fn failed_replace_left_only_copy(target: &Path) -> bool {
+    !target.exists()
 }
 
 fn replace(from: &Path, to: &Path) -> Result<()> {
@@ -332,4 +360,66 @@ mod tests {
         assert!(read(path.to_str().unwrap()).is_err());
         fs::remove_dir_all(&dir).unwrap();
     }
+}
+
+/// A replace that fails while the original is still there must not leave
+/// the scratch file behind — and must not touch the original either.
+#[cfg(windows)]
+#[test]
+fn a_failed_replace_cleans_up_only_when_the_original_survives() {
+    use std::os::windows::fs::OpenOptionsExt;
+    let dir = std::env::temp_dir().join(format!("edgeterm-edit-{}", uuid::Uuid::new_v4()));
+    fs::create_dir(&dir).unwrap();
+    let path = dir.join("held-open.txt");
+    fs::write(&path, b"original").unwrap();
+    let file = read(path.to_str().unwrap()).unwrap();
+    // No delete sharing: the replace cannot move this file, and Windows
+    // leaves it in place.
+    let held = fs::OpenOptions::new()
+        .read(true)
+        .share_mode(0)
+        .open(&path)
+        .unwrap();
+
+    let request = TextWrite {
+        path: file.path,
+        content: "changed".into(),
+        expected_hash: Some(file.hash),
+        eol: file.eol,
+        bom: file.bom,
+        force: false,
+        encoding: Some(file.encoding),
+    };
+    let error = write(request).expect_err("the replace cannot succeed");
+    assert!(
+        !error.to_string().contains("the new content is kept"),
+        "{error}"
+    );
+    // The handle this test holds is what blocks the replace, so it has to
+    // go before the file can be read back.
+    drop(held);
+
+    // The original is untouched and the scratch file is gone.
+    assert_eq!(fs::read(&path).unwrap(), b"original");
+    let leftovers: Vec<_> = fs::read_dir(&dir)
+        .unwrap()
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.starts_with(".edgeterm-"))
+        .collect();
+    assert!(leftovers.is_empty(), "scratch left behind: {leftovers:?}");
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+/// The rule behind the cleanup: the temporary file is kept only when the
+/// file it was replacing is gone.
+#[test]
+fn a_failed_replace_is_only_kept_when_nothing_is_left_to_replace() {
+    let dir = std::env::temp_dir().join(format!("edgeterm-edit-{}", uuid::Uuid::new_v4()));
+    fs::create_dir(&dir).unwrap();
+    let survivor = dir.join("survivor.txt");
+    fs::write(&survivor, b"original").unwrap();
+    assert!(!failed_replace_left_only_copy(&survivor));
+    assert!(failed_replace_left_only_copy(&dir.join("gone.txt")));
+    fs::remove_dir_all(&dir).unwrap();
 }
