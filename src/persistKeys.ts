@@ -44,7 +44,7 @@ export const TRANSFER_OPTIONS_KEY = "edgeterm.transfer-options";
 export const RESOURCE_MONITOR_KEY = "edgeterm.resource-monitor";
 /** Legacy history/recovery metadata: retained only for export/reset cleanup. */
 export const AGENT_SETTINGS_KEY = "edgeterm.agents";
-/** Seamless cold-history switch; see storePreferences.ts (same literal). */
+/** Seamless cold-history switch; `storePreferences` re-exports this constant. */
 export const TERMINAL_COLD_HISTORY_KEY = "edgeterm.terminalColdHistory";
 
 /**

@@ -159,7 +159,7 @@ const chord = (code: string, mods: Partial<Omit<KeyChord, "code">>): KeyChord =>
  * Ctrl on their own are never taken by default: Option types characters and
  * Ctrl belongs to the shell.
  */
-export const MAC_DEFAULTS: ShortcutBindings = {
+export const MAC_DEFAULTS: Readonly<ShortcutBindings> = {
   newSession: chord("KeyN", { meta: true }),
   closeSession: chord("KeyW", { meta: true }),
   find: chord("KeyF", { meta: true }),
@@ -193,7 +193,7 @@ export const MAC_DEFAULTS: ShortcutBindings = {
  * Ctrl+letter is never a default — those are readline and shell keys (^W
  * kills a word, ^G is BEL, ^K kills to end of line).
  */
-export const OTHER_DEFAULTS: ShortcutBindings = {
+export const OTHER_DEFAULTS: Readonly<ShortcutBindings> = {
   newSession: chord("KeyN", { alt: true }),
   closeSession: chord("KeyW", { ctrl: true, shift: true }),
   find: chord("KeyF", { ctrl: true, shift: true }),
