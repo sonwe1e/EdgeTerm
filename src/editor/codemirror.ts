@@ -35,7 +35,10 @@ let active: {
 } | null = null;
 
 export function languageFor(path: string): string {
-  const name = path.toLowerCase().split("/").pop() ?? path;
+  // The editor opens local and remote files, so a path may use either
+  // separator; splitting on one of them leaves "c:\proj\dockerfile" whole and
+  // every name-matched language (Dockerfile, Makefile) falls back to text.
+  const name = path.toLowerCase().split(/[\\/]/).pop() ?? path;
   if (name.endsWith(".py") || name.endsWith(".pyi")) return "python";
   if (name.endsWith(".json") || name.endsWith(".jsonc") || name.endsWith(".ipynb")) return "json";
   if (name.endsWith(".yaml") || name.endsWith(".yml")) return "yaml";
