@@ -550,3 +550,49 @@ fn archive_names_are_relative_and_refuse_to_escape() {
     assert!(archive_name("/other/a.txt", "/site").is_err());
     assert!(archive_name("/site/../escape", "/site").is_err());
 }
+
+#[test]
+fn a_batch_tar_cannot_carry_goes_per_file_even_with_the_option_on() {
+    let root = tree();
+    let source = root.join("project");
+    std::fs::create_dir_all(&source).unwrap();
+    std::fs::write(source.join("a.txt"), b"a").unwrap();
+    let file = root.join("one.txt");
+    std::fs::write(&file, b"one").unwrap();
+
+    // The option is a persisted preference: it stays on across transfers.
+    let with_option = |job: Arc<Job>| {
+        let mut job = job;
+        Arc::get_mut(&mut job).unwrap().options.tar = true;
+        job
+    };
+
+    // One folder upload: still the tar path.
+    let job = with_option(super::super::test_job_items(
+        root.clone(),
+        vec![item(&source.to_string_lossy(), "/site", true, true)],
+    ));
+    assert!(wants_tar(&job));
+
+    // A single file, a download, and two items are not one folder upload.
+    let job = with_option(super::super::test_job_items(
+        root.clone(),
+        vec![item(&file.to_string_lossy(), "/site/one.txt", true, false)],
+    ));
+    assert!(!wants_tar(&job));
+
+    let job = with_option(super::super::test_job_items(
+        root.clone(),
+        vec![item(&file.to_string_lossy(), "/site/one.txt", false, false)],
+    ));
+    assert!(!wants_tar(&job));
+
+    let job = with_option(super::super::test_job_items(
+        root.clone(),
+        vec![
+            item(&source.to_string_lossy(), "/site/a", true, true),
+            item(&source.to_string_lossy(), "/site/b", true, true),
+        ],
+    ));
+    assert!(!wants_tar(&job));
+}

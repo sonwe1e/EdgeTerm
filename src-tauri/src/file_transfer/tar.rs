@@ -606,9 +606,14 @@ fn quote(value: &str) -> String {
 // --- the run ----------------------------------------------------------------
 
 /// Whether `run_job` sends this job down the tar path. FTP has no exec
-/// channel to run a remote tar on, so it never does.
+/// channel to run a remote tar on, so it never does. Neither does a batch tar
+/// cannot carry — a download, a single file, more than one item. The option is
+/// a persisted preference, so leaving it on used to send every later transfer
+/// down a path that refuses the batch outright and moves no bytes; a batch tar
+/// cannot stream now goes the per-file way, which is what the rest of the
+/// engine already does when streaming is unavailable.
 pub fn wants_tar(job: &Job) -> bool {
-    job.options.tar && job.profile.kind != SessionKind::Ftp
+    job.options.tar && job.profile.kind != SessionKind::Ftp && single_directory_upload(job).is_ok()
 }
 
 /// The one folder upload tar streaming covers, or a refusal naming what the
