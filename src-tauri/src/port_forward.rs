@@ -34,6 +34,20 @@ pub enum Direction {
     /// through it names its own far end, the way `ssh -D` works.
     Dynamic,
 }
+
+/// What to tell the user when a stop outlived its cleanup budget. A local or
+/// dynamic forward listens here, so dropping the listener closes the port before
+/// the connections already open finish; the old wording claimed the server had
+/// not answered, which was wrong for those directions and made a closed port read
+/// as a live one.
+fn cleanup_pending_message(direction: &Direction) -> &'static str {
+    match direction {
+        Direction::Local | Direction::Dynamic => {
+            "the listening port is closed; connections already open are still being cleaned up"
+        }
+        Direction::Remote => "the server has not acknowledged the tunnel yet; it is still stopping",
+    }
+}
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -289,6 +303,7 @@ impl Forwards {
         }
         job.state("stopping", None);
         job.control.set(2);
+        let direction = job.snapshot.lock().spec.direction;
         let mut done = job.done.subscribe();
         tokio::time::timeout(Duration::from_secs(10), async {
             while !*done.borrow_and_update() {
@@ -298,9 +313,7 @@ impl Forwards {
             }
         })
         .await
-        .map_err(|_| {
-            AppError::new("server has not acknowledged tunnel cleanup yet; it is still stopping")
-        })?;
+        .map_err(|_| AppError::new(cleanup_pending_message(&direction)))?;
         Ok(())
     }
     pub fn remove(&self, id: &str) -> Result<()> {
@@ -751,6 +764,20 @@ mod tests {
             received: AtomicU64::new(0),
             incoming: mpsc::channel(1).0,
         }
+    }
+
+    /// A stop that outlives its cleanup budget has to say what is actually true:
+    /// for a local or dynamic forward the port is already closed, while a remote
+    /// one waits on the server.
+    #[test]
+    fn a_slow_stop_reports_the_state_of_that_direction() {
+        let local = cleanup_pending_message(&Direction::Local);
+        let dynamic = cleanup_pending_message(&Direction::Dynamic);
+        let remote = cleanup_pending_message(&Direction::Remote);
+        assert!(local.contains("listening port is closed"), "{local}");
+        assert_eq!(local, dynamic, "both listen on this machine");
+        assert!(!remote.contains("listening port is closed"), "{remote}");
+        assert!(remote.contains("server has not acknowledged"), "{remote}");
     }
 
     /// A tunnel that never opened used to reach the user as one row inside a
