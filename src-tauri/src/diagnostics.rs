@@ -321,20 +321,36 @@ pub struct Request {
     session_id: Option<std::sync::Arc<str>>,
     transfer_id: Option<std::sync::Arc<str>>,
     started: Instant,
+    /// The `start` line is written by the first event, not by `begin`, so it
+    /// carries the session or transfer the caller names right after starting
+    /// the request. Written from `begin`, that line had empty ids and filtering
+    /// the log by session lost every operation's first line.
+    started_logged: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Request {
-    /// Starts a request and logs its `start` event.
+    /// Starts a request. Its `start` event is written by the first log line the
+    /// request produces, so it already names the session or transfer attached
+    /// with `with_session`/`with_transfer`.
     pub fn begin(operation: &'static str) -> Self {
-        let request = Request {
+        Request {
             id: uuid::Uuid::new_v4().simple().to_string().into(),
             operation,
             session_id: None,
             transfer_id: None,
             started: Instant::now(),
-        };
-        request.info("start", "started");
-        request
+            started_logged: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        }
+    }
+
+    /// Writes the `start` line once, for whichever event comes first.
+    fn log_start(&self) {
+        if !self
+            .started_logged
+            .swap(true, std::sync::atomic::Ordering::SeqCst)
+        {
+            self.emit_info("start", "started");
+        }
     }
 
     /// Names the session this operation belongs to; every event repeats it.
@@ -356,6 +372,12 @@ impl Request {
 
     /// A stage of the operation: dialling, authenticating, opening a channel…
     pub fn info(&self, phase: &str, message: impl std::fmt::Display) {
+        self.log_start();
+        self.emit_info(phase, message);
+    }
+
+    /// One `info` line, without the start bookkeeping `info` does.
+    fn emit_info(&self, phase: &str, message: impl std::fmt::Display) {
         let message = message.to_string();
         tracing::info!(
             request_id = %self.id,
@@ -371,6 +393,7 @@ impl Request {
     /// A stage worth remembering even when the operation succeeds, e.g. a
     /// host-key decision or legacy algorithms.
     pub fn warn(&self, phase: &str, message: impl std::fmt::Display) {
+        self.log_start();
         let message = message.to_string();
         tracing::warn!(
             request_id = %self.id,
@@ -399,6 +422,7 @@ impl Request {
     /// Records outcomes for domains with their own error type, including
     /// transfer pause/cancel results produced outside the connection future.
     pub fn record_result<T, E: std::fmt::Display>(&self, result: &std::result::Result<T, E>) {
+        self.log_start();
         let duration_ms = self.started.elapsed().as_millis() as u64;
         match result {
             Ok(_) => tracing::info!(
@@ -641,6 +665,30 @@ mod tests {
         assert!(log_files(&dir)
             .iter()
             .all(|name| name.starts_with(FILE_NAME)));
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    /// Filtering the log by session has to keep the operation's first line;
+    /// writing `start` before the caller names its session left that one blank.
+    #[test]
+    fn the_start_line_names_the_session_it_belongs_to() {
+        let dir = scratch_dir();
+        let (subscriber, guard) = build(&dir).unwrap();
+        {
+            let _default = tracing::subscriber::set_default(subscriber);
+            let request = Request::begin("open_session").with_session("tab-7");
+            request.finish::<()>(Ok(())).unwrap();
+        }
+        drop(guard);
+        let content = wait_for(&dir, "duration_ms");
+        let start = content
+            .lines()
+            .find(|line| line.contains("started"))
+            .unwrap_or_else(|| panic!("no start line in: {content}"));
+        assert!(
+            start.contains("tab-7"),
+            "start line lacks the session: {start}"
+        );
         std::fs::remove_dir_all(dir).ok();
     }
 
