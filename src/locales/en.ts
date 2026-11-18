@@ -331,6 +331,8 @@ export const en = {
   // DeleteProfileDialog
   "deleteProfile.title": "Delete Session",
   "deleteProfile.hintStart": "The saved session, any stored credentials for it",
+  "deleteProfile.cmdUnknown":
+    "Its saved Sender commands go with it, but the list could not be read — there may be more than this dialog can show.",
   "deleteProfile.cmdOne": " and its 1 saved Sender command",
   "deleteProfile.cmdMany": " and its {count} saved Sender commands",
   "deleteProfile.hintEnd": " will be removed. This cannot be undone.",
@@ -666,6 +668,7 @@ export const en = {
   "panel.failedDuplicateSession": "Failed to duplicate session",
   "panel.oneSession": "1 session",
   "panel.manySessions": "{count} sessions",
+  "panel.savedCommandsUnknown": "its saved Sender commands (the list could not be read)",
   "panel.oneSavedCommand": "1 saved Sender command",
   "panel.manySavedCommands": "{count} saved Sender commands",
 

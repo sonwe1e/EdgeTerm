@@ -296,6 +296,8 @@ export const zhCN: Catalog = {
 
   "deleteProfile.title": "删除会话",
   "deleteProfile.hintStart": "已保存的会话及其存储的凭据",
+  "deleteProfile.cmdUnknown":
+    "属于它的 Sender 命令也会一并删除，但列表没能读出来——实际数量可能不止这里显示的内容。",
   "deleteProfile.cmdOne": " 及其 1 条专用 Sender 命令",
   "deleteProfile.cmdMany": " 及其 {count} 条专用 Sender 命令",
   "deleteProfile.hintEnd": " 都将被移除。此操作无法撤销。",
@@ -602,6 +604,7 @@ export const zhCN: Catalog = {
   "panel.failedDuplicateSession": "创建会话副本失败",
   "panel.oneSession": "1 个会话",
   "panel.manySessions": "{count} 个会话",
+  "panel.savedCommandsUnknown": "它的 Sender 命令（列表没能读出来）",
   "panel.oneSavedCommand": "1 条专用 Sender 命令",
   "panel.manySavedCommands": "{count} 条专用 Sender 命令",
 

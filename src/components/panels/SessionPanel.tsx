@@ -178,7 +178,8 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
    */
   const [pendingDelete, setPendingDelete] = useState<{
     profile: SessionProfile;
-    scopedCommands: number;
+    /** `null` when the Sender list could not be read: the count is unknown, not zero. */
+    scopedCommands: number | null;
   } | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [groupDialog, setGroupDialog] = useState<GroupDialogState | null>(null);
@@ -429,14 +430,23 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
 
   const report = (what: string, error: unknown) => setStatus(`${what}: ${errorText(error)}`);
 
-  const listSenderCommands = () => api.listSenderCommands().catch((): SavedCommand[] => []);
+  /**
+   * The saved commands, or `null` when the list could not be read. An empty
+   * array would be a lie: the dialog would say nothing goes with the session
+   * while the backend deletes its commands anyway.
+   */
+  const listSenderCommands = (): Promise<SavedCommand[] | null> =>
+    api.listSenderCommands().catch(() => null);
 
   /** Opens the delete dialog, counting the Sender commands that go with it. */
   const askDeleteProfile = async (profile: SessionProfile) => {
     const commands = await listSenderCommands();
-    const scopedCommands = commands.filter(
-      (command) => command.scope.type === "profile" && command.scope.id === profile.id,
-    ).length;
+    const scopedCommands =
+      commands === null
+        ? null
+        : commands.filter(
+            (command) => command.scope.type === "profile" && command.scope.id === profile.id,
+          ).length;
     setPendingDelete({ profile, scopedCommands });
   };
 
@@ -455,22 +465,29 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
     const insideIds = new Set(insideProfiles.map((p) => p.id));
     // Everything scoped to the subtree goes with it: commands of the groups
     // and commands of the sessions in them.
-    const scopedCommands = (await listSenderCommands()).filter(
-      (command) =>
-        (command.scope.type === "group" && inSubtree(command.scope.id)) ||
-        (command.scope.type === "profile" && insideIds.has(command.scope.id)),
-    ).length;
+    const listed = await listSenderCommands();
+    const scopedCommands =
+      listed === null
+        ? null
+        : listed.filter(
+            (command) =>
+              (command.scope.type === "group" && inSubtree(command.scope.id)) ||
+              (command.scope.type === "profile" && insideIds.has(command.scope.id)),
+          ).length;
     const sessions =
       insideProfiles.length === 1
         ? t("panel.oneSession")
         : t("panel.manySessions", { count: insideProfiles.length });
     const commands =
-      scopedCommands === 1
-        ? t("panel.oneSavedCommand")
-        : t("panel.manySavedCommands", { count: scopedCommands });
-    const contents = [insideProfiles.length > 0 && sessions, scopedCommands > 0 && commands].filter(
-      (part): part is string => typeof part === "string",
-    );
+      scopedCommands === null
+        ? t("panel.savedCommandsUnknown")
+        : scopedCommands === 1
+          ? t("panel.oneSavedCommand")
+          : t("panel.manySavedCommands", { count: scopedCommands });
+    const contents = [
+      insideProfiles.length > 0 && sessions,
+      (scopedCommands === null || scopedCommands > 0) && commands,
+    ].filter((part): part is string => typeof part === "string");
     const consequence =
       contents.length === 0
         ? t("panel.groupEmpty")

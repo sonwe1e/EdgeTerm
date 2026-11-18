@@ -6,8 +6,12 @@ interface Props {
   profile: SessionProfile;
   /** One-line summary of the connection target, shown under the name. */
   target: string;
-  /** Saved Sender commands scoped to this profile alone; they go with it. */
-  scopedCommands: number;
+  /**
+   * Saved Sender commands scoped to this profile alone; they go with it.
+   * `null` means the list could not be read, so the dialog must not claim there
+   * are none.
+   */
+  scopedCommands: number | null;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -28,11 +32,13 @@ export function DeleteProfileDialog({
   const t = useT();
 
   const commands =
-    scopedCommands === 0
-      ? ""
-      : scopedCommands === 1
-        ? t("deleteProfile.cmdOne")
-        : t("deleteProfile.cmdMany", { count: scopedCommands });
+    scopedCommands === null
+      ? t("deleteProfile.cmdUnknown")
+      : scopedCommands === 0
+        ? ""
+        : scopedCommands === 1
+          ? t("deleteProfile.cmdOne")
+          : t("deleteProfile.cmdMany", { count: scopedCommands });
 
   return (
     <ModalDialog
