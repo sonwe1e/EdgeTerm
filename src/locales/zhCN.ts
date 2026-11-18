@@ -1099,6 +1099,7 @@ export const zhCN: Catalog = {
   "transfer.closeFailedFiles": "关闭失败文件",
 
   "forward.tunnels": "隧道",
+  "forward.failedCount": "{count} 个失败",
   "forward.sshPortForwarding": "SSH 隧道",
   "forward.closeTunnels": "关闭隧道",
   "forward.directionAria": "隧道方向",

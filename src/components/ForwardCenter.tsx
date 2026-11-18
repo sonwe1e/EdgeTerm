@@ -158,6 +158,16 @@ export const ForwardCenter = memo(function ForwardCenter() {
     }
   };
   const count = rows.filter(active).length;
+  // A tunnel that failed — including one a login tried to restore — used to be
+  // visible only after opening the popover; the button said nothing. The count
+  // is a running one, so failures get their own word beside it.
+  const failed = rows.filter((row) => row.status === "error").length;
+  const badge = [
+    count ? String(count) : "",
+    failed ? t("forward.failedCount", { count: failed }) : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
   const dynamic = spec.direction === "dynamic";
   const valid =
     spec.listenHost.trim().length > 0 &&
@@ -203,7 +213,7 @@ export const ForwardCenter = memo(function ForwardCenter() {
         onClick={() => setOpen(!open)}
       >
         {t("forward.tunnels")}
-        {count ? ` (${count})` : ""}
+        {badge ? ` (${badge})` : ""}
       </button>
       {open && (
         <StatusPopover

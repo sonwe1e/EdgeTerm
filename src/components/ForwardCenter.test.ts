@@ -227,3 +227,24 @@ it("controls existing tunnels even on local tabs and removes only finished recor
     act(() => root.unmount());
   }
 });
+
+it("shows a failed tunnel in the button instead of only inside the popover", async () => {
+  const failedRow = { ...row, id: "job-failed", status: "error", error: "bind: access denied" };
+  api.listPortForwards.mockResolvedValue([row, failedRow]);
+  act(() => useStore.setState({ tabs: [tab("ssh")], activeId: "ssh" }));
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  await act(async () => root.render(h(ForwardCenter)));
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+  const button = [...host.querySelectorAll("button")].find((b) =>
+    b.textContent?.startsWith("Tunnels"),
+  );
+  expect(button?.textContent).toContain("1 failed");
+
+  await act(async () => root.unmount());
+  host.remove();
+});

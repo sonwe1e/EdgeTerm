@@ -1180,6 +1180,7 @@ export const en = {
 
   // ForwardCenter
   "forward.tunnels": "Tunnels",
+  "forward.failedCount": "{count} failed",
   "forward.sshPortForwarding": "SSH tunnels",
   "forward.closeTunnels": "Close tunnels",
   "forward.directionAria": "Tunnel direction",
