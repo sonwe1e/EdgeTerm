@@ -93,8 +93,28 @@ impl Job {
         if matches!(row.status.as_str(), "error" | "stopped") && status == "stopping" {
             return;
         }
+        // The row is what the user sees, and until now it was the only place a
+        // tunnel's failure existed: nothing wrote it to the log, so a report
+        // about a forward that never opened had nothing to look at.
+        let id = row.id.clone();
+        let owner = row.owner.clone();
+        let address = row.address.clone();
+        let reason = error.clone().unwrap_or_default();
         row.status = status.into();
         row.error = error;
+        drop(row);
+        match status {
+            "error" => tracing::error!(
+                tunnel_id = %id,
+                owner = %owner,
+                address = %address,
+                "tunnel failed: {reason}"
+            ),
+            "stopped" => {
+                tracing::info!(tunnel_id = %id, owner = %owner, address = %address, "tunnel stopped")
+            }
+            _ => {}
+        }
     }
 }
 #[derive(Default)]
@@ -731,6 +751,39 @@ mod tests {
             received: AtomicU64::new(0),
             incoming: mpsc::channel(1).0,
         }
+    }
+
+    /// A tunnel that never opened used to reach the user as one row inside a
+    /// popover, and nowhere else. The log is what a report is read against.
+    #[test]
+    fn a_tunnel_failure_reaches_the_log() {
+        let dir =
+            std::env::temp_dir().join(format!("edgeterm-tunnel-log-{}", uuid::Uuid::new_v4()));
+        let logs = dir.join("logs");
+        let (subscriber, guard) = crate::diagnostics::build(&logs).unwrap();
+        let job = job_fixture("t-9");
+        {
+            let _default = tracing::subscriber::set_default(subscriber);
+            job.state("starting", None);
+            job.state("error", Some("bind 127.0.0.1:8080: access denied".into()));
+            job.state("stopping", None);
+        }
+        drop(guard);
+        let content: String = std::fs::read_dir(&logs)
+            .unwrap()
+            .map(|entry| std::fs::read_to_string(entry.unwrap().path()).unwrap())
+            .collect();
+        assert!(content.contains("t-9"), "{content}");
+        assert!(
+            content.contains("s-1"),
+            "the owning session should identify it: {content}"
+        );
+        assert!(content.contains("access denied"), "{content}");
+        assert!(
+            content.contains("ERROR"),
+            "a failure logs at error level: {content}"
+        );
+        std::fs::remove_dir_all(dir).ok();
     }
 
     /// Records of finished tunnels are what the user reads; they must not be the
