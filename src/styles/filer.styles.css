@@ -292,11 +292,19 @@
     opacity 120ms ease;
 }
 
-/* One row after another. The virtualiser gives each row a 26px slot; in the
-   flow path the same pitch comes from the row plus the gap between neighbours,
-   so both paths are the same height when the list is scrolled to the bottom. */
-.filer-entry + .filer-entry {
-  margin-top: 2px;
+/* The pitch belongs to the slot, not to the gap between neighbours: every row
+   sits in its own slot — the virtualiser positions it, the flow path stacks it —
+   so a `.filer-entry + .filer-entry` rule could never match. The slot is the row
+   height plus the 2px gap, and the row's own vertical margins are dropped inside
+   it, because a margin that collapses out of the slot would make the flow pitch
+   one pixel taller than the virtual one. */
+.filer-list .virtual-file-rows > div {
+  height: calc(var(--filer-row-h, max(24px, calc(var(--panel-font-size) + 10px))) + 2px);
+}
+
+.filer-list .virtual-file-rows > div > .filer-entry {
+  margin-top: 0;
+  margin-bottom: 0;
 }
 
 .filer-entry .row-label {

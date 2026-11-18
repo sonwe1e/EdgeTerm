@@ -46,10 +46,11 @@ function mountFiler(options: Options = {}) {
   app.className = "app";
   app.style.width = `${width}px`;
   app.style.setProperty("--panel-font-size", `${font}px`);
-  const rows = ENTRIES.map((entry, index) =>
-    virtual
-      ? `<div data-file-path="${entry.name}" style="position:absolute;top:${index * PITCH}px;left:0;right:0;height:${PITCH}px">${rowMarkup(entry)}</div>`
-      : rowMarkup(entry),
+  // Every row sits in a slot, the way the component renders it in both paths:
+  // only the positioning differs. The slot is what the pitch belongs to.
+  const rows = ENTRIES.map(
+    (entry, index) =>
+      `<div data-file-path="${entry.name}"${virtual ? ` style="position:absolute;top:${index * PITCH}px;left:0;right:0;height:${PITCH}px"` : ""}>${rowMarkup(entry)}</div>`,
   ).join("");
   app.innerHTML = `<div class="panel filer-panel" style="width:100%;height:600px"${hidden ? ' data-size-hidden=""' : ""}>
       <div class="panel-body filer-list" role="listbox">
@@ -163,5 +164,22 @@ describe("the docked Filer's list rows", () => {
       expect(filer.box(entry).height).toBeLessThanOrEqual(PITCH);
     }
     expect(filer.box(filer.entries[1]).top - filer.box(filer.entries[0]).top).toBeCloseTo(PITCH, 1);
+  });
+
+  it("gives rows the same pitch in the flow path as the virtual one", () => {
+    // The list switches paths at 200 entries; a different pitch on either side
+    // made the rows jump and the paging step disagree with the visible rows.
+    const flow = mountFiler();
+    const flowBoxes = flow.entries.map((entry) => entry.getBoundingClientRect());
+    const flowPitch = flowBoxes[1].top - flowBoxes[0].top;
+    flow.app.remove();
+
+    const virtual = mountFiler({ virtual: true });
+    const virtualBoxes = virtual.entries.map((entry) => entry.getBoundingClientRect());
+    const virtualPitch = virtualBoxes[1].top - virtualBoxes[0].top;
+    virtual.app.remove();
+
+    expect(flowPitch).toBeCloseTo(PITCH, 1);
+    expect(virtualPitch).toBeCloseTo(PITCH, 1);
   });
 });
