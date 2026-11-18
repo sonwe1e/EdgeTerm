@@ -179,6 +179,8 @@ export const en = {
   "status.moreFailures": "+{count} more",
   "titleBar.actionFailed": "The window action failed: {error}",
   "monitor.settingsNotSaved": "Settings could not be saved; they apply to this window only.",
+  "status.workspaceNotSaved":
+    "Your open tabs will not be saved in this run, because the saved sessions could not be loaded.",
   "status.workspaceUnreadable":
     "The saved workspace could not be read; starting with a clean layout.",
   "status.dismissError": "Dismiss error",

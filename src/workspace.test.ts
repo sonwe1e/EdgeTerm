@@ -291,3 +291,15 @@ it("keeps the bytes of a snapshot it could not read", async () => {
   // survive somewhere, or the only copy of what the user had open is gone.
   expect(localStorage.getItem(WORKSPACE_STORAGE_KEY)).not.toBe(damaged);
 });
+
+it("says that tabs will not be saved when the sessions cannot be loaded", async () => {
+  const raw = JSON.stringify(fixture());
+  localStorage.setItem(WORKSPACE_STORAGE_KEY, raw);
+  const load = vi.fn().mockResolvedValue(false);
+  useStore.setState({ loadProfiles: load });
+  const stop = start();
+  await vi.waitFor(() => expect(useStore.getState().status).toContain("will not be saved"));
+  stop();
+  // The old snapshot survives untouched — the point of not writing.
+  expect(localStorage.getItem(WORKSPACE_STORAGE_KEY)).toBe(raw);
+});

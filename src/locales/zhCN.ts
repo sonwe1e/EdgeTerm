@@ -165,6 +165,7 @@ export const zhCN: Catalog = {
   "status.moreFailures": "另有 {count} 条",
   "titleBar.actionFailed": "窗口操作失败：{error}",
   "monitor.settingsNotSaved": "设置无法保存，仅在本次窗口生效。",
+  "status.workspaceNotSaved": "本次运行不会保存标签布局：会话列表没能读出来。",
   "status.workspaceUnreadable": "保存的工作区无法读取，已按空白布局启动。",
   "status.dismissError": "关闭错误提示",
   "status.connectionCancelled": "已取消连接",

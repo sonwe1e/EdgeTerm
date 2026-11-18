@@ -127,7 +127,16 @@ export function startWorkspace(eventsReady: Promise<unknown>): () => void {
     await eventsReady;
     if (stopped) return;
     const loaded = await useStore.getState().loadProfiles();
-    if (stopped || !loaded) return;
+    if (stopped) return;
+    if (!loaded) {
+      // Without the saved sessions the tabs cannot be restored, and writing the
+      // empty window over the stored snapshot would destroy the one thing the
+      // user could still recover. Keep that snapshot — and say what it costs
+      // them: the error line still carries the cause, this line the consequence.
+      const state = useStore.getState();
+      state.setStatus(translate(state.language, "status.workspaceNotSaved"));
+      return;
+    }
     let snapshot: WorkspaceSnapshot | null = null;
     let unreadable = false;
     let stored = "";
