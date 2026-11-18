@@ -86,6 +86,40 @@ it("moves a file onto a folder row with a real pointer", async () => {
   expect(vi.mocked(api.localRename).mock.calls[0]).toEqual(["/drag/a.txt", "/drag/folder/a.txt"]);
 });
 
+it("moves every selected row onto the folder", async () => {
+  await page.viewport(900, 720);
+  mount(
+    h(
+      "div",
+      { style: { width: 440, height: 650, display: "flex", margin: "24px auto" } },
+      h(FilerPanel),
+    ),
+  );
+  await expect.poll(() => Boolean(row("a.txt"))).toBe(true);
+  await twoFrames();
+
+  // Select both files, then drag the one under the pointer: the whole selection
+  // travels, which is the case the feature was asked for.
+  await userEvent.click(page.getByText("a.txt", { exact: true }));
+  await userEvent.keyboard("{Control>}");
+  await userEvent.click(page.getByText("b.txt", { exact: true }));
+  await userEvent.keyboard("{/Control}");
+
+  const from = pagePoint(row("a.txt"));
+  const onto = pagePoint(row("folder"));
+  await mouse.press(from.x, from.y);
+  await mouse.moveTo(from.x + 30, from.y);
+  await mouse.moveTo(onto.x, onto.y);
+  await twoFrames();
+  expect(row("folder").classList.contains("is-drop-target"), "the folder lights up").toBe(true);
+  await mouse.release(onto.x, onto.y);
+
+  await expect.poll(() => vi.mocked(api.localRename).mock.calls.length).toBe(2);
+  expect(vi.mocked(api.localRename).mock.calls).toEqual([
+    ["/drag/a.txt", "/drag/folder/a.txt"],
+    ["/drag/b.txt", "/drag/folder/b.txt"],
+  ]);
+});
 it("hands the file to the system when the pointer leaves the panel", async () => {
   await page.viewport(900, 720);
   mount(
