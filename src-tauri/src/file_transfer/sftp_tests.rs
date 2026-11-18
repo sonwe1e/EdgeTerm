@@ -3571,3 +3571,39 @@ async fn a_flat_batch_plans_its_sizes_over_a_window() {
         f.state.lock().peak
     );
 }
+
+/// A first open that failed on a retryable error leaves the journal naming a
+/// partial that was never created. The retry starts over instead of turning one
+/// transient fault into a conflict this file can never recover from.
+#[tokio::test]
+async fn a_retry_starts_over_when_the_partial_was_never_created() {
+    let f = Fixture::new(Server::default()).await;
+    let bytes = b"the whole file".to_vec();
+    let item = f.upload(&bytes);
+    let job = f.job();
+    let cp = Checkpoint {
+        key: job.key(&item),
+        item: item.clone(),
+        source: local::signature(Path::new(&item.local)).unwrap(),
+        original: None,
+        temporary: format!("/.edgeterm-{}.part", job.key(&item)),
+        backup: String::new(),
+        offset: 0,
+        prefix_hash: local::digest(&[]),
+        complete: false,
+        committing: false,
+        owns_temporary: true,
+        owns_backup: false,
+    };
+    job.save(&cp).unwrap();
+    // The server holds no partial at all: that is the state a failed first
+    // open leaves behind.
+    assert!(!f.state.lock().files.contains_key(&cp.temporary));
+
+    copy(&job, &f.remote, item.clone(), 4, &Semaphore::new(2))
+        .await
+        .unwrap();
+
+    assert_eq!(f.state.lock().files["/target"], bytes);
+    assert!(job.checkpoint(&job.key(&item)).unwrap().complete);
+}

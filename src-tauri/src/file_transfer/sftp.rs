@@ -1331,29 +1331,58 @@ async fn upload(
     let handle = match fresh_handle {
         Some(h) if cp.offset == 0 => h,
         _ => {
-            let Some(meta) = remote.attrs(&cp.temporary, &job.control).await? else {
-                // The partial is gone. Either this job already renamed it
-                // into place and crashed before journaling the completion,
-                // or something removed it. Only the first counts as done:
-                // the destination then holds exactly the bytes this job
-                // wrote — see `recover_renamed_partial`.
-                if recover_renamed_partial(job, remote, cp).await? {
-                    return Ok(());
+            match remote.attrs(&cp.temporary, &job.control).await? {
+                Some(meta) => {
+                    if meta.is_symlink() || meta.is_dir() || meta.size.unwrap_or(0) < cp.offset {
+                        return Err(Failure::conflict("remote partial is invalid"));
+                    }
+                    if cp.offset > 0 {
+                        job.phase("verifying resume prefix");
+                        if remote.hash(&cp.temporary, cp.offset, &job.control).await?
+                            != cp.prefix_hash
+                        {
+                            return Err(Failure::conflict("remote partial checkpoint changed"));
+                        }
+                    }
+                    remote
+                        .open(&cp.temporary, OpenFlags::WRITE, &job.control)
+                        .await?
                 }
-                return Err(Failure::conflict("remote partial disappeared"));
-            };
-            if meta.is_symlink() || meta.is_dir() || meta.size.unwrap_or(0) < cp.offset {
-                return Err(Failure::conflict("remote partial is invalid"));
-            }
-            if cp.offset > 0 {
-                job.phase("verifying resume prefix");
-                if remote.hash(&cp.temporary, cp.offset, &job.control).await? != cp.prefix_hash {
-                    return Err(Failure::conflict("remote partial checkpoint changed"));
+                None => {
+                    // The partial is gone. Either this job already renamed it
+                    // into place and crashed before journaling the completion —
+                    // the destination then holds exactly the bytes this job
+                    // wrote, see `recover_renamed_partial` — or nothing here was
+                    // ever written.
+                    if recover_renamed_partial(job, remote, cp).await? {
+                        return Ok(());
+                    }
+                    // Ownership is journalled before the placeholder is created,
+                    // so a first open that failed on a retryable error leaves a
+                    // checkpoint naming a partial that does not exist; refusing
+                    // here would turn one transient fault into a permanent
+                    // conflict. Starting over is safe at offset zero, and
+                    // EXCLUDE keeps the create-only rule, so a file that
+                    // appeared meanwhile is never adopted.
+                    if cp.offset != 0 {
+                        return Err(Failure::conflict("remote partial disappeared"));
+                    }
+                    // Only when nothing is at the destination either. A
+                    // destination that exists and does not match what this job
+                    // wrote belongs to someone else, and starting over would
+                    // put this job's bytes in its place.
+                    if remote.attrs(&cp.item.remote, &job.control).await?.is_some() {
+                        return Err(Failure::conflict("remote partial disappeared"));
+                    }
+                    remote
+                        .open(
+                            &cp.temporary,
+                            OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE,
+                            &job.control,
+                        )
+                        .await?
                 }
             }
-            remote
-                .open(&cp.temporary, OpenFlags::WRITE, &job.control)
-                .await?
         }
     };
     let result = async {
