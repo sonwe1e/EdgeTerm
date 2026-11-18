@@ -161,6 +161,46 @@ function layout(
   };
 }
 
+/**
+ * Drops the panes that no longer hold a tab and keeps the rest of the tree.
+ * The saved tabs are cut at `WORKSPACE_LIMIT`, so a large workspace comes back
+ * with panes that lost all their tabs; collapsing the whole layout into one pane
+ * for that throws away every other split, sizes and all.
+ */
+function pruneLayout(node: LayoutNode, keep: Set<string>): LayoutNode | null {
+  if (node.kind === "leaf") return keep.has(node.paneId) ? node : null;
+  const survivors = node.children
+    .map((child, index) => ({
+      child,
+      size: node.sizes[index] ?? 0,
+      pruned: pruneLayout(child, keep),
+    }))
+    .filter((entry) => entry.pruned !== null);
+  if (!survivors.length) return null;
+  if (survivors.length === 1) return survivors[0].pruned;
+  const total = survivors.reduce((sum, entry) => sum + entry.size, 0);
+  return {
+    kind: "split",
+    direction: node.direction,
+    children: survivors.map((entry) => entry.pruned as LayoutNode),
+    // Sizes have to keep summing to 1 after the drop.
+    sizes:
+      total > 0
+        ? survivors.map((entry) => entry.size / total)
+        : survivors.map((_, index) => (index === 0 ? 1 : 0)),
+  };
+}
+
+/** Every pane id the stored tree names, before anything is dropped. */
+function storedPaneIds(value: unknown, out = new Set<string>(), depth = 0): Set<string> {
+  if (!object(value) || depth > 16) return out;
+  if (value.kind === "leaf" && id(value.paneId)) out.add(value.paneId);
+  else if (Array.isArray(value.children)) {
+    for (const child of value.children) storedPaneIds(child, out, depth + 1);
+  }
+  return out;
+}
+
 export function parseWorkspace(raw: string | null): WorkspaceSnapshot | null {
   try {
     if (!raw || raw.length > 2_000_000) return null;
@@ -203,8 +243,18 @@ export function parseWorkspace(raw: string | null): WorkspaceSnapshot | null {
     }
     const paneSet = new Set(tabs.map((tab) => tab.paneId));
     if (!paneSet.size) paneSet.add("root");
-    let tree = layout(value.layout, paneSet);
-    if (!tree || paneIds(tree).length !== paneSet.size) {
+    // Parse against the panes the tree itself names: a pane that lost all its
+    // tabs is legal input, and rejecting the whole tree for it is what used to
+    // collapse the layout.
+    let tree = layout(value.layout, storedPaneIds(value.layout));
+    if (tree && paneIds(tree).length !== paneSet.size) {
+      // Either the saved tree names a pane with no tab, or a tab names a pane
+      // the tree does not have. Drop the empty panes and keep the rest; when a
+      // tab is left without a pane, the whole layout still has to collapse.
+      const pruned = pruneLayout(tree, paneSet);
+      tree = pruned && paneIds(pruned).length === paneSet.size ? pruned : null;
+    }
+    if (!tree) {
       const root = tabs[0]?.paneId ?? "root";
       tree = leaf(root);
       for (const tab of tabs) tab.paneId = root;

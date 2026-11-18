@@ -303,3 +303,28 @@ it("says that tabs will not be saved when the sessions cannot be loaded", async 
   // The old snapshot survives untouched — the point of not writing.
   expect(localStorage.getItem(WORKSPACE_STORAGE_KEY)).toBe(raw);
 });
+
+it("keeps the surviving split when a pane lost all of its tabs", () => {
+  // Tabs are cut at the limit, so a saved workspace can come back with a pane
+  // that lost every tab in it. Dropping that pane is right; collapsing the two
+  // remaining splits into one pane throws away sizes the user set by hand.
+  const value = structuredClone(fixture());
+  value.layout = {
+    kind: "split",
+    direction: "row",
+    children: [
+      { kind: "leaf", paneId: "left" },
+      { kind: "leaf", paneId: "right" },
+      { kind: "leaf", paneId: "gone" },
+    ],
+    sizes: [0.5, 0.25, 0.25],
+  };
+
+  const parsed = parseWorkspace(JSON.stringify(value))!;
+  expect(parsed.panes.map((pane) => pane.id)).toEqual(["left", "right"]);
+  expect(parsed.layout.kind).toBe("split");
+  const layout = parsed.layout as { sizes: number[] };
+  expect(layout.sizes).toHaveLength(2);
+  expect(layout.sizes[0]).toBeCloseTo(0.5 / 0.75);
+  expect(layout.sizes[1]).toBeCloseTo(0.25 / 0.75);
+});
