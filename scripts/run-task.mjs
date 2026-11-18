@@ -75,6 +75,7 @@ export function taskCommands(task, args = [], cargo = "cargo") {
             "--",
             "-D",
             "clippy::correctness",
+            ...args,
           ],
         ],
       ];
@@ -97,7 +98,7 @@ export function taskCommands(task, args = [], cargo = "cargo") {
       return [];
     default:
       throw new Error(
-        `Unknown task: ${task}. Use doctor, dev, build, test, test:browser, typecheck, lint, format, format:check, tauri:dev, tauri:build, test:rust, cargo or script.`,
+        `Unknown task: ${task}. Use doctor, dev, build, test, test:browser, typecheck, lint, format, format:check, check:clippy, tauri:dev, tauri:build, test:rust, cargo or script.`,
       );
   }
 }
