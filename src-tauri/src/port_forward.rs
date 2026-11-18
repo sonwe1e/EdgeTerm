@@ -87,6 +87,12 @@ impl Job {
     }
     fn state(&self, status: &str, error: Option<String>) {
         let mut row = self.snapshot.lock();
+        // A stop that starts while the worker is settling must not walk the row
+        // back to `stopping`: the worker has written its last state and will
+        // never write again, so the UI would disable the row for good.
+        if matches!(row.status.as_str(), "error" | "stopped") && status == "stopping" {
+            return;
+        }
         row.status = status.into();
         row.error = error;
     }
@@ -681,6 +687,57 @@ pub async fn discover(request: ScanRequest, transport: Arc<SharedTransport>) -> 
 
 #[cfg(test)]
 mod tests {
+
+    fn job_fixture(id: &str) -> Job {
+        Job {
+            snapshot: Mutex::new(Snapshot {
+                id: id.into(),
+                owner: "s-1".into(),
+                address: "127.0.0.1:8080".into(),
+                spec: Spec {
+                    direction: Direction::Local,
+                    listen_host: "127.0.0.1".into(),
+                    listen_port: 8080,
+                    target_host: Some("example.test".into()),
+                    target_port: Some(80),
+                },
+                status: "starting".into(),
+                error: None,
+                connections: 0,
+                sent_bytes: 0,
+                received_bytes: 0,
+            }),
+            control: Control::default(),
+            done: watch::channel(false).0,
+            connections: AtomicUsize::new(0),
+            sent: AtomicU64::new(0),
+            received: AtomicU64::new(0),
+            incoming: mpsc::channel(1).0,
+        }
+    }
+
+    /// A tunnel that ends while Stop is being pressed must keep its final state:
+    /// `stopping` never clears, and the UI treats it as active forever.
+    #[test]
+    fn a_settled_tunnel_keeps_its_final_state() {
+        let settled = job_fixture("t-1");
+        settled.state("listening", None);
+        settled.state("error", Some("connection reset".into()));
+        settled.state("stopping", None);
+        let snapshot = settled.snapshot();
+        assert_eq!(
+            snapshot.status, "error",
+            "the final state must survive a late stop"
+        );
+        assert_eq!(snapshot.error.as_deref(), Some("connection reset"));
+
+        // A stop on a tunnel that has not settled still shows as stopping.
+        let live = job_fixture("t-2");
+        live.state("listening", None);
+        live.state("stopping", None);
+        assert_eq!(live.snapshot().status, "stopping");
+    }
+
     use super::*;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     async fn settled(manager: &Forwards, id: &str) -> Snapshot {
