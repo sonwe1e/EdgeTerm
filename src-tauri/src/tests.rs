@@ -1017,6 +1017,73 @@ fn store_snapshot_never_carries_credentials() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// An import never carries a secret, so a stored one belongs to the definition
+/// being replaced. If that definition now names another endpoint, the secret
+/// must not follow it — an SSH password sent to a telnet prompt goes out in
+/// clear, and one sent to a new host goes somewhere nobody typed it for.
+#[test]
+fn store_import_drops_a_secret_whose_endpoint_moved() {
+    let dir = temp_dir("import-moved");
+    let store = Store::load_from_test(dir.join("sessions.json"));
+
+    let mut local = profile(SessionKind::Ssh);
+    local.auth = Some(AuthKind::Password);
+    local.password = Some("keep-me".into());
+    local.host = Some("old.example.test".into());
+    local.username = Some("alice".into());
+    let local = store.save(local).expect("save local");
+    assert_eq!(
+        store.get(&local.id).expect("get").and_then(|p| p.password),
+        Some("keep-me".into())
+    );
+
+    // Same id, another host: the password was never typed for this one.
+    let mut moved = local.clone();
+    moved.host = Some("new.example.test".into());
+    store
+        .import_data(AppData {
+            app: APP_DATA_APP.into(),
+            format: APP_DATA_FORMAT,
+            exported_at: None,
+            settings: None,
+            profiles: vec![moved],
+            groups: vec![],
+            sender_commands: vec![],
+        })
+        .expect("import moved profile");
+    assert_eq!(
+        store.get(&local.id).expect("get").and_then(|p| p.password),
+        None,
+        "a password must not follow the profile to another host"
+    );
+
+    // The same replacement with the endpoint untouched keeps the secret.
+    let mut again = profile(SessionKind::Ssh);
+    again.auth = Some(AuthKind::Password);
+    again.password = Some("typed-here".into());
+    again.host = Some("same.example.test".into());
+    again.username = Some("bob".into());
+    let again = store.save(again).expect("save");
+    let mut unchanged = again.clone();
+    unchanged.name = "renamed".into();
+    store
+        .import_data(AppData {
+            app: APP_DATA_APP.into(),
+            format: APP_DATA_FORMAT,
+            exported_at: None,
+            settings: None,
+            profiles: vec![unchanged],
+            groups: vec![],
+            sender_commands: vec![],
+        })
+        .expect("import unchanged profile");
+    assert_eq!(
+        store.get(&again.id).expect("get").and_then(|p| p.password),
+        Some("typed-here".into())
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
 #[test]
 fn store_import_merges_by_id_and_drops_secrets_and_bad_links() {
     let dir = temp_dir("import");

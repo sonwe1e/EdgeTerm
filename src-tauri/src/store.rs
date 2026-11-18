@@ -569,8 +569,10 @@ impl Store {
     /// known id replaces the local entry, everything else is added, and
     /// nothing local is deleted. Credentials in the file are ignored — an
     /// export never carries any, so a value here was hand-written — and
-    /// `credentials.json` keeps whatever it already holds for a replaced
-    /// profile. Group parents and profile group ids that point nowhere, to a
+    /// `credentials.json` keeps what it holds for a replaced profile as long as
+    /// that profile still names the same endpoint; a replacement that changes
+    /// the host, user, port, protocol or auth method drops it, so the stored
+    /// secret cannot be sent somewhere it was never typed for. Group parents and profile group ids that point nowhere, to a
     /// group of another kind or around a cycle are detached so the Session
     /// panel tree stays finite.
     pub fn import_data(&self, data: AppData) -> Result<DataSummary> {
@@ -620,7 +622,19 @@ impl Store {
                     }
                 }
                 match profiles.iter_mut().find(|p| p.id == profile.id) {
-                    Some(existing) => *existing = profile,
+                    Some(existing) => {
+                        // The file never carries a secret, so whatever the vault
+                        // holds was typed for the definition being replaced. If
+                        // that definition now names another host, user or
+                        // protocol, the secret must not follow it: an SSH
+                        // password would otherwise be sent to a telnet prompt,
+                        // or to a host nobody typed it for.
+                        let moved = names_another_endpoint(existing, &profile);
+                        *existing = profile;
+                        if moved {
+                            self.credentials.remove(&existing.id);
+                        }
+                    }
                     None => profiles.push(profile),
                 }
                 summary.profiles += 1;
@@ -884,6 +898,16 @@ fn group_category(kind: SessionKind) -> SessionKind {
         SessionKind::Telnet => SessionKind::Ssh,
         other => other,
     }
+}
+
+/// Whether a replacement profile sends its traffic somewhere other than the
+/// one the stored credential was typed for.
+fn names_another_endpoint(a: &SessionProfile, b: &SessionProfile) -> bool {
+    a.kind != b.kind
+        || a.host != b.host
+        || a.port != b.port
+        || a.username != b.username
+        || a.auth != b.auth
 }
 
 fn same_group_category(a: SessionKind, b: SessionKind) -> bool {
