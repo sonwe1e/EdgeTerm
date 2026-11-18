@@ -11,6 +11,7 @@ import { newPaneId } from "./storeLayout";
 import { isFileSession } from "./types";
 import { getLocalFilerPath, rememberWorkspaceDirectory } from "./workspaceDirectories";
 import { translate } from "./i18n";
+import { errorText } from "./errorInfo";
 import {
   readSavedWorkspace,
   snapshotWorkspace,
@@ -111,6 +112,7 @@ export function startWorkspace(eventsReady: Promise<unknown>): () => void {
   let unsubscribe = () => {};
   let timer: ReturnType<typeof setInterval> | undefined;
   let previous = "";
+  let reportedFailure = false;
   const save = () => {
     if (stopped || !ready) return;
     try {
@@ -118,8 +120,16 @@ export function startWorkspace(eventsReady: Promise<unknown>): () => void {
       if (next === previous) return;
       localStorage.setItem(WORKSPACE_STORAGE_KEY, next);
       previous = next;
-    } catch {
-      /* Unavailable storage must not prevent working with sessions. */
+    } catch (error) {
+      // Unavailable storage must not prevent working with sessions, but a
+      // layout that never lands has to be said out loud — once, not on every
+      // keystroke-driven save.
+      if (reportedFailure) return;
+      reportedFailure = true;
+      const state = useStore.getState();
+      state.setStatus(
+        translate(state.language, "status.workspaceWriteFailed", { error: errorText(error) }),
+      );
     }
   };
 

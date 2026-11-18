@@ -328,3 +328,16 @@ it("keeps the surviving split when a pane lost all of its tabs", () => {
   expect(layout.sizes[0]).toBeCloseTo(0.5 / 0.75);
   expect(layout.sizes[1]).toBeCloseTo(0.25 / 0.75);
 });
+
+it("says once when the layout cannot be written", async () => {
+  const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    throw new Error("quota exceeded");
+  });
+  const load = vi.fn().mockResolvedValue(true);
+  useStore.setState({ loadProfiles: load });
+  const stop = start();
+  await vi.waitFor(() => expect(useStore.getState().status).toContain("could not be saved"));
+  expect(useStore.getState().status).toContain("quota exceeded");
+  stop();
+  setItem.mockRestore();
+});
