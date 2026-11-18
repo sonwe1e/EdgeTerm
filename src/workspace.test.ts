@@ -7,6 +7,7 @@ import {
   readSavedWorkspace,
   snapshotWorkspace,
   WORKSPACE_STORAGE_KEY,
+  WORKSPACE_UNREADABLE_KEY,
   type WorkspaceSnapshot,
 } from "./workspaceSnapshot";
 
@@ -275,4 +276,18 @@ describe("reading the saved workspace", () => {
     };
     expect(readSavedWorkspace(blocked)).toEqual({ snapshot: null, unreadable: false });
   });
+});
+
+it("keeps the bytes of a snapshot it could not read", async () => {
+  const damaged = '{"version":1,"tabs":[';
+  localStorage.setItem(WORKSPACE_STORAGE_KEY, damaged);
+  const load = vi.fn().mockResolvedValue(true);
+  useStore.setState({ loadProfiles: load });
+  const stop = start();
+  await vi.waitFor(() => expect(localStorage.getItem(WORKSPACE_UNREADABLE_KEY)).toBe(damaged));
+  stop();
+
+  // The first save replaces the stored snapshot; the unreadable one has to
+  // survive somewhere, or the only copy of what the user had open is gone.
+  expect(localStorage.getItem(WORKSPACE_STORAGE_KEY)).not.toBe(damaged);
 });

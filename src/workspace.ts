@@ -15,6 +15,7 @@ import {
   readSavedWorkspace,
   snapshotWorkspace,
   WORKSPACE_STORAGE_KEY,
+  WORKSPACE_UNREADABLE_KEY,
   type WorkspaceSnapshot,
 } from "./workspaceSnapshot";
 
@@ -129,12 +130,20 @@ export function startWorkspace(eventsReady: Promise<unknown>): () => void {
     if (stopped || !loaded) return;
     let snapshot: WorkspaceSnapshot | null = null;
     let unreadable = false;
+    let stored = "";
     try {
+      stored = localStorage.getItem(WORKSPACE_STORAGE_KEY) ?? "";
       const saved = readSavedWorkspace(localStorage);
       snapshot = saved.snapshot;
       unreadable = saved.unreadable;
     } catch {}
     if (unreadable && !stopped) {
+      // The save below replaces whatever is stored. Keep the bytes that could
+      // not be read first: a truncated snapshot, or one written by a newer
+      // version, is still worth more to the user than an empty window.
+      try {
+        if (stored) localStorage.setItem(WORKSPACE_UNREADABLE_KEY, stored);
+      } catch {}
       // The sessions the user left open are gone; an empty window with no
       // explanation reads as data loss on top of the loss itself.
       const state = useStore.getState();

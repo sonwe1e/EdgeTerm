@@ -5,6 +5,8 @@ import type { SessionProfile } from "./types";
 // Session history is device-local, not a transferable preference. In particular,
 // a settings import must never cause connections to another person's servers.
 export const WORKSPACE_STORAGE_KEY = "edgeterm.workspace.v1";
+/** Where an unreadable snapshot is kept before the first save replaces it. */
+export const WORKSPACE_UNREADABLE_KEY = "edgeterm.workspace.v1.unreadable";
 
 /**
  * Reads the saved workspace. "Nothing saved" and "saved but unreadable" are
