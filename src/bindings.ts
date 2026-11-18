@@ -37,9 +37,11 @@ export const commands = {
 	/**
 	 *  Writes saved sessions, their groups, Sender tags and the frontend's
 	 *  settings to `path` as pretty JSON. Passwords and passphrases are never
-	 *  included, so the file needs no special permissions. The path must carry
-	 *  the `.edgeterm` extension (the UI appends it), so every data file is
-	 *  recognisable by name.
+	 *  included, though host names, user names and Sender commands are, so the file
+	 *  is written owner-only: it goes through the same temporary-file-then-rename
+	 *  path as the configuration, which also keeps a half-written export from
+	 *  replacing a previous one. The path must carry the `.edgeterm` extension (the
+	 *  UI appends it), so every data file is recognisable by name.
 	 */
 	exportAppData: (path: string, settings: AppSettingsValue, exportedAt: string) => __TAURI_INVOKE<DataSummary>("export_app_data", { path, settings, exportedAt }),
 	/**
