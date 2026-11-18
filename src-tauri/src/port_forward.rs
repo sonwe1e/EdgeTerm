@@ -1224,18 +1224,35 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(returned, payload);
-        // UDP ASSOCIATE is refused with "command not supported", as ssh -D does.
-        client
-            .write_all(&[5, 3, 0, 1, 0, 0, 0, 0, 0, 0])
-            .await
-            .unwrap();
-        let mut refused = [0u8; 10];
-        tokio::time::timeout(Duration::from_secs(3), client.read_exact(&mut refused))
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(refused[1], 0x07);
         drop(client);
+        // UDP ASSOCIATE is refused with "command not supported", as ssh -D does.
+        // It has to be asked on its own connection: once CONNECT succeeds this
+        // socket is a byte pipe, so anything written here reaches the target and
+        // comes back as data rather than as a SOCKS reply.
+        {
+            let mut udp = TcpStream::connect(("127.0.0.1", socks.spec.listen_port))
+                .await
+                .unwrap();
+            udp.write_all(&[5, 1, 0]).await.unwrap();
+            let mut method = [0u8; 2];
+            tokio::time::timeout(Duration::from_secs(3), udp.read_exact(&mut method))
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(method, [5, 0]);
+            udp.write_all(&[5, 3, 0, 1, 0, 0, 0, 0, 0, 0])
+                .await
+                .unwrap();
+            let mut refused = [0u8; 10];
+            tokio::time::timeout(Duration::from_secs(3), udp.read_exact(&mut refused))
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                refused[1], 0x07,
+                "UDP ASSOCIATE must be refused: {refused:?}"
+            );
+        }
         let row = settled(&manager, &socks.id).await;
         assert_eq!(row.sent_bytes, payload.len() as u64);
         assert_eq!(row.received_bytes, payload.len() as u64);
