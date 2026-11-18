@@ -681,6 +681,17 @@ describe("Filer multiple selection at the real panel entry", () => {
     expect(chosen()).toEqual(["file3.txt"]);
   });
 
+  it("selects everything with the physical A key on a non-Latin layout", async () => {
+    await mount();
+    const list = host.querySelector<HTMLElement>(".filer-list")!;
+    // A Cyrillic layout sends `ф` for the key that sits where A does.
+    act(() =>
+      list.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ф", code: "KeyA", ctrlKey: true, bubbles: true }),
+      ),
+    );
+    expect(chosen()).toHaveLength(4);
+  });
   it("supports Ctrl+A and Escape within the list and clears selection on refresh", async () => {
     await mount();
     const list = host.querySelector<HTMLElement>(".filer-list")!;

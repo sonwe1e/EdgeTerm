@@ -536,7 +536,11 @@ function FilerPanelBase() {
     }
     if (busy) return;
     const ctrl = IS_MAC ? event.metaKey : event.ctrlKey;
-    if (ctrl && event.key.toLowerCase() === "a") {
+    // The physical key, with the letter as a fallback: on a Cyrillic or Greek
+    // layout Ctrl+A types another character while still being the key above
+    // the home row. The shortcut bindings match on `code` for this reason.
+    const selectAllKey = event.code === "KeyA" || event.key.toLowerCase() === "a";
+    if (ctrl && selectAllKey) {
       event.preventDefault();
       event.stopPropagation();
       selection.selectAll();
