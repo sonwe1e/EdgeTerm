@@ -1073,6 +1073,71 @@ fn a_failed_config_write_leaves_the_previous_file_intact() {
 /// The dialog has to say how many entries an import overwrites, and the count
 /// has to come from the merge that actually happened.
 
+/// An imported file goes through the same jump-host rules the editor applies:
+/// a reference that points nowhere is dropped, and a chain that loops is refused
+/// before any of it is written.
+#[test]
+fn an_import_applies_the_jump_host_rules() {
+    let dir = temp_dir("import-jump");
+    let store = Store::load_from_test(dir.join("sessions.json"));
+
+    let mut dangling = profile(SessionKind::Ssh);
+    dangling.name = "dangling".into();
+    dangling.host = Some("10.9.9.1".into());
+    dangling.jump_profile_id = Some("missing-jump".into());
+    let imported = store
+        .import_data(AppData {
+            app: APP_DATA_APP.into(),
+            format: APP_DATA_FORMAT,
+            exported_at: None,
+            settings: None,
+            profiles: vec![dangling],
+            groups: vec![],
+            sender_commands: vec![],
+        })
+        .expect("import");
+    assert_eq!(imported.profiles, 1);
+    let kept = store
+        .list()
+        .into_iter()
+        .find(|p| p.name == "dangling")
+        .expect("kept");
+    assert!(
+        kept.jump_profile_id.is_none(),
+        "a jump host that is not in the file or the configuration is dropped"
+    );
+
+    // Two profiles that jump through each other: the import is refused and the
+    // configuration keeps what it had.
+    let mut first = profile(SessionKind::Ssh);
+    first.id = "loop-a".into();
+    first.name = "a".into();
+    first.host = Some("10.9.9.2".into());
+    first.jump_profile_id = Some("loop-b".into());
+    let mut second = profile(SessionKind::Ssh);
+    second.id = "loop-b".into();
+    second.name = "b".into();
+    second.host = Some("10.9.9.3".into());
+    second.jump_profile_id = Some("loop-a".into());
+    let before = store.list().len();
+    let refused = store.import_data(AppData {
+        app: APP_DATA_APP.into(),
+        format: APP_DATA_FORMAT,
+        exported_at: None,
+        settings: None,
+        profiles: vec![first, second],
+        groups: vec![],
+        sender_commands: vec![],
+    });
+    assert!(refused.is_err(), "a looping chain must be refused");
+    assert_eq!(
+        store.list().len(),
+        before,
+        "nothing from the refused file stays"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
 /// A companion file that cannot be parsed used to be read as an empty list and
 /// then written over: the next save replaced the user's groups and commands with
 /// nothing. The bytes have to survive the recovery.

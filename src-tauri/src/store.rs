@@ -276,6 +276,35 @@ impl Store {
         Ok(profile)
     }
 
+    /// Drops jump-host references that no longer resolve and refuses a chain
+    /// that loops back on itself. Called after a merge (an import) so a file
+    /// cannot leave the configuration in a state the editor would never save.
+    fn normalize_jump_hosts(&self) -> Result<()> {
+        {
+            let mut profiles = self.profiles.lock();
+            let transports: Vec<(String, bool)> = profiles
+                .iter()
+                .map(|profile| (profile.id.clone(), profile.is_ssh_transport()))
+                .collect();
+            for profile in profiles.iter_mut() {
+                let Some(jump_id) = profile.jump_profile_id.clone() else {
+                    continue;
+                };
+                let resolves = transports
+                    .iter()
+                    .any(|(id, transport)| *id == jump_id && *transport);
+                if jump_id.is_empty() || !resolves || !profile.is_ssh_transport() {
+                    profile.jump_profile_id = None;
+                }
+            }
+        }
+        let chains: Vec<SessionProfile> = self.profiles.lock().clone();
+        for profile in chains {
+            self.jump_chain(&profile)?;
+        }
+        Ok(())
+    }
+
     /// Saves a copy of a profile under a new id and a free "(copy)" name,
     /// listed right after the original. Its stored password / passphrase is
     /// copied here because the webview never sees them; the Sender commands
@@ -702,6 +731,17 @@ impl Store {
                 }
                 summary.profiles += 1;
             }
+        }
+
+        // A jump host is another saved SSH transport, and the rules the editor
+        // applies have to hold for a file too: a reference that points nowhere
+        // is dropped, and a chain that loops or runs too deep is refused before
+        // anything reaches the disk, rather than failing later on connect.
+        if let Err(error) = self.normalize_jump_hosts() {
+            *self.groups.lock() = groups_before;
+            *self.profiles.lock() = profiles_before;
+            *self.sender_commands.lock() = commands_before;
+            return Err(error);
         }
 
         {
