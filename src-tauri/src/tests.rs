@@ -1072,6 +1072,31 @@ fn a_failed_config_write_leaves_the_previous_file_intact() {
 
 /// The dialog has to say how many entries an import overwrites, and the count
 /// has to come from the merge that actually happened.
+
+/// The dialog says the save failed; the list must not disagree with it.
+#[test]
+fn a_failed_sender_save_leaves_the_list_alone() {
+    let dir = temp_dir("sender-rollback");
+    let store = Store::load_from_test(dir.join("sessions.json"));
+    let kept = store
+        .save_sender_command(command("Kept", "ls"))
+        .expect("save");
+
+    // A directory where the file belongs makes the write fail.
+    let path = dir.join("sender_commands.json");
+    std::fs::remove_file(&path).ok();
+    std::fs::create_dir(&path).unwrap();
+
+    let mut incoming = command("Lost", "pwd");
+    incoming.id = "sender-lost".into();
+    let failed = store.save_sender_command(incoming);
+    assert!(failed.is_err(), "the write failure must be reported");
+    let listed = store.list_sender_commands();
+    assert_eq!(listed.len(), 1, "only the saved command should remain");
+    assert_eq!(listed[0].id, kept.id);
+
+    std::fs::remove_dir_all(&dir).ok();
+}
 #[test]
 fn an_import_says_how_many_profiles_it_replaced() {
     let dir = temp_dir("import-count");

@@ -443,6 +443,7 @@ impl Store {
         }
         command.scope = self.resolve_scope(command.scope);
 
+        let before = self.sender_commands.lock().clone();
         {
             let mut commands = self.sender_commands.lock();
             if let Some(index) = commands.iter().position(|saved| saved.id == command.id) {
@@ -455,7 +456,13 @@ impl Store {
                 )));
             }
         }
-        self.persist_sender_commands()?;
+        // The dialog reports a failed save, so the running list must not hold
+        // one: it would be written out by the next successful save and appear
+        // from nowhere after a restart.
+        if let Err(error) = self.persist_sender_commands() {
+            *self.sender_commands.lock() = before;
+            return Err(error);
+        }
         Ok(command)
     }
 
