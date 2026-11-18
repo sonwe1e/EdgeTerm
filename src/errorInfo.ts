@@ -53,6 +53,16 @@ export function errorText(error: unknown): string {
 }
 
 /**
+ * What the status bar's copy button puts on the clipboard. The request id is
+ * the one the diagnostics log repeats on every line of the failing operation,
+ * so a report carrying it can be traced straight back to the log — the bar
+ * cannot show it without pushing the message out of a one-line slot.
+ */
+export function copiedErrorText(message: string, requestId?: string | null): string {
+  return requestId ? `${message}\nrequest_id=${requestId}` : message;
+}
+
+/**
  * Whether the failure is a cancellation. The structured `cancelled` code is
  * the reliable answer; the file-transfer jobs' `transfer cancelled` message
  * predates it and has to keep reading as a cancellation.

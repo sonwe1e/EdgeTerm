@@ -93,6 +93,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
   status: t("status.ready"),
   error: null,
   errorSessionId: null,
+  errorRequestId: null,
   hostKeyPrompt: null,
   sshConfigImport: null,
   authPrompts: [],

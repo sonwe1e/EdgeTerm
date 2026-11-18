@@ -154,8 +154,12 @@ export const createPromptActions: StateCreator<
       set({ status });
     },
 
-    setError(error, sessionId) {
-      set({ error, errorSessionId: error ? (sessionId ?? null) : null });
+    setError(error, sessionId, requestId) {
+      set({
+        error,
+        errorSessionId: error ? (sessionId ?? null) : null,
+        errorRequestId: error ? (requestId ?? null) : null,
+      });
     },
 
     addAuthPrompt(prompt) {

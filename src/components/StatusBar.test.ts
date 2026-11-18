@@ -62,6 +62,20 @@ it("copies the joined failure, including the lines the bar cannot show", async (
   expect(clipboard.writeSystemClipboard).toHaveBeenCalledWith(message);
 });
 
+it("copies the request id that ties the failure to the log", async () => {
+  act(() => useStore.getState().setError("connection refused", undefined, "req-42"));
+  render();
+
+  const copy = host.querySelector<HTMLButtonElement>('[aria-label="Copy the message"]');
+  await act(async () => {
+    copy!.click();
+    await Promise.resolve();
+  });
+  expect(clipboard.writeSystemClipboard).toHaveBeenCalledWith(
+    "connection refused\nrequest_id=req-42",
+  );
+});
+
 it("shows no count for a single failure and no copy button for a notice", () => {
   act(() => useStore.getState().setError("connection refused"));
   render();

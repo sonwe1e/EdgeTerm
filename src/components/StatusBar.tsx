@@ -1,5 +1,6 @@
 import { memo, useEffect, useState } from "react";
 
+import { copiedErrorText } from "../errorInfo";
 import { revealLocalPath } from "../openExternal";
 import { writeSystemClipboard } from "../systemClipboard";
 import { t as translateMsg } from "../i18n";
@@ -29,6 +30,7 @@ function StatusBarBase() {
   const size = useStore((s) => (s.activeId ? s.tabSizes[s.activeId] : undefined));
   const status = useStore((s) => s.status);
   const error = useStore((s) => s.error);
+  const errorRequestId = useStore((s) => s.errorRequestId);
   const setError = useStore((s) => s.setError);
   const setStatus = useStore((s) => s.setStatus);
   const [clock, setClock] = useState(() => new Date());
@@ -119,7 +121,11 @@ function StatusBarBase() {
               className="status-dismiss"
               title={t("status.copyError")}
               aria-label={t("status.copyError")}
-              onClick={() => void writeSystemClipboard(error).catch(() => undefined)}
+              onClick={() =>
+                void writeSystemClipboard(copiedErrorText(error, errorRequestId)).catch(
+                  () => undefined,
+                )
+              }
             >
               <Icon name="copy" />
             </button>

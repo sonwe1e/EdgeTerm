@@ -241,6 +241,8 @@ export interface AppStore {
   status: string;
   error: string | null;
   errorSessionId: string | null;
+  /** The diagnostics request id the failing call carried, when it had one. */
+  errorRequestId: string | null;
   /**
    * A refused SSH host key awaiting the user's decision. It lives in the
    * store so the dialog is shown from App no matter which UI started the
@@ -415,7 +417,7 @@ export interface AppStore {
   applySettings: (settings: unknown) => void;
   bumpSenderLibrary: () => void;
   setStatus: (status: string) => void;
-  setError: (error: string | null, sessionId?: string) => void;
+  setError: (error: string | null, sessionId?: string, requestId?: string) => void;
   setHostKeyPrompt: (prompt: HostKeyPrompt | null) => void;
   setSshConfigImport: (preview: SshConfigPreview | null) => void;
   addAuthPrompt: (prompt: AuthPrompt) => void;

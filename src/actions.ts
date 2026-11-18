@@ -1,6 +1,6 @@
 import * as api from "./api";
 import { useAgents } from "./agents/model";
-import { errorText } from "./errorInfo";
+import { errorInfo, errorText } from "./errorInfo";
 import { beginFileEditorOpen, isFileEditorOpenCurrent, openFileEditor } from "./fileEditor";
 import { fontStack } from "./fonts";
 import { commandHistory } from "./history";
@@ -600,7 +600,9 @@ export async function connectSession(
     // is better than replaying them into a later, unrelated session.
     clearPendingInput(id);
     if (useStore.getState().tabs.some((tab) => tab.info.id === id)) {
-      failSession(id, message);
+      // The failing call carries the diagnostics request id; keeping it lets
+      // the bar's copy button hand over a report that can be traced in the log.
+      failSession(id, message, true, errorInfo(e).requestId);
     } else {
       disposeController(id);
     }
@@ -615,10 +617,10 @@ export async function connectSession(
  * echo offers Enter-to-reconnect unless another surface (the host key
  * dialog) owns the next attempt.
  */
-function failSession(id: string, message: string, hint = true): void {
+function failSession(id: string, message: string, hint = true, requestId?: string): void {
   const store = useStore.getState();
   store.applyState(id, "error", message);
-  store.setError(message, id);
+  store.setError(message, id, requestId);
   store.setStatus(t("status.failed", { message }));
   const terminalMessage = message.replace(/[\x00-\x1f\x7f]/g, " ");
   const failed = t("terminal.connectionFailed", { message: terminalMessage });

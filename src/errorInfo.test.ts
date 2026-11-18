@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { errorInfo, errorText, isCancelled } from "./errorInfo";
+import { copiedErrorText, errorInfo, errorText, isCancelled } from "./errorInfo";
 
 describe("errorInfo", () => {
   it("reads the structured shape commands send now", () => {
@@ -48,5 +48,18 @@ describe("errorInfo", () => {
     expect(isCancelled("transfer cancelled")).toBe(true);
     expect(isCancelled({ code: "connectionFailed", message: "cannot reach host:22" })).toBe(false);
     expect(isCancelled("authentication failed for alice")).toBe(false);
+  });
+});
+
+describe("copiedErrorText", () => {
+  it("appends the request id the log repeats on every line", () => {
+    expect(copiedErrorText("cannot reach host", "req-42")).toBe(
+      "cannot reach host\nrequest_id=req-42",
+    );
+  });
+
+  it("leaves the message alone when the failure carried no id", () => {
+    expect(copiedErrorText("cannot reach host", null)).toBe("cannot reach host");
+    expect(copiedErrorText("cannot reach host")).toBe("cannot reach host");
   });
 });
