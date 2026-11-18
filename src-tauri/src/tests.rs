@@ -1073,6 +1073,50 @@ fn a_failed_config_write_leaves_the_previous_file_intact() {
 /// The dialog has to say how many entries an import overwrites, and the count
 /// has to come from the merge that actually happened.
 
+/// The export path round-trips through the shared writer.
+///
+/// This one is a smoke test, not a negative control: it passes against a plain
+/// `fs::write` too, because both end with the new bytes on disk and no temporary
+/// file behind. What makes the export atomic and owner-only is
+/// `write_atomically`, and that behaviour is pinned by
+/// `a_failed_config_write_leaves_the_previous_file_intact` — this test keeps the
+/// export from drifting off that writer without anyone noticing.
+#[test]
+fn an_export_replaces_the_previous_file() {
+    let dir = temp_dir("export-atomic");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("backup.edgeterm");
+    std::fs::write(&path, vec![b'o'; 400 * 1024]).unwrap();
+
+    let app = crate::model::AppData {
+        app: "EdgeTerm".into(),
+        format: 1,
+        exported_at: Some("2026-01-01T00:00:00Z".into()),
+        settings: None,
+        profiles: Vec::new(),
+        groups: Vec::new(),
+        sender_commands: Vec::new(),
+    };
+    crate::commands::write_data_file(&path, &app).expect("export");
+
+    let written: crate::model::AppData =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).expect("parses back");
+    assert_eq!(written.exported_at.as_deref(), Some("2026-01-01T00:00:00Z"));
+
+    let leftovers: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.contains(".tmp-"))
+        .collect();
+    assert!(
+        leftovers.is_empty(),
+        "temporary files left behind: {leftovers:?}"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 /// The dialog says the save failed; the list must not disagree with it.
 #[test]
 fn a_failed_sender_save_leaves_the_list_alone() {

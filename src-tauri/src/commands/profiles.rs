@@ -106,9 +106,11 @@ pub fn clear_command_history(state: State<'_, AppState>) -> Result<()> {
 
 /// Writes saved sessions, their groups, Sender tags and the frontend's
 /// settings to `path` as pretty JSON. Passwords and passphrases are never
-/// included, so the file needs no special permissions. The path must carry
-/// the `.edgeterm` extension (the UI appends it), so every data file is
-/// recognisable by name.
+/// included, though host names, user names and Sender commands are, so the file
+/// is written owner-only: it goes through the same temporary-file-then-rename
+/// path as the configuration, which also keeps a half-written export from
+/// replacing a previous one. The path must carry the `.edgeterm` extension (the
+/// UI appends it), so every data file is recognisable by name.
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
 pub fn export_app_data(
@@ -122,7 +124,7 @@ pub fn export_app_data(
     let mut data = state.store.snapshot();
     data.exported_at = Some(exported_at);
     data.settings = Some(settings.0);
-    std::fs::write(&path, serde_json::to_string_pretty(&data)?)?;
+    write_data_file(std::path::Path::new(&path), &data)?;
     Ok(DataSummary {
         profiles: data.profiles.len(),
         replaced_profiles: 0,
@@ -130,6 +132,12 @@ pub fn export_app_data(
         sender_commands: data.sender_commands.len(),
         skipped_sender_commands: 0,
     })
+}
+
+/// Writes the export through the configuration's own atomic, owner-only path so
+/// a failed or interrupted export cannot truncate the file it replaces.
+pub(crate) fn write_data_file(path: &std::path::Path, data: &crate::model::AppData) -> Result<()> {
+    crate::store::write_owner_only(path, &serde_json::to_string_pretty(data)?)
 }
 
 /// Parses an EdgeTerm data file so the UI can show what an import would
