@@ -125,6 +125,7 @@ pub fn export_app_data(
     std::fs::write(&path, serde_json::to_string_pretty(&data)?)?;
     Ok(DataSummary {
         profiles: data.profiles.len(),
+        replaced_profiles: 0,
         groups: data.groups.len(),
         sender_commands: data.sender_commands.len(),
         skipped_sender_commands: 0,

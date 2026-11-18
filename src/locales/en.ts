@@ -1103,6 +1103,9 @@ export const en = {
   "data.imported": "Imported {summary}{andSettings}",
   "data.importSettingsKept":
     ", but the paste warning and clipboard protection were kept as they are",
+  "data.importReplaceWarning":
+    "{count} of them replace sessions you already have, and their current hosts, names and forwards are overwritten. A copy of the current data is saved first.",
+  "data.importExportedAt": "The file was exported at {when}.",
   "data.importSkippedOne": "; skipped 1 Sender command (library full)",
   "data.importSkippedMany": "; skipped {count} Sender commands (library full)",
   "data.importFailed": "Import failed: {error}",

@@ -652,6 +652,12 @@ export type CredentialStoreStatusReason =
 /**  How many entries an export wrote or an import merged. */
 export type DataSummary = {
 	profiles: number,
+	/**
+	 *  How many of `profiles` replaced an entry that already existed. An
+	 *  import overwrites those, so the confirmation has to say how many there
+	 *  are before the file is applied.
+	 */
+	replacedProfiles: number,
 	groups: number,
 	senderCommands: number,
 	/**  Sender tags an import left out because the library was already full. */

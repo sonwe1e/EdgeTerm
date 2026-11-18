@@ -9,10 +9,14 @@ vi.mock("./api", () => ({
   readSshConfig: vi.fn(),
 }));
 vi.mock("./nativeDialog", () => ({ open: vi.fn(), save: vi.fn(), ask: vi.fn() }));
+// The same array every call, so a test can decide what the store already
+// holds; getState itself returns a fresh object each time.
+const profileList: { id: string }[] = [];
 vi.mock("./store", () => ({
   useStore: {
     getState: () => ({
       setStatus,
+      profiles: profileList,
       exportSettings: () => ({}),
       applySettings: vi.fn(),
       loadProfiles: vi.fn(async () => {}),
@@ -28,6 +32,7 @@ import { exportAppData, importAppData, importSshConfig } from "./dataTransfer";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  profileList.length = 0;
   setCurrentLanguage("en");
 });
 
@@ -65,6 +70,7 @@ it("summarises an export with the active language's plurals", async () => {
   vi.mocked(save).mockResolvedValue("out.edgeterm");
   vi.mocked(api.exportAppData).mockResolvedValue({
     profiles: 2,
+    replacedProfiles: 0,
     groups: 1,
     senderCommands: 3,
     skippedSenderCommands: 0,
@@ -89,6 +95,7 @@ it("asks for an import confirmation in Chinese and reports the merged counts", a
   vi.mocked(ask).mockResolvedValue(true);
   vi.mocked(api.importAppData).mockResolvedValue({
     profiles: 0,
+    replacedProfiles: 0,
     groups: 0,
     senderCommands: 0,
     skippedSenderCommands: 0,
@@ -99,4 +106,29 @@ it("asks for an import confirmation in Chinese and reports the merged counts", a
   expect(message).toContain("不包含会话密码");
   expect(options).toMatchObject({ title: "导入", okLabel: "导入" });
   expect(setStatus).toHaveBeenLastCalledWith("已导入 0 个会话, 0 个分组, 0 条发送命令 及设置");
+});
+
+it("warns how many sessions an import will replace", async () => {
+  vi.mocked(open).mockResolvedValue("backup.edgeterm");
+  vi.mocked(api.readAppData).mockResolvedValue({
+    app: "EdgeTerm",
+    format: 1,
+    exportedAt: "2026-10-01T12:00:00Z",
+    profiles: [
+      { id: "known-1", name: "Replaced", kind: "ssh" },
+      { id: "new-1", name: "Added", kind: "ssh" },
+    ],
+    groups: [],
+    senderCommands: [],
+    settings: null,
+  } as never);
+  vi.mocked(ask).mockResolvedValue(false);
+  // The store already holds one of the two ids, so one entry overwrites.
+  profileList.push({ id: "known-1" });
+
+  await importAppData();
+
+  const [message] = vi.mocked(ask).mock.calls[0];
+  expect(message).toContain("1 of them replace sessions you already have");
+  expect(message).toContain("exported at 2026-10-01T12:00:00Z");
 });

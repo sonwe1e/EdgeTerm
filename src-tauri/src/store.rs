@@ -688,6 +688,7 @@ impl Store {
                         if moved {
                             dropped_credentials.push(existing.id.clone());
                         }
+                        summary.replaced_profiles += 1;
                         *existing = profile;
                     }
                     None => profiles.push(profile),

@@ -482,6 +482,10 @@ pub struct AppData {
 #[serde(rename_all = "camelCase")]
 pub struct DataSummary {
     pub profiles: usize,
+    /// How many of `profiles` replaced an entry that already existed. An
+    /// import overwrites those, so the confirmation has to say how many there
+    /// are before the file is applied.
+    pub replaced_profiles: usize,
     pub groups: usize,
     pub sender_commands: usize,
     /// Sender tags an import left out because the library was already full.

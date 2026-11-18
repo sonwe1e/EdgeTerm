@@ -1069,6 +1069,43 @@ fn a_failed_config_write_leaves_the_previous_file_intact() {
 /// An import replaces same-id entries with no undo. The configuration it
 /// overwrites has to exist somewhere first, or the only restore path is one the
 /// user would have had to think of beforehand.
+
+/// The dialog has to say how many entries an import overwrites, and the count
+/// has to come from the merge that actually happened.
+#[test]
+fn an_import_says_how_many_profiles_it_replaced() {
+    let dir = temp_dir("import-count");
+    let store = Store::load_from_test(dir.join("sessions.json"));
+    let first = store.save(profile(SessionKind::Ssh)).expect("save");
+    let second = store.save(profile(SessionKind::Ssh)).expect("save");
+
+    let mut replacement = first.clone();
+    replacement.name = "replaced".into();
+    let mut added = profile(SessionKind::Ssh);
+    added.id = "brand-new".into();
+
+    let summary = store
+        .import_data(AppData {
+            app: APP_DATA_APP.into(),
+            format: APP_DATA_FORMAT,
+            exported_at: None,
+            settings: None,
+            profiles: vec![replacement, added],
+            groups: vec![],
+            sender_commands: vec![],
+        })
+        .expect("import");
+    assert_eq!(summary.profiles, 2);
+    assert_eq!(
+        summary.replaced_profiles, 1,
+        "one entry overwrote an existing one"
+    );
+    assert!(
+        store.list().iter().any(|p| p.id == second.id),
+        "the untouched profile stays"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
 #[test]
 fn an_import_leaves_a_backup_of_what_it_replaced() {
     let dir = temp_dir("import-backup");
