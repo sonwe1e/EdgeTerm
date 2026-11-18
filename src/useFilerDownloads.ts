@@ -3,6 +3,7 @@ import { errorText, isCancelled } from "./errorInfo";
 import * as api from "./api";
 import { useFileTransfers } from "./fileTransfers";
 import { t } from "./i18n";
+import { namesTaken } from "./fileNames";
 import { ask, open, save } from "./nativeDialog";
 import { IS_MAC, IS_WINDOWS } from "./platform";
 import { useStore } from "./store";
@@ -19,8 +20,7 @@ export function downloadClashes(
   present: readonly string[],
   foldCase: boolean,
 ): string[] {
-  const taken = new Set(present.map((name) => (foldCase ? name.toLowerCase() : name)));
-  return names.filter((name) => taken.has(foldCase ? name.toLowerCase() : name));
+  return namesTaken(names, present, foldCase);
 }
 
 /** Only choosing a destination blocks this entry; submitted jobs belong to the backend queue. */

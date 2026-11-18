@@ -12,6 +12,7 @@ import { open as openDialog } from "../../nativeDialog";
 import { IS_MAC, IS_WINDOWS } from "../../platform";
 import type { FileEntry } from "../../types";
 import { imagePreviewMime } from "../../imagePreview";
+import { sameFileName as sameName } from "../../fileNames";
 import { type MenuItem } from "../ContextMenu";
 import { appDisplayName, joinLocal, joinRemote, rememberOpenWithApp } from "./filerPresentation";
 import type { MenuState, NewEntryDraft, RenameDraft, TransferState } from "./filerTypes";
@@ -63,11 +64,6 @@ interface Options {
 /** Whether names on this side compare the way a case-insensitive volume does. */
 function foldForLocal(remoteId: string | null): boolean {
   return !remoteId && (IS_MAC || IS_WINDOWS);
-}
-
-/** The same-name test both inline editors use, with the volume's case rules. */
-function sameName(candidate: string, name: string, foldCase: boolean): boolean {
-  return foldCase ? candidate.toLowerCase() === name.toLowerCase() : candidate === name;
 }
 
 export function useFilerActions({
