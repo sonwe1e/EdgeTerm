@@ -655,53 +655,75 @@ pub async fn cleanup(job: Arc<Job>) -> TransferResult<()> {
     tokio::task::spawn_blocking(move || {
         let checkpoints: Vec<_> = job.checkpoints.lock().values().cloned().collect();
         let mut remote = None;
+        let mut failures: Vec<String> = Vec::new();
         for mut cp in checkpoints {
             if cp.complete || !cp.owns_temporary {
                 continue;
             }
-            if cp.item.upload {
-                if remote.is_none() {
-                    remote = Some(connect(&job.profile).map_err(Failure::network)?);
-                }
-                let ftp = &mut remote.as_mut().unwrap().stream;
-                ftp.get_ref()
-                    .set_read_timeout(Some(Duration::from_secs(3)))?;
-                ftp.get_ref()
-                    .set_write_timeout(Some(Duration::from_secs(3)))?;
-                let cleanup = Control::default();
-                if cp.committing && cp.owns_backup {
-                    let current = signature(job.pacer.as_ref(), &cleanup, ftp, &cp.item.remote)?;
-                    if current.is_none() {
-                        if signature(job.pacer.as_ref(), &cleanup, ftp, &cp.backup)? != cp.original
-                            || cp.original.is_none()
-                        {
-                            return Err(Failure::conflict(
-                                "cannot verify the FTP backup; retained for manual recovery",
-                            ));
-                        }
-                        ftp.rename(&cp.backup, &cp.item.remote)?;
-                        cp.owns_backup = false;
-                    } else if current != cp.original {
-                        let (size, hash) =
-                            remote_hash(job.pacer.as_ref(), &cleanup, ftp, &cp.item.remote)?;
-                        if size != cp.source.size || hash != cp.prefix_hash {
-                            return Err(Failure::conflict(
-                                "FTP destination changed; backup and partial retained",
-                            ));
-                        }
+            // One partial the server will not release must not strand the rest,
+            // the way the SFTP half already behaves: the journal keeps owning
+            // it, so the next cleanup tries it again.
+            let removed: TransferResult<()> = (|| {
+                if cp.item.upload {
+                    if remote.is_none() {
+                        remote = Some(connect(&job.profile).map_err(Failure::network)?);
                     }
-                    remove_backup(job.pacer.as_ref(), ftp, &mut cp, &cleanup)?;
+                    let ftp = &mut remote.as_mut().unwrap().stream;
+                    ftp.get_ref()
+                        .set_read_timeout(Some(Duration::from_secs(3)))?;
+                    ftp.get_ref()
+                        .set_write_timeout(Some(Duration::from_secs(3)))?;
+                    let cleanup = Control::default();
+                    if cp.committing && cp.owns_backup {
+                        let current =
+                            signature(job.pacer.as_ref(), &cleanup, ftp, &cp.item.remote)?;
+                        if current.is_none() {
+                            if signature(job.pacer.as_ref(), &cleanup, ftp, &cp.backup)?
+                                != cp.original
+                                || cp.original.is_none()
+                            {
+                                return Err(Failure::conflict(
+                                    "cannot verify the FTP backup; retained for manual recovery",
+                                ));
+                            }
+                            ftp.rename(&cp.backup, &cp.item.remote)?;
+                            cp.owns_backup = false;
+                        } else if current != cp.original {
+                            let (size, hash) =
+                                remote_hash(job.pacer.as_ref(), &cleanup, ftp, &cp.item.remote)?;
+                            if size != cp.source.size || hash != cp.prefix_hash {
+                                return Err(Failure::conflict(
+                                    "FTP destination changed; backup and partial retained",
+                                ));
+                            }
+                        }
+                        remove_backup(job.pacer.as_ref(), ftp, &mut cp, &cleanup)?;
+                    }
+                    if signature(job.pacer.as_ref(), &cleanup, ftp, &cp.temporary)?.is_some() {
+                        ftp.rm(&cp.temporary)?;
+                    }
+                } else if Path::new(&cp.temporary).exists() {
+                    std::fs::remove_file(&cp.temporary)?;
                 }
-                if signature(job.pacer.as_ref(), &cleanup, ftp, &cp.temporary)?.is_some() {
-                    ftp.rm(&cp.temporary)?;
-                }
-            } else if Path::new(&cp.temporary).exists() {
-                std::fs::remove_file(&cp.temporary)?;
+                Ok(())
+            })();
+            if let Err(error) = removed {
+                failures.push(format!("{}: {error}", cp.temporary));
+                continue;
             }
             cp.owns_temporary = false;
-            job.save(&cp)?;
+            if let Err(error) = job.save(&cp) {
+                failures.push(format!("{}: {error}", cp.temporary));
+            }
         }
-        Ok(())
+        if failures.is_empty() {
+            return Ok(());
+        }
+        Err(Failure::local(format!(
+            "could not remove {} remote partial(s): {}",
+            failures.len(),
+            failures.join("; ")
+        )))
     })
     .await
     .map_err(Failure::local)?

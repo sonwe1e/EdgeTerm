@@ -19,6 +19,8 @@ struct Server {
     reject_append: bool,
     received: Vec<usize>,
     counts: HashMap<String, usize>,
+    /// Files the server refuses to delete, for cleanup failures.
+    refuse_dele: std::collections::HashSet<String>,
 }
 
 #[test]
@@ -299,7 +301,9 @@ fn serve(mut stream: TcpStream, state: Arc<Mutex<Server>>) -> std::io::Result<()
                 }
             }
             "DELE" => {
-                if state.lock().files.remove(arg).is_some() {
+                if state.lock().refuse_dele.contains(arg) {
+                    "550 Permission denied".into()
+                } else if state.lock().files.remove(arg).is_some() {
                     "250 Deleted".into()
                 } else {
                     "550 Missing".into()
@@ -989,4 +993,57 @@ fn ftp_restart_recovery_refuses_a_same_length_source_change() {
     assert!(!f.state.lock().files.contains_key("/a"));
     let _ = std::fs::remove_dir_all(&root);
     let _ = std::fs::remove_dir_all(&source);
+}
+
+/// One partial the server will not delete must not stop the others: the rest
+/// of the batch is still cleaned, and the journal keeps owning the one that
+/// stayed so the next attempt tries it again.
+#[tokio::test]
+async fn a_partial_the_server_will_not_delete_does_not_strand_the_rest() {
+    let f = Fixture::new(Server::default());
+    let job = f.job();
+    let item = Item {
+        local: f.root.join("source").to_string_lossy().into(),
+        remote: "/target".into(),
+        upload: true,
+        directory: false,
+    };
+    std::fs::write(&item.local, b"payload").unwrap();
+    let source = super::super::local::signature(std::path::Path::new(&item.local)).unwrap();
+    let checkpoint = |name: &str, temporary: &str| Checkpoint {
+        key: name.into(),
+        item: item.clone(),
+        source: source.clone(),
+        original: None,
+        temporary: temporary.into(),
+        backup: String::new(),
+        offset: 0,
+        prefix_hash: super::super::local::digest(&[]),
+        complete: false,
+        committing: false,
+        owns_temporary: true,
+        owns_backup: false,
+    };
+    {
+        let mut state = f.state.lock();
+        state.files.insert("/.stuck.part".into(), b"x".to_vec());
+        state.files.insert("/.fine.part".into(), b"x".to_vec());
+        state.refuse_dele.insert("/.stuck.part".into());
+    }
+    job.save(&checkpoint("stuck", "/.stuck.part")).unwrap();
+    job.save(&checkpoint("fine", "/.fine.part")).unwrap();
+
+    let error = super::cleanup(job.clone()).await.expect_err("reported");
+    assert!(
+        format!("{error:?}").contains("/.stuck.part"),
+        "the report names the partial that stayed: {error:?}"
+    );
+    let files = f.state.lock().files.clone();
+    assert!(
+        files.contains_key("/.stuck.part"),
+        "left for the next cleanup"
+    );
+    assert!(!files.contains_key("/.fine.part"), "the rest was cleaned");
+    assert!(job.checkpoint("stuck").unwrap().owns_temporary);
+    assert!(!job.checkpoint("fine").unwrap().owns_temporary);
 }
