@@ -136,9 +136,11 @@ it("preserves a group during native drag and confirms every selected deletion", 
   // Inside the list a drag waits (it may still become a move onto a folder);
   // leaving the rows is what hands the rows to the system.
   await mouse.moveTo(at.x + 20, at.y);
-  const away = pagePoint(document.querySelector(".filer-footer")!);
-  await mouse.moveTo(away.x, away.y);
-  await mouse.release(away.x, away.y);
+  // Outside the panel: inside it the rows stay with the gesture, which is what
+  // lets a drop land on a folder or a crumb.
+  const panel = document.querySelector(".filer-panel")!.getBoundingClientRect();
+  await mouse.moveTo(panel.left - 40, at.y);
+  await mouse.release(panel.left - 40, at.y);
   expect(api.startFileDrag).toHaveBeenCalledWith(
     ["/selection-browser/file0.txt", "/selection-browser/file2.txt"],
     expect.any(Function),

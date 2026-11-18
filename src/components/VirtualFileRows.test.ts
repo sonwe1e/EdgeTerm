@@ -375,9 +375,15 @@ describe("virtual file rows", () => {
     act(() => document.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })));
     row.setPointerCapture = () => {};
     row.hasPointerCapture = () => false;
+    const panel = host.querySelector(".filer-panel")!.getBoundingClientRect();
     await act(async () => {
       row.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 0 }));
+      // Inside the panel the drag waits: it may still become a move onto a
+      // folder or a crumb. Leaving the panel is what hands the rows over.
       row.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 20 }));
+      row.dispatchEvent(
+        new MouseEvent("pointermove", { bubbles: true, clientX: panel.right + 80 }),
+      );
     });
     expect(api.startFileDrag).toHaveBeenCalledWith([source], expect.any(Function));
     act(() => host.querySelector<HTMLButtonElement>("[aria-label='New file']")!.click());

@@ -89,9 +89,20 @@ export function useFilerDrag({
     const hit = document.elementFromPoint?.(x, y);
     return hit?.closest<HTMLElement>("[data-drop-folder]")?.dataset.dropFolder ?? null;
   };
-  /** Whether the pointer is still over the rows of this listing. */
-  const thisRowUnderPointer = (x: number, y: number): boolean =>
-    Boolean(document.elementFromPoint?.(x, y)?.closest("[data-file-path]"));
+  /**
+   * Whether the pointer is still inside the panel. Inside it a drag may still
+   * become a move — onto a folder row or onto a crumb in the path bar — so the
+   * rows stay here; leaving the panel is what hands them to the system, which is
+   * the same boundary the drop verdict already uses.
+   */
+  const insidePanel = (x: number, y: number): boolean => {
+    const bounds = panelRef.current?.getBoundingClientRect();
+    // Without a laid-out panel there is no boundary to be inside of: a test
+    // environment reports every rect as zero, and treating that as "inside"
+    // would swallow the gesture forever.
+    if (!bounds || bounds.width === 0 || bounds.height === 0) return false;
+    return x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom;
+  };
   const trackMove = useStableCallback((entries: FileEntry[] | null, folder: string | null) => {
     moveDragRef.current = entries ? { entries } : null;
     moveOverRef.current = folder;
@@ -374,7 +385,7 @@ export function useFilerDrag({
     // the window: starting a move on top of a deletion or a transfer would put
     // two writers on the same listing.
     const folder = busyRef.current ? null : folderAt(event.clientX, event.clientY);
-    if (!folder && thisRowUnderPointer(event.clientX, event.clientY)) {
+    if (!folder && insidePanel(event.clientX, event.clientY)) {
       // The threshold is crossed while the pointer is still inside the list —
       // which it almost always is, rows being 24px tall. Handing the rows to
       // the system here would take the gesture away before it could ever reach
