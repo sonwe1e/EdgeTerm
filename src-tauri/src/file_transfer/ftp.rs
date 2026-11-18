@@ -655,7 +655,7 @@ pub async fn cleanup(job: Arc<Job>) -> TransferResult<()> {
     tokio::task::spawn_blocking(move || {
         let checkpoints: Vec<_> = job.checkpoints.lock().values().cloned().collect();
         let mut remote = None;
-        let mut failures: Vec<String> = Vec::new();
+        let mut failures: Vec<(String, Failure)> = Vec::new();
         for mut cp in checkpoints {
             if cp.complete || !cp.owns_temporary {
                 continue;
@@ -726,21 +726,32 @@ pub async fn cleanup(job: Arc<Job>) -> TransferResult<()> {
                 if error.retryable || !healthy {
                     return Err(error);
                 }
-                failures.push(format!("{}: {error}", cp.temporary));
+                failures.push((cp.temporary.clone(), error));
                 continue;
             }
             cp.owns_temporary = false;
             if let Err(error) = job.save(&cp) {
-                failures.push(format!("{}: {error}", cp.temporary));
+                failures.push((cp.temporary.clone(), error));
             }
+        }
+        // A conflict needs a person — the backup or the destination moved under
+        // the transfer — and folding it into "could not remove" would hide that
+        // behind a plain cleanup failure. It wins over the rest of the report.
+
+        if let Some((_, conflict)) = failures.iter().find(|(_, error)| error.code == "conflict") {
+            return Err(conflict.clone());
         }
         if failures.is_empty() {
             return Ok(());
         }
+        let detail = failures
+            .iter()
+            .map(|(path, error)| format!("{path}: {error}"))
+            .collect::<Vec<_>>()
+            .join("; ");
         Err(Failure::local(format!(
-            "could not remove {} remote partial(s): {}",
-            failures.len(),
-            failures.join("; ")
+            "could not remove {} partial(s): {detail}",
+            failures.len()
         )))
     })
     .await

@@ -1109,3 +1109,59 @@ async fn a_dropped_control_connection_stops_the_cleanup() {
     );
     assert!(job.checkpoint("second").unwrap().owns_temporary);
 }
+
+/// A backup that cannot be verified needs a person, so the cleanup reports the
+/// conflict itself rather than folding it into "could not remove N partials".
+#[tokio::test]
+async fn an_unverifiable_backup_is_reported_as_the_conflict_it_is() {
+    let f = Fixture::new(Server::default());
+    let job = f.job();
+    let item = Item {
+        local: f.root.join("source").to_string_lossy().into(),
+        remote: "/target".into(),
+        upload: true,
+        directory: false,
+    };
+    std::fs::write(&item.local, b"payload").unwrap();
+    let source = super::super::local::signature(std::path::Path::new(&item.local)).unwrap();
+    let base = |name: &str, temporary: &str| Checkpoint {
+        key: name.into(),
+        item: item.clone(),
+        source: source.clone(),
+        original: None,
+        temporary: temporary.into(),
+        backup: String::new(),
+        offset: 0,
+        prefix_hash: super::super::local::digest(&[]),
+        complete: false,
+        committing: false,
+        owns_temporary: true,
+        owns_backup: false,
+    };
+    // A commit that left a backup behind with nothing at the destination: the
+    // cleanup cannot tell whether restoring it is safe.
+    let mut committing = base("committing", "/.committing.part");
+    committing.committing = true;
+    committing.owns_backup = true;
+    committing.backup = "/.backup.part".into();
+    {
+        let mut state = f.state.lock();
+        state
+            .files
+            .insert("/.committing.part".into(), b"x".to_vec());
+        state.files.insert("/.backup.part".into(), b"old".to_vec());
+        // The second checkpoint is a plain refusal, which must not mask the
+        // conflict above it.
+        state.files.insert("/.plain.part".into(), b"x".to_vec());
+        state.refuse_dele.insert("/.plain.part".into());
+    }
+    job.save(&committing).unwrap();
+    job.save(&base("plain", "/.plain.part")).unwrap();
+
+    let error = super::cleanup(job.clone()).await.expect_err("reported");
+    assert_eq!(
+        error.code, "conflict",
+        "the backup conflict survives the aggregate: {error:?}"
+    );
+    assert!(format!("{error:?}").contains("cannot verify"), "{error:?}");
+}
