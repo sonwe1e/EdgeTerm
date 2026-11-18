@@ -1073,6 +1073,42 @@ fn a_failed_config_write_leaves_the_previous_file_intact() {
 /// The dialog has to say how many entries an import overwrites, and the count
 /// has to come from the merge that actually happened.
 
+/// A companion file that cannot be parsed used to be read as an empty list and
+/// then written over: the next save replaced the user's groups and commands with
+/// nothing. The bytes have to survive the recovery.
+#[test]
+fn an_unreadable_command_file_is_kept_rather_than_replaced() {
+    let dir = temp_dir("unreadable-commands");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("sessions.json");
+    let commands = path.with_file_name("sender_commands.json");
+    let damaged = "[{\"id\":\"one\",";
+    std::fs::write(&commands, damaged).unwrap();
+
+    let store = Store::load_from_test(path.clone());
+    assert!(store.list_sender_commands().is_empty(), "nothing parses");
+
+    let kept: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.file_name().to_string_lossy().contains(".unreadable-"))
+        .collect();
+    assert_eq!(kept.len(), 1, "the bytes that could not be read are kept");
+    assert_eq!(std::fs::read_to_string(kept[0].path()).unwrap(), damaged);
+
+    // The next save starts a fresh file instead of writing over the damaged one.
+    store
+        .save_sender_command(command("Again", "pwd"))
+        .expect("save");
+    let written = std::fs::read_to_string(&commands).unwrap();
+    assert!(
+        written.contains("pwd"),
+        "the new file holds the new command"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 /// The export path round-trips through the shared writer.
 ///
 /// This one is a smoke test, not a negative control: it passes against a plain

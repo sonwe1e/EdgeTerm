@@ -87,11 +87,11 @@ impl Store {
         };
         let credentials = CredentialStore::load(credentials_path_for(&path), key_store.as_deref());
         let groups_path = groups_path_for(&path);
-        let groups = read_json(&groups_path).unwrap_or_default();
+        let groups = read_or_keep(&groups_path);
         let sender_commands_path = sender_commands_path_for(&path);
-        let sender_commands = read_json(&sender_commands_path).unwrap_or_default();
+        let sender_commands = read_or_keep(&sender_commands_path);
         let command_history_path = command_history_path_for(&path);
-        let command_history = read_json(&command_history_path).unwrap_or_default();
+        let command_history = read_or_keep(&command_history_path);
         // Older files may have contained credentials. Move them into the
         // private credential map when loading, then keep the UI copy redacted.
         let mut imported_legacy_credentials = false;
@@ -1028,6 +1028,25 @@ fn unix_millis() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|elapsed| elapsed.as_millis() as i64)
         .unwrap_or(0)
+}
+
+/// Reads a companion file, or keeps it and starts empty.
+///
+/// These files are rewritten wholesale: the next save writes the whole list,
+/// so an unparsable `session_groups.json` or `sender_commands.json` was read as
+/// an empty list and then replaced by one — every group and saved command gone
+/// with no copy left. The bytes that could not be read are moved aside first,
+/// under a name that keeps them recoverable.
+fn read_or_keep<T: serde::de::DeserializeOwned + Default>(path: &Path) -> T {
+    if let Some(value) = read_json(path) {
+        return value;
+    }
+    if path.exists() {
+        let name = path.file_name().unwrap_or_default().to_string_lossy();
+        let aside = path.with_file_name(format!("{name}.unreadable-{}", unix_millis()));
+        let _ = std::fs::rename(path, aside);
+    }
+    T::default()
 }
 
 fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Option<T> {
