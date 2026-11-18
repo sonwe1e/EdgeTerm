@@ -124,10 +124,17 @@ impl Recorder {
     }
 }
 
+/// Records a recording that stopped writing. The user finds out later, when the
+/// file they expected is short; the log has to say why.
+pub(crate) fn log_failure(id: &str, path: &str, message: &str) {
+    tracing::error!(session_id = %id, path, "recording failed: {message}");
+}
+
 /// Reports a failed recording of session `id` to the frontend as
 /// `EVENT_RECORDING_ERROR`.
 pub fn report_to_ui(app: AppHandle, id: String) -> ErrorReport {
     Box::new(move |path, error| {
+        log_failure(&id, &path.display().to_string(), &error.to_string());
         let _ = app.emit(
             EVENT_RECORDING_ERROR,
             RecordingErrorEvent {

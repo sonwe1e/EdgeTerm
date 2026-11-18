@@ -224,6 +224,7 @@ pub(crate) struct StateEvent {
 /// same session id right away, so a late "closed" from the old session would
 /// otherwise be taken for the new one going down.
 pub fn emit_state(app: &AppHandle, id: &str, state: &str, message: Option<String>) {
+    log_state(id, state, message.as_deref());
     if matches!(state, "closed" | "error") {
         if let Some(managed) = app.try_state::<crate::commands::AppState>() {
             managed.port_forwards.close_session(id);
@@ -237,6 +238,17 @@ pub fn emit_state(app: &AppHandle, id: &str, state: &str, message: Option<String
             message,
         },
     );
+}
+
+/// Records a session's own state change in the diagnostics log. The frontend
+/// shows it and nothing else did: the request that opened the session finished
+/// at connect time, so a drop ten minutes later left no trace to look at.
+pub(crate) fn log_state(id: &str, state: &str, message: Option<&str>) {
+    let message = message.unwrap_or("");
+    match state {
+        "error" => tracing::error!(session_id = %id, state, message, "session failed"),
+        _ => tracing::info!(session_id = %id, state, message, "session state"),
+    }
 }
 
 /// Coalesces small writes so a flood of output does not turn into a flood of
@@ -451,6 +463,35 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
+
+    /// A session that drops ten minutes after connecting used to leave nothing
+    /// behind: the request that opened it had already finished.
+    #[test]
+    fn a_session_state_change_reaches_the_log() {
+        let root =
+            std::env::temp_dir().join(format!("edgeterm-state-log-{}", uuid::Uuid::new_v4()));
+        let logs = root.join("logs");
+        let (subscriber, guard) = crate::diagnostics::build(&logs).unwrap();
+        {
+            let _default = tracing::subscriber::set_default(subscriber);
+            super::log_state("tab-9", "error", Some("connection reset by peer"));
+            super::log_state("tab-9", "closed", None);
+            super::recording::log_failure("tab-9", "C:/recordings/tab-9.log", "disk full");
+        }
+        drop(guard);
+        let content: String = std::fs::read_dir(&logs)
+            .unwrap()
+            .map(|entry| std::fs::read_to_string(entry.unwrap().path()).unwrap())
+            .collect();
+        assert!(content.contains("tab-9"), "{content}");
+        assert!(content.contains("connection reset by peer"), "{content}");
+        assert!(content.contains("disk full"), "{content}");
+        assert!(
+            content.contains("ERROR"),
+            "failures log at error level: {content}"
+        );
+        std::fs::remove_dir_all(root).ok();
+    }
 
     /// Explicit smoke test of a real ConPTY/Unix PTY, separate from the
     /// deterministic suite because process startup depends on the host.
