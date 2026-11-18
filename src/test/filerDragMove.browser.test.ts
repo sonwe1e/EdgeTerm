@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { browserAfterEach, mount, mouse, pagePoint, twoFrames } from "./browserHarness";
 import { FilerPanel } from "../components/panels/FilerPanel";
+import { IS_WINDOWS } from "../platform";
 import { useStore } from "../store";
 import * as api from "../api";
 import "../styles.css";
@@ -31,7 +32,14 @@ vi.mock("../api", async (original) => ({
     entries:
       path === "/drag/folder"
         ? [entry(path, "inner.txt", false)]
-        : [entry(path, "folder", true), entry(path, "a.txt", false), entry(path, "b.txt", false)],
+        : path === "/drag/keys"
+          ? [entry(path, "A.TXT", false)]
+          : [
+              entry(path, "folder", true),
+              entry(path, "keys", true),
+              entry(path, "a.txt", false),
+              entry(path, "b.txt", false),
+            ],
   })),
   localRename: vi.fn(async () => {}),
   startFileDrag: vi.fn(async () => {}),
@@ -194,6 +202,38 @@ it("cancels quietly when released where no folder accepts the rows", async () =>
   expect(document.querySelector('.filer-panel [role="alert"]')).toBeNull();
   expect(useStore.getState().status, "a cancelled drag says nothing").toBe(before);
 });
+
+it.skipIf(!IS_WINDOWS)(
+  "refuses a move that a case-insensitive volume would take as a name clash",
+  async () => {
+    await page.viewport(900, 720);
+    mount(
+      h(
+        "div",
+        { style: { width: 440, height: 650, display: "flex", margin: "24px auto" } },
+        h(FilerPanel),
+      ),
+    );
+    await expect.poll(() => Boolean(row("a.txt"))).toBe(true);
+    await twoFrames();
+
+    // Windows keeps "A.TXT" and "a.txt" as one name: the rename would succeed
+    // and replace the file already in the folder, so the move must refuse first.
+    const from = pagePoint(row("a.txt"));
+    const onto = pagePoint(row("keys"));
+    await mouse.press(from.x, from.y);
+    await mouse.moveTo(from.x + 30, from.y);
+    await mouse.moveTo(onto.x, onto.y);
+    await twoFrames();
+    await mouse.release(onto.x, onto.y);
+    await twoFrames();
+
+    expect(vi.mocked(api.localRename), "nothing was renamed").not.toHaveBeenCalled();
+    const alert = document.querySelector('.filer-panel [role="alert"]');
+    expect(alert, "the panel says why").not.toBeNull();
+    expect(alert!.textContent).toContain("already exists");
+  },
+);
 it("hands the file to the system when the pointer leaves the panel", async () => {
   await page.viewport(900, 720);
   mount(

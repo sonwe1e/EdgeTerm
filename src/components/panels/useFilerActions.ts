@@ -561,12 +561,15 @@ export function useFilerActions({
     setBusy(true);
     setError(null);
     try {
-      const taken = new Set(
-        (await (remoteId ? api.sftpList(remoteId, folder) : api.localList(folder))).entries.map(
-          (entry) => entry.name,
-        ),
+      const existing = (await (remoteId ? api.sftpList(remoteId, folder) : api.localList(folder)))
+        .entries;
+      // The volume decides whether two names are the same name: a case-insensitive
+      // local volume would accept the rename and replace the file already there,
+      // so "A.txt" next to "a.txt" is a collision, not a free name.
+      const fold = foldForLocal(remoteId);
+      const collision = moving.find((entry) =>
+        existing.some((other) => sameName(other.name, entry.name, fold)),
       );
-      const collision = moving.find((entry) => taken.has(entry.name));
       if (collision) {
         setError(t("filer.moveExists", { name: collision.name }));
         return;
