@@ -63,6 +63,90 @@ describe("Sender repeat schedule", () => {
     expect(getSchedule()).toBeNull();
   });
 
+  it("finishes a finite repeat after a late success even when another target fails", async () => {
+    useStore.setState({
+      tabs: [
+        { info: { id: "failed", kind: "ssh" }, state: "connected" } as never,
+        { info: { id: "healthy", kind: "ssh" }, state: "connected" } as never,
+      ],
+    });
+    let finishWrite!: () => void;
+    const pendingWrite = new Promise<void>((resolve) => {
+      finishWrite = resolve;
+    });
+    vi.mocked(api.writeSession)
+      .mockRejectedValueOnce(new Error("session disconnected"))
+      .mockReturnValueOnce(pendingWrite);
+
+    expect(startSchedule(everySecond())).toBeNull();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(getSchedule()?.nextAt).toBeNull();
+
+    finishWrite();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(getSchedule()).toBeNull();
+    expect(useStore.getState().status).toContain("session disconnected");
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(api.writeSession).toHaveBeenCalledTimes(2);
+    expect(api.writeSession).toHaveBeenCalledWith("healthy", "date\n");
+  });
+
+  it("keeps waiting when every write fails", async () => {
+    useStore.setState({
+      tabs: [{ info: { id: "s1", kind: "ssh" }, state: "connected" } as never],
+    });
+    vi.mocked(api.writeSession).mockRejectedValueOnce(new Error("session disconnected"));
+
+    expect(startSchedule(everySecond())).toBeNull();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(getSchedule()?.sent).toBe(0);
+    expect(useStore.getState().status).toContain("session disconnected");
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(api.writeSession).toHaveBeenCalledTimes(2);
+    expect(getSchedule()).toBeNull();
+  });
+
+  it("does not repeat a script after its first line was accepted and its second failed", async () => {
+    useStore.setState({
+      tabs: [{ info: { id: "s1", kind: "ssh" }, state: "connected" } as never],
+    });
+    vi.mocked(api.writeSession)
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("second line failed"));
+
+    expect(startSchedule(everySecond({ text: "date\nwhoami" }))).toBeNull();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(getSchedule()).toBeNull();
+    expect(useStore.getState().status).toContain("second line failed");
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(api.writeSession).toHaveBeenCalledTimes(2);
+    expect(api.writeSession).toHaveBeenNthCalledWith(1, "s1", "date\n");
+    expect(api.writeSession).toHaveBeenNthCalledWith(2, "s1", "whoami\n");
+  });
+
+  it("does not let a stopped tick replace the current status when its write fails", async () => {
+    useStore.setState({
+      tabs: [{ info: { id: "s1", kind: "ssh" }, state: "connected" } as never],
+    });
+    let failWrite!: (error: Error) => void;
+    const pendingWrite = new Promise<void>((_resolve, reject) => {
+      failWrite = reject;
+    });
+    vi.mocked(api.writeSession).mockReturnValueOnce(pendingWrite);
+
+    expect(startSchedule(everySecond())).toBeNull();
+    stopSchedule();
+    useStore.getState().setStatus("current status");
+    failWrite(new Error("stopped session disconnected"));
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(useStore.getState().status).toBe("current status");
+    expect(getSchedule()).toBeNull();
+  });
+
   it("stops for good when the session it was repeating into is closed", async () => {
     useStore.setState({
       tabs: [{ info: { id: "s1", kind: "ssh" }, state: "connected" } as never],

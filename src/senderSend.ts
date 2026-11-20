@@ -74,21 +74,45 @@ export async function sendUnits(
   stop: StopSignal,
   onProgress?: (sent: number, total: number) => void,
 ): Promise<SendOutcome> {
+  const { sent, skipped, pending } = startSend(ids, units, ending, stop, onProgress);
+  // Manual sends still report the first failure without releasing busy siblings.
+  await Promise.all(pending);
+  return { sent, skipped };
+}
+
+/** Wait for the whole tick so repeats count writes even when a sibling fails first. */
+export async function sendScheduledUnits(
+  ids: string[],
+  units: SendUnit[],
+  ending: LineEnding,
+  stop: StopSignal,
+): Promise<{ wrote: boolean; failure: { reason: unknown } | undefined }> {
+  let wrote = false;
+  const { pending } = startSend(ids, units, ending, stop, () => {
+    wrote = true;
+  });
+  const results = await Promise.allSettled(pending);
+  return { wrote, failure: results.find((result) => result.status === "rejected") };
+}
+
+function startSend(
+  ids: string[],
+  units: SendUnit[],
+  ending: LineEnding,
+  stop: StopSignal,
+  onProgress?: (sent: number, total: number) => void,
+) {
   const sent = ids.filter((id) => !busy.has(id) && !getController(id)?.isTransferActive());
   const skipped = ids.filter((id) => !sent.includes(id));
   for (const id of sent) busy.add(id);
   let reached = 0;
-  await Promise.all(
-    sent.map((id) =>
-      // Promise.all rejects on the first failure while other sessions can
-      // still be writing. Keep their reservations until their own send ends.
-      sendSequence(id, units, ending, stop, (index) => {
-        reached = Math.max(reached, index + 1);
-        onProgress?.(reached, units.length);
-      }).finally(() => busy.delete(id)),
-    ),
+  const pending = sent.map((id) =>
+    sendSequence(id, units, ending, stop, (index) => {
+      reached = Math.max(reached, index + 1);
+      onProgress?.(reached, units.length);
+    }).finally(() => busy.delete(id)),
   );
-  return { sent, skipped };
+  return { sent, skipped, pending };
 }
 
 async function sendSequence(
