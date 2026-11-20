@@ -26,7 +26,7 @@ export class TerminalViewport {
   private pendingCellMeasure: number | null = null;
 
   /** One deferred proposal for a renderer that has not measured yet; see fit. */
-  private pendingProposeRetry: number | null = null;
+  private pendingProposeRetry: { frame: number; immediate: boolean } | null = null;
 
   private displayFrame: number | null = null;
   private displayDirty = false;
@@ -80,6 +80,7 @@ export class TerminalViewport {
 
   suspend() {
     this.cancelFit();
+    this.cancelProposeRetry();
     if (this.displayFrame !== null) window.cancelAnimationFrame(this.displayFrame);
     this.displayFrame = null;
   }
@@ -102,7 +103,9 @@ export class TerminalViewport {
       this.scheduleProposeRetry(immediate);
       return null;
     }
-    return this.applyProposal(proposal, immediate);
+    const applyImmediately = immediate || this.pendingProposeRetry?.immediate === true;
+    this.cancelProposeRetry();
+    return this.applyProposal(proposal, applyImmediately);
   }
 
   private tryPropose(): { cols: number; rows: number } | null {
@@ -150,9 +153,16 @@ export class TerminalViewport {
   }
 
   private scheduleProposeRetry(immediate: boolean): void {
-    if (this.context.disposed || !this.context.visible || this.pendingProposeRetry !== null) return;
-    this.pendingProposeRetry = window.requestAnimationFrame(() => {
+    if (this.context.disposed || !this.context.visible) return;
+    if (this.pendingProposeRetry) {
+      // Coalescing measurement work must not turn an explicit fit into a debounced one.
+      this.pendingProposeRetry.immediate ||= immediate;
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      const retry = this.pendingProposeRetry;
       this.pendingProposeRetry = null;
+      if (!retry) return;
       if (
         this.context.disposed ||
         !this.context.visible ||
@@ -161,8 +171,14 @@ export class TerminalViewport {
       )
         return;
       const proposal = this.tryPropose();
-      if (proposal) this.applyProposal(proposal, immediate);
+      if (proposal) this.applyProposal(proposal, retry.immediate);
     });
+    this.pendingProposeRetry = { frame, immediate };
+  }
+
+  private cancelProposeRetry(): void {
+    if (this.pendingProposeRetry) window.cancelAnimationFrame(this.pendingProposeRetry.frame);
+    this.pendingProposeRetry = null;
   }
 
   /**
@@ -200,8 +216,6 @@ export class TerminalViewport {
     this.displayDirty = false;
     if (this.pendingCellMeasure !== null) window.cancelAnimationFrame(this.pendingCellMeasure);
     this.pendingCellMeasure = null;
-    if (this.pendingProposeRetry !== null) window.cancelAnimationFrame(this.pendingProposeRetry);
-    this.pendingProposeRetry = null;
   }
 
   private applyFit(): { cols: number; rows: number } | null {

@@ -25,22 +25,28 @@ async function fixture(lines = 0) {
   const state = controller as unknown as {
     host: HTMLElement;
     visible: boolean;
-    fitAddon: { proposeDimensions(): { cols: number; rows: number }; fit(): void };
+    fitAddon: { proposeDimensions(): { cols: number; rows: number } | undefined; fit(): void };
   };
   state.host = document.createElement("div");
   Object.defineProperty(state.host, "clientWidth", { value: 800 });
   state.visible = true;
-  let dimensions = { cols: controller.term.cols, rows: controller.term.rows };
+  let dimensions: { cols: number; rows: number } | undefined = {
+    cols: controller.term.cols,
+    rows: controller.term.rows,
+  };
   // jsdom has no layout; mock only measurement, retaining xterm's real resize
   // and onResize event (the same event used to resize the backend PTY).
   vi.spyOn(state.fitAddon, "proposeDimensions").mockImplementation(() => dimensions);
-  vi.spyOn(state.fitAddon, "fit").mockImplementation(() =>
-    controller.term.resize(dimensions.cols, dimensions.rows),
-  );
+  vi.spyOn(state.fitAddon, "fit").mockImplementation(() => {
+    if (dimensions) controller.term.resize(dimensions.cols, dimensions.rows);
+  });
   vi.useFakeTimers();
   return {
     controller,
     onResize,
+    unmeasure: () => {
+      dimensions = undefined;
+    },
     propose: (cols: number, rows: number) => {
       dimensions = { cols, rows };
     },
@@ -123,6 +129,57 @@ describe("resize policy at the terminal boundary", () => {
     vi.advanceTimersByTime(500);
     expect(c.term.cols).toBe(cols);
     expect(onResize.mock.calls.every(([width]) => width === cols)).toBe(true);
+  });
+
+  it("upgrades a queued fit when an explicit fit also needs a new measurement", async () => {
+    const { controller: c, propose, unmeasure, onResize } = await fixture(250);
+    unmeasure();
+    c.scheduleFit();
+    c.fit(true);
+    c.scheduleFit(); // A later observer callback must not downgrade the request.
+    expect(onResize).not.toHaveBeenCalled();
+
+    propose(105, 30);
+    vi.advanceTimersToNextFrame();
+    expect(onResize.mock.calls).toEqual([[105, 30]]);
+    vi.advanceTimersByTime(100);
+    expect(onResize.mock.calls).toEqual([[105, 30]]);
+  });
+
+  it("uses the pending urgency when an ordinary fit gets a measurement first", async () => {
+    const { controller: c, propose, unmeasure, onResize } = await fixture(250);
+    unmeasure();
+    c.fit(true);
+
+    propose(105, 30);
+    c.scheduleFit();
+    expect(onResize.mock.calls).toEqual([[105, 30]]);
+    vi.advanceTimersToNextFrame();
+    expect(onResize.mock.calls).toEqual([[105, 30]]);
+  });
+
+  it("does not carry old explicit-fit urgency through hide and show", async () => {
+    const { controller: c, propose, unmeasure, onResize } = await fixture(250);
+    const cols = c.term.cols;
+    unmeasure();
+    c.fit(true);
+    c.setVisible(false);
+
+    // Make the show-time fit keep the current dimensions, then simulate an
+    // ordinary host resize whose measurement is unavailable until the frame.
+    propose(cols, c.term.rows);
+    c.setVisible(true);
+    onResize.mockClear();
+    unmeasure();
+    c.scheduleFit();
+    propose(105, 30);
+    vi.advanceTimersToNextFrame();
+    expect(onResize.mock.calls).toEqual([[cols, 30]]);
+    vi.advanceTimersByTime(100);
+    expect(onResize.mock.calls).toEqual([
+      [cols, 30],
+      [105, 30],
+    ]);
   });
 
   it("tells its owner when it is disposed, so queued work can stop", () => {
