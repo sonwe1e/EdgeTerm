@@ -15,6 +15,17 @@ import { useStore } from "./store";
 vi.mock("./editor/textFile", () => ({ readText: vi.fn(), writeText: vi.fn() }));
 vi.mock("./nativeDialog", () => ({ ask: vi.fn() }));
 const original = useFileEditor.getState();
+const loadedFile = {
+  path: "/resolved/config.txt",
+  content: "before\r\n",
+  hash: "original",
+  size: 8,
+  eol: "crlf",
+  bom: true,
+  encoding: "UTF-8",
+  modifiedAt: null,
+  permissions: null,
+};
 
 it("does not replace edits typed while a reload is in flight", async () => {
   await openFileEditor(null, "C:/config.txt");
@@ -37,17 +48,7 @@ beforeEach(() => {
   useFileEditor.setState(original, true);
   useStore.getState().setLanguage("en");
   vi.resetAllMocks();
-  vi.mocked(api.readText).mockResolvedValue({
-    path: "/resolved/config.txt",
-    content: "before\r\n",
-    hash: "original",
-    size: 8,
-    eol: "crlf",
-    bom: true,
-    encoding: "UTF-8",
-    modifiedAt: null,
-    permissions: null,
-  });
+  vi.mocked(api.readText).mockResolvedValue(loadedFile);
   vi.mocked(api.writeText).mockResolvedValue({
     path: "/resolved/config.txt",
     hash: "saved",
@@ -58,6 +59,30 @@ beforeEach(() => {
     note: "",
   });
 });
+
+it.each([false, true])(
+  "does not save unchanged mixed line endings (reverted edit: %s)",
+  async (reverted) => {
+    vi.mocked(api.readText).mockResolvedValueOnce({
+      ...loadedFile,
+      content: "first\r\nsecond\nthird\r",
+    });
+    expect(await openFileEditor(null, "/resolved/config.txt")).toBe(true);
+    expect(useFileEditor.getState().content).toBe("first\nsecond\nthird\n");
+    if (reverted) {
+      useFileEditor.setState({ content: "changed" });
+      expect(hasUnsavedFile()).toBe(true);
+      useFileEditor.setState({ content: "first\nsecond\nthird\n" });
+    }
+    expect(hasUnsavedFile()).toBe(false);
+    const before = useFileEditor.getState();
+
+    await saveFileEditor();
+
+    expect(api.writeText).not.toHaveBeenCalled();
+    expect(useFileEditor.getState()).toBe(before);
+  },
+);
 
 it("writes to the original remote session with the original hash and preserves edits typed during save", async () => {
   await openFileEditor("server-1", "/link/config.txt");

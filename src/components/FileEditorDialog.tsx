@@ -1,6 +1,7 @@
 import {
   clearRevealLine,
   closeFileEditor,
+  isFileEditorDirty,
   reloadFileEditor,
   saveFileEditor,
   useFileEditor,
@@ -17,7 +18,7 @@ export function FileEditorDialog() {
   const theme = useStore((state) => state.theme);
   const fontSize = useStore((state) => state.bufferFontSize);
   if (!target) return null;
-  const dirty = file && content !== file.content.replace(/\r\n?/g, "\n");
+  const dirty = isFileEditorDirty(file, content);
   const storedPath = file?.path ?? target.path;
   const displayPath = target.sessionId
     ? storedPath
@@ -76,7 +77,7 @@ export function FileEditorDialog() {
         </button>
         <button
           className="btn is-primary"
-          disabled={busy || !file || !dirty}
+          disabled={busy || !dirty}
           onClick={() => void saveFileEditor()}
         >
           {t(target.sessionId ? "fileEditor.saveRemote" : "fileEditor.saveLocal")}
