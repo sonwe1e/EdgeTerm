@@ -258,7 +258,7 @@ function FilerPanelBase() {
     // stop pointing at it.
     setActiveDescendant(null);
   });
-  const { load, goUp, goHome, refresh } = useFilerDirectory({
+  const { load, goUp, goHome, refresh, captureNavigationContext } = useFilerDirectory({
     offline,
     remoteId,
     clearSelection: resetSelection,
@@ -307,6 +307,7 @@ function FilerPanelBase() {
     remoteIdRef,
     pathRef,
     load,
+    captureNavigationContext,
     selection,
     beginTransfer,
     progressFor,
