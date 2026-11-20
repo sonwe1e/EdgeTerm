@@ -135,3 +135,105 @@ describe.each(["Enter", "Escape"])("Filer keeps IME %s inside the input method",
     expect(document.activeElement).toBe(list);
   });
 });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
+async function submitNewFile(name: string) {
+  await click(host.querySelector('[aria-label="New file"]')!);
+  const input = host.querySelector<HTMLInputElement>(".filer-new-entry input")!;
+  type(input, name);
+  await press(input, "Enter");
+}
+
+describe("Filer inline create completion", () => {
+  it.each([false, true])(
+    "does not retake the listing after newer breadcrumb navigation (create fails: %s)",
+    async (fails) => {
+      const create = deferred<void>();
+      const navigate = deferred<Awaited<ReturnType<typeof api.localList>>>();
+      vi.mocked(api.localHome).mockResolvedValueOnce("/ime/sub");
+      vi.mocked(api.localCreateFile).mockReturnValueOnce(create.promise);
+      vi.mocked(api.localList).mockImplementation(async (path) =>
+        path === "/ime" ? navigate.promise : { path, entries: [entry] },
+      );
+
+      await mount();
+      await submitNewFile("new.txt");
+      expect(api.localCreateFile).toHaveBeenCalledExactlyOnceWith("/ime/sub/new.txt");
+      await click(host.querySelector('.filer-crumb[title="/ime"]')!);
+      expect(api.localList).toHaveBeenLastCalledWith("/ime");
+
+      await act(async () => {
+        if (fails) create.reject(new Error("obsolete create failure"));
+        else create.resolve(undefined);
+      });
+      expect(api.localList).toHaveBeenCalledTimes(2);
+      expect(host.textContent).not.toContain("obsolete create failure");
+
+      await act(async () => {
+        navigate.resolve({ path: "/ime", entries: [] });
+      });
+      expect(host.querySelector('[aria-current="location"]')?.getAttribute("title")).toBe("/ime");
+    },
+  );
+
+  it("refreshes the same folder again after a newer same-folder listing", async () => {
+    const create = deferred<void>();
+    vi.mocked(api.localCreateFile).mockReturnValueOnce(create.promise);
+    vi.mocked(api.localList)
+      .mockResolvedValueOnce({ path: "/ime", entries: [entry] })
+      .mockResolvedValueOnce({ path: "/ime", entries: [entry] })
+      .mockResolvedValueOnce({
+        path: "/ime",
+        entries: [entry, { ...entry, name: "new.txt", path: "/ime/new.txt" }],
+      });
+
+    await mount();
+    await submitNewFile("new.txt");
+    await click(host.querySelector('.filer-crumb[title="/ime"]')!);
+    expect(api.localList).toHaveBeenCalledTimes(2);
+    expect(host.textContent).not.toContain("new.txt");
+
+    await act(async () => create.resolve(undefined));
+    expect(host.textContent).toContain("new.txt");
+    expect(api.localList).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([false, true])(
+    "still applies the create result in the same folder (fails: %s)",
+    async (fails) => {
+      const create = deferred<void>();
+      vi.mocked(api.localCreateFile).mockReturnValueOnce(create.promise);
+      vi.mocked(api.localList)
+        .mockResolvedValueOnce({ path: "/ime", entries: [entry] })
+        .mockResolvedValueOnce({
+          path: "/ime",
+          entries: [entry, { ...entry, name: "new.txt", path: "/ime/new.txt" }],
+        });
+
+      await mount();
+      await submitNewFile("new.txt");
+      expect(api.localCreateFile).toHaveBeenCalledExactlyOnceWith("/ime/new.txt");
+      expect(api.localList).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        if (fails) create.reject(new Error("current create failure"));
+        else create.resolve(undefined);
+      });
+      if (fails) {
+        expect(host.textContent).toContain("current create failure");
+        expect(api.localList).toHaveBeenCalledTimes(1);
+      } else {
+        expect(host.textContent).toContain("new.txt");
+        expect(api.localList).toHaveBeenCalledTimes(2);
+      }
+    },
+  );
+});
