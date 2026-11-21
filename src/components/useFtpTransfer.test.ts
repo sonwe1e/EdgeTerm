@@ -299,4 +299,89 @@ describe.each(["upload", "download"] as const)("%s completion directory", (direc
     expect(visits()).toEqual([]);
     expect(api.transferFiles).not.toHaveBeenCalled();
   });
+
+  it("keeps an awaiting confirmation as the sole attempt", async () => {
+    await showParentEntry();
+    const confirmation = deferred<boolean>();
+    vi.mocked(ask).mockReturnValueOnce(confirmation.promise);
+    let first: Promise<void> | undefined;
+    let second: Promise<void> | undefined;
+    await act(async () => {
+      first = startTransfer(initial);
+      second = startTransfer(initial);
+    });
+    const prompts = vi.mocked(ask).mock.calls.length;
+    const queuedBeforeConfirmation = vi.mocked(api.transferFiles).mock.calls.length;
+    await act(async () => {
+      confirmation.resolve(true);
+      outgoing.resolve(undefined);
+      await Promise.all([first, second]);
+    });
+    expect(prompts).toBe(1);
+    expect(queuedBeforeConfirmation).toBe(0);
+    expect(api.transferFiles).toHaveBeenCalledOnce();
+    expect(transfer.transfer?.status).toBe("complete");
+  });
+
+  it("does not enqueue another job while the first child listing is pending", async () => {
+    const slow = deferred<ReturnType<typeof listing>>();
+    read.mockReturnValueOnce(slow.promise);
+    let first: Promise<void> | undefined;
+    let second: Promise<void> | undefined;
+    await act(async () => {
+      first = startTransfer(child);
+      second = startTransfer(next);
+    });
+    const pathsBeforeListing = visits();
+    const queuedBeforeListing = vi.mocked(api.transferFiles).mock.calls.length;
+    await act(async () => {
+      slow.resolve(listing(child));
+      outgoing.resolve(undefined);
+      await Promise.all([first, second]);
+    });
+    expect(pathsBeforeListing).toEqual([initial, child]);
+    expect(queuedBeforeListing).toBe(0);
+    expect(api.transferFiles).toHaveBeenCalledOnce();
+    const [item] = vi.mocked(api.transferFiles).mock.calls[0][1];
+    expect(upload ? item.remote : item.local).toBe(`${child}/${file.name}`);
+  });
+
+  it.each([
+    "declined",
+    "listing failure",
+    "setup throw",
+    "cancelled",
+    "failed",
+    "completed",
+  ] as const)("allows a new transfer after an attempt is %s", async (outcome) => {
+    outgoing.resolve(undefined);
+    if (outcome === "declined") {
+      read.mockResolvedValueOnce(listing(child, [existing(child)]));
+      vi.mocked(ask).mockResolvedValueOnce(false);
+    } else if (outcome === "listing failure") {
+      read.mockRejectedValueOnce(new Error("Folder unavailable"));
+    } else if (outcome === "setup throw") {
+      vi.mocked(api.newTransferId).mockImplementationOnce(() => {
+        throw new Error("Cannot start transfer");
+      });
+    } else if (outcome === "cancelled") {
+      vi.mocked(api.transferFiles).mockRejectedValueOnce({
+        code: "cancelled",
+        message: "Cancelled",
+      });
+    } else if (outcome === "failed") {
+      vi.mocked(api.transferFiles).mockRejectedValueOnce(new Error("Could not copy"));
+    }
+    await act(async () => {
+      const attempt = startTransfer(child);
+      if (outcome === "setup throw") await expect(attempt).rejects.toThrow("Cannot start transfer");
+      else await attempt;
+    });
+    expect(transfer.transferring).toBe(false);
+    expect(transfer.transferId.current).toBeNull();
+    const jobs = vi.mocked(api.transferFiles).mock.calls.length;
+    await act(async () => startTransfer(child));
+    expect(api.transferFiles).toHaveBeenCalledTimes(jobs + 1);
+    expect(transfer.transfer?.status).toBe("complete");
+  });
 });

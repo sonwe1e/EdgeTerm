@@ -41,6 +41,7 @@ export function useFtpTransfer({
 }: Options) {
   const [transferring, setTransferring] = useState(false);
   const [transfer, setTransfer] = useState<TransferState | null>(null);
+  const attemptActive = useRef(false);
   const transferId = useRef<string | null>(null);
   const transferJob = useFileTransfers((s) => s.jobs[transferId.current ?? ""]);
 
@@ -143,12 +144,11 @@ export function useFtpTransfer({
    * a clash with a link or with the other kind stops it before anything is
    * sent, and names already there are confirmed once for the whole batch.
    */
-  const runTransfer = async (
+  const transferToDestination = async (
     direction: "upload" | "download",
     items: readonly FileEntry[],
     destination: string,
   ) => {
-    if (transferring || !destination || items.length === 0) return;
     const upload = direction === "upload";
     const setError = upload ? setRemoteError : setLocalError;
     const refresh = beginDirectoryRefresh(
@@ -188,9 +188,24 @@ export function useFtpTransfer({
             }
           : current,
       );
+    }
+  };
+
+  const runTransfer = async (
+    direction: "upload" | "download",
+    items: readonly FileEntry[],
+    destination: string,
+  ) => {
+    if (attemptActive.current || !destination || items.length === 0) return;
+    // Listing and confirmation can suspend before the UI shows a running
+    // job, so claim this pane's attempt synchronously.
+    attemptActive.current = true;
+    try {
+      await transferToDestination(direction, items, destination);
     } finally {
       transferId.current = null;
       setTransferring(false);
+      attemptActive.current = false;
     }
   };
 
