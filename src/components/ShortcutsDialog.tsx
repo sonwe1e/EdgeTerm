@@ -31,8 +31,7 @@ const FIXED_SHORTCUTS: { keys: string }[] = IS_MAC
 
 /**
  * Rebinds the application's keyboard shortcuts. A row records the next chord
- * pressed while it is armed; only the tab-number keys stay fixed (see
- * `chordProblem`).
+ * pressed while it is armed, except for reserved chords (see `chordProblem`).
  */
 export function ShortcutsDialog({ bindings, onApply, onClose }: Props) {
   const [draft, setDraft] = useState<ShortcutBindings>(() => ({ ...bindings }));
@@ -53,7 +52,7 @@ export function ShortcutsDialog({ bindings, onApply, onClose }: Props) {
     }
     const chord = chordFromEvent(event);
     if (!chord) return;
-    const problem = chordProblem(chord);
+    const problem = chordProblem(chord, command);
     if (problem) {
       setNotice(problem);
       return;

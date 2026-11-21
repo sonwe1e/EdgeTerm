@@ -417,13 +417,18 @@ const SHIFT_ONLY_KEYS = /^(Insert|Delete|Home|End|PageUp|PageDown|F([1-9]|1\d|2[
  * Why `binding` cannot be given to `command`, or null when it can. Chords
  * without a real modifier are refused because they would swallow ordinary
  * typing, and chords the system already answers are refused because the
- * command would never run. F6 is the exception: the app reserves it for
- * focus-region cycling (see App.tsx), so rebinding back to plain F6 must stay
- * legal even though it carries no modifier.
+ * command would never run. App.tsx captures F6 and Shift+F6 for focus
+ * cycling even if its customizable chord changes. Only that command can
+ * bind either reserved chord.
  */
-export function chordProblem(binding: KeyChord): string | null {
+export function chordProblem(binding: KeyChord, command?: ShortcutCommand): string | null {
   if (binding.code === "F6" && !binding.ctrl && !binding.alt && !binding.meta) {
-    return null;
+    return command === "focusRegion"
+      ? null
+      : translateMsg("sc.reserved", {
+          chord: chordLabel(binding),
+          owner: translateMsg("sc.focusRegion.label"),
+        });
   }
   // Checked before the modifier rule so the reason is the menu rather than
   // "hold Ctrl as well", which would only get the user refused again: the rows
@@ -504,7 +509,7 @@ export function parseShortcuts(
       // An entry that cannot be used leaves the command on the binding it
       // already had — and must not claim a chord on its way out, or a broken
       // entry for one command could evict the valid entry for another.
-      if (!parsed || chordProblem(parsed)) refused.add(id);
+      if (!parsed || chordProblem(parsed, id)) refused.add(id);
       else bindings[id] = parsed;
     }
   }
