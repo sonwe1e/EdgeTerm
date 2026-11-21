@@ -67,7 +67,7 @@ function createTestTab(id = SESSION_ID): Tab {
  * A controller with its xterm opened in jsdom, so the find engine gets the
  * real selection service (the current match is the terminal selection).
  */
-function createRegisteredController(id = SESSION_ID) {
+function createRegisteredController(id = SESSION_ID, open = true) {
   const controller = new TerminalController(
     id,
     {
@@ -82,12 +82,16 @@ function createRegisteredController(id = SESSION_ID) {
     13,
     100,
   );
+  if (open) openControllerTerminal(controller);
+  setController(id, controller);
+  return controller;
+}
+
+function openControllerTerminal(controller: TerminalController) {
   const host = document.createElement("div");
   document.body.append(host);
   hosts.push(host);
   controller.term.open(host);
-  setController(id, controller);
-  return controller;
 }
 
 function write(controller: TerminalController, text: string): Promise<void> {
@@ -124,6 +128,49 @@ afterEach(() => {
 });
 
 describe("terminal search options", () => {
+  it.each([true, false])(
+    "shows match results after the active controller registers (typed before: %s)",
+    async (typedBeforeRegistration) => {
+      const host = document.createElement("div");
+      document.body.append(host);
+      const root = createRoot(host);
+
+      try {
+        act(() => root.render(h(SearchOverlay, { onClose() {} })));
+        const input = host.querySelector<HTMLInputElement>("input")!;
+        const count = host.querySelector<HTMLElement>(".search-count")!;
+        if (typedBeforeRegistration) act(() => setInputValue(input, "needle"));
+
+        let controller!: TerminalController;
+        // Lazy creation registers the controller before TerminalPane attaches xterm.
+        act(() => {
+          controller = createRegisteredController(SESSION_ID, false);
+        });
+        await act(async () => {
+          openControllerTerminal(controller);
+          await write(controller, "needle here\r\nneedle again");
+        });
+
+        const findNext = () =>
+          act(() => {
+            input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+          });
+        if (typedBeforeRegistration) {
+          expect(input.value).toBe("needle");
+          findNext();
+        } else {
+          act(() => setInputValue(input, "needle"));
+        }
+        expect(controller.term.getSelection()).toBe("needle");
+        expect(count.textContent).toBe("1/2");
+        findNext();
+        expect(count.textContent).toBe("2/2");
+      } finally {
+        act(() => root.unmount());
+      }
+    },
+  );
+
   it("toggles case-sensitive, whole-word and regex matching through SearchOverlay on a real xterm buffer", async () => {
     const controller = createRegisteredController();
     await write(

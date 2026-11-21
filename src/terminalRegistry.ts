@@ -6,6 +6,16 @@ import type { TerminalController } from "./terminal";
  * node; this registry owns the lifetime.
  */
 const registry = new Map<string, TerminalController>();
+const listeners = new Set<() => void>();
+
+export function subscribeControllers(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function notifyControllersChanged() {
+  for (const listener of listeners) listener();
+}
 
 // Keep the renderer preference outside terminal.ts so App does not eagerly
 // import xterm and the terminal controller just to update this setting.
@@ -17,7 +27,9 @@ export function setWebglEnabled(enabled: boolean) {
 }
 
 export function setController(id: string, controller: TerminalController) {
+  if (registry.get(id) === controller) return;
   registry.set(id, controller);
+  notifyControllersChanged();
 }
 
 export function getController(id: string): TerminalController | undefined {
@@ -26,7 +38,7 @@ export function getController(id: string): TerminalController | undefined {
 
 export function disposeController(id: string) {
   registry.get(id)?.dispose();
-  registry.delete(id);
+  if (registry.delete(id)) notifyControllersChanged();
 }
 
 export function allControllers(): TerminalController[] {
