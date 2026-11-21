@@ -12,6 +12,33 @@ interface Options {
   tab: Tab;
 }
 
+interface DirectoryView {
+  path: string;
+  epoch: number;
+  pending?: { target: string; done: Promise<void>; finish: () => void };
+}
+
+function startDirectoryRead(view: DirectoryView, target: string) {
+  view.pending?.finish();
+  let finish!: () => void;
+  const done = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  return (view.pending = { target, done, finish });
+}
+
+function commitDirectoryPath(view: DirectoryView, path: string) {
+  if (view.path === path) return;
+  view.path = path;
+  view.epoch++;
+}
+
+function retireDirectoryView(view: DirectoryView) {
+  view.epoch++;
+  view.pending?.finish();
+  view.pending = undefined;
+}
+
 export function useFtpDirectory({ sessionId, tab }: Options) {
   const [remoteHome, setRemoteHome] = useState("");
   const [remotePath, setRemotePath] = useState("");
@@ -28,17 +55,19 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
   const [localSelection, setLocalSelection] = useState<FileSelection>(EMPTY_SELECTION);
   const [localLoading, setLocalLoading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
-  const localRequest = useRef(0);
-  const remoteRequest = useRef(0);
+  const localView = useRef<DirectoryView>({ path: "", epoch: 0 });
+  const remoteView = useRef<DirectoryView>({ path: "", epoch: 0 });
 
   const loadRemote = useCallback(
-    async (target: string, quiet = false): Promise<boolean> => {
-      const request = ++remoteRequest.current;
+    async (target: string, quiet = false, deleteError: string | null = null): Promise<boolean> => {
+      const view = remoteView.current;
+      const request = startDirectoryRead(view, target);
       setRemoteLoading(true);
-      setRemoteError(null);
+      setRemoteError(deleteError);
       try {
         const listing = await api.sftpList(sessionId, target);
-        if (request !== remoteRequest.current) return false;
+        if (request !== view.pending) return false;
+        commitDirectoryPath(view, listing.path);
         setRemotePath(listing.path);
         setRemoteDraft(listing.path);
         setRemoteEntries(listing.entries);
@@ -46,23 +75,30 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
         rememberWorkspaceDirectory(sessionId, "filer", listing.path);
         return true;
       } catch (error) {
-        if (request === remoteRequest.current && !quiet) setRemoteError(friendlyFtpError(error));
+        if (request === view.pending && !quiet && deleteError === null)
+          setRemoteError(friendlyFtpError(error));
         return false;
       } finally {
-        if (request === remoteRequest.current) setRemoteLoading(false);
+        if (request === view.pending) {
+          view.pending = undefined;
+          setRemoteLoading(false);
+        }
+        request.finish();
       }
     },
     [sessionId],
   );
 
   const loadLocal = useCallback(
-    async (target: string, quiet = false): Promise<boolean> => {
-      const request = ++localRequest.current;
+    async (target: string, quiet = false, deleteError: string | null = null): Promise<boolean> => {
+      const view = localView.current;
+      const request = startDirectoryRead(view, target);
       setLocalLoading(true);
-      setLocalError(null);
+      setLocalError(deleteError);
       try {
         const listing = await api.localList(target);
-        if (request !== localRequest.current) return false;
+        if (request !== view.pending) return false;
+        commitDirectoryPath(view, listing.path);
         setLocalPath(listing.path);
         setLocalDraft(listing.path);
         setLocalEntries(listing.entries);
@@ -70,10 +106,15 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
         rememberWorkspaceDirectory(sessionId, "local", listing.path);
         return true;
       } catch (error) {
-        if (request === localRequest.current && !quiet) setLocalError(errorText(error));
+        if (request === view.pending && !quiet && deleteError === null)
+          setLocalError(errorText(error));
         return false;
       } finally {
-        if (request === localRequest.current) setLocalLoading(false);
+        if (request === view.pending) {
+          view.pending = undefined;
+          setLocalLoading(false);
+        }
+        request.finish();
       }
     },
     [sessionId],
@@ -112,10 +153,28 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
 
     return () => {
       cancelled = true;
-      remoteRequest.current++;
-      localRequest.current++;
+      retireDirectoryView(remoteView.current);
+      retireDirectoryView(localView.current);
     };
   }, [loadLocal, loadRemote, sessionId, tab.state]);
+
+  const beginDeleteRefresh = (side: "remote" | "local", target: string) => {
+    const view = side === "remote" ? remoteView.current : localView.current;
+    const load = side === "remote" ? loadRemote : loadLocal;
+    const epoch = view.epoch;
+    return async (deleteError: string | null) => {
+      while (view.epoch === epoch && view.path === target) {
+        const pending = view.pending;
+        // A same-directory read may contain pre-delete rows. A navigation
+        // elsewhere gets to finish first; failure leaves this view in place.
+        if (!pending || pending.target === target) {
+          await load(target, false, deleteError);
+          return;
+        }
+        await pending.done;
+      }
+    };
+  };
 
   // The selected entries in listing order, which is the order the transfer
   // batch runs in and the order a rename or context menu sees.
@@ -129,6 +188,7 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
   );
 
   return {
+    beginDeleteRefresh,
     remotePath,
     remoteEntries,
     localPath,
