@@ -293,13 +293,15 @@ function TerminalHost({ tab, visible, focused }: { tab: Tab; visible: boolean; f
     return () => cancelAnimationFrame(frame);
   }, [visible, terminal]);
 
-  // Keys go to the active tab of the active pane; a tab shown in another
-  // pane stays visible without taking them.
+  const autoFocus = useStore((s) => s.tabFocusTarget === "terminal") && focused;
+
+  // Roving keys select the tab but leave focus in the strip. The activation
+  // target also applies when the controller arrives after a lazy mount.
   useEffect(() => {
-    if (!terminal || !focused) return;
+    if (!terminal || !autoFocus) return;
     const frame = requestAnimationFrame(() => terminal.focus());
     return () => cancelAnimationFrame(frame);
-  }, [focused, terminal]);
+  }, [autoFocus, terminal]);
 
   return (
     <>

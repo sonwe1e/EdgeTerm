@@ -100,6 +100,7 @@ export function restoreWorkspace(snapshot: WorkspaceSnapshot): Tab[] {
     layout: remap(snapshot.layout),
     activePaneId,
     activeId: panes.find((pane) => pane.id === activePaneId)?.activeTabId ?? null,
+    tabFocusTarget: "terminal",
     localFilerPath: snapshot.localFilerPath,
   });
   return tabs;
