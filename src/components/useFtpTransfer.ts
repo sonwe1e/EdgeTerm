@@ -9,6 +9,7 @@ import { useFileTransfers } from "../fileTransfers";
 import { IS_MAC, IS_WINDOWS } from "../platform";
 import { type PaneSide } from "../paneDrop";
 import type { FileEntry } from "../types";
+import type { BeginDirectoryRefresh } from "./useFtpDirectory";
 import type { TransferState } from "./ftpPresentation";
 import { friendlyFtpError, joinLocal, joinRemote } from "./ftpPresentation";
 
@@ -20,8 +21,7 @@ interface Options {
   localEntries: FileEntry[];
   setRemoteError: Dispatch<SetStateAction<string | null>>;
   setLocalError: Dispatch<SetStateAction<string | null>>;
-  loadRemote: (target: string) => Promise<unknown>;
-  loadLocal: (target: string) => Promise<unknown>;
+  beginDirectoryRefresh: BeginDirectoryRefresh;
   /** The pane's selection, in listing order; any number of entries. */
   selectedLocal: readonly FileEntry[];
   selectedRemote: readonly FileEntry[];
@@ -35,8 +35,7 @@ export function useFtpTransfer({
   localEntries,
   setRemoteError,
   setLocalError,
-  loadRemote,
-  loadLocal,
+  beginDirectoryRefresh,
   selectedLocal,
   selectedRemote,
 }: Options) {
@@ -152,6 +151,11 @@ export function useFtpTransfer({
     if (transferring || !destination || items.length === 0) return;
     const upload = direction === "upload";
     const setError = upload ? setRemoteError : setLocalError;
+    const refresh = beginDirectoryRefresh(
+      upload ? "remote" : "local",
+      upload ? remotePath : localPath,
+      destination,
+    );
     if (!(await mayLand(direction, items))) return;
 
     setError(null);
@@ -173,7 +177,7 @@ export function useFtpTransfer({
     try {
       await api.transferFiles(sessionId, transferItems, updateProgress, transferId.current);
       setTransfer((current) => (current ? { ...current, status: "complete" } : current));
-      await (upload ? loadRemote(remotePath) : loadLocal(localPath));
+      await refresh(null);
     } catch (error) {
       setTransfer((current) =>
         current

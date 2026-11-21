@@ -12,9 +12,16 @@ interface Options {
   tab: Tab;
 }
 
+export type BeginDirectoryRefresh = (
+  side: "remote" | "local",
+  originalPath: string,
+  destination?: string,
+) => (operationError: string | null) => Promise<void>;
+
 interface DirectoryView {
   path: string;
   epoch: number;
+  lifetime: number;
   readGeneration: number;
   pending?: { target: string; done: Promise<void>; finish: () => void };
 }
@@ -37,6 +44,7 @@ function commitDirectoryPath(view: DirectoryView, path: string) {
 
 function retireDirectoryView(view: DirectoryView) {
   view.epoch++;
+  view.lifetime++;
   view.pending?.finish();
   view.pending = undefined;
 }
@@ -57,8 +65,8 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
   const [localSelection, setLocalSelection] = useState<FileSelection>(EMPTY_SELECTION);
   const [localLoading, setLocalLoading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
-  const localView = useRef<DirectoryView>({ path: "", epoch: 0, readGeneration: 0 });
-  const remoteView = useRef<DirectoryView>({ path: "", epoch: 0, readGeneration: 0 });
+  const localView = useRef<DirectoryView>({ path: "", epoch: 0, lifetime: 0, readGeneration: 0 });
+  const remoteView = useRef<DirectoryView>({ path: "", epoch: 0, lifetime: 0, readGeneration: 0 });
 
   const loadRemote = useCallback(
     async (target: string, quiet = false, deleteError: string | null = null): Promise<boolean> => {
@@ -175,20 +183,25 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
     };
   }, [loadLocal, loadRemote, sessionId, tab.state]);
 
-  const beginDeleteRefresh = (side: "remote" | "local", target: string) => {
+  const beginDirectoryRefresh: BeginDirectoryRefresh = (side, originalPath, destination) => {
     const view = side === "remote" ? remoteView.current : localView.current;
     const load = side === "remote" ? loadRemote : loadLocal;
-    const epoch = view.epoch;
-    return async (deleteError: string | null) => {
-      while (view.epoch === epoch && view.path === target) {
-        const pending = view.pending;
-        // A same-directory read may contain pre-delete rows. A navigation
-        // elsewhere gets to finish first; failure leaves this view in place.
-        if (!pending || pending.target === target) {
-          await load(target, false, deleteError);
-          return;
+    const { epoch, lifetime } = view;
+    return async (operationError) => {
+      while (view.lifetime === lifetime) {
+        const { path, pending } = view;
+        const isOriginal = view.epoch === epoch && path === originalPath;
+        const canRefresh = isOriginal || path === destination;
+        if (!canRefresh && destination === undefined) return;
+
+        // Reconcile after navigation, not instead of it. A same-directory
+        // read may contain rows captured before the operation completed.
+        if (pending && pending.target !== path) {
+          await pending.done;
+          continue;
         }
-        await pending.done;
+        if (canRefresh) await load(path, false, operationError);
+        return;
       }
     };
   };
@@ -205,7 +218,7 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
   );
 
   return {
-    beginDeleteRefresh,
+    beginDirectoryRefresh,
     remotePath,
     remoteEntries,
     localPath,

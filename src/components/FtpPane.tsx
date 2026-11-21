@@ -63,7 +63,7 @@ export function FtpPane({ tab, active }: Props) {
   // The pane serves both FTP and SFTP file sessions; only the labels differ.
   const protocolLabel = tab.info.kind === "sftp" ? "SFTP" : "FTP";
   const {
-    beginDeleteRefresh,
+    beginDirectoryRefresh,
     remotePath,
     remoteEntries,
     localPath,
@@ -109,8 +109,7 @@ export function FtpPane({ tab, active }: Props) {
     localEntries,
     setRemoteError,
     setLocalError,
-    loadRemote,
-    loadLocal,
+    beginDirectoryRefresh,
     selectedLocal,
     selectedRemote,
   });
@@ -139,7 +138,7 @@ export function FtpPane({ tab, active }: Props) {
     renameLocal,
     removeLocalEntries,
   } = useFtpActions({
-    beginDeleteRefresh,
+    beginDirectoryRefresh,
     remotePath,
     transferring,
     setRemoteError,
