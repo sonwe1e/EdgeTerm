@@ -405,3 +405,73 @@ it.each([
     expect(ending.value).toBe(expectedDraft);
   },
 );
+
+it.each(["cancel", "change ending", "reject"])(
+  "does not overwrite a newer compose decision after a saved ending update (%s)",
+  async (action) => {
+    const previous: SavedCommand = { ...saved, ending: "lf" };
+    vi.mocked(api.listSenderCommands).mockResolvedValueOnce([previous]);
+    let resolve!: (next: SavedCommand) => void;
+    let reject!: (error: Error) => void;
+    vi.mocked(api.saveSenderCommand).mockReturnValueOnce(
+      new Promise<SavedCommand>((done, fail) => {
+        resolve = done;
+        reject = fail;
+      }),
+    );
+    await render();
+    const open = () =>
+      act(async () =>
+        host
+          .querySelector(".sender-command-tag")!
+          .dispatchEvent(new MouseEvent("contextmenu", { bubbles: true })),
+      );
+    const item = (label: string) =>
+      [...document.querySelectorAll('[role="menuitem"], [role="menuitemradio"]')].find(
+        (entry) => entry.textContent?.trim() === label,
+      )!;
+    const ending = host.querySelector<HTMLSelectElement>(".sender-options select")!;
+    const chooseEnding = (value: SavedCommand["ending"]) =>
+      act(() => {
+        ending.value = value;
+        ending.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+
+    type("original draft");
+    chooseEnding("crlf");
+    await open();
+    await click(item("Edit"));
+    expect(ending.value).toBe("lf");
+    await open();
+    await click(item("Line ending"));
+    await click(item("None"));
+    expect(api.saveSenderCommand).toHaveBeenCalledExactlyOnceWith({ ...previous, ending: "none" });
+    expect(ending.value).toBe("lf");
+
+    if (action === "cancel") {
+      await act(async () =>
+        command().dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape" })),
+      );
+      expect(command().value).toBe("original draft");
+    } else {
+      chooseEnding("crlf");
+      expect(command().value).toBe(previous.text);
+    }
+    expect(ending.value).toBe("crlf");
+
+    await act(async () => {
+      if (action === "reject") reject(new Error("write refused"));
+      else resolve({ ...previous, ending: "none" });
+    });
+    expect(ending.value).toBe("crlf");
+    expect(command().value).toBe(action === "cancel" ? "original draft" : previous.text);
+    if (action === "reject") {
+      expect(useStore.getState().status).toContain("write refused");
+    }
+    await open();
+    await click(item("Line ending"));
+    expect(item(action === "reject" ? "LF (\\n)" : "None").getAttribute("aria-checked")).toBe(
+      "true",
+    );
+  },
+);
