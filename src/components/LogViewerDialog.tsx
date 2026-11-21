@@ -38,7 +38,9 @@ export function LogViewerDialog({
   const tailScrollRequested = useRef(false);
   const requestId = useRef(0);
 
-  const updatePage = useCallback((next: api.LogWindow) => {
+  const updatePage = useCallback((next: api.LogWindow, mode: "replace" | "append" = "replace") => {
+    // A true append keeps the existing literal matches in their original order.
+    if (mode === "replace" && pageRef.current?.content !== next.content) setMatchIndex(0);
     pageRef.current = next;
     setPage(next);
   }, []);
@@ -148,11 +150,14 @@ export function LogViewerDialog({
             if (disposed || requestId.current !== current) return;
             updatePage(latest);
           } else {
-            updatePage({
-              ...next,
-              start: previous.start,
-              content: previous.content + next.content,
-            });
+            updatePage(
+              {
+                ...next,
+                start: previous.start,
+                content: previous.content + next.content,
+              },
+              "append",
+            );
           }
         } else if (decision === "replaced") {
           // Same-size replacement/rotation can happen without any append.
@@ -194,7 +199,6 @@ export function LogViewerDialog({
     const content = contentRef.current;
     if (content) content.scrollTop = Math.max(0, content.scrollHeight - content.clientHeight);
   }, [page, busy, following, matches.length]);
-  useEffect(() => setMatchIndex(0), [page?.content, query]);
   useEffect(() => {
     if (matches.length) highlightRef.current?.scrollIntoView({ block: "nearest" });
   }, [matchIndex, matches]);
@@ -232,7 +236,10 @@ export function LogViewerDialog({
             maxLength={256}
             placeholder={t("logViewer.searchWindow")}
             aria-label={t("logViewer.searchWindow")}
-            onChange={(event) => setQuery(event.currentTarget.value)}
+            onChange={(event) => {
+              setQuery(event.currentTarget.value);
+              setMatchIndex(0);
+            }}
           />
           <span className="log-viewer-match-count" role="status">
             {query
