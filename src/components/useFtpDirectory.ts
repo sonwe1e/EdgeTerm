@@ -23,10 +23,10 @@ interface DirectoryView {
   epoch: number;
   lifetime: number;
   readGeneration: number;
-  pending?: { target: string; done: Promise<void>; finish: () => void };
+  pending?: { target: string | null; done: Promise<void>; finish: () => void };
 }
 
-function startDirectoryRead(view: DirectoryView, target: string) {
+function startDirectoryRead(view: DirectoryView, target: string | null) {
   view.readGeneration++;
   view.pending?.finish();
   let finish!: () => void;
@@ -100,13 +100,20 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
   );
 
   const loadLocal = useCallback(
-    async (target: string, quiet = false, deleteError: string | null = null): Promise<boolean> => {
+    async (
+      target: string | (() => Promise<string>),
+      quiet = false,
+      deleteError: string | null = null,
+    ): Promise<boolean> => {
       const view = localView.current;
-      const request = startDirectoryRead(view, target);
+      const request = startDirectoryRead(view, typeof target === "string" ? target : null);
       setLocalLoading(true);
       setLocalError(deleteError);
       try {
-        const listing = await api.localList(target);
+        const path = typeof target === "string" ? target : await target();
+        if (request !== view.pending) return false;
+        request.target = path;
+        const listing = await api.localList(path);
         if (request !== view.pending) return false;
         commitDirectoryPath(view, listing.path);
         setLocalPath(listing.path);
@@ -227,6 +234,7 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
     setLocalError,
     loadRemote,
     loadLocal,
+    loadLocalParent: () => loadLocal(() => api.localParent(localPath)),
     selectedLocal,
     selectedRemote,
     remoteDraft,

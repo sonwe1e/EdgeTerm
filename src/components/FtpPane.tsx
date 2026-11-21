@@ -72,6 +72,7 @@ export function FtpPane({ tab, active }: Props) {
     setLocalError,
     loadRemote,
     loadLocal,
+    loadLocalParent,
     selectedLocal,
     selectedRemote,
     remoteDraft,
@@ -397,9 +398,7 @@ export function FtpPane({ tab, active }: Props) {
               onDraftChange={setLocalDraft}
               onOpenPath={(path) => void loadLocal(path)}
               onHome={() => void loadLocal(localHome)}
-              onParent={() => {
-                void api.localParent(localPath).then(loadLocal);
-              }}
+              onParent={() => void loadLocalParent()}
               onRefresh={() => void loadLocal(localPath || localHome)}
               onSelectionChange={setLocalSelection}
               onRowMenu={rowMenu}
