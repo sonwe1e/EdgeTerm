@@ -39,3 +39,27 @@ it("lists the keys the dialog cannot rebind", () => {
   expect(text).toContain("Alt");
   expect(text).toContain("File list");
 });
+
+it.each([false, true])("keeps F6 out of another command in the recorder (shift: %s)", (shift) => {
+  const onApply = vi.fn();
+  const defaults = defaultShortcuts();
+  act(() => root.render(h(ShortcutsDialog, { bindings: defaults, onApply, onClose() {} })));
+  const record = host.querySelector<HTMLButtonElement>('button[aria-label="Find shortcut"]')!;
+  act(() => record.click());
+  act(() => {
+    record.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "F6", code: "F6", bubbles: true, shiftKey: shift }),
+    );
+  });
+  expect(host.querySelector(".shortcuts-notice")?.textContent).toContain(
+    "Move Focus Between Regions",
+  );
+  expect(record.classList.contains("is-recording")).toBe(true);
+
+  act(() =>
+    host
+      .querySelector("form")!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
+  );
+  expect(onApply).toHaveBeenCalledWith(defaults);
+});

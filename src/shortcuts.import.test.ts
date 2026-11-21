@@ -58,3 +58,16 @@ it("never lets an unusable entry take the chord a usable one asks for", () => {
   expect(sameChord(imported.findNext, claimed)).toBe(true);
   expect(imported.find).toBeNull();
 });
+
+it.each([false, true])("reserves F6 for focus cycling in stored bindings (shift: %s)", (shift) => {
+  const focusChord = { ...DEFAULT_SHORTCUTS.focusRegion!, shift };
+  const imported = parseShortcuts({ find: focusChord }, DEFAULT_SHORTCUTS)!;
+  expect(imported.find).toEqual(DEFAULT_SHORTCUTS.find);
+  expect(imported.focusRegion).toEqual(DEFAULT_SHORTCUTS.focusRegion);
+
+  const modified = { ...focusChord, ctrl: true };
+  expect(parseShortcuts({ find: modified }, DEFAULT_SHORTCUTS)?.find).toEqual(modified);
+  expect(parseShortcuts({ focusRegion: focusChord }, DEFAULT_SHORTCUTS)?.focusRegion).toEqual(
+    focusChord,
+  );
+});

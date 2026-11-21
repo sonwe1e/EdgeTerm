@@ -169,9 +169,14 @@ describe("chords", () => {
     expect(chordLabel(chord("Insert", { shift: true }))).toBe("⇧Ins");
   });
 
-  it("keeps plain F6 rebindable: the app reserves it for focus cycling", () => {
-    expect(chordProblem(chord("F6", {}))).toBeNull();
-    expect(chordProblem(chord("F6", { shift: true }))).toBeNull();
+  it("keeps F6 and Shift+F6 rebindable to focus cycling only", () => {
+    expect(chordProblem(chord("F6", {}), "focusRegion")).toBeNull();
+    expect(chordProblem(chord("F6", { shift: true }), "focusRegion")).toBeNull();
+    expect(chordProblem(chord("F6", {}), "find")).toMatch(/Move Focus Between Regions/);
+    expect(chordProblem(chord("F6", { shift: true }), "find")).toMatch(
+      /Move Focus Between Regions/,
+    );
+    expect(chordProblem(chord("F6", { ctrl: true }), "find")).toBeNull();
   });
 
   it("binds F6 to the focusRegion command by default", () => {
