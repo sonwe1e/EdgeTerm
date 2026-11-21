@@ -15,10 +15,12 @@ interface Options {
 interface DirectoryView {
   path: string;
   epoch: number;
+  readGeneration: number;
   pending?: { target: string; done: Promise<void>; finish: () => void };
 }
 
 function startDirectoryRead(view: DirectoryView, target: string) {
+  view.readGeneration++;
   view.pending?.finish();
   let finish!: () => void;
   const done = new Promise<void>((resolve) => {
@@ -55,8 +57,8 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
   const [localSelection, setLocalSelection] = useState<FileSelection>(EMPTY_SELECTION);
   const [localLoading, setLocalLoading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
-  const localView = useRef<DirectoryView>({ path: "", epoch: 0 });
-  const remoteView = useRef<DirectoryView>({ path: "", epoch: 0 });
+  const localView = useRef<DirectoryView>({ path: "", epoch: 0, readGeneration: 0 });
+  const remoteView = useRef<DirectoryView>({ path: "", epoch: 0, readGeneration: 0 });
 
   const loadRemote = useCallback(
     async (target: string, quiet = false, deleteError: string | null = null): Promise<boolean> => {
@@ -123,6 +125,25 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
   useEffect(() => {
     if (tab.state !== "connected") return;
     let cancelled = false;
+    const initialRemote = remoteView.current.readGeneration;
+    const initialLocal = localView.current.readGeneration;
+
+    async function restore(
+      view: DirectoryView,
+      initial: number,
+      load: (path: string, quiet?: boolean) => Promise<boolean>,
+      saved: string | undefined,
+      home: string,
+    ) {
+      if (cancelled || view.readGeneration !== initial) return;
+      if (saved !== undefined) {
+        const result = load(saved, true);
+        const request = view.readGeneration;
+        // A superseded read also returns false, but must not trigger Home.
+        if ((await result) || cancelled || view.readGeneration !== request) return;
+      }
+      await load(home);
+    }
 
     void (async () => {
       try {
@@ -137,17 +158,13 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
           .getState()
           .tabs.find((item) => item.info.id === sessionId)?.directories;
         await Promise.all([
-          (async () => {
-            if (saved?.filer !== undefined && (await loadRemote(saved.filer, true))) return;
-            if (!cancelled) await loadRemote(ftpHome);
-          })(),
-          (async () => {
-            if (saved?.local !== undefined && (await loadLocal(saved.local, true))) return;
-            if (!cancelled) await loadLocal(machineHome);
-          })(),
+          restore(remoteView.current, initialRemote, loadRemote, saved?.filer, ftpHome),
+          restore(localView.current, initialLocal, loadLocal, saved?.local, machineHome),
         ]);
       } catch (error) {
-        if (!cancelled) setRemoteError(friendlyFtpError(error));
+        if (!cancelled && remoteView.current.readGeneration === initialRemote) {
+          setRemoteError(friendlyFtpError(error));
+        }
       }
     })();
 
