@@ -344,3 +344,111 @@ describe("FTP/SFTP dual-pane multi-selection and batch transfers", () => {
     expect(selectedNames(1)).toEqual(["photos", "app.log", "notes.txt"]);
   });
 });
+
+describe("local Parent navigation", () => {
+  const localBrowser = () => host.querySelectorAll(".ftp-file-browser")[1];
+  const localPath = () =>
+    localBrowser().querySelector<HTMLInputElement>(".ftp-browser-path input")!;
+  const clickParent = () =>
+    act(() => {
+      localBrowser()
+        .querySelector<HTMLButtonElement>('button[aria-label="Parent folder"]')!
+        .click();
+    });
+  const enterPath = (path: string) => {
+    const input = localPath();
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    act(() => {
+      setValue.call(input, path);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    act(() => {
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+  };
+  const remembered = () => useStore.getState().tabs[0].directories?.local;
+  const visits = () => vi.mocked(api.localList).mock.calls.map(([path]) => path);
+  const setup = async () => {
+    useStore.setState({ tabs: [tab()] });
+    await mount();
+  };
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (error: Error) => void;
+    const promise = new Promise<T>((done, fail) => {
+      resolve = done;
+      reject = fail;
+    });
+    return { promise, resolve, reject };
+  }
+
+  it("opens and remembers the native Parent normally", async () => {
+    vi.mocked(api.localParent).mockResolvedValueOnce("/");
+    await setup();
+    clickParent();
+    await flush();
+    expect(api.localParent).toHaveBeenCalledWith("/local");
+    expect(visits()).toEqual(["/local", "/"]);
+    expect([localPath().value, remembered()]).toEqual(["/", "/"]);
+  });
+
+  it.each([true, false])(
+    "keeps a newer typed path (Parent settles first=%s)",
+    async (parentFirst) => {
+      const parent = deferred<string>();
+      const typed = deferred<{ path: string; entries: FileEntry[] }>();
+      vi.mocked(api.localParent).mockReturnValueOnce(parent.promise);
+      await setup();
+      vi.mocked(api.localList).mockReturnValueOnce(typed.promise);
+      clickParent();
+      enterPath("/typed");
+      expect(visits()).toEqual(["/local", "/typed"]);
+      const finishParent = () => act(async () => parent.resolve("/"));
+      if (parentFirst) {
+        await finishParent();
+        expect(visits()).toEqual(["/local", "/typed"]);
+      }
+      await act(async () => typed.resolve({ path: "/typed", entries: [] }));
+      if (!parentFirst) await finishParent();
+      expect(visits()).toEqual(["/local", "/typed"]);
+      expect([localPath().value, remembered()]).toEqual(["/typed", "/typed"]);
+    },
+  );
+
+  it("does not reconcile a completed download over the unresolved Parent navigation", async () => {
+    const parent = deferred<string>();
+    const download = deferred<void>();
+    vi.mocked(api.localParent).mockReturnValueOnce(parent.promise);
+    vi.mocked(api.transferFiles).mockReturnValueOnce(download.promise);
+    await setup();
+    clickRow(0, "conf");
+    act(() => railButton("Download selected SFTP file or folder").click());
+    await flush();
+    expect(api.transferFiles).toHaveBeenCalledOnce();
+    clickParent();
+    await act(async () => download.resolve(undefined));
+    expect(visits()).toEqual(["/local"]);
+    await act(async () => parent.resolve("/"));
+    expect(visits()).toEqual(["/local", "/"]);
+    expect([localPath().value, remembered()]).toEqual(["/", "/"]);
+  });
+
+  it("shows a current parent lookup error but never carries a stale one into a newer view", async () => {
+    const stale = deferred<string>();
+    vi.mocked(api.localParent)
+      .mockRejectedValueOnce(new Error("Cannot resolve the parent"))
+      .mockReturnValueOnce(stale.promise);
+    await setup();
+    clickParent();
+    await flush();
+    const error = () => localBrowser().querySelector(".ftp-browser-message.is-error")?.textContent;
+    expect(error()).toBe("Cannot resolve the parent");
+    expect(visits()).toEqual(["/local"]);
+    clickParent();
+    enterPath("/typed");
+    await flush();
+    await act(async () => stale.reject(new Error("Old parent error")));
+    expect(error()).toBeUndefined();
+    expect([localPath().value, remembered()]).toEqual(["/typed", "/typed"]);
+  });
+});
