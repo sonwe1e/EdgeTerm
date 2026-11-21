@@ -206,7 +206,8 @@ export function useSenderLibrary({
       setEditing((current) =>
         current?.command.id === saved.id ? { ...current, command: saved } : current,
       );
-      if (editing?.command.id === saved.id) setEnding(saved.ending);
+      // Color and scope changes update the saved row, not the compose draft.
+      if (patch.ending !== undefined && editing?.command.id === saved.id) setEnding(saved.ending);
     } catch (error) {
       setStatus(t("sender.updateFailed", { error: errorText(error) }));
     } finally {

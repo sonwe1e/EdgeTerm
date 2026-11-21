@@ -356,3 +356,52 @@ it("keeps the update target when the library reloads mid-edit", async () => {
   expect(host.textContent).toContain("Update");
   expect(host.textContent).not.toContain("Save");
 });
+
+it.each([
+  { menu: "Color", option: "Red", patch: { color: "red" }, expectedDraft: "crlf" },
+  {
+    menu: "Scope",
+    option: "SSH Sessions",
+    patch: { scope: { type: "kind", kind: "ssh" } },
+    expectedDraft: "crlf",
+  },
+  { menu: "Line ending", option: "None", patch: { ending: "none" }, expectedDraft: "none" },
+])(
+  "keeps compose ending ownership when changing $menu on the saved row",
+  async ({ menu, option, patch, expectedDraft }) => {
+    const previous: SavedCommand = { ...saved, ending: "lf" };
+    const tab = senderTab("sender-session", "connected");
+    useStore.setState({ tabs: [tab], activeId: tab.info.id });
+    vi.mocked(api.listSenderCommands).mockResolvedValue([previous]);
+    vi.mocked(api.saveSenderCommand).mockImplementation(async (command) => command);
+    await render();
+    const open = () =>
+      act(async () =>
+        host
+          .querySelector(".sender-command-tag")!
+          .dispatchEvent(new MouseEvent("contextmenu", { bubbles: true })),
+      );
+    const item = (label: string) =>
+      [...document.querySelectorAll('[role="menuitem"], [role="menuitemradio"]')].find(
+        (entry) => entry.textContent?.trim() === label,
+      )!;
+
+    await open();
+    await click(item("Edit"));
+    const ending = host.querySelector<HTMLSelectElement>(".sender-options select")!;
+    expect(ending.value).toBe("lf");
+    await act(async () => {
+      ending.value = "crlf";
+      ending.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(ending.value).toBe("crlf");
+    type("unsaved text");
+
+    await open();
+    await click(item(menu));
+    await click(item(option));
+    expect(api.saveSenderCommand).toHaveBeenCalledExactlyOnceWith({ ...previous, ...patch });
+    expect(command().value).toBe("unsaved text");
+    expect(ending.value).toBe(expectedDraft);
+  },
+);
