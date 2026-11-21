@@ -170,8 +170,9 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
       const count = tabs.length;
       if (count === 0) return;
       const next = (index + count) % count;
-      setActive(tabs[next].info.id);
-      stripRef.current?.querySelectorAll<HTMLElement>(".tab")[next]?.focus();
+      const label = stripRef.current?.querySelectorAll<HTMLElement>(".tab")[next];
+      setActive(tabs[next].info.id, label ? "strip" : "terminal");
+      label?.focus();
     },
     [setActive, tabs],
   );
