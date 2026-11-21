@@ -5,6 +5,7 @@ import {
   useImperativeHandle,
   useRef,
   useState,
+  useSyncExternalStore,
   type KeyboardEvent,
 } from "react";
 import { flushSync } from "react-dom";
@@ -21,7 +22,7 @@ import {
   type FindOptions,
   type SearchResults,
 } from "../terminalSearch";
-import { getController } from "../terminalRegistry";
+import { getController, subscribeControllers } from "../terminalRegistry";
 import { searchColdHistory } from "../terminalColdSearch";
 import { isFileSession } from "../types";
 import { useT } from "../useT";
@@ -136,6 +137,9 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(function Sea
 ) {
   const tab = useActiveTab();
   const activeId = useStore((s) => s.activeId);
+  const activeController = useSyncExternalStore(subscribeControllers, () =>
+    activeId ? getController(activeId) : undefined,
+  );
   const t = useT();
   const [query, setQuery] = useState(() => selectedText(activeId));
   const [options, setOptions] = useState(lastOptions);
@@ -249,13 +253,13 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(function Sea
     if (searchedRef.current && searchedRef.current !== activeId) clearSearch();
   }, [activeId, clearSearch]);
 
-  // Subscribed before the initial search below so its count is not missed:
-  // plain-text results and the regex busy state are reported synchronously.
+  // Subscribe before the initial search, and again when lazy creation
+  // registers a controller without changing the active tab.
   useEffect(() => {
-    if (!activeId) return;
-    const listener = getController(activeId)?.onSearchResults(setResults);
+    setResults(null);
+    const listener = activeController?.onSearchResults(setResults);
     return () => listener?.dispose();
-  }, [activeId]);
+  }, [activeController]);
 
   // Cold-history matches are counted apart from the buffer (roadmap A2-7):
   // the seamless store answers asynchronously, so the number arrives a beat
