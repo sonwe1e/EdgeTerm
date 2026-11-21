@@ -112,6 +112,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
     editing,
     closeSavePicker,
     cancelEdit,
+    setComposeEnding,
     openSavePicker,
     saveButtonRef,
     libraryBusy,
@@ -249,7 +250,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
                   <select
                     className="select"
                     value={ending}
-                    onChange={(event) => setEnding(event.target.value as LineEnding)}
+                    onChange={(event) => setComposeEnding(event.target.value as LineEnding)}
                   >
                     <option value="none">{t("sender.endingNone")}</option>
                     <option value="lf">LF (\n)</option>
