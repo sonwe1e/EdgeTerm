@@ -42,6 +42,7 @@ describe.each(["remote", "local"] as const)("%s FTP pane startup", (side) => {
   const panePath = () => (remote ? directory.remotePath : directory.localPath);
   const paneHome = () => (remote ? directory.remoteHome : directory.localHome);
   const paneError = () => (remote ? directory.remoteError : directory.localError);
+  const otherError = () => (remote ? directory.localError : directory.remoteError);
   const otherPath = () => (remote ? directory.localPath : directory.remotePath);
   const storedPath = () => useStore.getState().tabs[0].directories?.[remote ? "filer" : "local"];
   const navigate = () => (remote ? directory.loadRemote(next) : directory.loadLocal(next));
@@ -145,20 +146,26 @@ describe.each(["remote", "local"] as const)("%s FTP pane startup", (side) => {
     },
   );
 
-  it("reports a Home lookup error when no newer remote navigation took ownership", async () => {
+  it("reports a Home lookup failure on the pane that failed", async () => {
     readHome.mockRejectedValueOnce(new Error("could not discover Home"));
     await mount();
-    expect(directory.remoteError).toBe("could not discover Home");
+    expect([paneError(), otherError()]).toEqual(["could not discover Home", null]);
   });
 
-  it("does not report a stale Home lookup error after manual remote navigation", async () => {
+  it("still restores the other pane when this pane's Home lookup fails", async () => {
+    readHome.mockRejectedValueOnce(new Error("could not discover Home"));
+    await mount();
+    expect([panePath(), otherPath()]).toEqual(["", remote ? paths.local : paths.filer]);
+  });
+
+  it("does not report a stale Home lookup error after manual navigation", async () => {
     const lookup = deferred<string>();
     readHome.mockReturnValueOnce(lookup.promise);
     await mount();
     await act(async () => {
-      await directory.loadRemote("/manual");
+      await (remote ? directory.loadRemote("/manual") : directory.loadLocal("/manual"));
     });
     await act(async () => lookup.reject(new Error("could not discover Home")));
-    expect([directory.remotePath, directory.remoteError]).toEqual(["/manual", null]);
+    expect([panePath(), paneError(), otherError()]).toEqual(["/manual", null, null]);
   });
 });
