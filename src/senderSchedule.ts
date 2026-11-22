@@ -3,7 +3,7 @@ import { errorText } from "./errorInfo";
 import { t } from "./i18n";
 
 import { SENDER_REPEAT_KEY } from "./persistKeys";
-import { newStopSignal, sendUnits, type StopSignal } from "./senderSend";
+import { newStopSignal, sendScheduledUnits, type StopSignal } from "./senderSend";
 import { buildUnits, type SendUnit } from "./senderUnits";
 import { useStore } from "./store";
 import { isFileSession, type LineEnding } from "./types";
@@ -171,23 +171,25 @@ export function startSchedule(spec: ScheduleSpec): string | null {
     // repeats. With nothing connected, or every target busy with a transfer,
     // the timer keeps waiting and the count keeps saying what happened.
     let wrote = false;
+    let failure: { reason: unknown } | undefined;
     if (ids.length > 0) {
       try {
-        const outcome = await sendUnits(ids, entry.units, spec.ending, entry.stop);
-        wrote = outcome.sent.length > 0;
-      } catch (error) {
-        setStatus(t("sender.error", { error: errorText(error) }));
+        ({ wrote, failure } = await sendScheduledUnits(ids, entry.units, spec.ending, entry.stop));
+      } catch (reason) {
+        failure = { reason };
       }
     }
     if (active !== entry) return;
 
+    const errorStatus = failure ? t("sender.error", { error: errorText(failure.reason) }) : null;
     const sent = wrote ? entry.state.sent + 1 : entry.state.sent;
     if (spec.times > 0 && sent >= spec.times) {
       active = null;
       notify();
-      setStatus(t("sender.repeatDone", { count: sent }));
+      setStatus(errorStatus ?? t("sender.repeatDone", { count: sent }));
       return;
     }
+    if (errorStatus) setStatus(errorStatus);
     const nextAt = Date.now() + spec.every * 1000;
     entry.state = { spec, sent, nextAt };
     notify();
