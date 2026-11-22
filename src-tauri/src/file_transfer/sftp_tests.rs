@@ -3563,19 +3563,23 @@ async fn a_flat_batch_plans_its_sizes_over_a_window() {
     let job = super::super::test_job_items(f.root.clone(), items);
     let started = std::time::Instant::now();
     let planned = plan(&job, &f.remote).await.unwrap();
-    // Sixteen sizes at 20 ms each: one round trip apiece is 320 ms, the
-    // window of eight is two of them plus the parent resolution.
+    // What the window promises is measured below by the server's own count of
+    // concurrent size lookups, not by the clock. Sixteen lookups at 20 ms are
+    // two waves when they overlap and sixteen when they do not, but a
+    // contended CI box has been measured at 171 ms for the overlapping case,
+    // so a tight wall-clock bound tests the runner rather than the code. This
+    // bound only fails a plan that never finishes.
     assert!(
-        started.elapsed() < Duration::from_millis(160),
+        started.elapsed() < Duration::from_secs(30),
         "planning took {:?}",
         started.elapsed()
     );
     assert_eq!(planned.len(), 16);
     assert_eq!(job.snapshot.lock().total, 16 * 4096u64);
+    let peak = f.state.lock().peak;
     assert!(
-        f.state.lock().peak >= 8,
-        "the size lookups did not overlap: {}",
-        f.state.lock().peak
+        peak >= PLAN_WINDOW,
+        "the size lookups did not fill the window of {PLAN_WINDOW}: {peak}"
     );
 }
 
