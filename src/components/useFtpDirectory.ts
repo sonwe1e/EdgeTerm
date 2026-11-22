@@ -257,7 +257,16 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
 
         // Reconcile after navigation, not instead of it. A same-directory
         // read may contain rows captured before the operation completed.
-        if (pending && pending.target !== path) {
+        //
+        // Wait only for a read that can still change this outcome: one heading
+        // to the destination may make the view refreshable, and a view that
+        // can already refresh must let newer navigation finish first. A read
+        // heading to a third directory can never reconcile this view; waiting
+        // for it holds the finished transfer open (toolbar disabled, pause and
+        // cancel controls showing) until it settles — forever, if it never
+        // does. The operation's own error has its own surface.
+        const waitForPending = canRefresh || pending?.target === destination;
+        if (pending && pending.target !== path && waitForPending) {
           await pending.done;
           continue;
         }
