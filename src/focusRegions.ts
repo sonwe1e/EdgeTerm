@@ -29,8 +29,8 @@ function focusTarget(region: HTMLElement): HTMLElement {
 
 /**
  * Move focus to the next (step 1) or previous (step -1) region, wrapping at
- * the ends. Returns false when the interface has no regions, so the caller can
- * leave the key alone.
+ * the ends. From outside the visible cycle, enter at its first or last region
+ * according to the direction. Returns false when there are no visible regions.
  */
 export function focusNextRegion(step: 1 | -1): boolean {
   const regions = Array.from(document.querySelectorAll<HTMLElement>(REGION_SELECTOR)).filter(
@@ -40,7 +40,13 @@ export function focusNextRegion(step: 1 | -1): boolean {
   const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const owner = active?.closest<HTMLElement>(REGION_SELECTOR) ?? null;
   const start = owner ? regions.indexOf(owner) : -1;
-  const next = regions[(start + step + regions.length) % regions.length];
+  const nextIndex =
+    start < 0
+      ? step === 1
+        ? 0
+        : regions.length - 1
+      : (start + step + regions.length) % regions.length;
+  const next = regions[nextIndex];
   if (!next) return false;
   focusTarget(next).focus({ preventScroll: true });
   return true;
