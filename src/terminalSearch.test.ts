@@ -66,8 +66,9 @@ function createTestTab(id = SESSION_ID): Tab {
 /**
  * A controller with its xterm opened in jsdom, so the find engine gets the
  * real selection service (the current match is the terminal selection).
+ * Registration is separate: a test can make the controller arrive late.
  */
-function createRegisteredController(id = SESSION_ID, open = true) {
+function createController(id = SESSION_ID, open = true) {
   const controller = new TerminalController(
     id,
     {
@@ -83,6 +84,11 @@ function createRegisteredController(id = SESSION_ID, open = true) {
     100,
   );
   if (open) openControllerTerminal(controller);
+  return controller;
+}
+
+function createRegisteredController(id = SESSION_ID, open = true) {
+  const controller = createController(id, open);
   setController(id, controller);
   return controller;
 }
@@ -141,26 +147,21 @@ describe("terminal search options", () => {
         const count = host.querySelector<HTMLElement>(".search-count")!;
         if (typedBeforeRegistration) act(() => setInputValue(input, "needle"));
 
-        let controller!: TerminalController;
-        // Lazy creation registers the controller before TerminalPane attaches xterm.
-        act(() => {
-          controller = createRegisteredController(SESSION_ID, false);
-        });
-        await act(async () => {
-          openControllerTerminal(controller);
-          await write(controller, "needle here\r\nneedle again");
-        });
+        // Lazy creation can register the controller only after the terminal
+        // already holds output. The query typed before that had no terminal to
+        // search, so registration has to run it: no Enter may be needed before
+        // the highlight and count appear.
+        const controller = createController(SESSION_ID, false);
+        openControllerTerminal(controller);
+        await write(controller, "needle here\r\nneedle again");
+        act(() => setController(SESSION_ID, controller));
 
         const findNext = () =>
           act(() => {
             input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
           });
-        if (typedBeforeRegistration) {
-          expect(input.value).toBe("needle");
-          findNext();
-        } else {
-          act(() => setInputValue(input, "needle"));
-        }
+        if (!typedBeforeRegistration) act(() => setInputValue(input, "needle"));
+        expect(input.value).toBe("needle");
         expect(controller.term.getSelection()).toBe("needle");
         expect(count.textContent).toBe("1/2");
         findNext();
