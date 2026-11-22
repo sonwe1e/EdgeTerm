@@ -207,6 +207,57 @@ describe.each(["upload", "download"] as const)("%s completion directory", (direc
     },
   );
 
+  it("releases a finished transfer while a read of a third directory is pending", async () => {
+    await beginTransfer();
+    const third = `${initial}-third`;
+    const fourth = `${initial}-fourth`;
+    await act(async () => {
+      await navigate(third);
+    });
+    const slow = deferred<ReturnType<typeof listing>>();
+    read.mockReturnValueOnce(slow.promise);
+    let navigating: Promise<boolean> | undefined;
+    await act(async () => {
+      navigating = navigate(fourth);
+    });
+    await act(async () => outgoing.resolve(undefined));
+    // The pending listing heads to neither the original view nor the
+    // destination, so it can never make this view refreshable. Waiting for it
+    // kept transferring true — toolbar disabled, pause and cancel showing —
+    // until that unrelated read settled.
+    expect([transfer.transferring, transfer.transfer?.status]).toEqual([false, "complete"]);
+    await act(async () => {
+      slow.resolve(listing(fourth));
+      await navigating;
+    });
+    expect(visits()).toEqual([initial, third, fourth]);
+    expect(visible()).toBe(fourth);
+  });
+
+  it("still waits for a read already heading to the destination", async () => {
+    await beginTransfer(child);
+    const pending = deferred<ReturnType<typeof listing>>();
+    read.mockReturnValueOnce(pending.promise);
+    let navigating: Promise<boolean> | undefined;
+    await act(async () => {
+      navigating = navigate(child);
+    });
+    await act(async () => outgoing.resolve(undefined));
+    // This read can still make the view refreshable, so the refresh stays
+    // held until it decides; returning early would leave the child view on
+    // rows captured before the job finished.
+    expect(transfer.transferring).toBe(true);
+    read.mockResolvedValueOnce(listing(child, [file]));
+    await act(async () => {
+      pending.resolve(listing(child));
+      await navigating;
+      await transferring;
+    });
+    expect(transfer.transferring).toBe(false);
+    expect(visits()).toEqual([initial, child, child, child]);
+    expect([visible(), entries()]).toEqual([child, [file]]);
+  });
+
   it("refreshes the original view without opening the child used as the job destination", async () => {
     await beginTransfer(child);
     await finish();
