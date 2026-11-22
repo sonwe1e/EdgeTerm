@@ -974,6 +974,7 @@ export const zhCN: Catalog = {
   "sc.problemOther": "请同时按住 Ctrl 或 Alt，否则该按键会被输入到终端。",
   "sc.reservedContextMenu": "{chord} 用于打开右键菜单，请换一个。",
   "sc.reserved": "{chord} 已分配给 {owner}。",
+  "sc.reservedFocusRegion": "{chord} 用于在区域之间移动焦点。",
   "sc.switchesToTab": "{chord} 用于切换到第 {number} 个标签。",
   "sc.ownerCut": "剪切",
   "sc.ownerQuit": "退出 EdgeTerm",
