@@ -33,11 +33,14 @@ const empty: State = {
   saved: false,
 };
 export const useFileEditor = create<State>(() => ({ ...empty }));
+const normalizeText = (text: string) => text.replace(/\r\n?/g, "\n");
+export const isFileEditorDirty = (file: TextFile | null, content: string): boolean =>
+  file !== null && content !== normalizeText(file.content);
+
 export const hasUnsavedFile = () => {
   const state = useFileEditor.getState();
-  return state.busy || Boolean(state.file && state.content !== normalizeText(state.file.content));
+  return state.busy || isFileEditorDirty(state.file, state.content);
 };
-const normalizeText = (text: string) => text.replace(/\r\n?/g, "\n");
 // A native discard/reload confirmation can yield before it owns window focus.
 // Other destructive actions must not run behind that outstanding decision.
 let confirming = false;
@@ -181,7 +184,7 @@ export async function reloadFileEditor() {
 
 export async function saveFileEditor() {
   const { target, file, content, busy } = useFileEditor.getState();
-  if (!target || !file || busy || confirming) return;
+  if (!target || !file || busy || confirming || !isFileEditorDirty(file, content)) return;
   const ownsTarget = () => useFileEditor.getState().target?.id === target.id;
   useFileEditor.setState({ busy: true, error: null });
   try {
