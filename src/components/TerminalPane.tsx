@@ -50,8 +50,20 @@ export const SessionPane = memo(function SessionPane({ tab, visible, focused, st
   // active one — menus, the Filer and the Sender follow it — the way a
   // click in a VS Code editor group focuses that group. Capture phase, so
   // xterm's own mousedown handling is untouched.
-  const claim = () => {
-    if (useStore.getState().activeId !== id) setActive(id);
+  const claim = (event: { target: EventTarget | null; currentTarget: EventTarget | null }) => {
+    const state = useStore.getState();
+    // A focus that lands on the slot itself — F6 entering the region before
+    // its controller attached, or a press on the pane's own padding — ends a
+    // roving pass in the strip, so the terminal is the intended target again
+    // and the controller's arrival must take the keyboard. Focus that lands
+    // lower (xterm's textarea) needs no re-arm; doing it there would leave an
+    // autofocus frame that a second F6 has to fight. setActive owns the
+    // intent, and has to run for the already active tab too, which the old
+    // activeId check skipped.
+    const onSlot = event.target === event.currentTarget;
+    if (state.activeId !== id || (state.tabFocusTarget !== "terminal" && onSlot)) {
+      setActive(id, "terminal");
+    }
   };
 
   return (
