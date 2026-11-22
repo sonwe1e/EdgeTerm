@@ -534,7 +534,19 @@ export function useFilerActions({
       else await api.localRename(from, to);
       if (current()) await load(path);
     } catch (e) {
+      // The create handler's rule, for the same reason: a rename that finishes
+      // after the Filer has moved on still failed. The folder it belonged to
+      // has already changed, so the app-wide lane carries it, with the entry
+      // named the way a create's failure is.
       if (current()) setError(errorText(e));
+      else
+        useStore
+          .getState()
+          .setError(
+            t("filer.renameFailed", { name: draft.entry.name, error: errorText(e) }),
+            remoteId ?? undefined,
+            errorInfo(e).requestId ?? undefined,
+          );
     } finally {
       if (current()) {
         busyRef.current = false;
@@ -603,10 +615,37 @@ export function useFilerActions({
       if (remoteIdRef.current === sessionId && pathRef.current === destination && failed.length) {
         selection.replace(failed.map(({ entry }) => entry.path));
         setError(failed.map(({ entry, error }) => `${entry.name}: ${errorText(error)}`).join("\n"));
+      } else if (failed.length) {
+        // Same rule as `commitNewEntry`, for each entry the move failed on:
+        // the listing that used to give the failure its context is gone, so
+        // the app-wide lane carries it with the entry named.
+        useStore
+          .getState()
+          .setError(
+            failed
+              .map(({ entry, error }) =>
+                t("filer.moveFailed", { name: entry.name, error: errorText(error) }),
+              )
+              .join("\n"),
+            sessionId ?? undefined,
+            errorInfo(failed[0].error).requestId ?? undefined,
+          );
       }
     } catch (error) {
+      // The target folder or its refresh failed, and the panel may have moved
+      // on while it ran: the entries the move was carrying name the failure
+      // there, since the listing that held them is no longer on screen.
       if (remoteIdRef.current === sessionId && pathRef.current === destination)
         setError(errorText(error));
+      else
+        useStore.getState().setError(
+          t("filer.moveFailed", {
+            name: moving.map((entry) => entry.name).join(", "),
+            error: errorText(error),
+          }),
+          sessionId ?? undefined,
+          errorInfo(error).requestId ?? undefined,
+        );
     } finally {
       busyRef.current = false;
       setBusy(false);

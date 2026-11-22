@@ -964,6 +964,8 @@ export const en = {
   "filer.folder": "folder",
   "filer.file": "file",
   "filer.createFailed": "Could not create {name}: {error}",
+  "filer.renameFailed": "Could not rename {name}: {error}",
+  "filer.moveFailed": "Could not move {name}: {error}",
   "filer.transferring": "transferring",
   "filer.invalidName": '"{name}" is not a valid {kind} name',
   "filer.alreadyExists": '"{name}" already exists in this folder',
