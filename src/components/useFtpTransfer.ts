@@ -82,18 +82,18 @@ export function useFtpTransfer({
         });
 
   /**
-   * The gate every landing shares: same-name checks against the destination
-   * pane's listing before anything is sent, then one confirmation for the
+   * The gate every landing shares: same-name checks in the actual target
+   * directory before anything is sent, then one confirmation for the
    * whole batch. False means stop — an error was shown or the user declined.
    * A single entry keeps the wording it has always had; several are counted.
    */
   const mayLand = async (
     direction: "upload" | "download",
     items: readonly FileEntry[],
+    destination: string,
   ): Promise<boolean> => {
     const upload = direction === "upload";
     const side: PaneSide = upload ? "remote" : "local";
-    const destination = upload ? remotePath : localPath;
     const setError = upload ? setRemoteError : setLocalError;
     let present: FileEntry[];
     try {
@@ -156,7 +156,7 @@ export function useFtpTransfer({
       upload ? remotePath : localPath,
       destination,
     );
-    if (!(await mayLand(direction, items))) return;
+    if (!(await mayLand(direction, items, destination))) return;
 
     setError(null);
     setTransferring(true);
