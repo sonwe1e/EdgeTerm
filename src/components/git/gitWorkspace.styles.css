@@ -176,6 +176,78 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The folder menu hangs off its trigger in the header or in the empty state.
+   The wrapper is the positioning context, so the shared .menu-dropdown lands
+   under the button that opened it. */
+.git-folder-control {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+
+.git-folder-menu {
+  right: 0;
+  left: auto;
+  min-width: 248px;
+  max-width: min(380px, calc(100vw - 48px));
+  max-height: min(70vh, 460px);
+  overflow: auto;
+}
+
+.git-folder-menu .menu-entry {
+  height: auto;
+  min-height: 28px;
+}
+
+.git-folder-menu .menu-entry-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.git-folder-detail {
+  flex: 0 1 auto;
+  max-width: 52%;
+  overflow: hidden;
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-folder-server {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-width: 280px;
+  padding: var(--sp-4);
+}
+
+.git-folder-server label {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.git-folder-hint {
+  max-width: 340px;
+  color: var(--fg-dim);
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+}
+
+.git-folder-server .git-branch-input {
+  min-height: 30px;
+}
+
+.git-folder-server-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-4);
+  margin-top: var(--sp-4);
+}
+
 .git-notice {
   display: flex;
   align-items: baseline;

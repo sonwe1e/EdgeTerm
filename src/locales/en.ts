@@ -1,6 +1,15 @@
 export const en = {
   "git.title": "Source Control",
   "git.openFolder": "Open local folder…",
+  "git.folder.menu": "Open another folder…",
+  "git.folder.terminal": "Current terminal folder",
+  "git.folder.filer": "Files panel folder",
+  "git.folder.server": "Another folder on this server…",
+  "git.folder.local": "Another local folder…",
+  "git.folder.serverPrompt": "Folder path on the server",
+  "git.folder.serverHint":
+    "Absolute path of a Git worktree on this server. The path is verified before the dialog switches.",
+  "git.folder.serverOpen": "Open folder",
   "git.openFromFiler":
     "Open the repository from the Files panel. The terminal directory could not be read ({error}).",
   "git.local": "Local",

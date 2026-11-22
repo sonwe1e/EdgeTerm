@@ -4,16 +4,23 @@ import { page, userEvent } from "vitest/browser";
 import type { GitAction, GitDiffTarget, GitStatus, GitTarget } from "../bindings";
 import GitWorkspaceDialog from "../components/git/GitWorkspaceDialog";
 import { LogViewerDialog } from "../components/LogViewerDialog";
-import { gitDraftKey, writeGitDraft, type GitSource } from "../gitWorkspace";
+import { lastPaths } from "../components/panels/filerDirectoryCache";
+import { gitDraftKey, useGitSource, writeGitDraft, type GitSource } from "../gitWorkspace";
 import { IS_MAC } from "../platform";
 import { useStore } from "../store";
 import { browserAfterEach, mount, twoFrames } from "./browserHarness";
 import "../styles.css";
 
 const ipc = vi.hoisted(() => vi.fn());
+const dialogOpen = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", async (load) => ({
   ...(await load<typeof import("@tauri-apps/api/core")>()),
   invoke: ipc,
+}));
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+  open: dialogOpen,
+  save: vi.fn(),
+  ask: vi.fn(),
 }));
 
 const root = "/srv/team/forecast-engine";
@@ -85,14 +92,20 @@ const stagedHunk =
 let status: GitStatus;
 let stagedChunk: boolean;
 let commitFails: boolean;
+let invalidFolder: string | null = null;
 
 beforeEach(() => {
   status = baseline();
   stagedChunk = false;
   commitFails = false;
+  invalidFolder = null;
   useStore.getState().setLanguage("en");
   document.documentElement.setAttribute("data-theme", "dark");
   writeGitDraft(gitDraftKey(source, status), "");
+  useGitSource.setState({ source: null });
+  lastPaths.clear();
+  dialogOpen.mockReset();
+  dialogOpen.mockResolvedValue(null);
   ipc.mockReset();
   ipc.mockImplementation(
     async (
@@ -108,7 +121,10 @@ beforeEach(() => {
         encoding?: string | null;
       },
     ) => {
-      if (command === "git_status") return structuredClone(status);
+      if (command === "git_status") {
+        if (invalidFolder && args.target?.directory === invalidFolder) return null;
+        return structuredClone(status);
+      }
       if (command === "git_diff") {
         if (args.diff?.kind === "commit")
           return { kind: "text", text: fileHeader(path) + stagedHunk, token: null };
@@ -183,15 +199,27 @@ beforeEach(() => {
 
 afterEach(async () => {
   await browserAfterEach();
+  useGitSource.setState({ source: null });
+  lastPaths.clear();
   useStore.setState(initial, true);
   useStore.getState().setLanguage(initial.language);
   document.documentElement.removeAttribute("data-theme");
 });
 
 const button = (name: string) => page.getByRole("button", { name, exact: true });
-async function show(width = 1360, height = 820, panelFont = "13px") {
+const folderButton = () => button("Open another folder…");
+async function openFolderMenu() {
+  await userEvent.click(folderButton());
+  await expect.element(page.getByRole("menu", { name: "Open another folder…" })).toBeVisible();
+}
+async function show(
+  width = 1360,
+  height = 820,
+  panelFont = "13px",
+  mountSource: GitSource = source,
+) {
   await page.viewport(width, height);
-  const props = { source, onClose: vi.fn() };
+  const props = { source: mountSource, onClose: vi.fn() };
   const mounted = mount(
     h(
       "div",
@@ -498,4 +526,109 @@ it("keeps chrome type on the --fs ladder and scales it with the panel font", asy
     expect(at15[role as keyof typeof at15].size, role).toBe(expected);
   }
   expectOnlyLadderSizes(["12px", "13px", "14px", "15px", "17px"]);
+});
+
+it("switches the SSH dialog to a folder typed for the same server", async () => {
+  await show();
+  await openFolderMenu();
+  await userEvent.click(
+    page.getByRole("menuitem", { name: "Another folder on this server…", exact: true }),
+  );
+  const field = page.getByRole("textbox", { name: "Folder path on the server" });
+  await expect.element(field).toBeVisible();
+  await userEvent.fill(field, "/srv/team/other-repo");
+  await userEvent.keyboard("{Enter}");
+  expect(ipc).toHaveBeenCalledWith("git_status", {
+    target: { sessionId: "ssh-fixture", directory: "/srv/team/other-repo" },
+  });
+  await expect
+    .poll(() => useGitSource.getState().source)
+    .toEqual({
+      directory: "/srv/team/other-repo",
+      sessionId: "ssh-fixture",
+      label: "Lab SSH · gpu-03",
+    });
+});
+
+it("keeps the dialog open and reports a folder outside a worktree on the server", async () => {
+  invalidFolder = "/srv/team/not-a-repo";
+  await show();
+  await openFolderMenu();
+  await userEvent.click(
+    page.getByRole("menuitem", { name: "Another folder on this server…", exact: true }),
+  );
+  const field = page.getByRole("textbox", { name: "Folder path on the server" });
+  await userEvent.fill(field, invalidFolder);
+  await userEvent.keyboard("{Enter}");
+  await expect.element(page.getByRole("alert")).toHaveTextContent("outside a Git worktree");
+  await expect.element(field).toBeVisible();
+  await expect.element(button("Stage hunk 1")).toBeEnabled();
+  expect(useGitSource.getState().source).toBeNull();
+});
+
+it("offers the Files panel folder for this session and never another session's", async () => {
+  lastPaths.set("ssh-fixture", "/srv/team/shared");
+  lastPaths.set("another-session", "/srv/team/other");
+  await show();
+  await openFolderMenu();
+  await expect
+    .element(page.getByRole("menuitem", { name: "Files panel folder", exact: true }))
+    .toBeVisible();
+  await expect
+    .element(page.getByRole("menuitem", { name: "/srv/team/other", exact: true }))
+    .not.toBeInTheDocument();
+  await userEvent.click(page.getByRole("menuitem", { name: "Files panel folder", exact: true }));
+  await expect
+    .poll(() => useGitSource.getState().source)
+    .toEqual({
+      directory: "/srv/team/shared",
+      sessionId: "ssh-fixture",
+      label: "Lab SSH · gpu-03",
+    });
+});
+
+it("offers the local picker to a local source and opens the chosen folder locally", async () => {
+  status.root = "/home/me/project";
+  const localSource: GitSource = {
+    sessionId: null,
+    directory: "/home/me/project",
+    label: null,
+  };
+  dialogOpen.mockResolvedValue("C:\\work\\edge");
+  await show(1360, 820, "13px", localSource);
+  await openFolderMenu();
+  await expect
+    .element(page.getByRole("menuitem", { name: "Another folder on this server…", exact: true }))
+    .not.toBeInTheDocument();
+  await userEvent.click(page.getByRole("menuitem", { name: "Another local folder…", exact: true }));
+  expect(dialogOpen).toHaveBeenCalledWith({
+    title: "Open local folder…",
+    directory: true,
+    multiple: false,
+    defaultPath: "/home/me/project",
+  });
+  await expect
+    .poll(() => useGitSource.getState().source)
+    .toEqual({
+      directory: "C:\\work\\edge",
+      sessionId: null,
+      label: null,
+    });
+});
+
+it("opens the source menu from the keyboard and returns focus on Escape", async () => {
+  await show();
+  const trigger = folderButton();
+  trigger.element().focus();
+  await userEvent.keyboard("{ArrowDown}");
+  await expect
+    .poll(() => document.activeElement?.textContent)
+    .toContain("Another folder on this server");
+  await userEvent.keyboard("{ArrowDown}");
+  await expect.poll(() => document.activeElement?.textContent).toContain("Another local folder");
+  await userEvent.keyboard("{Escape}");
+  await expect
+    .element(page.getByRole("menuitem", { name: "Another local folder…", exact: true }))
+    .not.toBeInTheDocument();
+  await expect.poll(() => document.activeElement).toBe(trigger.element());
 });
