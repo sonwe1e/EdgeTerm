@@ -70,6 +70,8 @@ export function FtpPane({ tab, active }: Props) {
     localEntries,
     setRemoteError,
     setLocalError,
+    setRemoteNotice,
+    setLocalNotice,
     loadRemote,
     loadLocal,
     loadLocalParent,
@@ -79,6 +81,7 @@ export function FtpPane({ tab, active }: Props) {
     remoteSelection,
     remoteLoading,
     remoteError,
+    remoteNotice,
     setRemoteDraft,
     remoteHome,
     setRemoteSelection,
@@ -86,6 +89,7 @@ export function FtpPane({ tab, active }: Props) {
     localDraft,
     localSelection,
     localError,
+    localNotice,
     setLocalDraft,
     localHome,
     setLocalSelection,
@@ -143,11 +147,13 @@ export function FtpPane({ tab, active }: Props) {
     remotePath,
     transferring,
     setRemoteError,
+    setRemoteNotice,
     sessionId,
     loadRemote,
     selectedRemote,
     localPath,
     setLocalError,
+    setLocalNotice,
     loadLocal,
     selectedLocal,
   });
@@ -302,6 +308,7 @@ export function FtpPane({ tab, active }: Props) {
               selection={remoteSelection}
               loading={remoteLoading}
               error={remoteError}
+              notice={remoteNotice}
               onDraftChange={setRemoteDraft}
               onOpenPath={(path) => void loadRemote(path)}
               onHome={() => void loadRemote(remoteHome)}
@@ -395,6 +402,7 @@ export function FtpPane({ tab, active }: Props) {
               selection={localSelection}
               loading={localLoading}
               error={localError}
+              notice={localNotice}
               onDraftChange={setLocalDraft}
               onOpenPath={(path) => void loadLocal(path)}
               onHome={() => void loadLocal(localHome)}
