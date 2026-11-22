@@ -35,7 +35,7 @@ A small, fast terminal, SSH, Telnet, SFTP, FTP and serial client built with **Ru
 - **Readable output**: a timestamp and line-number gutter, and semantic coloring of IPs, URLs, log levels, HTTP methods, paths, sizes and more.
 - **Split panes and tabs**: split right or down, drag tabs between panes, and see at a glance which background tab is busy or done.
 - **Filer**: browse over SFTP, FTP or the local disk, with drag and drop to and from your desktop, type a name to jump to it, and select several entries to transfer them in one go.
-- **Experiment workbench**: servers, project directories, experiment variants and individual runs are recorded separately; edit Python and config, review Git changes, launch training, read logs and compare host resources in one window. Projects never depend on terminal-tab ids.
+- **Source control**: review, stage and commit Git changes in local and SSH worktrees. Switch between both versions of a partially staged file and edit directly from the review.
 - **Background transfers**: Filer and the dual-pane browser share **Transfers** in the status bar, with bounded file concurrency, pause/resume, cancellation, failed-file retries and automatic reconnect attempts. Files are staged beside their destination and replaced only after completion.
 - **Sender**: saved commands and multi-line scripts, sent to one session or all of them, optionally on a timer; a script's next line follows REPL continuation prompts and network-device prompts, and each saved tag can take one of eight colors.
 - **File transfer in the terminal**: ZMODEM (`rz` / `sz`) and XMODEM.
@@ -67,13 +67,13 @@ Transfer settings apply to new jobs. Up to two jobs run per server endpoint; add
 
 **Rate limit (KiB/s)** is shared by all files and data connections in one job, including remote prefix verification. Zero is unlimited; supported limits range from 1 KiB/s to 1 GiB/s. The initial burst is at most one second of budget, capped at 1 MiB. Protocol control messages and local disk work are excluded. A running or recovered job keeps its original limit. Optional tar folder uploads also use that payload limit, but tar has no per-file resume or atomic replacement: cancellation leaves extracted files, and retry needs an empty/new destination.
 
-### Experiment workbench
+### Source control
 
-Open it from **View → Workbench**. The left sidebar separates projects, experiments and runs: a project binds a saved SSH login to a remote code directory, an experiment records a baseline-relative variant (optionally in another directory), and a run records the launch-time code identity, uncommitted diff, environment, command, GPU selection, optional code snapshot, log and output locations. Switching projects restores that project's open files and associated terminal; after a disconnect or restart, run status comes from a fresh query and training is never restarted automatically.
+Open **View → Source Control** from a local or SSH terminal, or choose **Source Control** in the Files panel’s **More actions** menu to use the folder on screen. EdgeTerm finds the Git worktree from any folder inside it. The worktree host needs Git on `PATH`. For remote worktrees, EdgeTerm uses the open SSH connection and runs Git on the server.
 
-The built-in editor loads CodeMirror 6 on demand: multiple files, syntax highlighting, undo, find/replace and project search. Switching files keeps each document's undo history, selection and scroll position; reloading the server copy or closing the tab drops that history on purpose. A save uses the SHA-256 of the opened copy as its compare-and-swap token, so a changed server file produces an explicit conflict instead of being overwritten; unsaved drafts survive a restart. Git changes and cross-project same-path comparisons read bounded text only, never data or checkpoint trees. Runs start under tmux (or a detached process when tmux is absent) with bounded log tailing; `sbatch`/`qsub`/`bsub` are recorded as submissions, not as finished training.
+Filter changes by path and review a unified or side-by-side diff. Stage or unstage files and individual text hunks, then use **Review staged files** to see what will be committed. EdgeTerm checks the Git index and HEAD before committing, and retains the message if Git rejects the operation.
 
-The data model, save/conflict rules, run boundaries, verification record, measurement method and the information needed to adapt a real interpolation project are documented in [docs/workbench.zh-CN.md](docs/workbench.zh-CN.md) (Chinese).
+Select the current branch to switch or create a local branch. **History** shows the last 60 commits reachable from HEAD with patch previews and copyable commit IDs. Tracking counts use the most recent fetched refs. Use the terminal for fetching, pulling and pushing.
 
 ### File comparison and SSH tools
 
