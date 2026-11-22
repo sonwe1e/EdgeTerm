@@ -900,6 +900,7 @@ export const en = {
   "filer.refresh": "Refresh",
   "filer.folder": "folder",
   "filer.file": "file",
+  "filer.createFailed": "Could not create {name}: {error}",
   "filer.transferring": "transferring",
   "filer.invalidName": '"{name}" is not a valid {kind} name',
   "filer.alreadyExists": '"{name}" already exists in this folder',

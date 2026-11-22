@@ -3,7 +3,7 @@ import { openFileEditor } from "../../fileEditor";
 import { isPreviewRunning, previewReport, stopReportPreview } from "../../previewActions";
 import { useStore } from "../../store";
 import { isConnectionClosing } from "../../sessionConnectionLifecycle";
-import { errorText } from "../../errorInfo";
+import { errorInfo, errorText } from "../../errorInfo";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import { type MouseEvent, useRef } from "react";
 import * as api from "../../api";
@@ -471,7 +471,22 @@ export function useFilerActions({
       }
       if (current()) await load(path);
     } catch (e) {
+      // A create that finishes after the Filer has moved still failed, and the
+      // user has to know: this folder's error line would blame the listing the
+      // create was never about, and dropping the failure said nothing at all.
+      // The status bar's error lane is app-wide and stays until dismissed, so
+      // it carries the failure once the panel has moved on — but the panel that
+      // gave the raw message its context is gone by then, so the message names
+      // the entry and keeps the session and request id the lane can use.
       if (current()) setError(errorText(e));
+      else
+        useStore
+          .getState()
+          .setError(
+            t("filer.createFailed", { name, error: errorText(e) }),
+            remoteId ?? undefined,
+            errorInfo(e).requestId ?? undefined,
+          );
     }
   };
 
