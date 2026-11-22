@@ -84,6 +84,7 @@ export const createTabActions: StateCreator<
     set({
       tabs: [...tabs, tab],
       activeId: info.id,
+      tabFocusTarget: "terminal",
       panes: patchPane(panes, activePaneId, { activeTabId: info.id }),
     });
   },
@@ -135,6 +136,7 @@ export const createTabActions: StateCreator<
       const closePrompt = current.closePrompt?.filter((pending) => pending !== id) ?? null;
       set({
         ...settled,
+        tabFocusTarget: settled.activeId === current.activeId ? current.tabFocusTarget : "terminal",
         tabs: acknowledgeTab(settled.tabs, settled.activeId),
         status: clearsSessionError ? t("status.ready") : current.status,
         error: clearsSessionError ? null : current.error,
@@ -173,12 +175,13 @@ export const createTabActions: StateCreator<
     set({ closePrompt: ids && ids.length > 0 ? ids : null });
   },
 
-  setActive(id) {
+  setActive(id, focusTarget = "terminal") {
     const { tabs, panes } = get();
     const tab = tabs.find((item) => item.info.id === id);
     if (!tab) return;
     set({
       activeId: id,
+      tabFocusTarget: focusTarget,
       activePaneId: tab.paneId,
       panes: patchPane(panes, tab.paneId, { activeTabId: id }),
       // A completion is deliberately persistent on a background tab, but
@@ -195,6 +198,7 @@ export const createTabActions: StateCreator<
     set({
       activePaneId: paneId,
       activeId: pane.activeTabId,
+      tabFocusTarget: "terminal",
       tabs: acknowledgeTab(tabs, pane.activeTabId),
     });
   },
@@ -247,7 +251,7 @@ export const createTabActions: StateCreator<
       },
       tab.paneId,
     );
-    set({ ...settled, tabs: acknowledgeTab(settled.tabs, id) });
+    set({ ...settled, tabs: acknowledgeTab(settled.tabs, id), tabFocusTarget: "terminal" });
   },
 
   splitPane(paneId, side, tabId) {
@@ -268,7 +272,7 @@ export const createTabActions: StateCreator<
     const layout = splitPaneInLayout(current.layout, paneId, side, newId);
     const panes = [...current.panes, { id: newId, activeTabId: tab?.info.id ?? null }];
     if (!tab) {
-      set({ layout, panes, activePaneId: newId, activeId: null });
+      set({ layout, panes, activePaneId: newId, activeId: null, tabFocusTarget: "terminal" });
       return newId;
     }
     const settled = settlePane(
@@ -281,7 +285,11 @@ export const createTabActions: StateCreator<
       },
       tab.paneId,
     );
-    set({ ...settled, tabs: acknowledgeTab(settled.tabs, tab.info.id) });
+    set({
+      ...settled,
+      tabs: acknowledgeTab(settled.tabs, tab.info.id),
+      tabFocusTarget: "terminal",
+    });
     return newId;
   },
 

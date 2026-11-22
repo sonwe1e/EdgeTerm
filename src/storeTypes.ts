@@ -173,6 +173,8 @@ export interface AppStore {
   tabs: Tab[];
   /** The focused tab: the active tab of the active pane. */
   activeId: string | null;
+  /** Where the current tab activation directs keyboard focus. */
+  tabFocusTarget: "terminal" | "strip";
   /**
    * The panes the terminal area is split into and the tree that lays them
    * out (see layout.ts). There is always at least one pane; a pane whose
@@ -328,7 +330,7 @@ export interface AppStore {
   requestCloseTabs: (ids: string[]) => void;
   setClosePrompt: (ids: string[] | null) => void;
   /** Shows a tab in its pane and focuses it, making that pane the active one. */
-  setActive: (id: string) => void;
+  setActive: (id: string, focusTarget?: AppStore["tabFocusTarget"]) => void;
   /** Focuses a pane: the tab it shows becomes the active tab. */
   setActivePane: (paneId: string) => void;
   /** Steps through the active pane's tabs. */
