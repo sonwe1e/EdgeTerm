@@ -27,6 +27,7 @@ interface Options {
   remoteIdRef: RefObject<string | null>;
   pathRef: RefObject<string>;
   load: (target: string, quiet?: boolean, resume?: boolean) => Promise<boolean>;
+  captureNavigationContext: () => () => boolean;
   selection: ReturnType<typeof useFileSelection>;
   beginTransfer: (
     kind: TransferState["kind"],
@@ -76,6 +77,7 @@ export function useFilerActions({
   remoteIdRef,
   pathRef,
   load,
+  captureNavigationContext,
   selection,
   beginTransfer,
   progressFor,
@@ -456,6 +458,7 @@ export function useFilerActions({
     // Only a valid, accepted name closes the inline editor: a rejected one
     // keeps the text so the user can correct it instead of retyping it.
     setCreating(null);
+    const current = captureNavigationContext();
     try {
       if (remoteId) {
         const target = joinRemote(path, name);
@@ -466,9 +469,9 @@ export function useFilerActions({
         if (draft.kind === "folder") await api.localMkdir(target);
         else await api.localCreateFile(target);
       }
-      await load(path);
+      if (current()) await load(path);
     } catch (e) {
-      setError(errorText(e));
+      if (current()) setError(errorText(e));
     }
   };
 

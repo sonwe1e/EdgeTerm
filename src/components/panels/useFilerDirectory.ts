@@ -46,13 +46,16 @@ export function useFilerDirectory({
   setCreating,
   path,
 }: Options) {
-  const remoteIdRef = useRef(remoteId);
-  remoteIdRef.current = remoteId;
+  const source = useRef({ remoteId, offline });
+  if (source.current.remoteId !== remoteId || source.current.offline !== offline) {
+    source.current = { remoteId, offline };
+  }
   const filerTarget = useStore((s) => s.filerTarget);
   const activeId = useStore((s) => s.activeId);
   /** The last `filerTarget.token` this panel navigated to. */
   const consumedTarget = useRef(0);
   const listRequest = useRef(0);
+  const navigationRequest = useRef(0);
   const refreshRequest = useRef(0);
   const pathRef = useRef(path);
   pathRef.current = path;
@@ -73,7 +76,7 @@ export function useFilerDirectory({
       const listing = await api.sftpList(sessionId, target);
       if (
         !alive.current ||
-        remoteIdRef.current !== sessionId ||
+        source.current.remoteId !== sessionId ||
         pathRef.current !== target ||
         refreshId !== refreshRequest.current ||
         request !== listRequest.current
@@ -99,14 +102,17 @@ export function useFilerDirectory({
       resume = false,
       reason: LoadReason = "manual",
     ): Promise<boolean> => {
-      if (offline || remoteIdRef.current !== remoteId) return false;
+      if (offline || source.current.remoteId !== remoteId) return false;
       // Browsing by hand takes the wheel from the follow: the next `cd` must
       // not yank the panel back. Reloading the directory already shown
       // (refresh, rename, upload) is not navigation, and neither a follow nor
       // a resume load is the user choosing where to go.
-      if (reason === "manual" && target !== pathRef.current) {
-        const sessionId = remoteIdRef.current ?? useStore.getState().activeId;
-        if (sessionId !== null) useStore.getState().pauseFilerFollow(sessionId);
+      if (target !== pathRef.current) {
+        ++navigationRequest.current;
+        if (reason === "manual") {
+          const sessionId = source.current.remoteId ?? useStore.getState().activeId;
+          if (sessionId !== null) useStore.getState().pauseFilerFollow(sessionId);
+        }
       }
       const request = ++listRequest.current;
       clearSelection();
@@ -128,7 +134,7 @@ export function useFilerDirectory({
           : await api.localList(target);
         // The user switched sessions while this was listing; showing it now
         // would put the previous session's files under the new one.
-        if (remoteIdRef.current !== remoteId || request !== listRequest.current) return false;
+        if (source.current.remoteId !== remoteId || request !== listRequest.current) return false;
         setPath(listing.path);
         setDraft(listing.path);
         // Same rows as the cached ones already on screen: keep that array, so
@@ -138,11 +144,11 @@ export function useFilerDirectory({
         rememberPath(remoteId ?? LOCAL_SOURCE, listing.path);
         return true;
       } catch (e) {
-        if (!quiet && request === listRequest.current && remoteIdRef.current === remoteId)
+        if (!quiet && request === listRequest.current && source.current.remoteId === remoteId)
           setError(errorText(e));
         return false;
       } finally {
-        if (request === listRequest.current && remoteIdRef.current === remoteId) setBusy(false);
+        if (request === listRequest.current && source.current.remoteId === remoteId) setBusy(false);
       }
     },
     [remoteId, offline, clearSelection, setBusy, setError, setPath, setDraft, setEntries],
@@ -274,5 +280,18 @@ export function useFilerDirectory({
     }
   };
 
-  return { load, goUp, goHome, refresh };
+  /** A mutation can update its origin only if no navigation has started since it began. */
+  const captureNavigationContext = useStableCallback(() => {
+    const origin = source.current;
+    const target = pathRef.current;
+    const request = navigationRequest.current;
+    return () =>
+      alive.current &&
+      !origin.offline &&
+      source.current === origin &&
+      pathRef.current === target &&
+      navigationRequest.current === request;
+  });
+
+  return { load, goUp, goHome, refresh, captureNavigationContext };
 }
