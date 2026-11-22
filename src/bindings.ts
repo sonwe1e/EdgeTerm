@@ -248,6 +248,20 @@ export const commands = {
 	 *  `expectedHash`. The returned hash becomes the next save's baseline.
 	 */
 	projectWriteText: (id: string | null, request: TextWrite) => __TAURI_INVOKE<WriteOutcome>("project_write_text", { id, request }),
+	gitStatus: (target: GitTarget) => __TAURI_INVOKE<{
+	root: string,
+	branch: string | null,
+	head: string | null,
+	upstream: string | null,
+	ahead: number,
+	behind: number,
+	changes: GitChange[],
+	commitToken: string,
+} | null>("git_status", { target }),
+	gitDiff: (target: GitTarget, diff: GitDiffTarget) => __TAURI_INVOKE<GitPatch>("git_diff", { target, diff }),
+	gitHistory: (target: GitTarget, head: string) => __TAURI_INVOKE<GitCommit[]>("git_history", { target, head }),
+	gitBranches: (target: GitTarget) => __TAURI_INVOKE<string[]>("git_branches", { target }),
+	gitMutate: (target: GitTarget, action: GitAction) => __TAURI_INVOKE<null>("git_mutate", { target, action }),
 	codingAgentInspect: (id: string, tool: string) => __TAURI_INVOKE<AgentInstallation>("coding_agent_inspect", { id, tool }),
 	localHome: () => __TAURI_INVOKE<string>("local_home"),
 	/**
@@ -838,6 +852,62 @@ export type FontFamily = {
 	name: string,
 	monospaced: boolean,
 	symbols: boolean,
+};
+
+export type GitAction = { kind: "stage"; path: string | null } | { kind: "unstage"; path: string | null } | { kind: "hunk"; path: string; scope: GitScope; index: number; token: string } | { kind: "commit"; message: string; token: string } | { kind: "switch"; branch: string; token: string } | { kind: "createBranch"; branch: string; token: string };
+
+export type GitChange = {
+	path: string,
+	originalPath: string | null,
+	staged: GitChangeKind | null,
+	working: GitChangeKind | null,
+	conflicted: boolean,
+};
+
+export type GitChangeKind = "added" | "modified" | "deleted" | "renamed" | "copied" | "typeChanged" | "untracked" | "conflict";
+
+export type GitCommit = {
+	oid: string,
+	shortOid: string,
+	subject: string,
+	author: string,
+	date: string,
+};
+
+export type GitDiffTarget = { kind: "file"; file: GitSelection } | { kind: "commit"; oid: string };
+
+export type GitPatch = {
+	kind: GitPatchKind,
+	text: string,
+	/**  Only patches that can be applied to the index have a token. */
+	token: string | null,
+};
+
+export type GitPatchKind = "text" | "empty" | "binary" | "tooLarge" | "encoding";
+
+export type GitScope = "working" | "staged" | "conflict";
+
+export type GitSelection = {
+	path: string,
+	originalPath: string | null,
+	scope: GitScope,
+	kind: GitChangeKind,
+};
+
+export type GitStatus = {
+	root: string,
+	branch: string | null,
+	head: string | null,
+	upstream: string | null,
+	ahead: number,
+	behind: number,
+	changes: GitChange[],
+	commitToken: string,
+};
+
+export type GitTarget = {
+	sessionId: string | null,
+	directory: string,
 };
 
 export type Gpu = {

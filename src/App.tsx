@@ -43,6 +43,7 @@ import { Workspace } from "./components/Workspace";
 import { FileEditorDialog } from "./components/FileEditorDialog";
 import { AgentDialog } from "./components/AgentDialog";
 import { closeFileEditor } from "./fileEditor";
+import { closeGitWorkspace, useGitSource } from "./gitWorkspace";
 import { transferActive, useFileTransfers } from "./fileTransfers";
 import { FilerPanel } from "./components/panels/FilerPanel";
 import { SenderPanel } from "./components/panels/SenderPanel";
@@ -77,6 +78,22 @@ const SessionDialog = lazy(() =>
     default: module.SessionDialog,
   })),
 );
+
+const GitWorkspaceDialog = lazy(() => import("./components/git/GitWorkspaceDialog"));
+
+function GitWorkspaceOverlay() {
+  const source = useGitSource((state) => state.source);
+  if (!source) return null;
+  return (
+    <Suspense fallback={null}>
+      <GitWorkspaceDialog
+        key={JSON.stringify([source.sessionId, source.directory])}
+        source={source}
+        onClose={closeGitWorkspace}
+      />
+    </Suspense>
+  );
+}
 
 /** Stable empty result for the closing-tabs selector (see `useShallow`). */
 const EMPTY_CLOSING_TABS: Tab[] = [];
@@ -903,6 +920,7 @@ export default function App() {
         />
       )}
 
+      <GitWorkspaceOverlay />
       <FileEditorDialog />
       <AgentDialog />
       {quitPromptOpen && (

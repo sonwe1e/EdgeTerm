@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { browserAfterEach, mount, mouse, pagePoint, twoFrames } from "./browserHarness";
 import { FilerPanel } from "../components/panels/FilerPanel";
+import { closeGitWorkspace, useGitSource } from "../gitWorkspace";
 import { useStore } from "../store";
 import { IS_MAC } from "../platform";
 import * as api from "../api";
@@ -77,11 +78,23 @@ beforeEach(() => {
   useStore.getState().setLanguage("en");
 });
 afterEach(async () => {
+  closeGitWorkspace();
   await userEvent.keyboard(`{/${modifier}}{/Shift}`);
   await browserAfterEach();
   useStore.setState(initialState, true);
   useStore.getState().setLanguage(initialState.language);
   vi.restoreAllMocks();
+});
+
+it("opens source control at the folder currently displayed in the Files panel", async () => {
+  await open();
+  await userEvent.click(page.getByRole("button", { name: "More actions", exact: true }));
+  await userEvent.click(page.getByRole("menuitem", { name: "Source Control", exact: true }));
+  expect(useGitSource.getState().source).toEqual({
+    directory: "/selection-browser",
+    sessionId: null,
+    label: null,
+  });
 });
 
 it("selects, toggles, and right-clicks a group with real modifier input", async () => {

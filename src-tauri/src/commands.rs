@@ -110,6 +110,8 @@ mod responses;
 use responses::*;
 mod project;
 pub use project::*;
+mod git;
+pub use git::*;
 mod agents;
 pub use agents::*;
 mod preview;

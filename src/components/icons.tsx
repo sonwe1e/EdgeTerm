@@ -41,9 +41,12 @@ import error from "@vscode/codicons/src/icons/error.svg?raw";
 // `export` is a reserved word, so the binding carries the suffix.
 import exportIcon from "@vscode/codicons/src/icons/export.svg?raw";
 import eyeClosed from "@vscode/codicons/src/icons/eye-closed.svg?raw";
+import file from "@vscode/codicons/src/icons/file.svg?raw";
 import fileMedia from "@vscode/codicons/src/icons/file-media.svg?raw";
 import folder from "@vscode/codicons/src/icons/folder.svg?raw";
 import folderOpened from "@vscode/codicons/src/icons/folder-opened.svg?raw";
+import gitBranch from "@vscode/codicons/src/icons/git-branch.svg?raw";
+import gitCommit from "@vscode/codicons/src/icons/git-commit.svg?raw";
 import globe from "@vscode/codicons/src/icons/globe.svg?raw";
 import goToFile from "@vscode/codicons/src/icons/go-to-file.svg?raw";
 import history from "@vscode/codicons/src/icons/history.svg?raw";
@@ -62,6 +65,7 @@ import pin from "@vscode/codicons/src/icons/pin.svg?raw";
 import plug from "@vscode/codicons/src/icons/plug.svg?raw";
 import record from "@vscode/codicons/src/icons/record.svg?raw";
 import refresh from "@vscode/codicons/src/icons/refresh.svg?raw";
+import remove from "@vscode/codicons/src/icons/remove.svg?raw";
 import regex from "@vscode/codicons/src/icons/regex.svg?raw";
 import rename from "@vscode/codicons/src/icons/rename.svg?raw";
 import runCompact from "@vscode/codicons/src/icons/run-compact.svg?raw";
@@ -72,6 +76,7 @@ import server from "@vscode/codicons/src/icons/server.svg?raw";
 import serverEnvironment from "@vscode/codicons/src/icons/server-environment.svg?raw";
 import settingsGear from "@vscode/codicons/src/icons/settings-gear.svg?raw";
 import shield from "@vscode/codicons/src/icons/shield.svg?raw";
+import sourceControl from "@vscode/codicons/src/icons/source-control.svg?raw";
 import splitHorizontal from "@vscode/codicons/src/icons/split-horizontal.svg?raw";
 import splitVertical from "@vscode/codicons/src/icons/split-vertical.svg?raw";
 import symbolColor from "@vscode/codicons/src/icons/symbol-color.svg?raw";
@@ -121,9 +126,12 @@ const SVGS = {
   error,
   export: exportIcon,
   "eye-closed": eyeClosed,
+  file,
   "file-media": fileMedia,
   folder,
   "folder-opened": folderOpened,
+  "git-branch": gitBranch,
+  "git-commit": gitCommit,
   globe,
   "go-to-file": goToFile,
   history,
@@ -143,6 +151,7 @@ const SVGS = {
   plug,
   record,
   refresh,
+  remove,
   regex,
   rename,
   "run-compact": runCompact,
@@ -153,6 +162,7 @@ const SVGS = {
   "server-environment": serverEnvironment,
   "settings-gear": settingsGear,
   shield,
+  "source-control": sourceControl,
   "split-horizontal": splitHorizontal,
   "split-vertical": splitVertical,
   "symbol-color": symbolColor,
