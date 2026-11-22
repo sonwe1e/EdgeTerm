@@ -35,6 +35,7 @@ const entry: FileEntry = {
   owner: null,
   group: null,
 };
+const folder: FileEntry = { ...entry, name: "sub", path: "/ime/sub", isDir: true };
 let host: HTMLDivElement;
 let root: Root;
 const press = (input: HTMLInputElement, key: string, isComposing = false) =>
@@ -48,6 +49,53 @@ const type = (input: HTMLInputElement, value: string) =>
   });
 const click = (element: Element) => act(async () => (element as HTMLElement).click());
 const mount = () => act(async () => root.render(h(FilerPanel)));
+/** The row whose name is `name`, out of the mounted listing. */
+const entryRow = (name: string) =>
+  [...host.querySelectorAll<HTMLElement>(".filer-entry")].find(
+    (element) => element.querySelector(".row-label")!.textContent === name,
+  )!;
+const doubleClick = (name: string) =>
+  act(async () => {
+    entryRow(name).dispatchEvent(new MouseEvent("dblclick", { bubbles: true, button: 0 }));
+  });
+/** Opens the inline rename editor on `name` and submits `next`. */
+async function submitRename(name: string, next: string) {
+  await act(async () => {
+    entryRow(name).dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    host
+      .querySelector(".filer-list")!
+      .dispatchEvent(new KeyboardEvent("keydown", { key: "F2", bubbles: true }));
+  });
+  const input = host.querySelector<HTMLInputElement>(".filer-new-entry input")!;
+  type(input, next);
+  await press(input, "Enter");
+}
+/**
+ * Drags `name` onto the folder row `onto`. jsdom has no layout, so the one
+ * part of the gesture a test has to supply is what sits under the pointer.
+ */
+async function dragOnto(name: string, onto: string) {
+  const target = entryRow(onto);
+  Object.defineProperty(document, "elementFromPoint", {
+    configurable: true,
+    value: () => target,
+  });
+  const element = entryRow(name);
+  element.setPointerCapture = vi.fn();
+  element.hasPointerCapture = () => true;
+  await act(async () => {
+    element.dispatchEvent(
+      new MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 0, clientY: 0 }),
+    );
+    element.dispatchEvent(
+      new MouseEvent("pointermove", { bubbles: true, clientX: 40, clientY: 0 }),
+    );
+  });
+  await act(async () => {
+    element.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, button: 0 }));
+    await Promise.resolve();
+  });
+}
 
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -66,6 +114,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   host.remove();
+  delete (document as { elementFromPoint?: unknown }).elementFromPoint;
   useStore.setState(initial, true);
   vi.restoreAllMocks();
 });
@@ -246,4 +295,91 @@ describe("Filer inline create completion", () => {
       }
     },
   );
+});
+
+/**
+ * The listing both completion paths work in: the entry and a folder beside it.
+ * `mockReset` drops the queued one-shot listings an earlier test may have left
+ * behind, which would otherwise win over this implementation.
+ */
+function useListing() {
+  vi.mocked(api.localList).mockReset();
+  vi.mocked(api.localList).mockImplementation(async (path) => ({
+    path,
+    entries: path === "/ime" ? [entry, folder] : [],
+  }));
+}
+
+describe("Filer inline rename completion", () => {
+  it("reports a rename that finishes after navigation on the status line", async () => {
+    useListing();
+    const rename = deferred<void>();
+    vi.mocked(api.localRename).mockReturnValueOnce(rename.promise);
+
+    await mount();
+    await submitRename("original.txt", "renamed.txt");
+    expect(api.localRename).toHaveBeenCalledExactlyOnceWith(
+      "/ime/original.txt",
+      "/ime/renamed.txt",
+    );
+    // The user moved into a folder while the rename was still running.
+    await doubleClick("sub");
+    expect(host.querySelector('[aria-current="location"]')?.getAttribute("title")).toBe("/ime/sub");
+
+    await act(async () => rename.reject(new Error("navigated rename failure")));
+    // The folder on screen never held the rename, so its own error line stays
+    // clear; the failure still happened, and the app-wide lane carries it with
+    // the entry named the way a create's failure is.
+    expect(host.textContent).not.toContain("navigated rename failure");
+    expect(useStore.getState().error).toBe(
+      "Could not rename original.txt: navigated rename failure",
+    );
+  });
+
+  it("keeps a same-folder rename failure on the panel's error line", async () => {
+    useListing();
+    const rename = deferred<void>();
+    vi.mocked(api.localRename).mockReturnValueOnce(rename.promise);
+
+    await mount();
+    await submitRename("original.txt", "renamed.txt");
+    await act(async () => rename.reject(new Error("current rename failure")));
+    // In the folder the rename belonged to, the failure stays next to that
+    // folder's listing, as before, and the app-wide lane stays empty.
+    expect(host.textContent).toContain("current rename failure");
+    expect(useStore.getState().error).toBeNull();
+  });
+});
+
+describe("Filer inline move completion", () => {
+  it("reports a move that finishes after navigation on the status line", async () => {
+    useListing();
+    const move = deferred<void>();
+    vi.mocked(api.localRename).mockReturnValueOnce(move.promise);
+
+    await mount();
+    await dragOnto("original.txt", "sub");
+    expect(api.localRename).toHaveBeenCalledExactlyOnceWith(
+      "/ime/original.txt",
+      "/ime/sub/original.txt",
+    );
+    await doubleClick("sub");
+    expect(host.querySelector('[aria-current="location"]')?.getAttribute("title")).toBe("/ime/sub");
+
+    await act(async () => move.reject(new Error("navigated move failure")));
+    expect(host.textContent).not.toContain("navigated move failure");
+    expect(useStore.getState().error).toBe("Could not move original.txt: navigated move failure");
+  });
+
+  it("keeps a same-folder move failure on the panel's error line", async () => {
+    useListing();
+    const move = deferred<void>();
+    vi.mocked(api.localRename).mockReturnValueOnce(move.promise);
+
+    await mount();
+    await dragOnto("original.txt", "sub");
+    await act(async () => move.reject(new Error("current move failure")));
+    expect(host.textContent).toContain("current move failure");
+    expect(useStore.getState().error).toBeNull();
+  });
 });
