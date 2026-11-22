@@ -4,13 +4,11 @@ import * as api from "../api";
 import { t } from "../i18n";
 import { ask } from "../nativeDialog";
 import type { FileEntry } from "../types";
+import type { BeginDirectoryRefresh } from "./useFtpDirectory";
 import { friendlyFtpError, joinLocal, joinRemote } from "./ftpPresentation";
 
 interface Options {
-  beginDeleteRefresh: (
-    side: "remote" | "local",
-    target: string,
-  ) => (error: string | null) => Promise<void>;
+  beginDirectoryRefresh: BeginDirectoryRefresh;
   remotePath: string;
   transferring: boolean;
   setRemoteError: Dispatch<SetStateAction<string | null>>;
@@ -33,7 +31,7 @@ interface Options {
  * another.
  */
 export function useFtpActions({
-  beginDeleteRefresh,
+  beginDirectoryRefresh,
   remotePath,
   transferring,
   setRemoteError,
@@ -89,7 +87,7 @@ export function useFtpActions({
   const removeRemoteEntries = async (entries: readonly FileEntry[]) => {
     const [target] = entries;
     if (!target || transferring) return;
-    const refresh = beginDeleteRefresh("remote", remotePath);
+    const refresh = beginDirectoryRefresh("remote", remotePath);
     if (entries.length === 1) {
       const { folder } = deleteMode(target);
       const confirmed = await ask(
@@ -143,7 +141,7 @@ export function useFtpActions({
   const removeLocalEntries = async (entries: readonly FileEntry[]) => {
     const [target] = entries;
     if (!target || transferring) return;
-    const refresh = beginDeleteRefresh("local", localPath);
+    const refresh = beginDirectoryRefresh("local", localPath);
     if (entries.length === 1) {
       const { folder } = deleteMode(target);
       const confirmed = await ask(
