@@ -25,10 +25,12 @@ import { shellPromptEnd } from "./semanticColors";
  *
  * A selection is editable only when no command is running, the session is not
  * locked, no program tracks the mouse, the buffer is the normal one, the
- * selection lies within the cursor's soft-wrapped logical line, it does not
- * reach past the cursor (that ghost text is not input), and it does not start
- * inside a recognized prompt. Every other case keeps its byte-for-byte
- * behaviour, down to xterm's own single Delete.
+ * selection lies within the cursor's logical line, it does not reach past the
+ * cursor (that ghost text is not input), and it does not start inside a
+ * recognized prompt. The line begins where the terminal wrapped or, when the
+ * shell itself has redrawn the line and cleared those wrap flags, where its
+ * prompt was printed. Every other case keeps its byte-for-byte behaviour, down
+ * to xterm's own single Delete.
  */
 
 /** Runtime state the caller owns; both must be false for an edit to go out. */
@@ -88,10 +90,33 @@ export function selectionEdit(term: Terminal, guards: SelectionGuards): Selectio
   if (cols <= 0) return null;
   const cursorRow = buf.baseY + buf.cursorY;
 
-  // The logical (soft-wrapped) line the cursor is editing: walk up over the
-  // rows the terminal wrapped, mirroring TerminalCommands.cursorLine.
+  // The logical line the cursor is editing: walk up over the rows the terminal
+  // wrapped, mirroring TerminalCommands.cursorLine.
   let first = cursorRow;
   while (first > 0 && buf.getLine(first)?.isWrapped) first -= 1;
+
+  // The wrap flags are the terminal's, not the shell's. A line editor redraws
+  // its own line with explicit cursor moves and line feeds — GNU readline
+  // recreates a wrapped command line that way after an edit — and an explicit
+  // line feed clears the flag on the row it reaches, so the row that continues
+  // the line stops saying so. The row above the cursor then reads as a line of
+  // its own, and the next selection, the one made after the shell has redrawn
+  // the line, starts there and was refused. The line still begins where its
+  // prompt was printed: find that row above, over the rows that fill the width
+  // and therefore continue into the one below. Only a cursor row the terminal
+  // does not call wrapped needs this: with the flags intact the origin is
+  // already known.
+  const firstText = buf.getLine(first)?.translateToString(false) ?? "";
+  if (first === cursorRow && first > 0 && shellPromptEnd(firstText) < 0) {
+    for (let row = first - 1; row >= 0 && first - row <= term.rows; row -= 1) {
+      const line = buf.getLine(row);
+      if (!line || !fillsRow(line, cols)) break;
+      if (shellPromptEnd(line.translateToString(false)) >= 0) {
+        first = row;
+        break;
+      }
+    }
+  }
 
   // Everything outside that line is output, not the line being typed.
   if (start.y < first || end.y > cursorRow) return null;
@@ -151,6 +176,17 @@ export function scheduleSelectionRestore(term: Terminal, restore: string): void 
       // The pane may have closed between the keystroke and the walk back.
     }
   }, 0);
+}
+
+/**
+ * True when the row's last cell holds something. The terminal wraps only after
+ * filling a row to its last cell, so such a row is one that continues into the
+ * row below — even when the shell's own redraw has cleared the wrap flag on the
+ * row it reached.
+ */
+function fillsRow(line: IBufferLine, cols: number): boolean {
+  const cell = line.getCell(cols - 1);
+  return !!cell && (cell.getWidth() === 0 || cell.getCode() !== 0);
 }
 
 /** Column of the character that owns `col`: wide halves step back to the head. */
