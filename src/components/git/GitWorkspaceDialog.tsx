@@ -1,4 +1,13 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type RefObject,
+} from "react";
+import { openSessionGit } from "../../actions";
 import {
   commands,
   type GitAction,
@@ -10,13 +19,14 @@ import {
 } from "../../bindings";
 import { errorInfo, errorText } from "../../errorInfo";
 import { openFileEditor, useFileEditor } from "../../fileEditor";
-import { gitDraftKey, pickGitFolder, type GitSource } from "../../gitWorkspace";
+import { gitDraftKey, openGitWorkspace, pickGitFolder, type GitSource } from "../../gitWorkspace";
 import { IS_MAC, IS_WINDOWS } from "../../platform";
-import { useStore } from "../../store";
+import { tabTitle, useActiveTab, useStore } from "../../store";
 import { useStableCallback } from "../../useStableCallback";
 import { useT } from "../../useT";
-import { Icon } from "../icons";
+import { Icon, type IconName } from "../icons";
 import { ModalDialog } from "../ModalDialog";
+import { LOCAL_SOURCE, lastPaths } from "../panels/filerDirectoryCache";
 import { GitBranchesDialog } from "./GitBranchesDialog";
 import { GitChangeList, gitScopes, selectionId, selectionsOf } from "./GitChangeList";
 import { GitCommitComposer } from "./GitCommitComposer";
@@ -137,6 +147,215 @@ interface ReadState<T> {
   error: string | null;
 }
 
+/** Compares two folders on the same host, where the case and separator differ by platform. */
+const folderKey = (path: string, local: boolean): string => {
+  const normalized = local && IS_WINDOWS ? path.replace(/\\/g, "/").toLowerCase() : path;
+  return normalized.replace(/\/+$/, "");
+};
+
+/** One folder the source menu can switch to, and the action that switches it. */
+interface FolderChoice {
+  key: string;
+  label: string;
+  /** Where the choice points: a folder, session or terminal, shown after the label. */
+  detail?: string;
+  icon: IconName;
+  run: () => void;
+}
+
+/**
+ * The folder menu hanging off the dialog's folder button. It lists only the
+ * folders the current source can reach, keeps itself inside the dialog, and
+ * gives Escape back to the button that opened it. The server path field is
+ * inline: the caller validates the typed directory before the source switches,
+ * and a rejection reports through the dialog's own notice instead of closing.
+ */
+function GitFolderMenu({
+  id,
+  trigger,
+  choices,
+  local,
+  server,
+  onClose,
+}: {
+  id: string;
+  trigger: RefObject<HTMLButtonElement | null>;
+  choices: FolderChoice[];
+  local: FolderChoice;
+  server: { submit: (directory: string) => Promise<boolean> } | null;
+  onClose: (returnFocus: boolean) => void;
+}) {
+  const t = useT();
+  const menu = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLInputElement>(null);
+  const [typingPath, setTypingPath] = useState(false);
+  const [path, setPath] = useState("");
+  const [busy, setBusy] = useState(false);
+  const close = useStableCallback(onClose);
+  const pathId = `${id}-path`;
+
+  // Opening (or coming back from the path field) hands the keyboard to the
+  // first choice; the field takes it when it appears.
+  useEffect(() => {
+    const target = typingPath
+      ? input.current
+      : menu.current?.querySelector<HTMLElement>("[data-folder-item]");
+    target?.focus({ preventScroll: true });
+  }, [typingPath]);
+
+  useEffect(() => {
+    const outside = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (menu.current?.contains(target) || trigger.current?.contains(target)) return;
+      close(false);
+    };
+    document.addEventListener("pointerdown", outside, true);
+    document.addEventListener("focusin", outside);
+    return () => {
+      document.removeEventListener("pointerdown", outside, true);
+      document.removeEventListener("focusin", outside);
+    };
+  }, [close, trigger]);
+
+  const submit = async () => {
+    const directory = path.trim();
+    if (!server || !directory || busy) return;
+    setBusy(true);
+    try {
+      if (await server.submit(directory)) close(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.nativeEvent.isComposing) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      // The menu is the topmost surface: cancel it before the dialog's own
+      // Escape can close the whole workspace.
+      event.stopPropagation();
+      close(true);
+      return;
+    }
+    if (event.key === "Tab") {
+      // The path field's own controls keep the keyboard while it is open; a
+      // tab out of the menu closes it and lets focus move on.
+      if (!typingPath) close(false);
+      return;
+    }
+    if (typingPath || !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const items = [...(menu.current?.querySelectorAll<HTMLElement>("[data-folder-item]") ?? [])];
+    if (!items.length) return;
+    const index = items.indexOf(document.activeElement as HTMLElement);
+    const next =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? items.length - 1
+          : event.key === "ArrowDown"
+            ? (index + 1) % items.length
+            : (index - 1 + items.length) % items.length;
+    items[next]?.focus({ preventScroll: true });
+  };
+
+  const entry = (choice: FolderChoice, keepOpen = false) => (
+    <button
+      key={choice.key}
+      type="button"
+      role="menuitem"
+      tabIndex={-1}
+      data-folder-item=""
+      className="menu-entry"
+      title={choice.detail}
+      onClick={() => {
+        if (!keepOpen) close(false);
+        choice.run();
+      }}
+    >
+      <span className="menu-icon" aria-hidden="true">
+        <Icon name={choice.icon} />
+      </span>
+      <span className="menu-entry-label">{choice.label}</span>
+      {choice.detail && (
+        <span className="git-folder-detail" aria-hidden="true">
+          {choice.detail}
+        </span>
+      )}
+    </button>
+  );
+
+  return (
+    <div
+      id={id}
+      ref={menu}
+      className="menu-dropdown git-folder-menu"
+      role={typingPath ? "group" : "menu"}
+      aria-label={t("git.folder.menu")}
+      onKeyDown={onKeyDown}
+    >
+      {typingPath ? (
+        <form
+          className="git-folder-server"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submit();
+          }}
+        >
+          <label htmlFor={pathId}>{t("git.folder.serverPrompt")}</label>
+          <input
+            ref={input}
+            id={pathId}
+            className="git-branch-input"
+            value={path}
+            disabled={busy}
+            autoComplete="off"
+            spellCheck={false}
+            aria-describedby={`${pathId}-hint`}
+            onChange={(event) => setPath(event.target.value)}
+          />
+          <p className="git-folder-hint" id={`${pathId}-hint`}>
+            {t("git.folder.serverHint")}
+          </p>
+          <div className="git-folder-server-actions">
+            <button
+              type="button"
+              className="git-text-button"
+              disabled={busy}
+              onClick={() => {
+                setPath("");
+                setTypingPath(false);
+              }}
+            >
+              {t("common.cancel")}
+            </button>
+            <button type="submit" className="btn" disabled={busy || !path.trim()}>
+              {busy ? t("common.loading") : t("git.folder.serverOpen")}
+            </button>
+          </div>
+        </form>
+      ) : (
+        <>
+          {choices.map((choice) => entry(choice))}
+          {server &&
+            entry(
+              {
+                key: "server",
+                label: t("git.folder.server"),
+                icon: "server",
+                run: () => setTypingPath(true),
+              },
+              true,
+            )}
+          {entry(local)}
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function GitWorkspaceDialog({
   source,
   onClose,
@@ -162,6 +381,15 @@ export default function GitWorkspaceDialog({
   } = useRepository(source);
   const headingId = useId();
   const filterInput = useRef<HTMLInputElement>(null);
+  const headerFolderButton = useRef<HTMLButtonElement>(null);
+  const welcomeFolderButton = useRef<HTMLButtonElement>(null);
+  const [folderMenu, setFolderMenu] = useState<"header" | "welcome" | null>(null);
+  const folderMenuId = `${useId()}-menu`;
+  const activeTab = useActiveTab();
+  const sessionTab = useStore((state) =>
+    source.sessionId ? state.tabs.find((tab) => tab.info.id === source.sessionId) : undefined,
+  );
+  const sourceLabel = source.label ?? (sessionTab ? tabTitle(sessionTab) : null);
   const list = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<"changes" | "history">("changes");
   const [branches, setBranches] = useState(false);
@@ -273,6 +501,46 @@ export default function GitWorkspaceDialog({
     }
   }
 
+  function closeFolderMenu(returnFocus = false) {
+    const where = folderMenu;
+    setFolderMenu(null);
+    if (returnFocus)
+      (where === "welcome" ? welcomeFolderButton : headerFolderButton).current?.focus();
+  }
+
+  function toggleFolderMenu(where: "header" | "welcome") {
+    setActionError(null);
+    setFolderMenu((current) => (current === where ? null : where));
+  }
+
+  function folderMenuKey(
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    where: "header" | "welcome",
+  ) {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    setActionError(null);
+    setFolderMenu(where);
+  }
+
+  /** Validates the typed server folder with the same git_status read the dialog uses. */
+  async function openServerFolder(directory: string): Promise<boolean> {
+    if (!source.sessionId) return false;
+    setActionError(null);
+    try {
+      const next = await commands.gitStatus({ sessionId: source.sessionId, directory });
+      if (!next) {
+        setActionError(t("git.noRepository"));
+        return false;
+      }
+      openGitWorkspace({ directory, sessionId: source.sessionId, label: sourceLabel });
+      return true;
+    } catch (error) {
+      setActionError(errorText(error));
+      return false;
+    }
+  }
+
   function reviewStaged() {
     setMode("changes");
     setFilter("");
@@ -308,6 +576,64 @@ export default function GitWorkspaceDialog({
   }
 
   const location = status?.root ?? source.directory;
+  const localSource = source.sessionId === null;
+  const sameFolder = (a: string, b: string) =>
+    folderKey(a, localSource) === folderKey(b, localSource);
+  const panelFolder = lastPaths.get(source.sessionId ?? LOCAL_SOURCE) ?? null;
+  const terminalTab =
+    activeTab &&
+    (activeTab.info.kind === "local" || activeTab.info.kind === "ssh") &&
+    activeTab.state === "connected"
+      ? activeTab
+      : undefined;
+  // Only the folders this source can actually reach: a local source has no
+  // server entry, and the Files panel folder is read for this session only.
+  const folderChoices: FolderChoice[] = [];
+  if (terminalTab) {
+    folderChoices.push({
+      key: "terminal",
+      label: t("git.folder.terminal"),
+      detail: terminalTab.info.kind === "ssh" ? tabTitle(terminalTab) : t("git.local"),
+      icon: "terminal",
+      run: () => void openSessionGit(terminalTab.info.id),
+    });
+  }
+  if (
+    panelFolder &&
+    !sameFolder(panelFolder, location) &&
+    !sameFolder(panelFolder, source.directory)
+  ) {
+    folderChoices.push({
+      key: "filer",
+      label: t("git.folder.filer"),
+      detail: panelFolder,
+      icon: "folder",
+      run: () =>
+        openGitWorkspace({
+          directory: panelFolder,
+          sessionId: source.sessionId,
+          label: sourceLabel,
+        }),
+    });
+  }
+  const localChoice: FolderChoice = {
+    key: "local",
+    label: t("git.folder.local"),
+    icon: "folder-opened",
+    run: () => void chooseFolder(),
+  };
+  function folderMenuNode(where: "header" | "welcome") {
+    return (
+      <GitFolderMenu
+        id={folderMenuId}
+        trigger={where === "header" ? headerFolderButton : welcomeFolderButton}
+        choices={folderChoices}
+        local={localChoice}
+        server={source.sessionId ? { submit: openServerFolder } : null}
+        onClose={closeFolderMenu}
+      />
+    );
+  }
   const parts = (IS_WINDOWS && !source.sessionId ? location.replace(/\\/g, "/") : location)
     .split("/")
     .filter(Boolean);
@@ -418,16 +744,24 @@ export default function GitWorkspaceDialog({
             >
               <Icon name="refresh" />
             </button>
-            <button
-              type="button"
-              className="git-icon-button"
-              title={t("git.openFolder")}
-              aria-label={t("git.openFolder")}
-              disabled={!allowClose}
-              onClick={() => void chooseFolder()}
-            >
-              <Icon name="folder-opened" />
-            </button>
+            <div className="git-folder-control">
+              <button
+                ref={headerFolderButton}
+                type="button"
+                className="git-icon-button"
+                title={t("git.folder.menu")}
+                aria-label={t("git.folder.menu")}
+                aria-haspopup="menu"
+                aria-expanded={folderMenu === "header"}
+                aria-controls={folderMenu === "header" ? folderMenuId : undefined}
+                disabled={!allowClose}
+                onClick={() => toggleFolderMenu("header")}
+                onKeyDown={(event) => folderMenuKey(event, "header")}
+              >
+                <Icon name="folder-opened" />
+              </button>
+              {folderMenu === "header" && folderMenuNode("header")}
+            </div>
             <button
               type="button"
               className="git-icon-button git-close"
@@ -657,9 +991,21 @@ export default function GitWorkspaceDialog({
             {refreshing && <p role="status">{t("common.loading")}</p>}
             {!refreshing && !loadError && <p>{t("git.noRepository")}</p>}
             {!refreshing && (
-              <button className="btn" type="button" onClick={() => void chooseFolder()}>
-                {t("git.openFolder")}
-              </button>
+              <div className="git-folder-control">
+                <button
+                  ref={welcomeFolderButton}
+                  className="btn"
+                  type="button"
+                  aria-haspopup="menu"
+                  aria-expanded={folderMenu === "welcome"}
+                  aria-controls={folderMenu === "welcome" ? folderMenuId : undefined}
+                  onClick={() => toggleFolderMenu("welcome")}
+                  onKeyDown={(event) => folderMenuKey(event, "welcome")}
+                >
+                  {t("git.folder.menu")}
+                </button>
+                {folderMenu === "welcome" && folderMenuNode("welcome")}
+              </div>
             )}
           </div>
         )}

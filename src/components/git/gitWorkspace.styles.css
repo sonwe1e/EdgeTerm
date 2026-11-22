@@ -1,6 +1,11 @@
+/* Source control is a review workspace, not a confirm box: it takes the
+   desktop up to a 1760x1100 (16:10) surface and keeps 16px gutters below
+   that. The cap is where a unified diff still reads as lines rather than a
+   full-width paragraph, and keeps the patch and the composer in one frame on
+   a 1440p screen. */
 .dialog.git-workspace {
-  width: min(1280px, calc(100vw - 32px));
-  height: min(824px, calc(100vh - 32px));
+  width: min(1760px, calc(100vw - 32px));
+  height: min(1100px, calc(100vh - 32px));
   max-height: none;
   color: var(--fg);
   line-height: 1.4;
@@ -47,8 +52,11 @@
   min-width: 0;
 }
 
+/* The shared dialog-title rung (.dialog-header and .session-dialog-title in
+   dialogs.styles.css), not the old private +5px that put this title one step
+   above every other dialog. */
 .git-location h2 {
-  font-size: calc(var(--fs) + 5px);
+  font-size: var(--fs-md);
   font-weight: 650;
 }
 
@@ -120,6 +128,8 @@
   border-radius: var(--radius-sm);
 }
 
+/* A branch label in a header control is chrome. Mono stays on the code, path
+   and diff surfaces below (location path, review title, patch text). */
 .git-branch-button {
   justify-content: flex-start;
   max-width: 100%;
@@ -127,7 +137,6 @@
   flex-shrink: 1;
   border: 1px solid var(--border-strong);
   background: var(--bg-panel);
-  font-family: var(--font-mono);
 }
 
 .git-workspace .icon,
@@ -165,6 +174,78 @@
 .git-tracking {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+
+/* The folder menu hangs off its trigger in the header or in the empty state.
+   The wrapper is the positioning context, so the shared .menu-dropdown lands
+   under the button that opened it. */
+.git-folder-control {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+
+.git-folder-menu {
+  right: 0;
+  left: auto;
+  min-width: 248px;
+  max-width: min(380px, calc(100vw - 48px));
+  max-height: min(70vh, 460px);
+  overflow: auto;
+}
+
+.git-folder-menu .menu-entry {
+  height: auto;
+  min-height: 28px;
+}
+
+.git-folder-menu .menu-entry-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.git-folder-detail {
+  flex: 0 1 auto;
+  max-width: 52%;
+  overflow: hidden;
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-folder-server {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-width: 280px;
+  padding: var(--sp-4);
+}
+
+.git-folder-server label {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.git-folder-hint {
+  max-width: 340px;
+  color: var(--fg-dim);
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+}
+
+.git-folder-server .git-branch-input {
+  min-height: 30px;
+}
+
+.git-folder-server-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-4);
+  margin-top: var(--sp-4);
 }
 
 .git-notice {
@@ -414,9 +495,11 @@
   border-bottom: 1px solid var(--border);
 }
 
+/* The selected file is content, one rung below the dialog title: the path
+   keeps the mono stack but follows the body size. */
 .git-review-title h3 {
   font-family: var(--font-mono);
-  font-size: var(--fs-md);
+  font-size: var(--fs);
   font-weight: 650;
 }
 
@@ -542,12 +625,15 @@
   flex-shrink: 0;
 }
 
+/* Code keeps its one-step-below-the-buffer-font relationship, with the body
+   rung as a floor: a panel font larger than the buffer font grows the diff
+   with the dialog instead of leaving 13px code in a 15px surface. */
 .git-unified-row,
 .git-split-cell {
   display: grid;
   grid-template-columns: 6ch 6ch 2ch minmax(0, 1fr);
   min-height: 21px;
-  font: max(11px, calc(var(--buffer-font-size) - 1px)) / 1.55 var(--font-mono);
+  font: max(var(--fs), calc(var(--buffer-font-size) - 1px)) / 1.55 var(--font-mono);
 }
 
 .git-unified-row code,
@@ -680,10 +766,6 @@
   gap: var(--sp-8);
   padding: var(--sp-12) var(--sp-16);
   min-height: 0;
-}
-
-.git-branch-row {
-  font-family: var(--font-mono);
 }
 
 @media (max-width: 760px) {
