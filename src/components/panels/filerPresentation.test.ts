@@ -94,10 +94,11 @@ describe("formatDate", () => {
 
   // The cell prints nothing for a moment the listing could not report; the
   // row's tooltip is where "unknown" is said out loud. Epoch 0 is a real
-  // moment, 1970, and is shown as one.
+  // moment, but its local calendar day depends on the timezone.
   it("leaves an unknown moment empty and keeps the epoch", () => {
     expect(formatDate(null, "en-US", NOW)).toBe("");
-    expect(formatDate(0, "en-US", NOW)).toBe("1970-01-01");
+    const localEpochDay = new Date(0).getTimezoneOffset() > 0 ? "1969-12-31" : "1970-01-01";
+    expect(formatDate(0, "en-US", NOW)).toBe(localEpochDay);
   });
 
   // A server whose clock runs ahead dates files in the future. Those fall
