@@ -68,6 +68,7 @@ function makeController() {
     dispose: () => input.remove(),
     fit() {},
     setVisible() {},
+    setLocked() {},
     setGutterMode() {},
     setFontSize() {},
     setFontFamily() {},
@@ -233,6 +234,62 @@ describe("workspace tab focus", () => {
     } finally {
       vi.mocked(ensureController).mockImplementation(normalEnsure);
     }
+  });
+
+  it("focuses the terminal after F6 enters the region before its controller arrives", async () => {
+    const normalEnsure = vi.mocked(ensureController).getMockImplementation()!;
+    let attach!: (controller: TerminalController) => void;
+    const slow = new Promise<TerminalController>((resolve) => {
+      attach = resolve;
+    });
+    vi.mocked(ensureController).mockImplementation((id) =>
+      id === ids[1] ? slow : normalEnsure(id),
+    );
+    try {
+      await mount();
+      selectByArrow();
+      await nextFrame();
+      expect(document.activeElement).toBe(labels[1]);
+
+      // F6 leaves the strip for the terminal region. Its controller is still
+      // on its way, so only the pane slot can take the focus.
+      const strip = labels[1].closest<HTMLElement>('[data-focus-region="tabs"]')!;
+      const slot = host.querySelector<HTMLElement>('.pane-slot[data-focus-region="terminal"]')!;
+      for (const node of [strip, slot]) {
+        vi.spyOn(node, "getClientRects").mockReturnValue([new DOMRect()] as unknown as DOMRectList);
+      }
+      expect(focusNextRegion(1)).toBe(true);
+      expect(document.activeElement).toBe(slot);
+      // Entering the pane is what ends the roving intent: without this, the
+      // controller's arrival still sees "strip" and leaves the keyboard on
+      // the slot instead of the terminal.
+      expect(useStore.getState().tabFocusTarget).toBe("terminal");
+
+      await act(async () => attach(terminals[1].controller));
+      await nextFrame();
+      expect(document.activeElement).toBe(terminals[1].input);
+    } finally {
+      vi.mocked(ensureController).mockImplementation(normalEnsure);
+    }
+  });
+
+  it("keeps the roving label focused and the active tab unchanged when a background tab closes", async () => {
+    await mount();
+    selectByArrow();
+    await nextFrame();
+    expect(document.activeElement).toBe(labels[1]);
+    expect(useStore.getState().activeId).toBe(ids[1]);
+
+    // A tab the user is not looking at leaves without taking the keyboard
+    // back to a terminal: the strip is still where they were, and closing a
+    // background tab is no reason to change which session is shown.
+    await act(async () => {
+      await useStore.getState().closeTab(ids[2]);
+    });
+    await nextFrame();
+    expect(useStore.getState().activeId).toBe(ids[1]);
+    expect(useStore.getState().tabFocusTarget).toBe("strip");
+    expect(document.activeElement).toBe(labels[1]);
   });
 
   it("focuses a remounted terminal after a later ordinary activation", async () => {
