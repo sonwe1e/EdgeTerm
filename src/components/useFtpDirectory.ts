@@ -161,27 +161,46 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
     }
 
     void (async () => {
-      try {
-        const [ftpHome, machineHome] = await Promise.all([
-          api.sftpHome(sessionId),
-          api.localHome(),
-        ]);
+      // The two lookups belong to different panes, so they settle separately:
+      // a Home failure must be reported on the pane that asked for it and must
+      // not stop the other pane from restoring. Awaiting both in one try/catch
+      // gave the catch no pane to report on, so it always used the remote one;
+      // a local failure left the local pane empty with its message on the
+      // remote pane.
+      const [ftpHome, machineHome] = await Promise.allSettled([
+        api.sftpHome(sessionId),
+        api.localHome(),
+      ]);
+      if (cancelled) return;
+      if (ftpHome.status === "fulfilled") setRemoteHome(ftpHome.value);
+      else if (remoteView.current.readGeneration === initialRemote)
+        setRemoteError(friendlyFtpError(ftpHome.reason));
+      if (machineHome.status === "fulfilled") setLocalHome(machineHome.value);
+      else if (localView.current.readGeneration === initialLocal)
+        setLocalError(errorText(machineHome.reason));
+      const saved = useStore
+        .getState()
+        .tabs.find((item) => item.info.id === sessionId)?.directories;
+      // A pane whose Home lookup failed has no fallback left, and starting a
+      // listing would clear the failure it just reported; it keeps the
+      // message. The healthy pane restores regardless.
+      await Promise.all([
+        ftpHome.status === "fulfilled"
+          ? restore(remoteView.current, initialRemote, loadRemote, saved?.filer, ftpHome.value)
+          : undefined,
+        machineHome.status === "fulfilled"
+          ? restore(localView.current, initialLocal, loadLocal, saved?.local, machineHome.value)
+          : undefined,
+      ]);
+    })()
+      // The lookups settle above, so a rejection here is unexpected: report it
+      // on both panes instead of letting it become an unhandled rejection and
+      // leaving two blank panes with nothing said.
+      .catch((error: unknown) => {
         if (cancelled) return;
-        setRemoteHome(ftpHome);
-        setLocalHome(machineHome);
-        const saved = useStore
-          .getState()
-          .tabs.find((item) => item.info.id === sessionId)?.directories;
-        await Promise.all([
-          restore(remoteView.current, initialRemote, loadRemote, saved?.filer, ftpHome),
-          restore(localView.current, initialLocal, loadLocal, saved?.local, machineHome),
-        ]);
-      } catch (error) {
-        if (!cancelled && remoteView.current.readGeneration === initialRemote) {
-          setRemoteError(friendlyFtpError(error));
-        }
-      }
-    })();
+        setRemoteError(friendlyFtpError(error));
+        setLocalError(errorText(error));
+      });
 
     return () => {
       cancelled = true;
