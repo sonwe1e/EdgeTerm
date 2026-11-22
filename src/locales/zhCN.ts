@@ -827,6 +827,7 @@ export const zhCN: Catalog = {
   "filer.refresh": "刷新",
   "filer.folder": "文件夹",
   "filer.file": "文件",
+  "filer.createFailed": "无法创建 {name}：{error}",
   "filer.transferring": "传输中",
   "filer.invalidName": "“{name}” 不是有效的{kind}名称",
   "filer.alreadyExists": "“{name}” 在此文件夹中已存在",

@@ -176,7 +176,14 @@ describe("Filer inline create completion", () => {
         else create.resolve(undefined);
       });
       expect(api.localList).toHaveBeenCalledTimes(2);
+      // The listing on screen is the folder the user moved to, so it must not
+      // carry a failure about the one they left. A failure that no longer has a
+      // folder to belong to is still a failure: it goes to the app-wide status
+      // line, which stays until dismissed.
       expect(host.textContent).not.toContain("obsolete create failure");
+      expect(useStore.getState().error).toBe(
+        fails ? "Could not create new.txt: obsolete create failure" : null,
+      );
 
       await act(async () => {
         navigate.resolve({ path: "/ime", entries: [] });
@@ -228,7 +235,10 @@ describe("Filer inline create completion", () => {
         else create.resolve(undefined);
       });
       if (fails) {
+        // In the folder the create belonged to, the failure goes next to that
+        // folder's listing, as before, not to the app-wide status line.
         expect(host.textContent).toContain("current create failure");
+        expect(useStore.getState().error).toBeNull();
         expect(api.localList).toHaveBeenCalledTimes(1);
       } else {
         expect(host.textContent).toContain("new.txt");
