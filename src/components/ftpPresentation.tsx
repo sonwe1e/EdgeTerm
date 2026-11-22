@@ -75,6 +75,13 @@ export interface FileBrowserProps {
   selection: FileSelection;
   loading: boolean;
   error: string | null;
+  /**
+   * An operation's failure, shown above the rows while they stay on screen.
+   * A read failure is `error` instead: it replaces the list, because a
+   * directory that could not be read leaves nothing to show. Optional for the
+   * harnesses that mount the browser without a pane behind it.
+   */
+  notice?: string | null;
   actions?: ReactNode;
   side: PaneSide;
   /** The scrolling row list, for the drag's edge auto-scroll; see FtpPane. */
@@ -116,6 +123,7 @@ export function FileBrowser({
   selection,
   loading,
   error,
+  notice,
   actions,
   side,
   listRef,
@@ -306,6 +314,16 @@ export function FileBrowser({
           <span className="sr-only">{t("filer.sortByModified")}</span>
         </button>
       </div>
+
+      {/* A failed operation keeps the listing it happened to: the message
+          sits above the scroller instead of in it, so it stays visible
+          whatever part of a long directory is scrolled to and the rows below
+          it stay readable, selectable and type-selectable. */}
+      {notice && (
+        <div className="ftp-browser-message is-error ftp-browser-notice" role="alert">
+          {notice}
+        </div>
+      )}
 
       <div
         ref={listRef}

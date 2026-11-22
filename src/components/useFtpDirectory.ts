@@ -12,6 +12,16 @@ interface Options {
   tab: Tab;
 }
 
+/**
+ * Reloads a pane once an operation has finished, reporting its failure.
+ *
+ * `destination` is the directory a transfer wrote into. Only an in-place
+ * operation (a deletion) leaves it out. A destination-bearing call whose pane
+ * has since moved to a third directory reconciles nothing, so its failure is
+ * not reported here: a transfer's failure belongs to its own footer, which the
+ * caller already holds. Anything new that passes a destination and expects its
+ * failure on the pane has to add that path first.
+ */
 export type BeginDirectoryRefresh = (
   side: "remote" | "local",
   originalPath: string,
@@ -57,6 +67,12 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
   const [remoteSelection, setRemoteSelection] = useState<FileSelection>(EMPTY_SELECTION);
   const [remoteLoading, setRemoteLoading] = useState(false);
   const [remoteError, setRemoteError] = useState<string | null>(null);
+  // A failure of an operation on the listing (a delete, so far) reports here
+  // instead of in `remoteError`: the read succeeded, and its rows are what
+  // tells the user which entries a failed removal left behind. Kept apart
+  // from the error because a directory that could not be read has no rows to
+  // keep, so that failure still replaces the list. See FileBrowser.
+  const [remoteNotice, setRemoteNotice] = useState<string | null>(null);
 
   const [localHome, setLocalHome] = useState("");
   const [localPath, setLocalPath] = useState("");
@@ -65,15 +81,25 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
   const [localSelection, setLocalSelection] = useState<FileSelection>(EMPTY_SELECTION);
   const [localLoading, setLocalLoading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  // The local pane's own operation notice; see `remoteNotice`.
+  const [localNotice, setLocalNotice] = useState<string | null>(null);
   const localView = useRef<DirectoryView>({ path: "", epoch: 0, lifetime: 0, readGeneration: 0 });
   const remoteView = useRef<DirectoryView>({ path: "", epoch: 0, lifetime: 0, readGeneration: 0 });
 
   const loadRemote = useCallback(
-    async (target: string, quiet = false, deleteError: string | null = null): Promise<boolean> => {
+    async (
+      target: string,
+      quiet = false,
+      operationError: string | null = null,
+    ): Promise<boolean> => {
       const view = remoteView.current;
       const request = startDirectoryRead(view, target);
       setRemoteLoading(true);
-      setRemoteError(deleteError);
+      // A read starts the pane's message over: the directory's own error goes,
+      // and an operation that has just finished hands its failure in here so
+      // the reload reports it without replacing the rows it loads.
+      setRemoteError(null);
+      setRemoteNotice(operationError);
       try {
         const listing = await api.sftpList(sessionId, target);
         if (request !== view.pending) return false;
@@ -85,8 +111,7 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
         rememberWorkspaceDirectory(sessionId, "filer", listing.path);
         return true;
       } catch (error) {
-        if (request === view.pending && !quiet && deleteError === null)
-          setRemoteError(friendlyFtpError(error));
+        if (request === view.pending && !quiet) setRemoteError(friendlyFtpError(error));
         return false;
       } finally {
         if (request === view.pending) {
@@ -103,12 +128,15 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
     async (
       target: string | (() => Promise<string>),
       quiet = false,
-      deleteError: string | null = null,
+      operationError: string | null = null,
     ): Promise<boolean> => {
       const view = localView.current;
       const request = startDirectoryRead(view, typeof target === "string" ? target : null);
       setLocalLoading(true);
-      setLocalError(deleteError);
+      // See `loadRemote`: the reload reports an operation's failure beside
+      // the rows, while a read failure still takes the error line.
+      setLocalError(null);
+      setLocalNotice(operationError);
       try {
         const path = typeof target === "string" ? target : await target();
         if (request !== view.pending) return false;
@@ -123,8 +151,7 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
         rememberWorkspaceDirectory(sessionId, "local", listing.path);
         return true;
       } catch (error) {
-        if (request === view.pending && !quiet && deleteError === null)
-          setLocalError(errorText(error));
+        if (request === view.pending && !quiet) setLocalError(errorText(error));
         return false;
       } finally {
         if (request === view.pending) {
@@ -193,13 +220,21 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
   const beginDirectoryRefresh: BeginDirectoryRefresh = (side, originalPath, destination) => {
     const view = side === "remote" ? remoteView.current : localView.current;
     const load = side === "remote" ? loadRemote : loadLocal;
+    const setNotice = side === "remote" ? setRemoteNotice : setLocalNotice;
     const { epoch, lifetime } = view;
     return async (operationError) => {
       while (view.lifetime === lifetime) {
         const { path, pending } = view;
         const isOriginal = view.epoch === epoch && path === originalPath;
         const canRefresh = isOriginal || path === destination;
-        if (!canRefresh && destination === undefined) return;
+        if (!canRefresh && destination === undefined) {
+          // The pane has moved on, so there is no listing of `originalPath`
+          // left to reload, but the operation still failed. It goes on the
+          // view the user is looking at now; returning here without it left a
+          // failed delete reported nowhere at all.
+          if (operationError !== null) setNotice(operationError);
+          return;
+        }
 
         // Reconcile after navigation, not instead of it. A same-directory
         // read may contain rows captured before the operation completed.
@@ -232,6 +267,8 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
     localEntries,
     setRemoteError,
     setLocalError,
+    setRemoteNotice,
+    setLocalNotice,
     loadRemote,
     loadLocal,
     loadLocalParent: () => loadLocal(() => api.localParent(localPath)),
@@ -241,6 +278,7 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
     remoteSelection,
     remoteLoading,
     remoteError,
+    remoteNotice,
     setRemoteDraft,
     remoteHome,
     setRemoteSelection,
@@ -248,6 +286,7 @@ export function useFtpDirectory({ sessionId, tab }: Options) {
     localDraft,
     localSelection,
     localError,
+    localNotice,
     setLocalDraft,
     localHome,
     setLocalSelection,

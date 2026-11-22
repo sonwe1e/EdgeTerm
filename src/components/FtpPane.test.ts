@@ -441,7 +441,11 @@ describe("local Parent navigation", () => {
     await setup();
     clickParent();
     await flush();
-    const error = () => localBrowser().querySelector(".ftp-browser-message.is-error")?.textContent;
+    // Only the list's own error: an operation's notice above the list shares
+    // the message classes but is not what this test is about.
+    const error = () =>
+      localBrowser().querySelector(".ftp-browser-list > .ftp-browser-message.is-error")
+        ?.textContent;
     expect(error()).toBe("Cannot resolve the parent");
     expect(visits()).toEqual(["/local"]);
     clickParent();
@@ -450,5 +454,96 @@ describe("local Parent navigation", () => {
     await act(async () => stale.reject(new Error("Old parent error")));
     expect(error()).toBeUndefined();
     expect([localPath().value, remembered()]).toEqual(["/typed", "/typed"]);
+  });
+});
+
+// A delete that fails must tell the user what is left, not replace the list
+// it just reloaded (FileBrowser only drew its rows when `error` was null), and
+// it must still say so when the pane moved on while the removal ran (the
+// refresh had nowhere to report a failure it could not reload into).
+describe("FTP/SFTP operation failure feedback", () => {
+  const paneAt = (index: number) => host.querySelectorAll<HTMLElement>(".ftp-file-browser")[index]!;
+  const rowNames = (index: number) =>
+    [...listAt(index).querySelectorAll<HTMLElement>('[role="option"]')].map(
+      (row) => row.querySelector(".ftp-file-name > span:last-child")!.textContent,
+    );
+  const noticeAt = (index: number) =>
+    paneAt(index).querySelector(".ftp-browser-notice")?.textContent;
+  const listErrorAt = (index: number) =>
+    listAt(index).querySelector(".ftp-browser-message.is-error")?.textContent;
+  const pathAt = (index: number) =>
+    paneAt(index).querySelector<HTMLInputElement>(".ftp-browser-path input")!;
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (error: Error) => void;
+    const promise = new Promise<T>((done, fail) => {
+      resolve = done;
+      reject = fail;
+    });
+    return { promise, resolve, reject };
+  }
+
+  it("keeps the refreshed rows beside a failed delete's message", async () => {
+    await mount();
+    clickRow(0, "app.log");
+    clickRow(0, "conf", { ctrlKey: true });
+    expect(selectedNames(0)).toEqual(["conf", "app.log"]);
+
+    // The folder goes and the file does not; the reload lists what is left.
+    vi.mocked(api.sftpRemove)
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("cannot remove app.log"));
+    vi.mocked(api.sftpList).mockResolvedValueOnce({
+      path: "/remote",
+      entries: [file("/remote", "app.log")],
+    });
+    act(() => toolbarButton("Delete remote item").click());
+    const dialog = alertDialog()!;
+    await act(async () => {
+      dialog.querySelector<HTMLButtonElement>(".confirm-dialog .is-danger")!.click();
+    });
+    await flush();
+
+    expect(noticeAt(0)).toBe("cannot remove app.log");
+    // The refreshed listing is on screen and still usable: the entry whose
+    // removal failed is listed and can be selected again.
+    expect(rowNames(0)).toEqual(["app.log"]);
+    expect(listErrorAt(0)).toBeUndefined();
+    clickRow(0, "app.log");
+    expect(selectedNames(0)).toEqual(["app.log"]);
+  });
+
+  it("reports a delete failure after the pane navigated away", async () => {
+    const removal = deferred<void>();
+    vi.mocked(api.sftpRemove).mockReturnValueOnce(removal.promise);
+    vi.mocked(api.sftpList).mockImplementation(async (_id, path) => ({
+      path,
+      entries: path === "/remote" ? remoteFiles() : [file(path, "inner.log")],
+    }));
+    await mount();
+    clickRow(0, "app.log");
+    act(() => toolbarButton("Delete remote item").click());
+    await flush();
+    expect(api.sftpRemove).toHaveBeenCalledOnce();
+
+    // The removal is still running when the user opens a folder.
+    act(() => {
+      rowAt(0, "conf").dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    });
+    await flush();
+    expect(pathAt(0).value).toBe("/remote/conf");
+    expect(rowNames(0)).toEqual(["inner.log"]);
+
+    await act(async () => {
+      removal.reject(new Error("cannot remove app.log"));
+    });
+    await flush();
+
+    // The failure is reported on the view the user is looking at: the old
+    // directory is not reloaded over it, and the new rows stay.
+    expect(noticeAt(0)).toBe("cannot remove app.log");
+    expect(rowNames(0)).toEqual(["inner.log"]);
+    expect(pathAt(0).value).toBe("/remote/conf");
+    expect(listErrorAt(0)).toBeUndefined();
   });
 });
