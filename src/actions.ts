@@ -2,6 +2,7 @@ import * as api from "./api";
 import { useAgents } from "./agents/model";
 import { errorInfo, errorText } from "./errorInfo";
 import { beginFileEditorOpen, isFileEditorOpenCurrent, openFileEditor } from "./fileEditor";
+import { beginGitOpen, isGitOpenCurrent, openGitWorkspace, pickGitFolder } from "./gitWorkspace";
 import { fontStack } from "./fonts";
 import { commandHistory } from "./history";
 import { t } from "./i18n";
@@ -703,6 +704,45 @@ export async function shellCwd(tab: Tab): Promise<string> {
       return localPathFromUrlPath(reported.path);
     }
     throw error;
+  }
+}
+
+export async function openSessionGit(id?: string): Promise<void> {
+  const request = beginGitOpen();
+  const tab = useStore.getState().tabs.find((item) => item.info.id === id);
+  try {
+    if (tab?.state === "connected" && (tab.info.kind === "local" || tab.info.kind === "ssh")) {
+      try {
+        const directory = await shellCwd(tab);
+        openGitWorkspace(
+          {
+            directory,
+            sessionId: tab.info.kind === "ssh" ? tab.info.id : null,
+            label: tab.info.kind === "ssh" ? tabTitle(tab) : null,
+          },
+          request,
+        );
+        return;
+      } catch (error) {
+        // A missing remote CWD must not silently open a different host.
+        if (tab.info.kind === "ssh") {
+          if (isGitOpenCurrent(request))
+            useStore.getState().setError(t("git.openFromFiler", { error: errorText(error) }), id);
+          return;
+        }
+      }
+    }
+    if (!isGitOpenCurrent(request)) return;
+    if (tab?.info.kind === "ssh") {
+      useStore.getState().setError(t("status.filerNotConnected"), id);
+      return;
+    }
+    await pickGitFolder(
+      request,
+      tab?.info.kind === "local" ? tab.directories?.terminal : undefined,
+    );
+  } catch (error) {
+    if (isGitOpenCurrent(request)) useStore.getState().setError(errorText(error), id);
   }
 }
 

@@ -32,6 +32,7 @@ import { reconnectSession, revealCwdInFiler } from "../../actions";
 import * as api from "../../api";
 import { loadFilerSizeVisible, saveFilerSizeVisible } from "../../filerColumns";
 import { followMode } from "../../filerFollow";
+import { openGitWorkspace } from "../../gitWorkspace";
 import { sortFileEntries, toggleFileSort, type SortKey } from "../../fileSort";
 import { typeToSelect, type TypeRun } from "../../fileTypeSelect";
 import { IS_MAC } from "../../platform";
@@ -780,6 +781,17 @@ function FilerPanelBase() {
       icon: "refresh",
       disabled: busy || offline,
       action: () => void load(path),
+    },
+    {
+      label: t("git.title"),
+      icon: "source-control",
+      disabled: !path || atDrivesRoot || busy || offline,
+      action: () =>
+        openGitWorkspace({
+          directory: path,
+          sessionId: remoteId,
+          label: remoteId && tab ? tabTitle(tab) : null,
+        }),
     },
     "separator",
     {

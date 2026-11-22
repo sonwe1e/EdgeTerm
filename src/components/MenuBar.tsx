@@ -16,7 +16,12 @@ import { runWindowAction } from "../menuWindowAction";
 import { openExternalLink } from "../openExternal";
 
 import appIcon from "../../src-tauri/icons/32x32.png";
-import { revealCwdInFiler, splitSession, toggleSessionConnection } from "../actions";
+import {
+  openSessionGit,
+  revealCwdInFiler,
+  splitSession,
+  toggleSessionConnection,
+} from "../actions";
 import { windowControl } from "../api";
 import { exportAppData, importAppData, importSshConfig } from "../dataTransfer";
 import { exportDiagnostics, openLogDirectory } from "../diagnostics";
@@ -699,6 +704,11 @@ export function MenuBar(props: Props) {
           icon: "folder-opened",
           shortcut: accel("revealCwd"),
           action: withActive((id) => void revealCwdInFiler(id)),
+        },
+        {
+          label: t("git.title"),
+          icon: "source-control",
+          action: () => void openSessionGit(activeTab?.info.id),
         },
         "separator",
         {

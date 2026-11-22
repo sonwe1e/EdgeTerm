@@ -10,7 +10,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 
-import { ensureController, revealCwdInFiler } from "../actions";
+import { ensureController, openSessionGit, revealCwdInFiler } from "../actions";
 import { fontStack } from "../fonts";
 import { IS_MAC } from "../platform";
 import { chordLabel, type ShortcutCommand } from "../shortcuts";
@@ -226,6 +226,12 @@ function TerminalHost({ tab, visible, focused }: { tab: Tab; visible: boolean; f
       icon: "folder-opened",
       shortcut: revealCwdKey,
       action: withTerminal(() => void revealCwdInFiler(id)),
+    },
+    {
+      label: t("git.title"),
+      icon: "source-control",
+      disabled: tab.state !== "connected" || !["local", "ssh"].includes(tab.info.kind),
+      action: withTerminal(() => void openSessionGit(id)),
     },
   ];
 
