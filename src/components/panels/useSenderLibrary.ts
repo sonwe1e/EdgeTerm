@@ -59,6 +59,11 @@ export function useSenderLibrary({
   const [selectedCommandId, setSelectedCommandId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<CommandContextMenu | null>(null);
   const [editing, setEditing] = useState<Editing | null>(null);
+  const composeEndingRevision = useRef(0);
+  const setComposeEnding = (next: LineEnding) => {
+    composeEndingRevision.current += 1;
+    setEnding(next);
+  };
   const [page, setPage] = useState(1);
   const [commandsLoading, setCommandsLoading] = useState(true);
   const [libraryBusy, setLibraryBusy] = useState(false);
@@ -200,13 +205,22 @@ export function useSenderLibrary({
   ) => {
     if (libraryBusy) return;
     setLibraryBusy(true);
+    const endingRevisionAtRequest = composeEndingRevision.current;
     try {
       const saved = await api.saveSenderCommand({ ...command, ...patch });
       replaceSaved(saved);
       setEditing((current) =>
         current?.command.id === saved.id ? { ...current, command: saved } : current,
       );
-      if (editing?.command.id === saved.id) setEnding(saved.ending);
+      // The saved row always updates, but a later compose choice (including
+      // Escape restoring the original draft) owns the editor's ending.
+      if (
+        patch.ending !== undefined &&
+        editing?.command.id === saved.id &&
+        composeEndingRevision.current === endingRevisionAtRequest
+      ) {
+        setComposeEnding(saved.ending);
+      }
     } catch (error) {
       setStatus(t("sender.updateFailed", { error: errorText(error) }));
     } finally {
@@ -228,7 +242,7 @@ export function useSenderLibrary({
     setTagName(
       command.name === command.text || command.name === firstLine(command.text) ? "" : command.name,
     );
-    setEnding(command.ending);
+    setComposeEnding(command.ending);
   };
 
   const cancelEdit = () => {
@@ -237,7 +251,7 @@ export function useSenderLibrary({
     setEditing(null);
     setText(draft.text);
     setTagName(draft.tagName);
-    setEnding(draft.ending);
+    setComposeEnding(draft.ending);
   };
 
   const updateCommand = async (scope: CommandScope) => {
@@ -301,6 +315,7 @@ export function useSenderLibrary({
     editing,
     closeSavePicker,
     cancelEdit,
+    setComposeEnding,
     openSavePicker,
     saveButtonRef,
     libraryBusy,
