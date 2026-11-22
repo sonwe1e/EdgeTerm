@@ -163,11 +163,14 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(function Sea
   // the running search has already produced.
   const resultsOwner = useRef(activeController);
   // A query with no controller to search yet (lazy creation): the effect
-  // below runs it once one registers for the same session.
+  // below runs it once one registers for the same session. The direction is
+  // part of the request: a Shift+Enter typed before the terminal existed
+  // still means the previous match, not the next one.
   const pendingSearch = useRef<{
     session: string;
     term: string;
     options: FindOptions;
+    forward: boolean;
   } | null>(null);
   const syntaxError = queryError(query, options);
   const error =
@@ -221,7 +224,7 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(function Sea
         // Lazy creation has not registered the terminal yet. Remember the
         // latest query so the controller's arrival searches it instead of
         // leaving the text with no highlight or count until the next key.
-        pendingSearch.current = { session: activeId, term, options: opts };
+        pendingSearch.current = { session: activeId, term, options: opts, forward };
       }
     },
   );
@@ -291,7 +294,7 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(function Sea
     const pending = pendingSearch.current;
     if (activeController && activeId && pending?.session === activeId) {
       pendingSearch.current = null;
-      runSearch(true, true, pending.term, pending.options);
+      runSearch(pending.forward, true, pending.term, pending.options);
     }
     return () => listener?.dispose();
   }, [activeController, activeId, runSearch]);
