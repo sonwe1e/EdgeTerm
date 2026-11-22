@@ -1055,6 +1055,7 @@ export const en = {
   "sc.problemOther": "Hold Ctrl or Alt as well, or the key would be typed into the terminal.",
   "sc.reservedContextMenu": "The context menu uses {chord}; pick another shortcut.",
   "sc.reserved": "{chord} is already {owner}.",
+  "sc.reservedFocusRegion": "{chord} moves focus between regions.",
   "sc.switchesToTab": "{chord} switches to tab {number}.",
   "sc.ownerCut": "Cut",
   "sc.ownerQuit": "Quit EdgeTerm",

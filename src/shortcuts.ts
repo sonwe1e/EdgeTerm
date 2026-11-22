@@ -423,12 +423,11 @@ const SHIFT_ONLY_KEYS = /^(Insert|Delete|Home|End|PageUp|PageDown|F([1-9]|1\d|2[
  */
 export function chordProblem(binding: KeyChord, command?: ShortcutCommand): string | null {
   if (binding.code === "F6" && !binding.ctrl && !binding.alt && !binding.meta) {
+    // F6's notice says why the chord is taken, not the command's name: a
+    // noun-phrase owner read as "F6 is already Move Focus Between Regions".
     return command === "focusRegion"
       ? null
-      : translateMsg("sc.reserved", {
-          chord: chordLabel(binding),
-          owner: translateMsg("sc.focusRegion.label"),
-        });
+      : translateMsg("sc.reservedFocusRegion", { chord: chordLabel(binding) });
   }
   // Checked before the modifier rule so the reason is the menu rather than
   // "hold Ctrl as well", which would only get the user refused again: the rows

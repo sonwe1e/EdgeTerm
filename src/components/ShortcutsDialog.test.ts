@@ -52,7 +52,7 @@ it.each([false, true])("keeps F6 out of another command in the recorder (shift: 
     );
   });
   expect(host.querySelector(".shortcuts-notice")?.textContent).toContain(
-    "Move Focus Between Regions",
+    "moves focus between regions",
   );
   expect(record.classList.contains("is-recording")).toBe(true);
 
