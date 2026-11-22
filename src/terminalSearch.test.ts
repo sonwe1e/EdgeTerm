@@ -172,6 +172,38 @@ describe("terminal search options", () => {
     },
   );
 
+  it("keeps Shift+Enter's direction for a query typed before the controller registers", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+
+    try {
+      act(() => root.render(h(SearchOverlay, { onClose() {} })));
+      const input = host.querySelector<HTMLInputElement>("input")!;
+      const count = host.querySelector<HTMLElement>(".search-count")!;
+      act(() => setInputValue(input, "needle"));
+      // Search backwards while there is still no terminal to search: the
+      // request is remembered, and its direction has to be remembered too.
+      act(() => {
+        input.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Enter", shiftKey: true, bubbles: true }),
+        );
+      });
+
+      const controller = createController(SESSION_ID, false);
+      openControllerTerminal(controller);
+      await write(controller, "needle here\r\nneedle again");
+      act(() => setController(SESSION_ID, controller));
+
+      // Backwards from no selection is the last match, not the first.
+      expect(count.textContent).toBe("2/2");
+      expect(controller.term.getSelectionPosition()?.start.y).toBe(1);
+    } finally {
+      act(() => root.unmount());
+      host.remove();
+    }
+  });
+
   it("toggles case-sensitive, whole-word and regex matching through SearchOverlay on a real xterm buffer", async () => {
     const controller = createRegisteredController();
     await write(
