@@ -10,6 +10,7 @@ mod file_promise;
 mod file_transfer;
 mod fonts;
 mod fs_local;
+mod git;
 mod local_text;
 // Unix test builds compile it too: the decision is pure, mirroring
 // `nvidia_quirk`.
@@ -477,6 +478,11 @@ pub fn run() {
             commands::project_read_text,
             commands::project_read_log_window,
             commands::project_write_text,
+            commands::git_status,
+            commands::git_diff,
+            commands::git_history,
+            commands::git_branches,
+            commands::git_mutate,
             commands::preview_image_file,
             commands::coding_agent_inspect,
             commands::start_port_forward,
