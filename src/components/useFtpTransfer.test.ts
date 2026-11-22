@@ -2,10 +2,13 @@ import { act, createElement as h } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "../api";
+import { ask } from "../nativeDialog";
 import { useStore, type Tab } from "../store";
 import type { FileEntry } from "../types";
 import { useFtpDirectory } from "./useFtpDirectory";
 import { useFtpTransfer } from "./useFtpTransfer";
+
+vi.mock("../nativeDialog", () => ({ ask: vi.fn() }));
 
 vi.mock("../api", () => ({
   sftpHome: vi.fn(),
@@ -58,11 +61,25 @@ describe.each(["upload", "download"] as const)("%s completion directory", (direc
   const entries = () => (upload ? dirs.remoteEntries : dirs.localEntries);
   const remembered = () => useStore.getState().tabs[0].directories?.[upload ? "filer" : "local"];
   const navigate = (path = next) => (upload ? dirs.loadRemote(path) : dirs.loadLocal(path));
+  const startTransfer = (destination: string) =>
+    upload ? transfer.runUpload(file, destination) : transfer.runDownload(file, destination);
+  const paneError = () => (upload ? dirs.remoteError : dirs.localError);
+  const child = `${initial}/child`;
+  const existing = (path: string, isDir = false) => ({
+    ...file,
+    path: `${path}/${file.name}`,
+    isDir,
+  });
+  const showParentEntry = async (isDir = false) => {
+    read.mockResolvedValueOnce(listing(initial, [existing(initial, isDir)]));
+    await act(async () => {
+      await navigate(initial);
+    });
+    read.mockClear();
+  };
   async function beginTransfer(destination = initial) {
     await act(async () => {
-      transferring = upload
-        ? transfer.runUpload(file, destination)
-        : transfer.runDownload(file, destination);
+      transferring = startTransfer(destination);
     });
     expect(transfer.transferring).toBe(true);
   }
@@ -73,7 +90,12 @@ describe.each(["upload", "download"] as const)("%s completion directory", (direc
     });
   function Harness({ state }: { state: Tab["state"] }) {
     dirs = useFtpDirectory({ tab: { ...tab, state }, sessionId });
-    transfer = useFtpTransfer({ ...dirs, sessionId });
+    transfer = useFtpTransfer({
+      ...dirs,
+      sessionId,
+      selectedLocal: [file],
+      selectedRemote: [file],
+    });
     return null;
   }
   const render = (state: Tab["state"]) => act(async () => root.render(h(Harness, { state })));
@@ -83,6 +105,7 @@ describe.each(["upload", "download"] as const)("%s completion directory", (direc
     useStore.setState({ tabs: [tab] });
     vi.resetAllMocks();
     vi.mocked(api.newTransferId).mockReturnValue("transfer-one");
+    vi.mocked(ask).mockResolvedValue(true);
     vi.mocked(api.sftpHome).mockResolvedValue("/remote");
     vi.mocked(api.localHome).mockResolvedValue("/local");
     vi.mocked(api.sftpList).mockImplementation(async (_, path) => listing(path));
@@ -157,7 +180,6 @@ describe.each(["upload", "download"] as const)("%s completion directory", (direc
   it.each([true, false])(
     "refreshes the child destination once navigation reaches it (already visible=%s)",
     async (alreadyVisible) => {
-      const child = `${initial}/child`;
       await beginTransfer(child);
       const pending = deferred<ReturnType<typeof listing>>();
       read.mockReturnValueOnce(pending.promise);
@@ -174,11 +196,11 @@ describe.each(["upload", "download"] as const)("%s completion directory", (direc
       if (alreadyVisible) await openChild();
       else {
         await act(async () => outgoing.resolve(undefined));
-        expect(visits()).toEqual([initial, child]);
+        expect(visits()).toEqual([initial, child, child]);
         await openChild();
       }
       await finish();
-      expect(visits()).toEqual([initial, child, child]);
+      expect(visits()).toEqual([initial, child, child, child]);
       expect([visible(), remembered(), entries()]).toEqual([child, child, [file]]);
       const [item] = vi.mocked(api.transferFiles).mock.calls[0][1];
       expect(upload ? item.remote : item.local).toBe(`${child}/${file.name}`);
@@ -186,10 +208,9 @@ describe.each(["upload", "download"] as const)("%s completion directory", (direc
   );
 
   it("refreshes the original view without opening the child used as the job destination", async () => {
-    const child = `${initial}/child`;
     await beginTransfer(child);
     await finish();
-    expect(visits()).toEqual([initial, initial]);
+    expect(visits()).toEqual([initial, child, initial]);
     expect([visible(), remembered()]).toEqual([initial, initial]);
   });
 
@@ -219,5 +240,63 @@ describe.each(["upload", "download"] as const)("%s completion directory", (direc
     await finish();
     expect(visits()).toEqual([initial, initial]);
     expect([visible(), remembered()]).toEqual([initial, initial]);
+  });
+
+  it("blocks a child directory with the incoming file's name", async () => {
+    read.mockResolvedValueOnce(listing(child, [existing(child, true)]));
+    outgoing.resolve(undefined);
+    await act(async () => startTransfer(child));
+    expect(visits()).toEqual([initial, child]);
+    expect(api.transferFiles).not.toHaveBeenCalled();
+    expect(ask).not.toHaveBeenCalled();
+    expect(paneError()).toContain(file.name);
+  });
+
+  it.each([false, true])("confirms the child's same-name file (accepted=%s)", async (accepted) => {
+    read.mockResolvedValueOnce(listing(child, [existing(child)]));
+    vi.mocked(ask).mockResolvedValueOnce(accepted);
+    outgoing.resolve(undefined);
+    await act(async () => startTransfer(child));
+    expect(ask).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining(file.name),
+      expect.anything(),
+    );
+    expect(api.transferFiles).toHaveBeenCalledTimes(accepted ? 1 : 0);
+    expect(visits()).toEqual(accepted ? [initial, child, initial] : [initial, child]);
+    if (accepted) {
+      const [item] = vi.mocked(api.transferFiles).mock.calls[0][1];
+      expect(upload ? item.remote : item.local).toBe(`${child}/${file.name}`);
+    }
+  });
+
+  it("ignores a same-name directory in the parent when the child is empty", async () => {
+    await showParentEntry(true);
+    outgoing.resolve(undefined);
+    await act(async () => startTransfer(child));
+    expect(visits()).toEqual([child, initial]);
+    expect(ask).not.toHaveBeenCalled();
+    expect(api.transferFiles).toHaveBeenCalledOnce();
+    expect(paneError()).toBeNull();
+  });
+
+  it("does not start a transfer if the child listing failed", async () => {
+    read.mockRejectedValueOnce(new Error("Cannot list drop destination"));
+    outgoing.resolve(undefined);
+    await act(async () => startTransfer(child));
+    expect(visits()).toEqual([initial, child]);
+    expect(paneError()).toBe("Cannot list drop destination");
+    expect(api.transferFiles).not.toHaveBeenCalled();
+  });
+
+  it("keeps using the visible entries for toolbar preflight and honors cancellation", async () => {
+    await showParentEntry();
+    vi.mocked(ask).mockResolvedValueOnce(false);
+    await act(async () => {
+      if (upload) transfer.upload();
+      else transfer.download();
+    });
+    expect(ask).toHaveBeenCalledOnce();
+    expect(visits()).toEqual([]);
+    expect(api.transferFiles).not.toHaveBeenCalled();
   });
 });
