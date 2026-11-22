@@ -7,6 +7,10 @@ import type { FileEntry } from "../types";
 import { friendlyFtpError, joinLocal, joinRemote } from "./ftpPresentation";
 
 interface Options {
+  beginDeleteRefresh: (
+    side: "remote" | "local",
+    target: string,
+  ) => (error: string | null) => Promise<void>;
   remotePath: string;
   transferring: boolean;
   setRemoteError: Dispatch<SetStateAction<string | null>>;
@@ -29,6 +33,7 @@ interface Options {
  * another.
  */
 export function useFtpActions({
+  beginDeleteRefresh,
   remotePath,
   transferring,
   setRemoteError,
@@ -84,6 +89,7 @@ export function useFtpActions({
   const removeRemoteEntries = async (entries: readonly FileEntry[]) => {
     const [target] = entries;
     if (!target || transferring) return;
+    const refresh = beginDeleteRefresh("remote", remotePath);
     if (entries.length === 1) {
       const { folder } = deleteMode(target);
       const confirmed = await ask(
@@ -99,18 +105,16 @@ export function useFtpActions({
       );
       if (!confirmed) return;
     }
-    setRemoteError(null);
+    let failure: string | null = null;
     try {
       for (const entry of entries) {
         const { recursive } = deleteMode(entry);
         await api.sftpRemove(sessionId, entry.path, entry.isDir, recursive);
       }
     } catch (error) {
-      setRemoteError(friendlyFtpError(error));
-    } finally {
-      // What did arrive should show, and a failure leaves the rest listed.
-      await loadRemote(remotePath);
+      failure = friendlyFtpError(error);
     }
+    await refresh(failure);
   };
 
   const createLocalFolder = async (name: string) => {
@@ -139,6 +143,7 @@ export function useFtpActions({
   const removeLocalEntries = async (entries: readonly FileEntry[]) => {
     const [target] = entries;
     if (!target || transferring) return;
+    const refresh = beginDeleteRefresh("local", localPath);
     if (entries.length === 1) {
       const { folder } = deleteMode(target);
       const confirmed = await ask(
@@ -154,17 +159,16 @@ export function useFtpActions({
       );
       if (!confirmed) return;
     }
-    setLocalError(null);
+    let failure: string | null = null;
     try {
       for (const entry of entries) {
         const { recursive } = deleteMode(entry);
         await api.localRemove(entry.path, entry.isDir, recursive);
       }
     } catch (error) {
-      setLocalError(errorText(error));
-    } finally {
-      await loadLocal(localPath);
+      failure = errorText(error);
     }
+    await refresh(failure);
   };
 
   return {
