@@ -157,6 +157,18 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(function Sea
   // Find in Selection range), so they can be dropped when the search
   // moves elsewhere or ends.
   const searchedRef = useRef<string | null>(null);
+  // The terminal whose results are on screen. Results belong to the terminal
+  // that produced them, so the count is blanked only when that terminal
+  // changes: a lazy controller registering for the same tab keeps the count
+  // the running search has already produced.
+  const resultsOwner = useRef(activeController);
+  // A query with no controller to search yet (lazy creation): the effect
+  // below runs it once one registers for the same session.
+  const pendingSearch = useRef<{
+    session: string;
+    term: string;
+    options: FindOptions;
+  } | null>(null);
   const syntaxError = queryError(query, options);
   const error =
     syntaxError ??
@@ -199,7 +211,18 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(function Sea
       if (!activeId) return;
       if (searchedRef.current !== activeId) clearSearch();
       searchedRef.current = activeId;
-      getController(activeId)?.search(term, forward, incremental, opts);
+      const controller = getController(activeId);
+      if (controller) {
+        // This query has reached a terminal; the registered-controller
+        // effect has nothing left to run for it.
+        pendingSearch.current = null;
+        controller.search(term, forward, incremental, opts);
+      } else {
+        // Lazy creation has not registered the terminal yet. Remember the
+        // latest query so the controller's arrival searches it instead of
+        // leaving the text with no highlight or count until the next key.
+        pendingSearch.current = { session: activeId, term, options: opts };
+      }
     },
   );
 
@@ -254,12 +277,24 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(function Sea
   }, [activeId, clearSearch]);
 
   // Subscribe before the initial search, and again when lazy creation
-  // registers a controller without changing the active tab.
+  // registers a controller without changing the active tab. That arrival is
+  // also when a query typed before it existed can finally run.
   useEffect(() => {
-    setResults(null);
+    // Results describe the terminal they came from; only a different one
+    // makes them stale. StrictMode repeats this effect, and clearing on the
+    // repeat would drop the count the first pass just produced.
+    if (resultsOwner.current !== activeController) {
+      resultsOwner.current = activeController;
+      setResults(null);
+    }
     const listener = activeController?.onSearchResults(setResults);
+    const pending = pendingSearch.current;
+    if (activeController && activeId && pending?.session === activeId) {
+      pendingSearch.current = null;
+      runSearch(true, true, pending.term, pending.options);
+    }
     return () => listener?.dispose();
-  }, [activeController]);
+  }, [activeController, activeId, runSearch]);
 
   // Cold-history matches are counted apart from the buffer (roadmap A2-7):
   // the seamless store answers asynchronously, so the number arrives a beat
