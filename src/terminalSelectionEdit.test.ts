@@ -293,6 +293,34 @@ describe("deleting and replacing a selection on the input line", () => {
     expect(data).toHaveBeenCalledWith(walkDelete(6, 6));
   });
 
+  it("keeps the wrapped line editable after the shell redraws it without the wrap flag", async () => {
+    const { controller, data } = fixture(80);
+    // "$ echo " + 70 a's + " hello world" fills two rows of 80 columns, so
+    // "hello" starts on the first row and ends on the second.
+    await write(controller, `$ echo ${"a".repeat(70)} hello world`);
+    expect(controller.term.buffer.active.getLine(1)?.isWrapped).toBe(true);
+    select(controller, 78, 0, 5);
+    expect(filter(controller, press("Delete"))).toBe(false);
+    expect(data).toHaveBeenLastCalledWith(walkDelete(11, 5));
+
+    // The shell redraws the shortened line with line feeds and cursor moves of
+    // its own — the bytes GNU readline sends (captured from bash 5.3.9 through
+    // a pty) — so the row that continues the line loses the terminal's wrap
+    // flag. The row above the cursor then reads as a line of its own while
+    // "world" is still split over both rows: the selection a user makes next
+    // starts above the cursor.
+    await write(controller, `\r\x1b[A$ echo ${"a".repeat(70)}  w\r\norld`);
+    const buf = controller.term.buffer.active;
+    expect(buf.getLine(1)?.isWrapped).toBe(false);
+    expect(buf.baseY + buf.cursorY).toBe(1);
+    expect(buf.cursorX).toBe(4);
+    select(controller, 79, 0, 5);
+    data.mockClear();
+
+    expect(filter(controller, press("Delete"))).toBe(false);
+    expect(data).toHaveBeenLastCalledWith(walkDelete(5, 5));
+  });
+
   it("edits from column 0 when the prompt is not recognized", async () => {
     const { controller, data } = fixture();
     await write(controller, "echo hi");
@@ -371,6 +399,15 @@ describe("selections the shell must judge, not the editor", () => {
     await untouched(async ({ controller }) => {
       await write(controller, "\x1b[?1000h");
       select(controller, 0, 0, 4);
+    });
+  });
+
+  it("leaves a full output row above an unrecognized input line alone", async () => {
+    await untouched(async ({ controller }) => {
+      // The row above fills the width, so it continues into the next one; only
+      // a prompt row proves it is the line being typed.
+      await write(controller, `${"y".repeat(80)}\r\necho hi`);
+      select(controller, 0, 0, 10);
     });
   });
 
