@@ -242,6 +242,23 @@ describe("the catalogue", () => {
     expect(byUser).toContain("session:profile-1");
   });
 
+  it("finds a session by the port its hint carries", () => {
+    // App builds this hint (kind · user@host:port · verb); the palette finds the
+    // row because a hint counts towards the score, port included.
+    const withPort = {
+      id: "session:profile-1",
+      group: "sessions" as const,
+      label: "Connect to Build server",
+      hint: "ssh · build@build.internal:2222 · Connect",
+      keywords: ["connect", "session", "Build server"],
+      run: () => undefined,
+    };
+    expect(rankCommands([withPort], "2222").map((item) => item.id)).toEqual(["session:profile-1"]);
+    expect(rankCommands([withPort], "build.internal:2222").map((item) => item.id)).toEqual([
+      "session:profile-1",
+    ]);
+  });
+
   it("files commands under the group a reader would look in", () => {
     const commands = buildPaletteCommands(sources());
     const group = (id: string) => commands.find((item) => item.id === id)?.group;

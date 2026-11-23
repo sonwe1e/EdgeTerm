@@ -811,7 +811,7 @@ export default function App() {
         }),
         recentProfiles,
         profiles: paletteProfileKeys.map((key) => {
-          const [id, name, kind, host, username, shell] = JSON.parse(key) as [
+          const [id, name, kind, host, username, shell, port] = JSON.parse(key) as [
             string,
             string,
             string,
@@ -820,7 +820,11 @@ export default function App() {
             string,
             number,
           ];
-          const address = host ? (username ? username + "@" + host : host) : shell;
+          // The port is part of how this session is reached, so it belongs in
+          // the hint the palette scores: Ctrl+P then finds it by address, the
+          // way the tree's filter does (see sessionFilter.ts).
+          const target = host ? (username ? username + "@" + host : host) : shell;
+          const address = host && port ? target + ":" + port : target;
           return { id, name, hint: [kind, address].filter(Boolean).join(" · ") };
         }),
         snippets: snippets.map(({ id, name, command }) => ({ id, name, command })),
