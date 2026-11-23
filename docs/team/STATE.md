@@ -1,5 +1,15 @@
 # 项目状态
 
+## 本轮：会话筛选也能按分组找（2026-11-24 第 111 轮）
+
+- 交付：`sessionFilter.ts` 新增 `groupPathMatches(path, needle)`——分组路径（从分区根到该组的名字）里任一名字命中即算匹配；面板的可见集合改为 `sessionMatchesFilter(p, needle) || inMatchingGroup(p)`。占位文字改为「按名称、主机、用户名或分组过滤」／“Filter by name, host, user or group”。
+- 为什么现在做：第 107 轮刻意把「按组过滤」留作待判，理由是会分不清命中的是人还是分组；本轮判断为**可用性更重要**——人们常用分组名组织机器（prod、vault、lab），找组比找机器名更自然，且路径匹配只扩大结果、不改变行的呈现。
+- 验证：`sessionFilter.test.ts` 7 条（其中分组 2 组：路径命中、空筛选与不命中）；`sessionTreeRename.browser.test.ts` **8/8**（新增：输入 `vault` 把位于该组的会话找回，输入不存在的组名则消失）。
+- **负控制**：把面板改回只比名称/主机 → 新用例失败（`the group on the path brings the session back: expected false to be true`）；恢复后通过。
+- 一次自纠：新用例的分组字面量漏了 `parentId`，`Required<SessionGroup>` 在 typecheck 里报错（第一次全量门因此 `typecheck FAILED (2)`）；补上后 TC=0。
+- 门（第二次，最终）：`VERIFY_EXIT=0`；format:check ok 0.9s、typecheck ok 7.3s、lint ok 0.9s、test ok 125.5s（**212 文件／1918 用例**）、test:browser ok 192.1s（**72 文件／326 用例**）。
+
+
 ## 本轮：找到上轮那条浏览器用例失败的根因，并补上证据（2026-11-24 第 110 轮）
 
 - 根因：App **挂载后会从后端加载 profiles**（夹具里 `list_profiles` 返回 `PROFILE`），所以在 `mount` 之前设置的 2222 端口被这次加载覆盖——搜索查的是旧数据。把设置挪到挂载并等待两帧之后，用例立刻通过。
