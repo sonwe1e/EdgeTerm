@@ -23,7 +23,12 @@ import {
   sectionLabel,
   SESSION_SECTIONS,
 } from "../../sessionGroups";
-import { nextTypeAheadRow, type TypeAheadRow } from "../../sessionTypeAhead";
+import {
+  nextTypeAheadBuffer,
+  nextTypeAheadRow,
+  type TypeAheadBuffer,
+  type TypeAheadRow,
+} from "../../sessionTypeAhead";
 import { tabTitle, useStore } from "../../store";
 import {
   colorForSession,
@@ -128,9 +133,6 @@ type TreeItem =
     }
   | { id: string; type: "profile"; level: number; profile: SessionProfile };
 
-/** How long a type-ahead search lives: a longer pause starts a new one. */
-const TYPE_AHEAD_PAUSE_MS = 600;
-
 /** Row ids for aria-activedescendant; a profile name may contain spaces. */
 const profileRowId = (profile: SessionProfile): string =>
   `session-row-${encodeURIComponent(profile.id || profile.name)}`;
@@ -174,7 +176,7 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
 
   const [filter, setFilter] = useState("");
   // What has been typed for type-ahead, and when: a pause starts a new search.
-  const typeAhead = useRef({ buffer: "", at: 0 });
+  const typeAhead = useRef<TypeAheadBuffer>({ text: "", at: 0 });
   const filterRef = useRef<HTMLInputElement>(null);
   /**
    * Explicit open / closed state of the tree, keyed `kind:<kind>` for
@@ -376,34 +378,26 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
       filterRef.current?.focus();
       return;
     }
-    // Type-ahead: a plain printable character walks to the next session whose
-    // name starts with what has been typed. The buffer clears after a pause, so
-    // "b" then "bu" narrows one search instead of starting two. Keys with a
-    // modifier stay with the shortcut table (and with the terminal's own use of
-    // Alt). Space is excluded: it already collapses and expands the row under
-    // the cursor further down, and a name never starts with a space. The claimed
-    // key also takes its default action, so no page scroll follows.
-    if (
-      event.key.length === 1 &&
-      event.key !== " " &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !event.altKey
-    ) {
-      const now = Date.now();
-      const previous = typeAhead.current;
-      const buffer =
-        now - previous.at > TYPE_AHEAD_PAUSE_MS ? event.key : previous.buffer + event.key;
-      typeAhead.current = { buffer, at: now };
-      const profileRows: TypeAheadRow[] = [];
-      for (let at = 0; at < treeItems.length; at++) {
-        const row = treeItems[at];
-        if (row.type === "profile") profileRows.push({ index: at, label: row.profile.name });
-      }
-      const target = nextTypeAheadRow(profileRows, index, buffer);
+    // Type-ahead: typing walks to the next session whose name starts with what
+    // has been typed, and Backspace corrects a typo without starting over. The
+    // buffer is a pure rule (sessionTypeAhead.ts) so its edge cases are unit
+    // tested; this side only dispatches. A key the rule does not claim keeps its
+    // own meaning: Space toggles the row, Escape closes a menu or leaves the
+    // filter, and Ctrl/⌘/Alt belong to the shortcut table.
+    const nextKey = nextTypeAheadBuffer(typeAhead.current, event, Date.now());
+    if (nextKey.action !== "none") {
+      typeAhead.current = nextKey.buffer;
       event.preventDefault();
       event.stopPropagation();
-      if (target !== null) moveTo(target);
+      if (nextKey.action === "search" && nextKey.buffer.text !== "") {
+        const profileRows: TypeAheadRow[] = [];
+        for (let at = 0; at < treeItems.length; at++) {
+          const row = treeItems[at];
+          if (row.type === "profile") profileRows.push({ index: at, label: row.profile.name });
+        }
+        const target = nextTypeAheadRow(profileRows, index, nextKey.buffer.text);
+        if (target !== null) moveTo(target);
+      }
       return;
     }
     switch (event.key) {
