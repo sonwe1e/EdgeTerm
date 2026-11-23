@@ -166,6 +166,17 @@ describe("the command palette in the real app", () => {
     expect(tab, "a session opened for the typed target").toBeTruthy();
     expect(tab!.profile).toMatchObject({ host: "10.0.0.5", username: "root", port: 2222 });
     expect(paletteOpen(), "the palette closed on connect").toBe(false);
+
+    // Second visit: the machine just reached is offered again. `10.0.` is not
+    // a target (a host cannot end in a dot), so this row can only be the
+    // remembered one.
+    await pressPaletteChord();
+    await typeQuery("10.0.");
+    const remembered = options().find((item) =>
+      item.textContent?.startsWith("Connect to root@10.0.0.5:2222"),
+    );
+    expect(remembered, "the recent target is offered").toBeTruthy();
+    expect(remembered!.textContent, "and says where it came from").toContain("Connected recently");
   });
 
   it("opens from the real chord, is readable, and filters what is typed", async () => {

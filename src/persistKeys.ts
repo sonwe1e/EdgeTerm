@@ -46,6 +46,10 @@ export const DOCK_SPLITS_KEY = "edgeterm.dockSplits";
  */
 export const COMMAND_RECENTS_KEY = "edgeterm.commandPalette.recents";
 
+/** Hosts connected from the palette's own field, newest first; see
+ *  quickConnectRecents.ts. A preference like the command recents above. */
+export const QUICK_CONNECT_RECENTS_KEY = "edgeterm.quickConnect.recents";
+
 /** Saved commands and the command a profile runs after connecting. Both are
  * preferences the reader wrote, so reset clears them and an export carries
  * them; their modules validate the stored JSON on every load. */
@@ -80,4 +84,5 @@ export const PANEL_PREFERENCE_KEYS: readonly string[] = [
   TERMINAL_COLD_HISTORY_KEY,
   SNIPPETS_STORAGE_KEY,
   STARTUP_COMMANDS_STORAGE_KEY,
+  QUICK_CONNECT_RECENTS_KEY,
 ];

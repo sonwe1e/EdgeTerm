@@ -216,6 +216,7 @@ export const en = {
   "palette.switchHint": "Open tab",
   "palette.quickConnect": "Connect to {target}",
   "palette.quickConnectHint": "Open an SSH session without saving it",
+  "palette.quickConnectRecent": "Connected recently",
   "palette.connectHint": "Saved session",
   "palette.footer": "↑↓ navigate · Enter run · Esc close",
   "palette.count": "{count} commands",

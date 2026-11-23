@@ -33,7 +33,8 @@ import { CloseChoiceDialog } from "./components/CloseChoiceDialog";
 import { CloseSessionDialog } from "./components/CloseSessionDialog";
 import { CommandPalette } from "./components/CommandPalette";
 import { newSessionProfile } from "./components/SessionDialog";
-import { quickConnectProfile } from "./quickConnect";
+import { quickConnectLabel, quickConnectProfile } from "./quickConnect";
+import { loadRecentTargets, rememberTarget, saveRecentTargets } from "./quickConnectRecents";
 import { QuitConfirmDialog } from "./components/QuitConfirmDialog";
 import { FontSizeDialog } from "./components/FontSizeDialog";
 import { HostKeyDialog } from "./components/HostKeyDialog";
@@ -288,6 +289,9 @@ export default function App() {
   const [fontSettingsOpen, setFontSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // Hosts connected from the palette's field, newest first: the palette offers
+  // them while its field is empty so the same machine is one keystroke away.
+  const [recentTargets, setRecentTargets] = useState<string[]>(() => loadRecentTargets());
   // Bumped when the palette opens: the history list is captured in memory, so
   // the catalogue is rebuilt at that moment instead of on every recorded
   // command (which would re-render the window on each Enter).
@@ -1130,8 +1134,14 @@ export default function App() {
           // Nothing is saved: the tab carries the target the reader typed, and
           // the editor is only reached when they decide to keep the session.
           setPaletteOpen(false);
+          setRecentTargets((current) => {
+            const next = rememberTarget(current, quickConnectLabel(target));
+            saveRecentTargets(next);
+            return next;
+          });
           void openSession(quickConnectProfile(target, newSessionProfile()));
         }}
+        recentTargets={recentTargets}
       />
 
       <UpdateDialog

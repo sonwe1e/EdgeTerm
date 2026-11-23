@@ -235,13 +235,14 @@ export function quickConnectCommand(
   target: QuickTarget,
   t: Translate,
   run: () => void,
+  hint?: string,
 ): PaletteCommand {
   const label = quickConnectLabel(target);
   return {
     id: "connect:" + label,
     group: "sessions",
     label: t("palette.quickConnect", { target: label }),
-    hint: t("palette.quickConnectHint"),
+    hint: hint ?? t("palette.quickConnectHint"),
     keywords: [target.host, "ssh", "connect", "quick", "host"],
     run,
   };
