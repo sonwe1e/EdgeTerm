@@ -43,6 +43,27 @@ afterEach(async () => {
   useStore.setState(initial, true);
 });
 
+it("marks the session that was connected to recently", async () => {
+  // The fixture's state reset restores the stored language, so the mark is
+  // matched by its two possible labels rather than by one locale's title.
+  const mark = () =>
+    [...document.querySelectorAll<HTMLElement>(".row-meta")].find(
+      (element) => element.textContent === "Recent" || element.textContent === "最近",
+    ) ?? null;
+  mount(h(SessionPanel, { onEditProfile: vi.fn(), onNewSession: vi.fn() }));
+  await twoFrames();
+  expect(mark(), "nothing is marked before a connection").toBeNull();
+
+  // Connecting writes the id into the store; the mounted tree follows it.
+  useStore.setState({ recentProfiles: ["p1"] });
+  await twoFrames();
+  expect(mark(), "the row says it is a recent one").not.toBeNull();
+  expect(mark()!.title.length, "and explains itself on hover").toBeGreaterThan(0);
+  expect(mark()!.closest(".row")?.textContent, "the mark sits on the profile row").toContain(
+    "Lab box",
+  );
+});
+
 it("renames the item the cursor is on with F2", async () => {
   const onEditProfile = vi.fn();
   mount(h(SessionPanel, { onEditProfile, onNewSession: vi.fn() }));

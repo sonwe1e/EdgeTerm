@@ -751,6 +751,8 @@ export const en = {
   "panel.clearFilter": "Clear filter",
   "panel.connect": "Connect",
   "panel.setUpKeyLogin": "Set Up Public-Key Login…",
+  "panel.usedRecently": "Recent",
+  "panel.usedRecentlyHint": "You connected to this session recently",
   "panel.edit": "Edit",
   "panel.editEllipsis": "Edit…",
   "panel.duplicate": "Duplicate",

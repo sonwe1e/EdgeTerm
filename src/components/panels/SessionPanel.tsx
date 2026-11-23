@@ -155,6 +155,9 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
   const profiles = useStore((s) => s.profiles);
   const groups = useStore((s) => s.groups);
   const tabs = useStore((s) => s.tabs);
+  // Which saved sessions were connected to recently, so a long tree says
+  // which ones are in use without a favourites list to maintain.
+  const recentProfiles = useStore((s) => s.recentProfiles);
   const removeProfile = useStore((s) => s.removeProfile);
   const duplicateProfile = useStore((s) => s.duplicateProfile);
   const moveProfileToGroup = useStore((s) => s.moveProfileToGroup);
@@ -692,6 +695,11 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
           }}
         />
         <span className="row-label">{profile.name}</span>
+        {recentProfiles.includes(profile.id) && (
+          <span className="row-meta" title={t("panel.usedRecentlyHint")}>
+            {t("panel.usedRecently")}
+          </span>
+        )}
         {/* SSH and Telnet share a section; the rarer protocol is marked. */}
         {profile.kind === "telnet" && <span className="row-meta">telnet</span>}
         {profile.id && (

@@ -714,6 +714,8 @@ export const zhCN: Catalog = {
   "panel.clearFilter": "清除过滤",
   "panel.connect": "连接",
   "panel.setUpKeyLogin": "配置公钥登录…",
+  "panel.usedRecently": "最近",
+  "panel.usedRecentlyHint": "你最近连接过这个会话",
   "panel.edit": "编辑",
   "panel.editEllipsis": "编辑…",
   "panel.duplicate": "创建副本",
