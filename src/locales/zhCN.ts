@@ -206,6 +206,8 @@ export const zhCN: Catalog = {
   "palette.themeItem": "主题：{theme}",
   "palette.current": "当前",
   "palette.switchHint": "已打开的标签",
+  "palette.quickConnect": "连接到 {target}",
+  "palette.quickConnectHint": "直接打开一个 SSH 会话，不保存配置",
   "palette.connectHint": "已保存的会话",
   "palette.footer": "↑↓ 选择 · Enter 执行 · Esc 关闭",
   "palette.count": "{count} 条命令",

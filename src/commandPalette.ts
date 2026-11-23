@@ -10,6 +10,7 @@
 
 import { translate, type MessageKey, type Translate } from "./i18n";
 import { COMMAND_RECENTS_KEY } from "./persistKeys";
+import { quickConnectLabel, type QuickTarget } from "./quickConnect";
 import {
   chordLabel,
   SHORTCUT_COMMANDS,
@@ -225,6 +226,27 @@ const detailHint = (parts: (string | null | undefined)[]): string =>
   parts.filter((part): part is string => Boolean(part && part.trim())).join(" · ");
 
 /** What the palette can do, injected by App so this module stays pure. */
+/**
+ * The row that offers to connect to what the reader just typed. It exists only
+ * while the query parses as a target (see quickConnect.ts), so the palette's
+ * search behaviour is unchanged for every other phrase.
+ */
+export function quickConnectCommand(
+  target: QuickTarget,
+  t: Translate,
+  run: () => void,
+): PaletteCommand {
+  const label = quickConnectLabel(target);
+  return {
+    id: "connect:" + label,
+    group: "sessions",
+    label: t("palette.quickConnect", { target: label }),
+    hint: t("palette.quickConnectHint"),
+    keywords: [target.host, "ssh", "connect", "quick", "host"],
+    run,
+  };
+}
+
 export interface PaletteSources {
   t: Translate;
   shortcuts: ShortcutBindings;

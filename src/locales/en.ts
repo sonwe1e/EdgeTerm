@@ -214,6 +214,8 @@ export const en = {
   "palette.themeItem": "Theme: {theme}",
   "palette.current": "Current",
   "palette.switchHint": "Open tab",
+  "palette.quickConnect": "Connect to {target}",
+  "palette.quickConnectHint": "Open an SSH session without saving it",
   "palette.connectHint": "Saved session",
   "palette.footer": "↑↓ navigate · Enter run · Esc close",
   "palette.count": "{count} commands",

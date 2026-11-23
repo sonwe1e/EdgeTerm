@@ -14,10 +14,12 @@ import {
   matchRanges,
   paletteGroupLabels,
   pushRecent,
+  quickConnectCommand,
   rankCommands,
   saveRecents,
   type PaletteCommand,
 } from "../commandPalette";
+import { parseQuickConnect, type QuickTarget } from "../quickConnect";
 import { useT } from "../useT";
 import { Icon } from "./icons";
 import { ModalDialog } from "./ModalDialog";
@@ -39,6 +41,9 @@ interface Props {
   onClose: () => void;
   /** The catalogue for the current app state, rebuilt by App while it is open. */
   commands: PaletteCommand[];
+  /** Connects to a host the reader typed into this field; absent where the
+   *  palette is mounted without a session layer (tests, settings preview). */
+  onQuickConnect?: (target: QuickTarget) => void;
 }
 
 const optionId = (index: number): string => "command-palette-option-" + index;
@@ -58,7 +63,7 @@ const highlighted = (label: string, query: string): ReactNode => {
   return parts;
 };
 
-export function CommandPalette({ open, onClose, commands }: Props) {
+export function CommandPalette({ open, onClose, commands, onQuickConnect }: Props) {
   const t = useT();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -74,7 +79,14 @@ export function CommandPalette({ open, onClose, commands }: Props) {
     setRecents(loadRecents());
   }, [open]);
 
-  const ranked = useMemo(() => rankCommands(commands, query, recents), [commands, query, recents]);
+  const ranked = useMemo(() => {
+    const base = rankCommands(commands, query, recents);
+    // A query that parses as `user@host:port` is a target, not a search: the
+    // row goes first so Enter connects without walking the list.
+    const target = onQuickConnect ? parseQuickConnect(query) : null;
+    if (!target || !onQuickConnect) return base;
+    return [quickConnectCommand(target, t, () => onQuickConnect(target)), ...base];
+  }, [commands, query, recents, onQuickConnect, t]);
 
   // One heading per group, rows of the same group kept together. The flattened
   // order below is what the arrow keys walk and what the option ids number, so

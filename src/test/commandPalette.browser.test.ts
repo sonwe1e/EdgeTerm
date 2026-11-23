@@ -142,6 +142,32 @@ describe("the command palette in the real app", () => {
     await browserAfterEach();
   });
 
+  it("offers to connect to a host typed into the field, and connects on Enter", async () => {
+    await page.viewport(1280, 800);
+    applyFixture();
+    mount(h(StrictMode, null, h(App)));
+    await twoFrames();
+    await twoFrames();
+    await pressPaletteChord();
+
+    // A phrase is a search: no connect row appears.
+    await typeQuery("display");
+    expect(options()[0].textContent).not.toContain("Connect to");
+
+    await typeQuery("root@10.0.0.5:2222");
+    const first = options()[0];
+    expect(first.textContent, "the target is the first thing Enter would run").toContain(
+      "Connect to root@10.0.0.5:2222",
+    );
+
+    await pressKey("Enter");
+    await twoFrames();
+    const tab = useStore.getState().tabs.find((item) => item.info.name === "root@10.0.0.5:2222");
+    expect(tab, "a session opened for the typed target").toBeTruthy();
+    expect(tab!.profile).toMatchObject({ host: "10.0.0.5", username: "root", port: 2222 });
+    expect(paletteOpen(), "the palette closed on connect").toBe(false);
+  });
+
   it("opens from the real chord, is readable, and filters what is typed", async () => {
     await page.viewport(1280, 800);
     applyFixture();

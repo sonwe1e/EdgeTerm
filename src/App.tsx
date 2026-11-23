@@ -32,6 +32,8 @@ import { ClipboardWriteDialog } from "./components/ClipboardWriteDialog";
 import { CloseChoiceDialog } from "./components/CloseChoiceDialog";
 import { CloseSessionDialog } from "./components/CloseSessionDialog";
 import { CommandPalette } from "./components/CommandPalette";
+import { newSessionProfile } from "./components/SessionDialog";
+import { quickConnectProfile } from "./quickConnect";
 import { QuitConfirmDialog } from "./components/QuitConfirmDialog";
 import { FontSizeDialog } from "./components/FontSizeDialog";
 import { HostKeyDialog } from "./components/HostKeyDialog";
@@ -1124,6 +1126,12 @@ export default function App() {
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
         commands={paletteCommands}
+        onQuickConnect={(target) => {
+          // Nothing is saved: the tab carries the target the reader typed, and
+          // the editor is only reached when they decide to keep the session.
+          setPaletteOpen(false);
+          void openSession(quickConnectProfile(target, newSessionProfile()));
+        }}
       />
 
       <UpdateDialog
