@@ -971,7 +971,7 @@ export const en = {
   "filer.loading": "Loading…",
   "filer.noFolderOpen": "No folder is open yet",
   "filer.openDrive": "Open a drive to copy files into",
-  "filer.busy": "Busy — wait for the current transfer to finish",
+  "filer.busy": "Busy — wait for the current task to finish",
   "filer.alreadyHere": "Already in this folder",
   "filer.someAlready": "{skipped} of {total} items were already in this folder",
   "filer.couldNotDrag": "Could not drag {name}: {error}",

@@ -928,7 +928,7 @@ export const zhCN: Catalog = {
   "filer.loading": "正在加载…",
   "filer.noFolderOpen": "尚未打开任何文件夹",
   "filer.openDrive": "请先打开一个驱动器再复制文件",
-  "filer.busy": "忙碌中 —— 请等待当前传输完成",
+  "filer.busy": "忙碌中 —— 请等待当前操作完成",
   "filer.alreadyHere": "已在此文件夹中",
   "filer.someAlready": "{total} 个项目中有 {skipped} 个已在此文件夹中",
   "filer.couldNotDrag": "无法拖拽 {name}：{error}",

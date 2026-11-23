@@ -932,7 +932,13 @@ function FilerPanelBase() {
             uploadMenuWasOpen.current = uploadMenu !== null;
           }}
           onClick={(event) => {
-            if (uploadMenuWasOpen.current) return;
+            // The open menu closes on the document's own mousedown, so a second
+            // press only dismisses — and must clear the flag it just set, or
+            // every later press returns early and the menu never opens again.
+            if (uploadMenuWasOpen.current) {
+              uploadMenuWasOpen.current = false;
+              return;
+            }
             const rect = event.currentTarget.getBoundingClientRect();
             setUploadMenu({ x: rect.left, y: rect.bottom + 2 });
           }}
