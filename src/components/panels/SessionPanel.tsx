@@ -380,8 +380,16 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
     // name starts with what has been typed. The buffer clears after a pause, so
     // "b" then "bu" narrows one search instead of starting two. Keys with a
     // modifier stay with the shortcut table (and with the terminal's own use of
-    // Alt), and every printable key is claimed here so no page scroll follows.
-    if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    // Alt). Space is excluded: it already collapses and expands the row under
+    // the cursor further down, and a name never starts with a space. The claimed
+    // key also takes its default action, so no page scroll follows.
+    if (
+      event.key.length === 1 &&
+      event.key !== " " &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey
+    ) {
       const now = Date.now();
       const previous = typeAhead.current;
       const buffer =

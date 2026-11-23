@@ -88,6 +88,23 @@ it("keeps the mark visible beside a long name at a narrow width", async () => {
   expect(markBox.right, "and stays inside the row").toBeLessThanOrEqual(rowBox.right + 0.5);
 });
 
+it("keeps Space for collapsing the heading under the cursor", async () => {
+  mount(h(SessionPanel, { onEditProfile: vi.fn(), onNewSession: vi.fn() }));
+  await twoFrames();
+  const tree = document.querySelector<HTMLElement>('[role="tree"]')!;
+  tree.focus();
+  await twoFrames();
+  const section = () => document.querySelector<HTMLElement>('[role="treeitem"][aria-level="1"]')!;
+  expect(section().getAttribute("aria-expanded")).toBe("true");
+  // Space is a printable character, but it belongs to the row toggle the tree
+  // already had; type-ahead must not swallow it.
+  await userEvent.keyboard(" ");
+  await twoFrames();
+  expect(section().getAttribute("aria-expanded"), "Space still collapses the heading").toBe(
+    "false",
+  );
+});
+
 it("walks to a session when its first letter is typed", async () => {
   mount(h(SessionPanel, { onEditProfile: vi.fn(), onNewSession: vi.fn() }));
   await twoFrames();
