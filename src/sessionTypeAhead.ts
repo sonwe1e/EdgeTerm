@@ -1,3 +1,5 @@
+import { findByPrefix } from "./fileTypeSelect";
+
 /**
  * Type-ahead for the session tree: typing a letter while the tree has focus
  * walks to the next session whose name starts with what has been typed. It is
@@ -23,17 +25,18 @@ export function nextTypeAheadRow(
   fromIndex: number,
   query: string,
 ): number | null {
-  const needle = query.trim().toLowerCase();
+  const needle = query.trim();
   if (needle === "") return null;
   const ordered = [...rows].sort((a, b) => a.index - b.index);
   if (ordered.length === 0) return null;
-  const start = ordered.findIndex((row) => row.index > fromIndex);
-  const origin = start === -1 ? 0 : start;
-  for (let step = 0; step < ordered.length; step++) {
-    const row = ordered[(origin + step) % ordered.length];
-    if (row.label.toLowerCase().startsWith(needle)) return row.index;
-  }
-  return null;
+  // The same folding and wrap-around the file lists use: one search, not two.
+  const after = ordered.findIndex((row) => row.index > fromIndex);
+  const hit = findByPrefix(
+    ordered.map((row) => ({ name: row.label })),
+    needle,
+    after === -1 ? 0 : after,
+  );
+  return hit === -1 ? null : (ordered[hit]?.index ?? null);
 }
 
 /** How long a half-typed search lives: a longer pause starts a new one. */
@@ -50,6 +53,8 @@ export interface TypeAheadKey {
   ctrlKey: boolean;
   metaKey: boolean;
   altKey: boolean;
+  /** A key that belongs to an input-method composition is not type-ahead. */
+  isComposing?: boolean;
 }
 
 /**
@@ -80,7 +85,9 @@ export function nextTypeAheadBuffer(
     if (text === "") return { buffer, action: "none" };
     return { buffer: { text: text.slice(0, -1), at: now }, action: "search" };
   }
-  if (key.ctrlKey || key.metaKey || key.altKey) return { buffer, action: "none" };
+  if (key.ctrlKey || key.metaKey || key.altKey || key.isComposing) {
+    return { buffer, action: "none" };
+  }
   if (key.key.length !== 1 || key.key === " ") return { buffer, action: "none" };
   return { buffer: { text: text + key.key, at: now }, action: "search" };
 }

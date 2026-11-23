@@ -81,5 +81,9 @@ describe("nextTypeAheadBuffer", () => {
         .action,
     ).toBe("none");
     expect(nextTypeAheadBuffer(empty, plain("ArrowDown"), 1000).action).toBe("none");
+    // A key that belongs to an input-method composition is the IME's, not ours.
+    expect(nextTypeAheadBuffer(empty, { ...plain("l"), isComposing: true }, 1000).action).toBe(
+      "none",
+    );
   });
 });

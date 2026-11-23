@@ -75,8 +75,16 @@ export function typeToSelect(
   return { run: { text, at: now }, index };
 }
 
-/** The first entry from `start` on, wrapping around, whose name starts with `prefix`. */
-export function findByPrefix(entries: readonly FileEntry[], prefix: string, start: number): number {
+/**
+ * The first entry from `start` on, wrapping around, whose name starts with
+ * `prefix`. Anything with a `name` works, so lists that are not files — the
+ * session tree — share this search instead of carrying a second copy of it.
+ */
+export function findByPrefix(
+  entries: readonly Pick<FileEntry, "name">[],
+  prefix: string,
+  start: number,
+): number {
   const wanted = foldName(prefix);
   const from = Math.max(start, 0);
   for (let offset = 0; offset < entries.length; offset++) {
