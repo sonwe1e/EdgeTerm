@@ -231,6 +231,17 @@ describe("the catalogue", () => {
     expect(hint).toContain(english("palette.connectHint"));
   });
 
+  it("finds a session by the address its hint shows", () => {
+    // Ctrl+P is where a reader types an address as readily as in the tree's
+    // filter: the hint carries "root@db.internal", so the query must find it.
+    const found = rankCommands(buildPaletteCommands(sources()), "db.internal").map(
+      (item) => item.id,
+    );
+    expect(found).toContain("session:profile-1");
+    const byUser = rankCommands(buildPaletteCommands(sources()), "root@").map((item) => item.id);
+    expect(byUser).toContain("session:profile-1");
+  });
+
   it("files commands under the group a reader would look in", () => {
     const commands = buildPaletteCommands(sources());
     const group = (id: string) => commands.find((item) => item.id === id)?.group;
