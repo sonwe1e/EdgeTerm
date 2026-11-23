@@ -142,6 +142,24 @@ describe("the command palette in the real app", () => {
     await browserAfterEach();
   });
 
+  it("finds a session by the port in its address", async () => {
+    await page.viewport(1280, 800);
+    applyFixture();
+    mount(h(StrictMode, null, h(App)));
+    await twoFrames();
+    // After mount, because the app loads its profiles from the backend on start:
+    // a value set before mounting is replaced by that load.
+    useStore.setState({ profiles: [{ ...PROFILE, port: 2222 }] });
+    await twoFrames();
+    await pressPaletteChord();
+    await typeQuery("2222");
+    // Nothing else in this catalogue contains "2222": only the port in the
+    // session's hint can bring the row back, and the row still names the
+    // session rather than the number.
+    const rows = options().map((row) => row.textContent ?? "");
+    expect(rows.join(" | "), "the session on port 2222 is offered").toContain("Build server");
+  });
+
   it("offers to connect to a host typed into the field, and connects on Enter", async () => {
     await page.viewport(1280, 800);
     applyFixture();
