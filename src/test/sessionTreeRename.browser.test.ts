@@ -88,6 +88,19 @@ it("keeps the mark visible beside a long name at a narrow width", async () => {
   expect(markBox.right, "and stays inside the row").toBeLessThanOrEqual(rowBox.right + 0.5);
 });
 
+it("walks to a session when its first letter is typed", async () => {
+  mount(h(SessionPanel, { onEditProfile: vi.fn(), onNewSession: vi.fn() }));
+  await twoFrames();
+  const tree = document.querySelector<HTMLElement>('[role="tree"]')!;
+  tree.focus();
+  await twoFrames();
+  // Focus lands on the kind heading; the letter names the session, not a
+  // heading, and no page scroll is attempted because the key is claimed.
+  await userEvent.keyboard("l");
+  await twoFrames();
+  expect(tree.getAttribute("aria-activedescendant")).toBe("session-row-p1");
+});
+
 it("renames the item the cursor is on with F2", async () => {
   const onEditProfile = vi.fn();
   mount(h(SessionPanel, { onEditProfile, onNewSession: vi.fn() }));

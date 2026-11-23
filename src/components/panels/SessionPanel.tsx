@@ -23,6 +23,7 @@ import {
   sectionLabel,
   SESSION_SECTIONS,
 } from "../../sessionGroups";
+import { nextTypeAheadRow, type TypeAheadRow } from "../../sessionTypeAhead";
 import { tabTitle, useStore } from "../../store";
 import {
   colorForSession,
@@ -127,6 +128,9 @@ type TreeItem =
     }
   | { id: string; type: "profile"; level: number; profile: SessionProfile };
 
+/** How long a type-ahead search lives: a longer pause starts a new one. */
+const TYPE_AHEAD_PAUSE_MS = 600;
+
 /** Row ids for aria-activedescendant; a profile name may contain spaces. */
 const profileRowId = (profile: SessionProfile): string =>
   `session-row-${encodeURIComponent(profile.id || profile.name)}`;
@@ -169,6 +173,8 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
   const activeTab = useStore((s) => s.tabs.find((tab) => tab.info.id === s.activeId));
 
   const [filter, setFilter] = useState("");
+  // What has been typed for type-ahead, and when: a pause starts a new search.
+  const typeAhead = useRef({ buffer: "", at: 0 });
   const filterRef = useRef<HTMLInputElement>(null);
   /**
    * Explicit open / closed state of the tree, keyed `kind:<kind>` for
@@ -368,6 +374,28 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
       event.preventDefault();
       event.stopPropagation();
       filterRef.current?.focus();
+      return;
+    }
+    // Type-ahead: a plain printable character walks to the next session whose
+    // name starts with what has been typed. The buffer clears after a pause, so
+    // "b" then "bu" narrows one search instead of starting two. Keys with a
+    // modifier stay with the shortcut table (and with the terminal's own use of
+    // Alt), and every printable key is claimed here so no page scroll follows.
+    if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      const now = Date.now();
+      const previous = typeAhead.current;
+      const buffer =
+        now - previous.at > TYPE_AHEAD_PAUSE_MS ? event.key : previous.buffer + event.key;
+      typeAhead.current = { buffer, at: now };
+      const profileRows: TypeAheadRow[] = [];
+      for (let at = 0; at < treeItems.length; at++) {
+        const row = treeItems[at];
+        if (row.type === "profile") profileRows.push({ index: at, label: row.profile.name });
+      }
+      const target = nextTypeAheadRow(profileRows, index, buffer);
+      event.preventDefault();
+      event.stopPropagation();
+      if (target !== null) moveTo(target);
       return;
     }
     switch (event.key) {
