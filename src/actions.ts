@@ -23,7 +23,7 @@ import type { TerminalController } from "./terminal";
 import { clearPendingInput, takePendingInput } from "./pendingInput";
 import { sendSessionInput } from "./sessionInput";
 import { disposeController, getController, setController } from "./terminalRegistry";
-import { parseQuickConnect, quickConnectProfile } from "./quickConnect";
+import { parseQuickConnect, quickConnectLabel, quickConnectProfile } from "./quickConnect";
 import { newSessionProfile } from "./sessionDefaults";
 import { isFileSession, type SessionInfo, type SessionProfile } from "./types";
 import { rememberWorkspaceDirectory } from "./workspaceDirectories";
@@ -194,6 +194,9 @@ export async function ensureController(id: string): Promise<TerminalController> 
       onSshLink: (uri) => {
         const target = parseQuickConnect(uri);
         if (!target) return;
+        // The palette offers this list back, so a host reached from a link is
+        // one keystroke away next time, exactly like a typed one.
+        useStore.getState().rememberQuickTarget(quickConnectLabel(target));
         void openSession(quickConnectProfile(target, newSessionProfile()));
       },
       onCommand: (command) => commandHistory.record(command, historyHost(id)),

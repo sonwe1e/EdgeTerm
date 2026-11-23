@@ -223,6 +223,16 @@ export interface AppStore {
    * three lists follow one choice (see `setFilerSort`).
    */
   filerSort: FileSort;
+  /**
+   * Hosts connected from the palette's field or from an `ssh://` link, newest
+   * first. Labels only: no password, no profile (see quickConnectRecents.ts).
+   */
+  quickConnectRecents: string[];
+  /**
+   * Remembers a target that was just connected to, in front of the others and
+   * persisted; the palette offers the list back while its field is empty.
+   */
+  rememberQuickTarget: (label: string) => void;
   theme: ThemeMode;
   /** Interface language; drives every `t(...)` in the frontend. */
   language: Language;

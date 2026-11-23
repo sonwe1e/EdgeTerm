@@ -16,6 +16,7 @@ import {
   samePanelDocks,
 } from "./panelDock";
 import { PANEL_PREFERENCE_KEYS, SORT_STORAGE_KEY } from "./persistKeys";
+import { loadRecentTargets } from "./quickConnectRecents";
 import { loadSnippets } from "./snippets";
 import { loadStartupCommands } from "./startupCommands";
 import { HAS_TRAY, IS_MAC } from "./platform";
@@ -383,6 +384,9 @@ export const createPreferenceActions: StateCreator<
     set({
       snippets: [],
       startupCommands: {},
+      // The remembered targets are stored under a registered key, so restoring
+      // defaults has already removed it; the copy in memory must go as well.
+      quickConnectRecents: [],
       panelPreferencesRevision: get().panelPreferencesRevision + 1,
     });
   },
@@ -470,7 +474,11 @@ export const createPreferenceActions: StateCreator<
     }
     // These two are store state as well as stored preferences: an import that
     // changed them must show up now, not after a restart.
-    set({ snippets: loadSnippets(), startupCommands: loadStartupCommands() });
+    set({
+      snippets: loadSnippets(),
+      startupCommands: loadStartupCommands(),
+      quickConnectRecents: loadRecentTargets(),
+    });
     const panels = parsePanels(values.panels, state.panels);
     set({ panelPreferencesRevision: get().panelPreferencesRevision + 1 });
     if (panels) {
