@@ -175,6 +175,10 @@ export function useFilerDirectory({
       clearSelection();
       setCreating(null);
       setError(null);
+      // A listing that was in flight cannot finish its own cleanup: this branch
+      // has just changed the source, so the load's "still on the same source"
+      // guard fails and its busy flag would stay up for good.
+      setBusy(false);
       return;
     }
     let cancelled = false;
@@ -224,6 +228,7 @@ export function useFilerDirectory({
     setPath,
     setDraft,
     setError,
+    setBusy,
   ]);
 
   useEffect(() => {
