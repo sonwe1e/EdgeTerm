@@ -1,5 +1,14 @@
 # 项目状态
 
+## 本轮：让读屏软件也知道树自己的两个键（2026-11-24 第 113 轮）
+
+- 起因：树的 ARIA 只声明了 `role="tree"` 与 `aria-activedescendant`；方向键、Home/End 属于该模式的约定，但 **F2（重命名）与空格（折叠）是本应用自己的**，此前没有任何地方向辅助技术声明它们。
+- 交付：树容器加 `aria-keyshortcuts="F2 Space"`，筛选框加 `aria-keyshortcuts="/"`（`/` 聚焦筛选是本应用自己的键）。纯属性，无样式、无行为变化。
+- 验证：`sessionTreeRename.browser.test.ts` **9/9**（新增 1 条：断言两个 `aria-keyshortcuts` 的值，并说明方向键不在此列因为属于树模式本身）。
+- 自纠：第一次把注释写成 JSX 标签内的 `//` 行——`tsc` 与 Biome 都接受了，但这不是 JSX 的注释写法；改为标签上方的 `{/* … */}`，避免读者与其它工具困惑。
+- 门（`npm run verify`）：`VERIFY_EXIT=0`；format:check ok 1.0s、typecheck ok 7.4s、lint ok 0.9s、test ok 125.5s（**212 文件／1918 用例**）、test:browser ok 192.8s（**72 文件／327 用例**）。
+
+
 ## 本轮：给七十轮日志加一张索引（2026-11-24 第 112 轮）
 
 - 起因：`STATE.md`（70 轮）、`DECISIONS.md`（111 条）、`LEARNINGS.md`（325 条）都是按时间追加的线性日志；要找「某件事是哪一轮做的」只能从头翻。
