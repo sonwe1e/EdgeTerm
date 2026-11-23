@@ -709,7 +709,7 @@ export const zhCN: Catalog = {
   "panel.powerReconnect": "重连",
   "panel.noActiveSession": "没有活动会话",
   "panel.newSession": "新建会话",
-  "panel.filterSessions": "过滤会话",
+  "panel.filterSessions": "按名称、主机或用户名过滤",
   "panel.sshConnections": "SSH 连接",
   "panel.rightClickAddGroup": "右键添加分组",
   "panel.noMatches": "没有匹配“{filter}”的会话。",

@@ -23,6 +23,7 @@ import {
   sectionLabel,
   SESSION_SECTIONS,
 } from "../../sessionGroups";
+import { sessionMatchesFilter } from "../../sessionFilter";
 import {
   nextTypeAheadBuffer,
   nextTypeAheadRow,
@@ -214,9 +215,10 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
     // The built-in row follows the interface language; a tab opened from it
     // takes this name with it, so the strip and the tree agree.
     const localShell = { ...LOCAL_SHELL_PROFILE, name: t("panel.localShell") };
-    const visible = [localShell, ...profiles].filter(
-      (p) => !needle || p.name.toLowerCase().includes(needle),
-    );
+    // The filter reads the name and how the session connects (see
+    // sessionFilter.ts): people remember a machine by its host, not by the
+    // label they typed when they saved it.
+    const visible = [localShell, ...profiles].filter((p) => sessionMatchesFilter(p, needle));
 
     return SESSION_SECTIONS.map((section) => {
       const byGroup = new Map<string | null, SessionProfile[]>();

@@ -105,6 +105,22 @@ it("keeps Space for collapsing the heading under the cursor", async () => {
   );
 });
 
+it("finds a session by its host, not only by its name", async () => {
+  mount(h(SessionPanel, { onEditProfile: vi.fn(), onNewSession: vi.fn() }));
+  await twoFrames();
+  const input = document.querySelector<HTMLInputElement>(".panel-filter input")!;
+  const named = () =>
+    [...document.querySelectorAll(".row-label")].some((row) => row.textContent === "Lab box");
+  // The fixture's host is "lab.invalid": the name does not contain it.
+  await userEvent.type(input, "lab.inv");
+  await twoFrames();
+  expect(named(), "the host brings the session back").toBe(true);
+  await userEvent.clear(input);
+  await userEvent.type(input, "lab.inv-zzz");
+  await twoFrames();
+  expect(named(), "text that matches nothing hides it").toBe(false);
+});
+
 it("walks to a session when its first letter is typed", async () => {
   mount(h(SessionPanel, { onEditProfile: vi.fn(), onNewSession: vi.fn() }));
   await twoFrames();
