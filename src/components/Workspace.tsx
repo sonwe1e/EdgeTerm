@@ -1,4 +1,4 @@
-import { useMemo, useRef, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
 
 import appIcon from "../../src-tauri/icons/128x128@2x.png";
 import { layoutRects, type Rect, type SplitterRect } from "../layout";
@@ -86,6 +86,16 @@ export function Workspace({ onNewSession, onSaveSession, onOpenProfile, children
   const layout = useStore((s) => s.layout);
   const panes = useStore((s) => s.panes);
   const tabs = useStore((s) => s.tabs);
+  // Closing the last session unmounts the control that had focus, which leaves
+  // focus on the document body: the empty state is the only thing left to act
+  // on, so hand it the keyboard — but never take focus from a control the
+  // reader chose (the guard the terminal's own autofocus uses).
+  const emptyPrimary = useRef<HTMLButtonElement>(null);
+  const tabCount = tabs.length;
+  useEffect(() => {
+    if (tabCount !== 0 || document.activeElement !== document.body) return;
+    emptyPrimary.current?.focus({ preventScroll: true });
+  }, [tabCount]);
   const activeId = useStore((s) => s.activeId);
   const activePaneId = useStore((s) => s.activePaneId);
   const dropTarget = useStore((s) => s.dropTarget);
@@ -192,7 +202,7 @@ export function Workspace({ onNewSession, onSaveSession, onOpenProfile, children
                           hintNoKey
                         )}
                       </p>
-                      <button className="btn is-primary" onClick={onNewSession}>
+                      <button ref={emptyPrimary} className="btn is-primary" onClick={onNewSession}>
                         {t("empty.newSession")}
                       </button>
                     </div>

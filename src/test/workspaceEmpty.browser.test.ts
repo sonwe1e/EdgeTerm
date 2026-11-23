@@ -121,3 +121,24 @@ it("keeps the recent list reachable at the minimum pane size", async () => {
   // A 2px focus ring and its 2px offset, the same allowance the first case uses.
   expect(box.bottom, "and does not sit under the bottom edge").toBeLessThanOrEqual(pane.bottom - 3);
 });
+
+it("gives the keyboard to the empty state's primary action", async () => {
+  useStore.setState({
+    language: "en",
+    tabs: [],
+    activeId: null,
+    panels: { sessions: false, filer: false, sender: false },
+  });
+  mount(
+    h(
+      "div",
+      { className: "app", style: { width: 1280, height: 800 } as CSSProperties },
+      h(Workspace, { onNewSession: vi.fn(), onSaveSession: vi.fn(), onOpenProfile: vi.fn() }),
+    ),
+  );
+  await twoFrames();
+  // Closing the last session unmounts whatever had focus, so focus lands on the
+  // body; the empty state is then the only thing left to act on.
+  const primary = document.querySelector<HTMLButtonElement>(".term-empty .btn.is-primary")!;
+  expect(document.activeElement, "the one action left has the keyboard").toBe(primary);
+});
