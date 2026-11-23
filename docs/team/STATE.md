@@ -1,5 +1,14 @@
 # 项目状态
 
+## 本轮：筛选也随会话切换清空（2026-11-24 第 125 轮）
+
+- 依据第 124 轮补上的注释推演：筛选属于**它所输入的那个列表**。此前只以 `path` 为依赖——切换到另一个会话、而它的路径恰好与当前相同，筛选会残留，读者看到的是一份被筛过的列表且不知为何。
+- 交付：`FilerPanel` 的清空 effect 依赖改为 `[path, remoteId]`，注释同步说明两类切换（目录、会话）。
+- 验证：typecheck EXIT=0；`filerSelection.browser.test.ts` 7/7（含第 124 轮新增的切目录用例）。
+- **未覆盖（如实记录）**：没有为「切换会话清空筛选」加用例——该夹具只有本地会话（`tabs: []`），构造第二个会话需要 SFTP 桩。这是本轮唯一的证据缺口；若实际使用中发现该行为多余（例如在 A 里筛好、切走后想保留），撤销这半个改动即可。
+- 门（`npm run verify`）：`VERIFY_EXIT=0`；format:check ok 1.0s、typecheck ok 7.1s、lint ok 0.9s、test ok 125.4s（**212 文件／1918 用例**）、test:browser ok 190.5s（**72 文件／331 用例**）。
+
+
 ## 本轮：关掉第 72 轮的缺口——问题在夹具，不在产品（2026-11-24 第 124 轮）
 
 - 定位上一轮的否定结果：`goUp` 走的是 `api.localParent(path)`，而 `filerSelection.browser.test.ts` 的 `vi.mock("../api")` **没有 stub 它**——浏览器夹具里没有 Tauri，这个调用 reject，`setError` 后**根本没有导航**。所以筛选没被清空是夹具问题，不是产品缺陷。
