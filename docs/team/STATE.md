@@ -1,5 +1,14 @@
 # 项目状态
 
+## 本轮：给快捷键表加一次普查（2026-11-24 第 105 轮）
+
+- 背景：`shortcuts.ts` 里三张表（`SHORTCUT_COMMANDS`、`shortcutLabels`、`shortcutHints`）与两份平台默认值（`MAC_DEFAULTS`、`OTHER_DEFAULTS`）靠人工保持一致；`shortcuts.test.ts` 只测解析与匹配，不测「表与表之间是否对得上」。
+- 交付：新增 `src/shortcutCensus.test.ts` 4 条——① 每个命令都有英文名与提示，且不是原始 key；② 命令不重复；③ 每个平台各自不会让两个命令抢同一个和弦（顺带断言和弦标签非空）；④ 两份平台表对同一命令是否有默认值保持一致。
+- **负控制**：把 `other` 平台 `nextTab` 改成 `Ctrl+Shift+Tab` 与 `prevTab` 撞车 → 用例失败（`other: nextTab reuses Ctrl+Shift+Tab`）；恢复后 4/4 通过、typecheck EXIT=0。
+- 意义：这是 D107「把死导出变成门」的延续——表结构的不变量从「靠自觉」变成「进门的断言」。
+- 门（`npm run verify`）：`VERIFY_EXIT=0`；format:check ok 1.0s、typecheck ok 7.2s、lint ok 0.9s、test ok 124.8s（**210 文件／1907 用例**）、test:browser ok 191.2s（**72 文件／323 用例**）。
+
+
 ## 本轮：两处 type-ahead 合并到同一次搜索（2026-11-24 第 104 轮）
 
 - 质量评估发现：文件列表的 `fileTypeSelect.typeToSelect` 与会话树的 `sessionTypeAhead` 各自实现了一遍「按前缀找下一行」——前者还多了 NFC 归一、输入法组合判断与重复字母轮转。
