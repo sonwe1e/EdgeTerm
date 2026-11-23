@@ -839,8 +839,9 @@ function FilerPanelBase() {
       action: () => {
         const command = cdCommand(path);
         if (!command) return;
-        // The funnel already says "no shell to write to"; this adds which
-        // folder was asked for, so the reader can retry from the right place.
+        // The panel follows the active session, so "its shell" is the shell on
+        // screen; the funnel already says when there is none, and this adds
+        // which folder was asked for so the reader can retry from there.
         if (!sendCommandText(command)) {
           useStore.getState().setStatus(t("filer.cdFailed", { path }));
         }

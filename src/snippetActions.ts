@@ -42,15 +42,26 @@ export function sendSnippet(snippet: Snippet): boolean {
  * reader just picked out of their own history is already on the screen.
  */
 export function sendCommandText(command: string): boolean {
+  const { activeId } = useStore.getState();
+  return activeId === null ? needsShell() : sendCommandToSession(activeId, command);
+}
+
+/**
+ * The same funnel for one named shell rather than the active one: the Filer
+ * walks the shell it belongs to, which the reader may not be looking at.
+ */
+export function sendCommandToSession(id: string, command: string): boolean {
   const state = useStore.getState();
-  const tab = state.tabs.find((item) => item.info.id === state.activeId);
-  if (!tab || tab.state !== "connected" || isFileSession(tab.info.kind)) {
-    state.setStatus(t("snippets.needsShell"));
-    return false;
-  }
-  sendSessionInput(tab.info.id, snippetBytes(command));
+  const tab = state.tabs.find((item) => item.info.id === id);
+  if (!tab || tab.state !== "connected" || isFileSession(tab.info.kind)) return needsShell();
+  sendSessionInput(id, snippetBytes(command));
   return true;
 }
+
+const needsShell = (): false => {
+  useStore.getState().setStatus(t("snippets.needsShell"));
+  return false;
+};
 /**
  * The prompt that fills a template in lives with the dialog that owns it. A
  * surface that does not own dialogs (the terminal's context menu) hands the

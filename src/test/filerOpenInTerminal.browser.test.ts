@@ -94,6 +94,6 @@ it("does not offer it when that shell is not the one on screen", async () => {
     (item) => item.textContent?.trim() === "Open in Terminal",
   );
   expect(entry, "the entry is listed even when it cannot act").toBeTruthy();
-  expect(entry!.disabled, "no shell of its own to walk").toBe(true);
+  expect(entry!.disabled, "no shell on screen to walk").toBe(true);
   expect(api.writeSession).not.toHaveBeenCalled();
 });
