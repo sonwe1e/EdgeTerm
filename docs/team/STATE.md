@@ -1,5 +1,14 @@
 # 项目状态
 
+## 本轮：文件列表也声明自己的三个键（2026-11-24 第 114 轮）
+
+- 延续上一轮：文件列表（Filer）的 `role="listbox"` 只声明了多选与当前行，**F2（重命名）、Delete（删除）、Enter（打开）**都是本应用自己的键，此前没有向辅助技术声明。
+- 交付：列表容器加 `aria-keyshortcuts="F2 Delete Enter"`。方向键、Home/End、PageUp/PageDown 属于列表模式约定，不列。
+- 验证：`src/test/filerFilterNavigation.browser.test.ts` **2/2**（新增 1 条断言该属性）。
+- 边界：会话对话框、常用命令面板等仍有自定义键未声明；`aria-keyshortcuts` 只是提示，读屏软件支持度不一，**不能替代真实可用的键盘路径**（后者已有测试覆盖）。
+- 门（`npm run verify`）：`VERIFY_EXIT=0`；format:check ok 0.9s、typecheck ok 7.3s、lint ok 0.9s、test ok 126.1s（**212 文件／1918 用例**）、test:browser ok 191.5s（**72 文件／328 用例**）。
+
+
 ## 本轮：让读屏软件也知道树自己的两个键（2026-11-24 第 113 轮）
 
 - 起因：树的 ARIA 只声明了 `role="tree"` 与 `aria-activedescendant`；方向键、Home/End 属于该模式的约定，但 **F2（重命名）与空格（折叠）是本应用自己的**，此前没有任何地方向辅助技术声明它们。
