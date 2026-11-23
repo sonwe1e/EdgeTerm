@@ -135,6 +135,18 @@ describe("saved commands", () => {
     useStore.setState(initial, true);
   });
 
+  it("says how to leave a filter that matches nothing", async () => {
+    await mountSession();
+    useStore.setState({ snippets: [{ id: "s1", name: "Logs", command: "tail -f app.log" }] });
+    await twoFrames();
+    await openSnippets();
+    await fill(".snippets-filter", "nothing like this");
+    const note = document.querySelector(".snippets-empty");
+    expect(note?.textContent, "the note names the filter").toContain("nothing like this");
+    // Escape already clears the field; the hint is what makes that discoverable.
+    expect(document.querySelector(".snippets-empty-hint")?.textContent).toContain("Esc");
+  });
+
   it("names its own keys for assistive technology", async () => {
     await mountSession();
     // After mounting: the app loads its own state on start, so a value written

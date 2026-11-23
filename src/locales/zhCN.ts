@@ -274,6 +274,7 @@ export const zhCN: Catalog = {
   "snippets.nameTaken": "已有同名命令，换个名字",
   "snippets.filterLabel": "筛选常用命令",
   "snippets.noMatches": "没有匹配“{filter}”的常用命令",
+  "snippets.noMatchesHint": "按 Esc 清空筛选。",
   "snippets.copyAll": "复制全部",
   "snippets.importFromClipboard": "从剪贴板导入",
   "snippets.copied": "已复制 {count} 条常用命令",

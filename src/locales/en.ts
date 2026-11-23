@@ -283,6 +283,7 @@ export const en = {
   "snippets.nameTaken": "Another saved command already uses this name",
   "snippets.filterLabel": "Filter saved commands",
   "snippets.noMatches": "No saved command matches “{filter}”",
+  "snippets.noMatchesHint": "Press Esc to clear the filter.",
   "snippets.copyAll": "Copy All",
   "snippets.importFromClipboard": "Import from Clipboard",
   "snippets.copied": "Copied {count} saved commands",

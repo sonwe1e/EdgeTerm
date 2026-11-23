@@ -184,7 +184,12 @@ export function SnippetsDialog({
             <p className="snippets-empty-hint">{t("snippets.emptyHint")}</p>
           </div>
         ) : visible.length === 0 ? (
-          <p className="snippets-empty">{t("snippets.noMatches", { filter: filter.trim() })}</p>
+          <div>
+            <p className="snippets-empty">{t("snippets.noMatches", { filter: filter.trim() })}</p>
+            {/* Escape already clears the filter from the field; saying so turns
+                a dead end into one keystroke. */}
+            <p className="snippets-empty-hint">{t("snippets.noMatchesHint")}</p>
+          </div>
         ) : (
           <ul className="snippets-list">
             {visible.map((snippet, index) => (
