@@ -105,6 +105,28 @@ it("keeps Space for collapsing the heading under the cursor", async () => {
   );
 });
 
+it("finds a session by the group it lives in", async () => {
+  mount(h(SessionPanel, { onEditProfile: vi.fn(), onNewSession: vi.fn() }));
+  await twoFrames();
+  // Set after mounting: the panel reads the store live, and a value written
+  // before a mount is the one thing this suite has been bitten by.
+  useStore.setState({
+    groups: [{ id: "g-vault", name: "Vault", kind: "ssh", parentId: null }],
+    profiles: [{ ...profile, groupId: "g-vault" }],
+  });
+  await twoFrames();
+  const input = document.querySelector<HTMLInputElement>(".panel-filter input")!;
+  const named = () =>
+    [...document.querySelectorAll(".row-label")].some((row) => row.textContent === "Lab box");
+  await userEvent.type(input, "vault");
+  await twoFrames();
+  expect(named(), "the group on the path brings the session back").toBe(true);
+  await userEvent.clear(input);
+  await userEvent.type(input, "vault-zzz");
+  await twoFrames();
+  expect(named(), "text matching no group hides it").toBe(false);
+});
+
 it("finds a session by its host, not only by its name", async () => {
   mount(h(SessionPanel, { onEditProfile: vi.fn(), onNewSession: vi.fn() }));
   await twoFrames();

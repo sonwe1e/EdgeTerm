@@ -746,7 +746,7 @@ export const en = {
   "panel.powerReconnect": "Reconnect",
   "panel.noActiveSession": "No active session",
   "panel.newSession": "New session",
-  "panel.filterSessions": "Filter by name, host or user",
+  "panel.filterSessions": "Filter by name, host, user or group",
   "panel.sshConnections": "SSH connections",
   "panel.rightClickAddGroup": "Right-click to add a group",
   "panel.noMatches": "No sessions match “{filter}”.",

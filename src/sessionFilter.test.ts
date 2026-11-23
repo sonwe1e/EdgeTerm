@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { sessionMatchesFilter } from "./sessionFilter";
+import { groupPathMatches, sessionMatchesFilter } from "./sessionFilter";
 
 const lab = { name: "Lab box", host: "10.0.0.5", username: "root", port: 2222 };
 const serial = { name: "Console", portName: "COM3" };
@@ -31,5 +31,19 @@ describe("sessionMatchesFilter", () => {
   it("rejects when no part of the connection contains the text", () => {
     expect(sessionMatchesFilter(lab, "stage")).toBe(false);
     expect(sessionMatchesFilter(serial, "10.")).toBe(false);
+  });
+});
+
+describe("groupPathMatches", () => {
+  it("finds a session by a group on its path", () => {
+    expect(groupPathMatches(["prod", "eu"], "prod")).toBe(true);
+    expect(groupPathMatches(["prod", "eu"], "eu")).toBe(true);
+    expect(groupPathMatches(["prod", "eu"], "PROD")).toBe(true);
+  });
+
+  it("returns false for an empty filter or a path that does not match", () => {
+    expect(groupPathMatches(["prod"], "")).toBe(false);
+    expect(groupPathMatches([], "prod")).toBe(false);
+    expect(groupPathMatches(["prod"], "stage")).toBe(false);
   });
 });

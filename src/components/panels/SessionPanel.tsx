@@ -20,10 +20,11 @@ import {
   describeLocation,
   effectiveGroupId,
   flattenGroups,
+  groupPath,
   sectionLabel,
   SESSION_SECTIONS,
 } from "../../sessionGroups";
-import { sessionMatchesFilter } from "../../sessionFilter";
+import { groupPathMatches, sessionMatchesFilter } from "../../sessionFilter";
 import {
   nextTypeAheadBuffer,
   nextTypeAheadRow,
@@ -218,7 +219,13 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
     // The filter reads the name and how the session connects (see
     // sessionFilter.ts): people remember a machine by its host, not by the
     // label they typed when they saved it.
-    const visible = [localShell, ...profiles].filter((p) => sessionMatchesFilter(p, needle));
+    // A session also answers to the group it lives in: people name groups
+    // after what they hold and then look for the group.
+    const inMatchingGroup = (profile: SessionProfile) =>
+      groupPathMatches(groupPath(groups, effectiveGroupId(groups, profile)), needle);
+    const visible = [localShell, ...profiles].filter(
+      (p) => sessionMatchesFilter(p, needle) || inMatchingGroup(p),
+    );
 
     return SESSION_SECTIONS.map((section) => {
       const byGroup = new Map<string | null, SessionProfile[]>();

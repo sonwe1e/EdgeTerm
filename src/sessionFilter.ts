@@ -28,3 +28,17 @@ export function sessionMatchesFilter(profile: FilterableProfile, needle: string)
   if (profile.username && profile.host) haystack.push(`${profile.username}@${profile.host}`);
   return haystack.some((part) => part.toLowerCase().includes(query));
 }
+
+/**
+ * Whether the group a session lives in answers to the filter box.
+ *
+ * People name groups after the thing they hold ("prod", "vault", "lab") and
+ * then look for the group, not the machine inside it. Matching the path — the
+ * names from the kind root down — keeps that habit working, and keeps a
+ * session visible while its group matches.
+ */
+export function groupPathMatches(path: readonly string[], needle: string): boolean {
+  const query = needle.trim().toLowerCase();
+  if (query === "") return false;
+  return path.some((name) => name.toLowerCase().includes(query));
+}
