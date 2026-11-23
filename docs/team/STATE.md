@@ -1,5 +1,15 @@
 # 项目状态
 
+## 本轮：动手测「切目录后筛选清空」，结果没清——根因未定（2026-11-24 第 123 轮）
+
+- 按上轮计划给 `filerSelection.browser.test.ts` 末尾写了用例：打开面板 → 在筛选框输入 `file1` → 点「Parent folder」→ 断言筛选被清空。
+- **结果失败**：三秒轮询后筛选仍是 `file1`（`expected 'file1' to be ''`）。这与代码里 `useEffect(() => setFilter(""), [path])` 的存在矛盾，说明存在两种可能：① 从 home 点「Parent folder」根本没导航（path 未变）；② 导航了但 effect 未按预期清空。
+- 我尝试用哨兵断言读取该按钮是否 disabled，但输出被截断，**没有拿到结论**；预算到此，不再猜。
+- 已把该文件恢复到提交状态（`git checkout --`），**没有留下红色用例**。
+- **下一轮第一步**：给夹具加一个子目录并用行激活进入（不依赖「Parent folder 是否可用」），再观察 `path` 变化与筛选值；若确实清空，则是本轮用例的问题；若仍不清空，则这是一条**真实缺陷**，需要修 `path` 变化时清空的实现。
+- 门（`npm run verify`，探针文件已 `git checkout --` 还原）：`VERIFY_EXIT=0`；format:check ok 1.0s、typecheck ok 7.1s、lint ok 0.9s、test ok 126.0s（**212 文件／1918 用例**）、test:browser ok 193.6s（**72 文件／330 用例**）。
+
+
 ## 本轮：把第 72 轮遗留的「切目录后筛选清空」缺口定位到只剩测试（2026-11-24 第 122 轮）
 
 - **行为已存在**：`FilerPanel.tsx:139-141` 的 `useEffect(() => setFilter(""), [path])`，注释写明理由（筛选属于它所输入的目录）。所以缺口**只是缺一条用例**，不是缺功能。
