@@ -1,5 +1,14 @@
 # 项目状态
 
+## 本轮：命令面板标出最近连过的会话（2026-11-24 第 96 轮）
+
+- 问题：会话列表一长，每次都要按名字找；资料里没有「收藏」字段，让人手工维护一份收藏又是额外负担。
+- 交付：新模块 `recentProfiles.ts`（上限 6、新在前、去重、键 `edgeterm.recentProfiles` 已注册进 `PANEL_PREFERENCE_KEYS`）；store 的 `recentProfiles` + `rememberRecentProfile(id)`；**连接成功**后记录 `profile.id`（没有 id 的临时目标不记，那是「最近连接过的目标」的职责）；命令面板的会话行在提示里追加「最近用过」；恢复默认清空、导入设置重读。
+- 不做：不新增「收藏」字段；不重排会话树（会动键盘导航与大量既有用例）。
+- 验证：`recentProfiles.test.ts` 4 条、`storeRecentProfiles.test.ts` 2 条、`commandPalette.test.ts` 新增 1 条（未连过无标记；标记是追加，地址与动作说明仍在）。
+- 顺带记录：本轮量了一次浏览器契约的分文件耗时（按文件求和 166.3s；最慢 `dialogAudit` 27.3s / 8 例，`agents` 16.1s，`lineSpacing` 8.6s 单例）。这些是「每次挂载真实 App 并跑审计」的必然成本，未做改动，留给以后判断。
+- 门（`npm run verify`）：`VERIFY_EXIT=0`；format:check ok 0.9s、typecheck ok 7.0s、lint ok 0.9s、test ok 123.7s（**208 文件／1894 用例**）、test:browser ok 188.9s（**72 文件／317 用例**）。
+
 ## 本轮：连接行说清楚它以谁登录（2026-11-24 第 95 轮）
 
 - 问题：面板的「连接到 …」只列地址；当地址省略用户或端口时，读者看不出实际会用谁、哪个端口。
