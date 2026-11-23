@@ -1,5 +1,13 @@
 # 项目状态
 
+## 本轮：命令面板的提示补上端口（2026-11-24 第 109 轮）
+
+- 补齐上轮记下的不一致：App 里构造会话 hint 的那段解析只取 6 个字段，第 7 个（`port`）虽在 key 里却没用上，于是 Ctrl+P 不能按端口找会话，而树可以。现在 hint 为 `ssh · build@build.internal:2222 · Connect`。
+- 验证：`commandPalette.test.ts` 31 条（新增 1 条：hint 里带 `:2222` 时，`2222` 与 `build.internal:2222` 都能命中该会话）。
+- 门（`npm run verify`）：`VERIFY_EXIT=0`；format:check ok 1.0s、typecheck ok 7.3s、lint ok 0.9s、test ok 125.7s（**212 文件／1916 用例**）、test:browser ok 190.3s（**72 文件／324 用例**）。
+- **未完成且如实记录**：曾在 `commandPalette.browser.test.ts` 写「真实 App 里按端口找到会话」的用例，三次失败——共同现象是查询 `2222` 后 `options()` 为**空**（标签断言收到空串）。同一文件的其余用例能正常取到选项，说明夹具本身可用，但本次没有定位到根因，**因此撤掉该用例而不是留着它跑红**。浏览器层的这句话目前无证据。
+
+
 ## 本轮：先确认命令面板找得到地址，再把这条能力钉住（2026-11-24 第 108 轮）
 
 - 起因：上一轮把会话树的筛选扩到主机／用户／端口后，怀疑命令面板（Ctrl+P）同样只能按名称搜。**读代码后确认它已经能**：会话条目的 hint 带 `ssh · root@db.internal`，而 `commandScore` 对 hint 也算分（-120 的降权）。
