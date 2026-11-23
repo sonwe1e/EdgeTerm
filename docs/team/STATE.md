@@ -1,5 +1,13 @@
 # 项目状态
 
+## 本轮：死代码清理，把 styleCensus 变成门（2026-11-24 第 92 轮）
+
+- 扫描方式：列出 `src/` 所有 `export`，数全仓库引用，只出现一次（只有定义）的即死导出；共 6 个候选。
+- 处置：`checkGeneratedContract` 保留（第 78 轮判定为只编译的负控制）、`bindings.ts` 的 `InstallReport`/`KeyCheck` 保留（生成文件）；**删除** `listPreviews`（无调用点）与 `selectionDeleteSequence`（只是 `selectionEdit` 的两行包装）；`styleCensus` **转为门**。
+- `styleCensus` 由外壳视觉门（`src/test/uiAudit.browser.test.ts`，三主题／视口各跑一遍）调用并断言：元素数 > 250（证明普查看到了外壳）、字号集合恰为 10/11/12px、行高 ≤ 4 档、圆角 ≤ 7 档、文字色 ≤ 8 档、背景色 ≤ 14 档（实测圆角 6、文字色 6、背景色 10–11，各留一档余量）。
+- 验证：`npm run test:browser -- src/test/uiAudit.browser.test.ts` 5/5 通过；typecheck EXIT=0；lint 0 error（2 条既有警告来自生成的 `src/bindings.ts`）。
+- 门（`npm run verify`）：`VERIFY_EXIT=0`；format:check ok 0.9s、typecheck ok 7.0s、lint ok 0.9s、test ok 122.3s（**204 文件／1880 用例**）、test:browser ok 190.9s（**72 文件／317 用例**）。
+
 ## 本轮：最近连接过的机器（2026-11-24 第 91 轮）
 
 - 背景：面板的目标框只帮第一次，同一台机器第二天还要重敲地址。
