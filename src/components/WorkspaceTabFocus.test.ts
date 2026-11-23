@@ -22,7 +22,8 @@ vi.mock("../actions", async (original) => {
 const initialState = useStore.getState();
 const ids = ["focus-a", "focus-b", "focus-c"];
 const react = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
-const mountWorkspace = () => h(Workspace, { onNewSession: vi.fn(), onSaveSession: vi.fn() });
+const mountWorkspace = () =>
+  h(Workspace, { onNewSession: vi.fn(), onSaveSession: vi.fn(), onOpenProfile: vi.fn() });
 const nextFrame = () =>
   act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
 

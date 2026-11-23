@@ -137,6 +137,8 @@ export const en = {
   "menu.language": "Language",
   "menu.menubar": "Application Menu",
   "menu.newSession": "New Session…",
+  "empty.openRecent": "Open {name}",
+  "empty.recentHint": "Recent session",
   "empty.newSession": "New Session",
   "empty.hint":
     "Press {key} for a new session, or double-click “{localShell}” in the Session panel — no setup needed.",

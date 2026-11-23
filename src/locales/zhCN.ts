@@ -131,6 +131,8 @@ export const zhCN: Catalog = {
   "menu.language": "语言",
   "menu.menubar": "应用菜单",
   "menu.newSession": "新建会话…",
+  "empty.openRecent": "打开 {name}",
+  "empty.recentHint": "最近用过的会话",
   "empty.newSession": "新建会话",
   "empty.hint": "按 {key} 新建会话；或双击会话面板里的「{localShell}」，无需任何配置。",
   "empty.hintNoKey": "新建一个会话；或双击会话面板里的「{localShell}」，无需任何配置。",

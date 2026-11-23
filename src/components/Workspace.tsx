@@ -4,6 +4,7 @@ import appIcon from "../../src-tauri/icons/128x128@2x.png";
 import { layoutRects, type Rect, type SplitterRect } from "../layout";
 import { chordLabel } from "../shortcuts";
 import { useStore } from "../store";
+import type { SessionProfile } from "../types";
 import { useT } from "../useT";
 import { Splitter } from "./Splitter";
 import { TabStrip } from "./TabStrip";
@@ -13,6 +14,8 @@ interface Props {
   onNewSession: () => void;
   /** Opens the dialog that saves a tab's connection settings. */
   onSaveSession: (id: string) => void;
+  /** Opens a saved session from the empty state's recent list. */
+  onOpenProfile: (profile: SessionProfile) => void;
   /** An overlay that follows the active pane without remounting. */
   children?: ReactNode;
 }
@@ -78,7 +81,7 @@ const splitterStyle = (splitter: SplitterRect): CSSProperties =>
 /** The rectangle the zoomed pane (and the overlay over it) fills. */
 const FULL_RECT = { x: 0, y: 0, w: 1, h: 1 };
 
-export function Workspace({ onNewSession, onSaveSession, children }: Props) {
+export function Workspace({ onNewSession, onSaveSession, onOpenProfile, children }: Props) {
   const t = useT();
   const layout = useStore((s) => s.layout);
   const panes = useStore((s) => s.panes);
@@ -101,6 +104,14 @@ export function Workspace({ onNewSession, onSaveSession, children }: Props) {
   const hint = t("empty.hint").replace("{localShell}", t("panel.localShell"));
   const hintNoKey = t("empty.hintNoKey").replace("{localShell}", t("panel.localShell"));
   const [hintBeforeKey, hintAfterKey = ""] = hint.split("{key}");
+  // The machines this reader has actually used, for the empty window: the
+  // fastest path back is the one that needs no menu at all.
+  const recentProfiles = useStore((s) => s.recentProfiles);
+  const profiles = useStore((s) => s.profiles);
+  const recent = recentProfiles
+    .map((id) => profiles.find((profile) => profile.id === id))
+    .filter((profile): profile is SessionProfile => Boolean(profile))
+    .slice(0, 3);
   const ref = useRef<HTMLDivElement>(null);
   const rects = useMemo(() => layoutRects(layout), [layout]);
   const zoomedPaneId = useStore((s) => s.zoomedPaneId);
@@ -202,6 +213,22 @@ export function Workspace({ onNewSession, onSaveSession, children }: Props) {
                             {entry.chord && <kbd>{entry.chord}</kbd>}
                           </span>
                           <span className="term-empty-entry-hint">{entry.hint}</span>
+                        </button>
+                      ))}
+                      {/* The sessions this reader used last, in the same
+                          entry shape: the empty window is a launchpad, not a
+                          poster. Hidden until something has been used, so a
+                          first run still shows only the two ways in. */}
+                      {recent.map((profile) => (
+                        <button
+                          key={profile.id}
+                          type="button"
+                          className="term-empty-entry"
+                          aria-label={t("empty.openRecent", { name: profile.name })}
+                          onClick={() => onOpenProfile(profile)}
+                        >
+                          <span className="term-empty-entry-label">{profile.name}</span>
+                          <span className="term-empty-entry-hint">{t("empty.recentHint")}</span>
                         </button>
                       ))}
                     </div>

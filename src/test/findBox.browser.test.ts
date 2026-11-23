@@ -47,7 +47,7 @@ const fixture = () =>
       { className: "app", style: { width: 800, height: 500 } as CSSProperties },
       h(
         Workspace,
-        { onNewSession: vi.fn(), onSaveSession: vi.fn() },
+        { onNewSession: vi.fn(), onSaveSession: vi.fn(), onOpenProfile: vi.fn() },
         h("div", { className: "terminal-search" }, h("input", { "aria-label": "find" })),
       ),
     ),

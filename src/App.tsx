@@ -1076,7 +1076,11 @@ export default function App() {
           )}
 
           <div className="center">
-            <Workspace onNewSession={newSession} onSaveSession={saveSession}>
+            <Workspace
+              onNewSession={newSession}
+              onSaveSession={saveSession}
+              onOpenProfile={(profile) => void openSession(profile)}
+            >
               {searchOpen && <SearchOverlay ref={searchRef} onClose={() => setSearchOpen(false)} />}
             </Workspace>
           </div>
