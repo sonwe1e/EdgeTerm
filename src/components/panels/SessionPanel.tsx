@@ -865,6 +865,7 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
           value={filter}
           placeholder={t("panel.filterSessions")}
           aria-label={t("panel.filterSessions")}
+          aria-keyshortcuts="/"
           onChange={(event) => setFilter(event.target.value)}
           onKeyDown={(event) => {
             // Step back to the whole tree before anything else claims Esc.
@@ -880,10 +881,14 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
         <summary>{t("panel.sshConnections")}</summary>
         <SshReuseSetting />
       </details>
+      {/* The arrows and Home/End come with the tree pattern; F2 (rename) and
+          Space (fold) are this app's own, so the tree names them for assistive
+          technology the way it names its role. */}
       <div
         className="panel-body"
         role="tree"
         aria-label={t("panel.sessionTree")}
+        aria-keyshortcuts="F2 Space"
         aria-activedescendant={currentId ?? undefined}
         tabIndex={0}
         onFocus={(event) => {

@@ -88,6 +88,16 @@ it("keeps the mark visible beside a long name at a narrow width", async () => {
   expect(markBox.right, "and stays inside the row").toBeLessThanOrEqual(rowBox.right + 0.5);
 });
 
+it("names its own keys for assistive technology", async () => {
+  mount(h(SessionPanel, { onEditProfile: vi.fn(), onNewSession: vi.fn() }));
+  await twoFrames();
+  const tree = document.querySelector<HTMLElement>('[role="tree"]')!;
+  // F2 and Space are this app's own; the arrows come with the tree pattern.
+  expect(tree.getAttribute("aria-keyshortcuts")).toBe("F2 Space");
+  const filter = document.querySelector<HTMLInputElement>(".panel-filter input")!;
+  expect(filter.getAttribute("aria-keyshortcuts"), "and the filter names /").toBe("/");
+});
+
 it("keeps Space for collapsing the heading under the cursor", async () => {
   mount(h(SessionPanel, { onEditProfile: vi.fn(), onNewSession: vi.fn() }));
   await twoFrames();
