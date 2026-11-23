@@ -318,6 +318,37 @@ export function isShellPrompt(text: string): boolean {
 }
 
 /**
+ * Whole-line classes: a diff, a comment, a section header, a table header.
+ * When one claims the line, the line is painted in that one color and the
+ * token rules below never run. `unixPermissions` and `powershellMode` are the
+ * caller's already-computed first-token tests: an `ls -l` mode string starts
+ * with a dash and must not read as a removal.
+ */
+function wholeLineStyle(
+  text: string,
+  unixPermissions: boolean,
+  powershellMode: boolean,
+): { color: string; band?: string } | null {
+  const C = SEMANTIC_COLORS;
+  if (/^@@(?:\s|$)/.test(text)) return { color: C.cyan };
+  if (/^\+(?!\+\+)/.test(text)) return { color: C.lime, band: BANDS.added };
+  if (
+    /^-(?!--)/.test(text) &&
+    !unixPermissions &&
+    !powershellMode &&
+    // `- item` with a single space is a YAML or Markdown list, not a removal.
+    !/^- \S/.test(text)
+  ) {
+    return { color: C.red, band: BANDS.removed };
+  }
+  if (/^(?:\+\+\+|---)\s/.test(text)) return { color: C.slate };
+  if (/^\s*(?:#!|#+(?:\s|$)|\/\/(?:\s|$))/.test(text)) return { color: C.gray };
+  if (/^\s*\[[^\]\s][^\]]*\]\s*$/.test(text)) return { color: C.violet };
+  if (isTableHeader(text)) return { color: C.sky, band: BANDS.header };
+  return null;
+}
+
+/**
  * Column-header rows from ls/ps/df/kubectl/docker/netstat: three or more
  * tokens, most of them capitalized, with no punctuation that would suggest
  * prose or key/value output.
@@ -404,32 +435,11 @@ function windtermLine(text: string): SemanticLine {
   // controller's cell-style guard.
   const startsWithUnixPermissions = PERMISSION_LINE.test(text);
   const startsWithPowershellMode = POWERSHELL_MODE_LINE.test(text);
-  let wholeLine = true;
-  if (/^@@(?:\s|$)/.test(text)) {
-    add(0, text.length, C.cyan);
-  } else if (/^\+(?!\+\+)/.test(text)) {
-    add(0, text.length, C.lime);
-    band = BANDS.added;
-  } else if (
-    /^-(?!--)/.test(text) &&
-    !startsWithUnixPermissions &&
-    !startsWithPowershellMode &&
-    // `- item` with a single space is a YAML or Markdown list, not a removal.
-    !/^- \S/.test(text)
-  ) {
-    add(0, text.length, C.red);
-    band = BANDS.removed;
-  } else if (/^(?:\+\+\+|---)\s/.test(text)) {
-    add(0, text.length, C.slate);
-  } else if (/^\s*(?:#!|#+(?:\s|$)|\/\/(?:\s|$))/.test(text)) {
-    add(0, text.length, C.gray);
-  } else if (/^\s*\[[^\]\s][^\]]*\]\s*$/.test(text)) {
-    add(0, text.length, C.violet);
-  } else if (isTableHeader(text)) {
-    add(0, text.length, C.sky);
-    band = BANDS.header;
-  } else {
-    wholeLine = false;
+  const whole = wholeLineStyle(text, startsWithUnixPermissions, startsWithPowershellMode);
+  const wholeLine = whole !== null;
+  if (whole) {
+    add(0, text.length, whole.color);
+    band = whole.band;
   }
 
   // Severity bands: only unmistakable level tokens (upper-case or a

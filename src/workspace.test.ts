@@ -363,3 +363,32 @@ it("keeps the snapshot it could not restore because a session was already open",
   // the bytes have to survive somewhere.
   expect(localStorage.getItem(WORKSPACE_SUPERSEDED_KEY)).toBe(raw);
 });
+
+describe("tab titles in the workspace", () => {
+  it("keeps a renamed tab's title across a save and a restore, and only that one", () => {
+    const tabs = restoreWorkspace(parseWorkspace(JSON.stringify(fixture()))!);
+    useStore.getState().renameTab(tabs[0].info.id, "  deploy db  ");
+    const raw = JSON.stringify(snapshotWorkspace(useStore.getState()));
+    const parsed = parseWorkspace(raw)!;
+    expect(parsed.tabs[0].title, "trimmed on the way out").toBe("deploy db");
+    expect(parsed.tabs[1].title, "an unnamed tab carries no title").toBeUndefined();
+    expect(raw.match(/"title"/g)?.length, "only the renamed tab grew the payload").toBe(1);
+
+    const again = restoreWorkspace(parsed);
+    expect(again[0].title).toBe("deploy db");
+    expect(again[1].title).toBeUndefined();
+  });
+
+  it("drops titles that a hand-edited workspace could not mean", () => {
+    const value = fixture();
+    value.tabs[0] = { ...value.tabs[0], title: "   " };
+    value.tabs[1] = { ...value.tabs[1], title: "x".repeat(121) };
+    value.tabs[2] = { ...value.tabs[2], title: "bad\u0007name" } as never;
+    const parsed = parseWorkspace(JSON.stringify(value))!;
+    expect(parsed.tabs.map((tab) => tab.title)).toEqual([undefined, undefined, undefined]);
+
+    value.tabs[0] = { ...value.tabs[0], title: 42 } as never;
+    const numeric = parseWorkspace(JSON.stringify(value))!;
+    expect(numeric.tabs[0].title).toBeUndefined();
+  });
+});

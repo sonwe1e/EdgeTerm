@@ -18,11 +18,13 @@ import { openExternalLink } from "../openExternal";
 import appIcon from "../../src-tauri/icons/32x32.png";
 import {
   openSessionGit,
+  reopenClosedTab,
   revealCwdInFiler,
   splitSession,
   toggleSessionConnection,
 } from "../actions";
 import { windowControl } from "../api";
+import { BUFFER_FONT_SIZE } from "../storePreferences";
 import { exportAppData, importAppData, importSshConfig } from "../dataTransfer";
 import { exportDiagnostics, openLogDirectory } from "../diagnostics";
 import { commandHistory } from "../history";
@@ -35,6 +37,7 @@ import { chordLabel, type ShortcutCommand } from "../shortcuts";
 import { tabTitle, useActiveTab, useStore } from "../store";
 import type { GutterMode, RightClickAction } from "../terminal";
 import { getController } from "../terminalRegistry";
+import { jumpInActiveTab } from "../terminalJump";
 import type { CloseAction } from "../storeTypes";
 import { THEME_MODES, themeLabels, type ThemeMode } from "../types";
 import { useT } from "../useT";
@@ -262,6 +265,13 @@ interface Props {
   onNewSession: () => void;
   onFind: () => void;
   onFindNext: () => void;
+  /** Opens the command palette: the menu's index into every command. */
+  onCommandPalette: () => void;
+  /** Opens the saved-command list. */
+  onSnippets: () => void;
+  /** Synchronized input is on, so the check mark reflects it. */
+  broadcast: boolean;
+  onBroadcast: () => void;
   onFontSettings: () => void;
   onKeyboardShortcuts: () => void;
   onCheckForUpdates: () => void;
@@ -490,6 +500,23 @@ export function MenuBar(props: Props) {
           shortcut: accel("closeSession"),
           action: withActive(requestCloseTab),
         },
+        {
+          // The safety net for a session closed by mistake: a fresh connection
+          // to the same profile, because the closed one is gone.
+          label: t("sc.reopenTab.label"),
+          icon: "debug-restart",
+          shortcut: accel("reopenTab"),
+          action: () => void reopenClosedTab(),
+        },
+        {
+          // A checkable mode, not a command: its state is visible in the status
+          // bar for as long as it is on.
+          label: t("sc.broadcast.label"),
+          icon: "broadcast",
+          shortcut: accel("broadcast"),
+          checked: props.broadcast,
+          action: props.onBroadcast,
+        },
         "separator",
         {
           label: t("menu.timestampLine"),
@@ -533,6 +560,18 @@ export function MenuBar(props: Props) {
           icon: "clippy",
           shortcut: accel("paste"),
           action: withActive((id) => getController(id)?.pasteFromClipboard()),
+        },
+        {
+          // The two clipboard features that make long output usable: the
+          // command line itself, and only the rows it printed.
+          label: t("menu.copyCommandOutput"),
+          shortcut: accel("copyCommandOutput"),
+          action: withActive((id) => getController(id)?.copyLastCommandOutput()),
+        },
+        {
+          label: t("menu.copyCommandLine"),
+          shortcut: accel("copyCommand"),
+          action: withActive((id) => getController(id)?.copyLastCommand()),
         },
         {
           label: t("menu.selectAll"),
@@ -658,6 +697,62 @@ export function MenuBar(props: Props) {
       title: t("menu.view"),
       entries: [
         {
+          // The palette is the index of everything, so it opens the View menu
+          // rather than living only on a chord nobody is told about.
+          label: t("sc.commandPalette.label"),
+          icon: "search",
+          shortcut: accel("commandPalette"),
+          action: props.onCommandPalette,
+        },
+        "separator",
+        {
+          label: t("menu.snippets"),
+          icon: "book",
+          action: props.onSnippets,
+        },
+        "separator",
+        {
+          label: t("menu.prevCommand"),
+          icon: "arrow-up",
+          shortcut: accel("prevCommand"),
+          action: () => jumpInActiveTab("command", -1),
+        },
+        {
+          label: t("menu.nextCommand"),
+          icon: "arrow-down",
+          shortcut: accel("nextCommand"),
+          action: () => jumpInActiveTab("command", 1),
+        },
+        {
+          // The same walk over the commands a shell reported as failed. It has
+          // no default chord; Settings can give it one.
+          label: t("menu.prevFailed"),
+          icon: "error",
+          shortcut: accel("prevFailed"),
+          action: () => jumpInActiveTab("failed", -1),
+        },
+        {
+          label: t("menu.nextFailed"),
+          icon: "arrow-down",
+          shortcut: accel("nextFailed"),
+          action: () => jumpInActiveTab("failed", 1),
+        },
+        {
+          // The gutter's watch marks: errors and warnings in the text, which
+          // is a different question from "did the command fail".
+          label: t("menu.prevWatch"),
+          icon: "warning",
+          shortcut: accel("prevWatch"),
+          action: () => jumpInActiveTab("watch", -1),
+        },
+        {
+          label: t("menu.nextWatch"),
+          icon: "arrow-down",
+          shortcut: accel("nextWatch"),
+          action: () => jumpInActiveTab("watch", 1),
+        },
+        "separator",
+        {
           label: t("menu.panelSessions"),
           shortcut: accel("panelSessions"),
           checked: panels.sessions,
@@ -697,6 +792,33 @@ export function MenuBar(props: Props) {
           icon: "split-vertical",
           shortcut: accel("splitDown"),
           action: withActive((id) => void splitSession(id, "down")),
+        },
+        {
+          // Live zoom, the way every terminal does it: the display dialog
+          // holds the same preference and both paths clamp it.
+          label: t("sc.fontSizeUp.label"),
+          icon: "add",
+          shortcut: accel("fontSizeUp"),
+          action: () =>
+            useStore.getState().setBufferFontSize(useStore.getState().bufferFontSize + 1),
+        },
+        {
+          label: t("sc.fontSizeDown.label"),
+          icon: "remove",
+          shortcut: accel("fontSizeDown"),
+          action: () =>
+            useStore.getState().setBufferFontSize(useStore.getState().bufferFontSize - 1),
+        },
+        {
+          label: t("sc.fontSizeReset.label"),
+          shortcut: accel("fontSizeReset"),
+          action: () => useStore.getState().setBufferFontSize(BUFFER_FONT_SIZE.default),
+        },
+        {
+          label: t("sc.zoomPane.label"),
+          icon: "screen-full",
+          shortcut: accel("zoomPane"),
+          action: () => useStore.getState().toggleZoomedPane(),
         },
         "separator",
         {

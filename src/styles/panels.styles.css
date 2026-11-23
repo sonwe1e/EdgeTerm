@@ -85,7 +85,6 @@
   color: var(--panel-filer-ink);
   background: color-mix(in srgb, var(--panel-filer) 12%, transparent);
 }
-
 .panel-title:is(.is-session, .is-sender, .is-filer) > .icon {
   color: currentColor;
 }
@@ -119,17 +118,21 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: var(--h-control-sm);
-  height: var(--h-control-sm);
+  /* a panel-header icon action is a pointer target first: --h-control (24px)
+     is the WCAG 2.2 minimum, and a 28px header has the room for it. It also
+     must not shrink: a crowded header squeezed it to 21.6px, which is how a
+     target quietly falls below the size the stylesheet declares. */
+  flex: none;
+  width: var(--h-control);
+  height: var(--h-control);
   padding: 0;
   border-radius: var(--radius-md);
   color: var(--fg-faint);
   line-height: 1;
   transition:
-    background-color 80ms ease,
-    color 80ms ease;
+    background-color var(--dur-1) ease,
+    color var(--dur-1) ease;
 }
-
 .panel-action:hover {
   color: var(--fg);
   background: var(--bg-hover);
@@ -141,17 +144,14 @@
   color: var(--fg);
   background: var(--bg-active);
 }
-
 /* Green while the active session is live ("powered on"); an ended session
    keeps a neutral icon so its colour never reads as "connected". */
 .panel-power.is-connected {
   color: var(--green);
 }
-
 .panel-power.is-connected:hover {
   color: var(--green);
 }
-
 .panel-power:disabled {
   opacity: 0.4;
   cursor: default;
@@ -168,7 +168,6 @@
   color: var(--yellow);
   animation: pulse 1.4s ease-in-out infinite;
 }
-
 @media (prefers-reduced-motion: reduce) {
   .panel-power.is-connecting {
     animation: none;
@@ -194,11 +193,9 @@
   border-radius: var(--radius-lg);
   background: var(--bg-field);
 }
-
 .panel-filter input:hover {
   border-color: var(--border-strong);
 }
-
 .panel-filter input:focus {
   border-color: var(--accent);
 }
@@ -268,7 +265,6 @@
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-
 /* --- tree / list rows ----------------------------------------------------- */
 
 /* Rows are inset from the panel edge with rounded hover / selection (the
@@ -284,7 +280,6 @@
   white-space: nowrap;
   cursor: default;
 }
-
 .row:hover {
   background: var(--bg-hover);
 }
@@ -293,42 +288,47 @@
   background: var(--bg-active);
 }
 
-/* Per-row buttons (edit / delete) only show for the pointed or selected row.
-   They scale up as they fade in, so the row does not reflow when they
-   appear: the box is already there, only its contents grow. */
+/* per-row buttons (edit / delete) only show for the pointed or selected row.
+   they scale up as they fade in, so the row does not reflow when they
+   appear: the box is already there, only its contents grow. The glyph is
+   what scales — scaling the button shrank its target to 21.6px, a hit area
+   that changes size with a hover state is exactly what a pointer target
+   must not do. */
 .row > .panel-action {
   opacity: 0;
-  transform: scale(0.9);
-  transition:
-    opacity 80ms ease,
-    transform 80ms ease;
+  transition: opacity var(--dur-1) ease;
 }
 
+.row > .panel-action .icon {
+  transform: scale(0.9);
+  transition: transform var(--dur-1) ease;
+}
 .row:hover > .panel-action,
 .row.is-active > .panel-action,
 .row > .panel-action:focus-visible {
   opacity: 1;
+}
+.row:hover > .panel-action .icon,
+.row.is-active > .panel-action .icon,
+.row > .panel-action:focus-visible .icon {
   transform: scale(1);
 }
-
 @media (prefers-reduced-motion: reduce) {
-  .row > .panel-action {
+  .row > .panel-action,
+  .row > .panel-action .icon {
     transition: none;
   }
 }
-
 /* Kind headings of the session tree. */
 .row.is-section .row-label {
   color: var(--fg-dim);
   font-weight: 600;
 }
-
 /* Breathing room between the tree's kind sections; the first one stays flush
    with the top of the list. */
 .row.is-section {
   margin-top: var(--sp-6);
 }
-
 .panel-body > div:first-child > .row.is-section {
   margin-top: 0;
 }
@@ -369,19 +369,17 @@
 }
 
 .row-caret .icon {
-  transition: transform 120ms ease;
+  transition: transform var(--dur-2) ease;
 }
 
 .row-caret.is-open .icon {
   transform: rotate(90deg);
 }
-
 @media (prefers-reduced-motion: reduce) {
   .row-caret .icon {
     transition: none;
   }
 }
-
 /* Groups: the folder glyph marks them; the label matches a section heading. */
 .row.is-group .row-label {
   color: var(--fg-dim);
@@ -390,7 +388,6 @@
 .row-folder {
   color: var(--fg-dim);
 }
-
 /* --- context menu --------------------------------------------------------- */
 
 /* Anchored at the pointer rather than under a menubar title; the inline
@@ -400,7 +397,6 @@
   z-index: 150;
   min-width: 200px;
 }
-
 /* Hanging off a button at the right edge: it grows out of that corner. */
 .context-menu.is-right {
   transform-origin: top right;
@@ -413,19 +409,23 @@
      fixed width:auto can otherwise shrink-to-fit anew after each move. */
   width: max-content;
   min-width: min(220px, calc(100vw - 12px));
-  max-width: calc(100vw - 12px);
+  /* Content-sized, but not unbounded: a label may be a whole command line
+     read back from history. Cap the panel at the same 440px the menubar's
+     panels use, counting its padding (border-box), so a long command cannot
+     stretch a submenu past the window edge; the label ellipsizes and the row
+     keeps the full text in its title. */
+  box-sizing: border-box;
+  max-width: min(440px, calc(100vw - 12px));
   max-height: 60vh;
   overflow-y: auto;
   /* Measured and placed before paint; never flash at the inherited submenu
      coordinates. This panel is a portal outside its parent's scrollport. */
   visibility: hidden;
 }
-
 /* Near the right edge (where the Filer lives) submenus open leftwards. */
 .context-submenu[data-side="left"] {
   transform-origin: top right;
 }
-
 .context-menu .menu-submenu-entry[data-submenu-side="left"].is-open::after {
   left: auto;
   right: 100%;
@@ -438,26 +438,21 @@
 .menu-entry.is-danger .menu-icon {
   color: inherit;
 }
-
 .menu-entry.is-danger:hover,
 .menu-entry.is-danger:focus-visible {
   background: var(--red);
   color: var(--danger-contrast);
 }
-
 .menu-entry:disabled {
   color: var(--fg-faint);
   cursor: default;
 }
-
 .menu-entry:disabled .menu-icon {
   color: inherit;
 }
-
 .menu-entry:disabled .menu-check {
   opacity: 0.55;
 }
-
 .menu-entry:disabled:hover {
   background: transparent;
   color: var(--fg-faint);

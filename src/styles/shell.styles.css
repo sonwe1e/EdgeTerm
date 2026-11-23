@@ -175,7 +175,7 @@
   font: inherit;
   cursor: default;
   white-space: nowrap;
-  transition: background-color 80ms ease;
+  transition: background-color var(--dur-1) ease;
 }
 
 .menu-item:hover,
@@ -199,7 +199,7 @@
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
-  z-index: 100;
+  z-index: var(--z-menu);
   min-width: 220px;
   padding: var(--sp-6);
   background: var(--bg-menu);
@@ -354,8 +354,8 @@
   position: relative;
   border: 1px solid var(--menu-mark);
   transition:
-    background-color 100ms ease,
-    border-color 100ms ease;
+    background-color var(--dur-2) ease,
+    border-color var(--dur-2) ease;
 }
 
 .menu-check.is-check {
@@ -536,7 +536,7 @@
 .panel-drop-area,
 .panel-drop-line {
   position: fixed;
-  z-index: 120;
+  z-index: var(--z-drop);
   pointer-events: none;
 }
 

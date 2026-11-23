@@ -539,4 +539,21 @@ describe("reconnect credential identity", () => {
     expect(result.password).toBe("new-password");
     expect(result.passphrase).toBe("new-passphrase");
   });
+
+  it("clears the previous program's title before the new shell speaks", async () => {
+    const id = "stale-title";
+    ids.push(id);
+    useStore.setState({
+      tabs: [{ ...makeTab(id, "closed"), remoteTitle: "vim notes.txt" }],
+      activeId: id,
+    });
+    vi.mocked(api.openSession).mockResolvedValueOnce(connected(id));
+    await reconnectSession(id);
+    expect(useStore.getState().tabs.find((tab) => tab.info.id === id)?.remoteTitle).toBeUndefined();
+    // A shell that does set a title still gets the last word.
+    useStore.getState().noteTabTitle(id, "tail -f app.log");
+    expect(useStore.getState().tabs.find((tab) => tab.info.id === id)?.remoteTitle).toBe(
+      "tail -f app.log",
+    );
+  });
 });

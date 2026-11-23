@@ -22,12 +22,10 @@
   padding: 0;
   color: var(--fg-dim);
 }
-
 .filer-action:hover:not(:disabled) {
   color: var(--fg);
   background: var(--bg-hover);
 }
-
 .filer-action:active:not(:disabled),
 .filer-action.is-open {
   /* A glyph that has to be identified, on a solid accent tint. The lifted twin
@@ -36,12 +34,10 @@
   color: var(--accent-ink);
   background: var(--accent-soft);
 }
-
 .filer-action:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
-
 .filer-action:disabled {
   color: var(--fg-faint);
   cursor: default;
@@ -55,7 +51,6 @@
   color: var(--yellow);
   opacity: 0.6;
 }
-
 .filer-action.is-offline:hover {
   background: color-mix(in srgb, var(--yellow) 12%, transparent);
 }
@@ -67,28 +62,24 @@
   color: var(--red-ink);
   background: color-mix(in srgb, var(--red) 12%, transparent);
 }
-
 /* A 300px dock fits the whole action set. Narrower than that, the two create
    actions and then upload/download fold into the "..." menu, which carries
    them either way; the identity pill and the menu always stay. The panel is
    its own container, so this needs no JavaScript measure. */
 .filer-panel {
   container-type: inline-size;
-  transition: box-shadow 100ms ease;
+  transition: box-shadow var(--dur-2) ease;
 }
-
 @container (max-width: 260px) {
   .filer-title-secondary {
     display: none;
   }
 }
-
 @container (max-width: 200px) {
   .filer-title-primary {
     display: none;
   }
 }
-
 /* --- path bar ------------------------------------------------------------- */
 
 /* One band for where you are: the two navigation buttons, the trail, and the
@@ -122,7 +113,6 @@
   overflow-y: hidden;
   scrollbar-width: none;
 }
-
 .filer-crumbs::-webkit-scrollbar {
   display: none;
 }
@@ -132,10 +122,17 @@
    one level at a time. */
 .filer-crumb {
   max-width: 180px;
+  /* a crumb is a control inside a 24px bar, so it takes the whole height:
+     the text line alone left a 15px strip to hit, and the root crumb ("/")
+     was only as wide as its glyph. The bar's own height is the target, and
+     the trail keeps its gap so neighbouring crumbs never overlap. */
+  min-height: var(--h-control);
+  min-width: var(--h-control);
   flex: 0 0 auto;
   overflow: hidden;
-  padding: 0;
+  padding: 0 var(--sp-4);
   border: 0;
+  border-radius: var(--radius-xs);
   background: none;
   color: inherit;
   font: inherit;
@@ -143,13 +140,14 @@
   white-space: nowrap;
   cursor: pointer;
   /* 120ms is the duration the app's row and surface states use. */
-  transition: color 120ms ease;
+  transition:
+    color var(--dur-2) ease,
+    background-color var(--dur-2) ease;
 }
-
 .filer-crumb:hover:not(:disabled) {
   color: var(--fg);
+  background: var(--bg-hover);
 }
-
 .filer-crumb:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
@@ -195,18 +193,15 @@
   font-size: var(--fs-sm);
   user-select: text;
   transition:
-    border-color 100ms ease,
-    box-shadow 100ms ease;
+    border-color var(--dur-2) ease,
+    box-shadow var(--dur-2) ease;
 }
-
 .filer-path-edit:hover {
   border-color: var(--border-strong);
 }
-
 .filer-path-edit:focus {
   border-color: var(--accent);
 }
-
 /* --- list ----------------------------------------------------------------- */
 
 /* The whole panel is the drop target, so the ring goes around all of it and
@@ -216,7 +211,7 @@
 }
 
 .filer-list {
-  transition: background-color 100ms ease;
+  transition: background-color var(--dur-2) ease;
 }
 
 .filer-panel.is-drag-over .filer-list {
@@ -239,13 +234,11 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
 /* The entry the system is carrying out of the window, or the one whose copy
    is still being fetched for it. */
 .filer-entry.is-dragging-out {
   opacity: 0.5;
 }
-
 /* A folder a dragged row may be dropped into. The ring is drawn inside the row
    so the list's scroll height does not change while the pointer moves. */
 .filer-entry.is-drop-target,
@@ -254,7 +247,6 @@
   outline-offset: -2px;
   background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
-
 /* The listing's own states — loading, error, empty — mount as fresh nodes
    inside the scroller. The rules themselves live on `.panel-empty` in
    panels.styles.css, which is shared with the other panels; this scoped rule
@@ -263,7 +255,6 @@
 .filer-list .panel-empty {
   animation: filer-fade-in 140ms cubic-bezier(0.2, 0, 0, 1);
 }
-
 /* --- rows ----------------------------------------------------------------- */
 
 /* One row is a list row: a 16px type icon, the name, and one quiet cluster of
@@ -292,13 +283,13 @@
    plus the margin either side. */
 .filer-entry {
   min-width: 0;
-  height: var(--filer-row-h, max(24px, calc(var(--panel-font-size) + 10px)));
+  height: var(--filer-row-h, var(--list-row-h));
   /* The hover and selection backgrounds themselves are declared on `.row` in
      panels.styles.css, but a transition belongs to the element that changes.
      120ms is the app's surface-state duration. */
   transition:
-    background-color 120ms ease,
-    opacity 120ms ease;
+    background-color var(--dur-2) ease,
+    opacity var(--dur-2) ease;
 }
 
 /* The pitch belongs to the slot, not to the gap between neighbours: every row
@@ -308,7 +299,7 @@
    it, because a margin that collapses out of the slot would make the flow pitch
    one pixel taller than the virtual one. */
 .filer-list .virtual-file-rows > div {
-  height: calc(var(--filer-row-h, max(24px, calc(var(--panel-font-size) + 10px))) + 2px);
+  height: calc(var(--filer-row-h, var(--list-row-h)) + 2px);
 }
 
 .filer-list .virtual-file-rows > div > .filer-entry {
@@ -343,9 +334,8 @@
   font-size: max(10px, calc(var(--panel-font-size) - 2px));
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  transition: color 120ms ease;
+  transition: color var(--dur-2) ease;
 }
-
 .filer-entry:hover .filer-row-meta {
   color: var(--fg-dim);
 }
@@ -353,7 +343,6 @@
 .filer-entry.is-active .filer-row-meta {
   color: color-mix(in srgb, var(--fg) 85%, var(--bg-active));
 }
-
 /* A folder has no size of its own; the size slot is removed rather than left
    blank, so the date keeps the cluster's right edge. Turning the size off in
    the view menu hides it the same way and gives the room to the name. */
@@ -381,7 +370,7 @@
 .filer-new-entry {
   gap: var(--sp-6);
   /* The editor row is the same height as a data row, from the same token. */
-  height: var(--filer-row-h, max(24px, calc(var(--panel-font-size) + 10px)));
+  height: var(--filer-row-h, var(--list-row-h));
   animation: filer-row-in 140ms cubic-bezier(0.2, 0, 0, 1);
 }
 
@@ -420,7 +409,7 @@
      height and display changes are layout and stay instant, but the
      surface fading under the text keeps the swap from reading as a
      different panel. */
-  transition: background-color 120ms ease;
+  transition: background-color var(--dur-2) ease;
 }
 
 /* The plain footer is one line, always. Its spans had no containment, so a
@@ -462,7 +451,6 @@
 .filer-transfer-summary.is-error button {
   color: var(--red);
 }
-
 .filer-transfer-summary.is-error button:hover {
   color: var(--red);
 }
@@ -520,7 +508,7 @@
   height: 100%;
   border-radius: inherit;
   background: var(--accent);
-  transition: width 80ms linear;
+  transition: width var(--dur-1) linear;
 }
 
 .filer-transfer-meta {
@@ -567,7 +555,6 @@
 .filer-transfer.is-cancelled .filer-transfer-bar {
   background: var(--fg-faint);
 }
-
 /* Sits in the label row without making it taller than the text. */
 .filer-transfer-cancel,
 .filer-transfer-retry {
@@ -627,7 +614,6 @@
     opacity: 0.45;
     animation: none;
   }
-
   /* Entry animations are movement, so they go; the states themselves stay
      and simply appear, which is what every panel swap in the app already
      does. The colour and opacity transitions above are kept: they carry no
@@ -647,7 +633,6 @@
   text-underline-offset: 2px;
   cursor: pointer;
 }
-
 .about-link:hover {
   color: var(--fg);
 }
@@ -657,6 +642,7 @@
   font-size: var(--fs-sm);
   border-bottom: 1px solid var(--border);
 }
+
 /* The SSH reuse disclosure wears the panel's own language: the browser's
    default triangle is replaced by a chevron that turns as the section opens,
    the same 120ms the tree carets use. */
@@ -664,14 +650,15 @@
   display: flex;
   align-items: center;
   gap: var(--sp-6);
+  /* the disclosure is a row to click, not its 14px text line: the section's
+     own padding no longer does the pointing, the target does. */
+  min-height: var(--h-control);
   cursor: pointer;
   list-style: none;
 }
-
 .ssh-connection-options summary::-webkit-details-marker {
   display: none;
 }
-
 .ssh-connection-options summary::before {
   content: "";
   flex: none;
@@ -680,13 +667,11 @@
   border-top: 3px solid transparent;
   border-bottom: 3px solid transparent;
   border-left: 4px solid currentColor;
-  transition: transform 120ms ease;
+  transition: transform var(--dur-2) ease;
 }
-
 .ssh-connection-options[open] summary::before {
   transform: rotate(90deg);
 }
-
 @media (prefers-reduced-motion: reduce) {
   .ssh-connection-options summary::before {
     transition: none;
@@ -716,4 +701,42 @@
 
 .about-dialog {
   width: 380px;
+}
+
+/* A filter bar between the path and the rows: typing narrows the listing in
+   place, and the count says how much of the folder is left on screen. */
+.filer-filter-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+  padding: var(--sp-4) var(--sp-8);
+  border-bottom: 1px solid var(--border);
+  color: var(--fg-dim);
+}
+
+.filer-filter-icon {
+  flex: none;
+}
+
+.filer-filter {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 2px var(--sp-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+}
+
+.filer-filter:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.filer-filter-count {
+  flex: none;
+  color: var(--fg-faint);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
 }

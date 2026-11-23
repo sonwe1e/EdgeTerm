@@ -1,5 +1,6 @@
 import { Terminal, type IMarker } from "@xterm/xterm";
 import { GutterMode, GutterView, LINE_TIME_SLACK, formatTime } from "./terminalShared";
+import { watchSeverity, type WatchSeverity } from "./watchWords";
 
 interface Context {
   readonly gutter: HTMLElement | null;
@@ -9,7 +10,18 @@ interface Context {
   readonly term: Terminal;
   readonly scrollback: number;
   readonly host: HTMLElement | null;
+  /**
+   * Absolute buffer rows where a command started. The gutter marks them so the
+   * command boundary is visible without knowing the jump chord; the set is read
+   * once per paint, not once per row.
+   */
+  readonly commandLines: ReadonlySet<number>;
+  /** Start rows of the commands the shell reported as failed. */
+  readonly commandFailures: ReadonlySet<number>;
 }
+
+/** No command rows to mark; shared so a suppressed gutter allocates nothing. */
+const EMPTY_COMMANDS: ReadonlySet<number> = new Set<number>();
 
 export class TerminalLineGutter {
   rowPool: HTMLElement[] = [];
@@ -25,6 +37,11 @@ export class TerminalLineGutter {
    */
   private lineTimesStart = 0;
   private screenText = new Map<number, string>();
+  /**
+   * Absolute rows whose text carries a watch word. Kept for the whole buffer,
+   * not just the viewport: scrolling back to a past failure still marks it.
+   */
+  private watchByLine = new Map<number, WatchSeverity>();
   private lastProducedLine = 0;
 
   /** Absolute line number of buffer line 0; grows as scrollback is trimmed. */
@@ -64,6 +81,9 @@ export class TerminalLineGutter {
     cursor: boolean | null;
     time: string | null;
     line: string | null;
+    command: boolean | null;
+    failed: boolean | null;
+    watch: WatchSeverity | null | undefined;
   }> = [];
 
   /** Agent TUIs and alternate-screen programs have no meaningful gutter rows. */
@@ -132,6 +152,7 @@ export class TerminalLineGutter {
       const key = this.firstLineNumber + i;
       const previous = this.screenText.get(key);
       next.set(key, text);
+      this.recordWatch(key, text);
       if (!text) continue;
       contentEnd = Math.max(contentEnd, i);
       this.recordNewRows(i, Date.now());
@@ -159,8 +180,35 @@ export class TerminalLineGutter {
     for (let i = buf.baseY; i < buf.length; i++) {
       const text = buf.getLine(i)?.translateToString(true) ?? "";
       this.screenText.set(this.firstLineNumber + i, text);
+      this.recordWatch(this.firstLineNumber + i, text);
       if (text) this.lastProducedLine = Math.max(this.lastProducedLine, this.firstLineNumber + i);
     }
+  }
+
+  /** Notes which mark a row earns; blank and rewritten rows are re-evaluated. */
+  private recordWatch(absoluteLine: number, text: string) {
+    if (!text) {
+      if (this.watchByLine.delete(absoluteLine)) this.invalidateGutter();
+      return;
+    }
+    const severity = watchSeverity(text);
+    if (severity === null) {
+      if (this.watchByLine.delete(absoluteLine)) this.invalidateGutter();
+      return;
+    }
+    if (this.watchByLine.get(absoluteLine) !== severity) {
+      this.watchByLine.set(absoluteLine, severity);
+      this.invalidateGutter();
+    }
+  }
+
+  /** Absolute rows carrying a watch word, for jumps and for tests. */
+  watchLines(severity?: WatchSeverity): number[] {
+    const lines: number[] = [];
+    for (const [line, mark] of this.watchByLine) {
+      if (severity === undefined || mark === severity) lines.push(line);
+    }
+    return lines.sort((a, b) => a - b);
   }
 
   /** Reflow changes physical row indices. Carry times by ordered logical lines. */
@@ -240,6 +288,11 @@ export class TerminalLineGutter {
     if (count <= 0) return;
     this.lineTimesStart = Math.min(this.lineTimes.length, this.lineTimesStart + count);
     this.firstLineNumber += count;
+    // Watch marks are keyed by absolute line, so the dropped ones are gone;
+    // without this the map would grow with the session's whole history.
+    for (const line of this.watchByLine.keys()) {
+      if (line < this.firstLineNumber) this.watchByLine.delete(line);
+    }
     // Compact in batches so the copy costs a few elements per dropped line.
     if (this.lineTimesStart >= LINE_TIME_SLACK) {
       this.setLineTimes(this.lineTimes.slice(this.lineTimesStart));
@@ -358,6 +411,8 @@ export class TerminalLineGutter {
     if (sameView && painted?.contentEnd === contentEnd) return;
     this.gutterPainted = { viewportY, cursorIndex, contentEnd, rows, alternate };
     this.gutterContentSuppressed = suppressContent;
+    const commandRows = suppressContent ? EMPTY_COMMANDS : this.context.commandLines;
+    const failedRows = suppressContent ? EMPTY_COMMANDS : this.context.commandFailures;
 
     while (this.rowPool.length < rows) {
       const row = document.createElement("div");
@@ -389,9 +444,20 @@ export class TerminalLineGutter {
       const line = row.children[1] as HTMLElement;
       const timeText = written ? formatTime(this.lineTimes[this.lineTimesStart + index]) : "";
       const lineText = written ? String(this.firstLineNumber + index) : "";
+      const command = written && commandRows.has(index);
+      const failed = written && failedRows.has(index);
+      const watch = written ? (this.watchByLine.get(index) ?? null) : null;
       let painted = this.rowPaint[i];
       if (!painted) {
-        painted = { empty: null, cursor: null, time: null, line: null };
+        painted = {
+          empty: null,
+          cursor: null,
+          time: null,
+          line: null,
+          command: null,
+          failed: null,
+          watch: undefined,
+        };
         this.rowPaint[i] = painted;
       }
       if (painted.empty !== !written) {
@@ -401,6 +467,20 @@ export class TerminalLineGutter {
       if (painted.cursor !== cursor) {
         row.classList.toggle("is-cursor", cursor);
         painted.cursor = cursor;
+      }
+      if (painted.command !== command) {
+        row.classList.toggle("is-command", command);
+        painted.command = command;
+      }
+      if (painted.failed !== failed) {
+        row.classList.toggle("is-failed", failed);
+        painted.failed = failed;
+      }
+      if (painted.watch !== watch) {
+        row.classList.toggle("is-watch", watch !== null);
+        row.classList.toggle("is-watch-error", watch === "error");
+        row.classList.toggle("is-watch-warn", watch === "warn");
+        painted.watch = watch;
       }
       // Assigning the same string still replaces the text node and dirties
       // layout, so an unchanged row must not be written at all.

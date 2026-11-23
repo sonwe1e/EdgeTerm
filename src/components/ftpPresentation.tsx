@@ -1,15 +1,18 @@
 import {
   memo,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   type ReactNode,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from "react";
 import { errorText } from "../errorInfo";
+import { opensFilter } from "../filterKey";
 import {
   clickMode,
   selectEntry,
@@ -149,7 +152,20 @@ export function FileBrowser({
   // panes drift apart after a change on either side.
   const sort = useStore((s) => s.filerSort);
   const setFilerSort = useStore((s) => s.setFilerSort);
-  const sortedEntries = useMemo(() => sortFileEntries(entries, sort), [entries, sort]);
+  // The same in-place filter the Filer panel has: narrowing feeds the one
+  // sorted list the selection, keyboard and rows all read.
+  const [filter, setFilter] = useState("");
+  const filterRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    setFilter("");
+  }, [path]);
+  const sortedEntries = useMemo(() => {
+    const sorted = sortFileEntries(entries, sort);
+    const needle = filter.trim().toLowerCase();
+    return needle === ""
+      ? sorted
+      : sorted.filter((entry) => entry.name.toLowerCase().includes(needle));
+  }, [entries, sort, filter]);
   // The listing as shown, which is what a Shift-click range spans.
   const order = useMemo(() => sortedEntries.map((entry) => entry.path), [sortedEntries]);
 
@@ -261,6 +277,37 @@ export function FileBrowser({
         />
       </div>
 
+      {entries.length > 0 && (
+        <div className="filer-filter-row">
+          <Icon name="search" className="filer-filter-icon" aria-hidden="true" />
+          <input
+            ref={filterRef}
+            className="filer-filter"
+            type="search"
+            value={filter}
+            // Two panes share this component: the label says which listing the
+            // box narrows, so a screen reader (and a test) can tell them apart.
+            placeholder={t("filer.filterPlaceholder")}
+            aria-label={`${t("filer.filterPlaceholder")} — ${title}`}
+            onChange={(event) => {
+              if (event.target.value !== filter) onSelectionChange({ paths: [], anchor: null });
+              setFilter(event.target.value);
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape" || filter === "") return;
+              event.preventDefault();
+              event.stopPropagation();
+              setFilter("");
+            }}
+          />
+          {filter.trim() !== "" && (
+            <span className="filer-filter-count" role="status">
+              {t("filer.filterCount", { shown: sortedEntries.length, total: entries.length })}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Sortable captions, mirroring the Filer panel's: no `aria-label`
           here, because replacing the visible text with an instruction made a
           screen reader announce the verb ("sort by size") and never the
@@ -334,7 +381,16 @@ export function FileBrowser({
         aria-label={t("ftp.filesAria", { title })}
         tabIndex={0}
         aria-activedescendant={activeDescendant ?? undefined}
-        onKeyDown={onKeyDown}
+        onKeyDown={(event) => {
+          // "/" opens the filter (see `opensFilter`); everything else belongs
+          // to the list's own keyboard model.
+          if (opensFilter(event)) {
+            event.preventDefault();
+            filterRef.current?.focus();
+            return;
+          }
+          onKeyDown(event);
+        }}
       >
         {error && <div className="ftp-browser-message is-error">{error}</div>}
         {!error && loading && <div className="ftp-browser-message">{t("ftp.loading")}</div>}

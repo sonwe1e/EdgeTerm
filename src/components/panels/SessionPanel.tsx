@@ -36,6 +36,7 @@ import {
 import { useT } from "../../useT";
 import { ContextMenu, type MenuItem } from "../ContextMenu";
 import { DeleteProfileDialog } from "../DeleteProfileDialog";
+import { opensFilter } from "../../filterKey";
 import { GroupNameDialog } from "../GroupNameDialog";
 import { Icon } from "../icons";
 import { PublicKeyLoginDialog } from "../PublicKeyLoginDialog";
@@ -165,6 +166,7 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
   const activeTab = useStore((s) => s.tabs.find((tab) => tab.info.id === s.activeId));
 
   const [filter, setFilter] = useState("");
+  const filterRef = useRef<HTMLInputElement>(null);
   /**
    * Explicit open / closed state of the tree, keyed `kind:<kind>` for
    * headings and `group:<id>` for groups. Anything not in here is at its
@@ -358,6 +360,13 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
       );
       return;
     }
+    // "/" opens the filter (see `opensFilter`).
+    if (opensFilter(event)) {
+      event.preventDefault();
+      event.stopPropagation();
+      filterRef.current?.focus();
+      return;
+    }
     switch (event.key) {
       case "ArrowDown":
         event.preventDefault();
@@ -406,6 +415,16 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
             return;
           }
         }
+        return;
+      }
+      case "F2": {
+        // The rename key every file manager and editor uses: a profile opens
+        // its editor, a group opens the rename field. Handled here rather than
+        // on the rows so it works while walking the tree with the arrow keys.
+        event.preventDefault();
+        if (!item) return;
+        if (item.type === "profile") onEditProfile(item.profile);
+        else if (item.type === "group") setGroupDialog({ mode: "rename", group: item.row.group });
         return;
       }
       case "Enter":
@@ -795,10 +814,18 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
           <Icon name="search" />
         </span>
         <input
+          ref={filterRef}
           value={filter}
           placeholder={t("panel.filterSessions")}
           aria-label={t("panel.filterSessions")}
           onChange={(event) => setFilter(event.target.value)}
+          onKeyDown={(event) => {
+            // Step back to the whole tree before anything else claims Esc.
+            if (event.key !== "Escape" || filter === "") return;
+            event.preventDefault();
+            event.stopPropagation();
+            setFilter("");
+          }}
         />
       </div>
 

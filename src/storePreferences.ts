@@ -48,6 +48,19 @@ export const DEFAULT_PANELS: Record<PanelName, boolean> = {
   sender: false,
 };
 
+// Line spacing sits with the other display preferences so the store has one
+// import source for everything it loads at start-up.
+export {
+  DEFAULT_LINE_HEIGHT,
+  LINE_HEIGHT_KEY,
+  LINE_HEIGHT_RANGE,
+  LINE_HEIGHTS,
+  lineHeightPercent,
+  loadLineHeight,
+  normalizeLineHeight,
+  saveLineHeight,
+} from "./lineHeight";
+
 export const PANEL_FONT_SIZE_KEY = "edgeterm.panelFontSize";
 
 export const BUFFER_FONT_SIZE_KEY = "edgeterm.bufferFontSize";

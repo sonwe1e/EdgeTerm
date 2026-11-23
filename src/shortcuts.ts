@@ -33,8 +33,24 @@ export interface KeyChord {
 
 /** Every action a user can put on a key. */
 export type ShortcutCommand =
+  | "commandPalette"
+  | "snippets"
   | "newSession"
+  | "broadcast"
+  | "prevCommand"
+  | "nextCommand"
+  | "prevFailed"
+  | "nextFailed"
+  | "prevWatch"
+  | "nextWatch"
+  | "copyCommandOutput"
+  | "copyCommand"
   | "closeSession"
+  | "reopenTab"
+  | "zoomPane"
+  | "fontSizeUp"
+  | "fontSizeDown"
+  | "fontSizeReset"
   | "find"
   | "findNext"
   | "clear"
@@ -57,8 +73,24 @@ export type ShortcutCommand =
 export type ShortcutBindings = Record<ShortcutCommand, KeyChord | null>;
 
 export type AppShortcut =
+  | { kind: "commandPalette" }
+  | { kind: "snippets" }
+  | { kind: "broadcast" }
+  | { kind: "prevCommand" }
+  | { kind: "nextCommand" }
+  | { kind: "prevFailed" }
+  | { kind: "nextFailed" }
+  | { kind: "prevWatch" }
+  | { kind: "nextWatch" }
+  | { kind: "copyCommandOutput" }
+  | { kind: "copyCommand" }
   | { kind: "newSession" }
   | { kind: "closeSession" }
+  | { kind: "reopenTab" }
+  | { kind: "zoomPane" }
+  | { kind: "fontSizeUp" }
+  | { kind: "fontSizeDown" }
+  | { kind: "fontSizeReset" }
   | { kind: "find" }
   | { kind: "findNext" }
   | { kind: "clear" }
@@ -78,8 +110,24 @@ export const SHORTCUT_COMMANDS: {
   id: ShortcutCommand;
   action: AppShortcut;
 }[] = [
+  { id: "commandPalette", action: { kind: "commandPalette" } },
+  { id: "snippets", action: { kind: "snippets" } },
   { id: "newSession", action: { kind: "newSession" } },
+  { id: "broadcast", action: { kind: "broadcast" } },
+  { id: "prevCommand", action: { kind: "prevCommand" } },
+  { id: "nextCommand", action: { kind: "nextCommand" } },
+  { id: "prevFailed", action: { kind: "prevFailed" } },
+  { id: "nextFailed", action: { kind: "nextFailed" } },
+  { id: "prevWatch", action: { kind: "prevWatch" } },
+  { id: "nextWatch", action: { kind: "nextWatch" } },
+  { id: "copyCommandOutput", action: { kind: "copyCommandOutput" } },
+  { id: "copyCommand", action: { kind: "copyCommand" } },
   { id: "closeSession", action: { kind: "closeSession" } },
+  { id: "reopenTab", action: { kind: "reopenTab" } },
+  { id: "zoomPane", action: { kind: "zoomPane" } },
+  { id: "fontSizeUp", action: { kind: "fontSizeUp" } },
+  { id: "fontSizeDown", action: { kind: "fontSizeDown" } },
+  { id: "fontSizeReset", action: { kind: "fontSizeReset" } },
   { id: "prevTab", action: { kind: "tabStep", step: -1 } },
   { id: "nextTab", action: { kind: "tabStep", step: 1 } },
   { id: "splitRight", action: { kind: "splitPane", side: "right" } },
@@ -101,8 +149,24 @@ export const SHORTCUT_COMMANDS: {
 
 /** Display name of each command, in the current language. */
 export const shortcutLabels = (t: Translate): Record<ShortcutCommand, string> => ({
+  commandPalette: t("sc.commandPalette.label"),
+  snippets: t("sc.snippets.label"),
   newSession: t("sc.newSession.label"),
+  broadcast: t("sc.broadcast.label"),
+  prevCommand: t("sc.prevCommand.label"),
+  nextCommand: t("sc.nextCommand.label"),
+  prevFailed: t("sc.prevFailed.label"),
+  nextFailed: t("sc.nextFailed.label"),
+  prevWatch: t("sc.prevWatch.label"),
+  nextWatch: t("sc.nextWatch.label"),
+  copyCommandOutput: t("sc.copyCommandOutput.label"),
+  copyCommand: t("sc.copyCommand.label"),
   closeSession: t("sc.closeSession.label"),
+  reopenTab: t("sc.reopenTab.label"),
+  zoomPane: t("sc.zoomPane.label"),
+  fontSizeUp: t("sc.fontSizeUp.label"),
+  fontSizeDown: t("sc.fontSizeDown.label"),
+  fontSizeReset: t("sc.fontSizeReset.label"),
   prevTab: t("sc.prevTab.label"),
   nextTab: t("sc.nextTab.label"),
   splitRight: t("sc.splitRight.label"),
@@ -124,8 +188,24 @@ export const shortcutLabels = (t: Translate): Record<ShortcutCommand, string> =>
 
 /** One-line description of each command, in the current language. */
 export const shortcutHints = (t: Translate): Record<ShortcutCommand, string> => ({
+  commandPalette: t("sc.commandPalette.hint"),
+  snippets: t("sc.snippets.hint"),
   newSession: t("sc.newSession.hint"),
+  broadcast: t("sc.broadcast.hint"),
+  prevCommand: t("sc.prevCommand.hint"),
+  nextCommand: t("sc.nextCommand.hint"),
+  prevFailed: t("sc.prevFailed.hint"),
+  nextFailed: t("sc.nextFailed.hint"),
+  prevWatch: t("sc.prevWatch.hint"),
+  nextWatch: t("sc.nextWatch.hint"),
+  copyCommandOutput: t("sc.copyCommandOutput.hint"),
+  copyCommand: t("sc.copyCommand.hint"),
   closeSession: t("sc.closeSession.hint"),
+  reopenTab: t("sc.reopenTab.hint"),
+  zoomPane: t("sc.zoomPane.hint"),
+  fontSizeUp: t("sc.fontSizeUp.hint"),
+  fontSizeDown: t("sc.fontSizeDown.hint"),
+  fontSizeReset: t("sc.fontSizeReset.hint"),
   prevTab: t("sc.prevTab.hint"),
   nextTab: t("sc.nextTab.hint"),
   splitRight: t("sc.splitRight.hint"),
@@ -160,8 +240,37 @@ const chord = (code: string, mods: Partial<Omit<KeyChord, "code">>): KeyChord =>
  * Ctrl belongs to the shell.
  */
 export const MAC_DEFAULTS: Readonly<ShortcutBindings> = {
+  // ⇧⌘P is the searchable-command convention every editor uses, and no shell
+  // reads it: macOS delivers it to the app before the terminal sees a key.
+  commandPalette: chord("KeyP", { meta: true, shift: true }),
+  // ⌘⇧S for saved commands: the same family as the other ⌘⇧ commands, and
+  // nothing in a shell reads it.
+  snippets: chord("KeyS", { meta: true, shift: true }),
   newSession: chord("KeyN", { meta: true }),
+  // No shell reads ⇧⌘B, and the shortcut settings will rebind it if it clashes.
+  broadcast: chord("KeyB", { meta: true, shift: true }),
+  prevCommand: chord("ArrowUp", { meta: true, shift: true }),
+  nextCommand: chord("ArrowDown", { meta: true, shift: true }),
+  // Unbound by default: the command-step chords are taken, and a failed-command
+  // walk is rare enough that assigning one in Settings is the better trade.
+  prevFailed: null,
+  nextFailed: null,
+  // The watch-word walk is a scanning aid, not a daily key: unbound by default
+  // like the failed-command walk, and reachable from the palette.
+  prevWatch: null,
+  nextWatch: null,
+  copyCommandOutput: chord("KeyO", { meta: true, shift: true }),
+  copyCommand: chord("KeyL", { meta: true, shift: true }),
   closeSession: chord("KeyW", { meta: true }),
+  reopenTab: chord("KeyT", { meta: true, shift: true }),
+  // Enter chords are forwarded to the shell before the app sees them, so the
+  // zoom chord stays on a letter key.
+  zoomPane: chord("KeyZ", { meta: true, shift: true }),
+  fontSizeUp: chord("Equal", { meta: true }),
+  fontSizeDown: chord("Minus", { meta: true }),
+  // Bare ⌘0 is deliberately unbound (it is not a tab chord either); shift
+  // keeps the reset from capturing it.
+  fontSizeReset: chord("Digit0", { meta: true, shift: true }),
   find: chord("KeyF", { meta: true }),
   findNext: chord("KeyG", { meta: true }),
   clear: chord("KeyK", { meta: true }),
@@ -194,8 +303,32 @@ export const MAC_DEFAULTS: Readonly<ShortcutBindings> = {
  * kills a word, ^G is BEL, ^K kills to end of line).
  */
 export const OTHER_DEFAULTS: Readonly<ShortcutBindings> = {
+  // Ctrl+Shift+P costs the shell nothing (Shift is not encoded in a control
+  // character) and is the same family as the other Ctrl+Shift commands above.
+  commandPalette: chord("KeyP", { ctrl: true, shift: true }),
+  // S for saved commands: the shell receives the same ^S either way, so the
+  // chord is free — and Ctrl+Shift+S is where every editor puts "save as".
+  snippets: chord("KeyS", { ctrl: true, shift: true }),
   newSession: chord("KeyN", { alt: true }),
+  broadcast: chord("KeyB", { ctrl: true, shift: true }),
+  // No shell reads Ctrl+Shift+Arrow: Shift is not encoded in a control byte.
+  prevCommand: chord("ArrowUp", { ctrl: true, shift: true }),
+  nextCommand: chord("ArrowDown", { ctrl: true, shift: true }),
+  prevFailed: null,
+  nextFailed: null,
+  prevWatch: null,
+  nextWatch: null,
+  // O for output, L for line: neither is a control byte, so no shell reads it.
+  copyCommandOutput: chord("KeyO", { ctrl: true, shift: true }),
+  copyCommand: chord("KeyL", { ctrl: true, shift: true }),
   closeSession: chord("KeyW", { ctrl: true, shift: true }),
+  // Browser convention: the chord everyone already presses to undo a close.
+  reopenTab: chord("KeyT", { ctrl: true, shift: true }),
+  zoomPane: chord("KeyZ", { ctrl: true, shift: true }),
+  // Windows Terminal's zoom chords: Ctrl+= / Ctrl+- / Ctrl+0.
+  fontSizeUp: chord("Equal", { ctrl: true }),
+  fontSizeDown: chord("Minus", { ctrl: true }),
+  fontSizeReset: chord("Digit0", { ctrl: true, shift: true }),
   find: chord("KeyF", { ctrl: true, shift: true }),
   findNext: chord("KeyG", { ctrl: true, shift: true }),
   clear: chord("KeyK", { alt: true }),

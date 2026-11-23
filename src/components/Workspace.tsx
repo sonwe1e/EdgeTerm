@@ -75,6 +75,9 @@ const splitterStyle = (splitter: SplitterRect): CSSProperties =>
  * element (the tree knows no pixels), and the splitters overlay the
  * boundaries, so a pane's box is exactly its share.
  */
+/** The rectangle the zoomed pane (and the overlay over it) fills. */
+const FULL_RECT = { x: 0, y: 0, w: 1, h: 1 };
+
 export function Workspace({ onNewSession, onSaveSession, children }: Props) {
   const t = useT();
   const layout = useStore((s) => s.layout);
@@ -84,6 +87,7 @@ export function Workspace({ onNewSession, onSaveSession, children }: Props) {
   const activePaneId = useStore((s) => s.activePaneId);
   const dropTarget = useStore((s) => s.dropTarget);
   const resizeLayout = useStore((s) => s.resizeLayout);
+  const resetSplitSizes = useStore((s) => s.resetSplitSizes);
   const newSessionKey = useStore((s) => chordLabel(s.shortcuts.newSession));
   // The capabilities the hero empty state used to leave to the View menu
   // (PD-05). Each panel entry reads its real binding.
@@ -99,7 +103,16 @@ export function Workspace({ onNewSession, onSaveSession, children }: Props) {
   const [hintBeforeKey, hintAfterKey = ""] = hint.split("{key}");
   const ref = useRef<HTMLDivElement>(null);
   const rects = useMemo(() => layoutRects(layout), [layout]);
-  const activeRect = rects.panes.get(activePaneId);
+  const zoomedPaneId = useStore((s) => s.zoomedPaneId);
+  // A stale id (its pane was merged away) falls back to the split view rather
+  // than hiding everything.
+  const zoomed =
+    zoomedPaneId && panes.some((pane) => pane.id === zoomedPaneId) ? zoomedPaneId : null;
+  // Both the pane's strip and its sessions read their rectangle here: the
+  // zoomed pane's is the whole area, the others keep their own (their sessions
+  // are hidden rather than unmounted).
+  const paneRect = (id: string) => (zoomed && id === zoomed ? FULL_RECT : rects.panes.get(id));
+  const activeRect = zoomed ? FULL_RECT : rects.panes.get(activePaneId);
 
   // One entry per capability, alongside the primary action when space allows.
   // The panel entries name the action in force (open / hide), the
@@ -136,8 +149,9 @@ export function Workspace({ onNewSession, onSaveSession, children }: Props) {
   return (
     <div className="workspace" ref={ref}>
       {panes.map((pane) => {
-        const rect = rects.panes.get(pane.id);
+        const rect = paneRect(pane.id);
         if (!rect) return null;
+        if (zoomed && pane.id !== zoomed) return null;
         const zone =
           dropTarget?.paneId === pane.id && dropTarget.zone !== "strip" ? dropTarget.zone : null;
         return (
@@ -201,32 +215,39 @@ export function Workspace({ onNewSession, onSaveSession, children }: Props) {
       })}
 
       {tabs.map((tab) => {
-        const rect = rects.panes.get(tab.paneId);
+        const rect = paneRect(tab.paneId);
         const pane = panes.find((item) => item.id === tab.paneId);
         if (!rect || !pane) return null;
+        // While zoomed, the other panes' sessions stay mounted and hidden:
+        // unmounting an xterm would throw its scrollback away.
+        const hidden = zoomed !== null && tab.paneId !== zoomed;
         return (
           <SessionPane
             key={tab.info.id}
             tab={tab}
             visible={pane.activeTabId === tab.info.id}
             focused={activeId === tab.info.id}
-            style={slotStyle(rect)}
+            style={hidden ? { ...slotStyle(rect), display: "none" } : slotStyle(rect)}
           />
         );
       })}
 
-      {rects.splitters.map((splitter) => (
-        <div
-          key={`${splitter.path.join(".")}:${splitter.index}`}
-          className={`pane-splitter is-${splitter.direction}`}
-          style={splitterStyle(splitter)}
-        >
-          <Splitter
-            orientation={splitter.direction === "row" ? "vertical" : "horizontal"}
-            onResize={(delta) => resize(splitter, delta)}
-          />
-        </div>
-      ))}
+      {!zoomed &&
+        rects.splitters.map((splitter) => (
+          <div
+            key={`${splitter.path.join(".")}:${splitter.index}`}
+            className={`pane-splitter is-${splitter.direction}`}
+            style={splitterStyle(splitter)}
+          >
+            <Splitter
+              orientation={splitter.direction === "row" ? "vertical" : "horizontal"}
+              onResize={(delta) => resize(splitter, delta)}
+              // The docks' boundaries already reset on double-click; the pane
+              // boundaries answer the same gesture the same way.
+              onReset={() => resetSplitSizes(splitter.path, splitter.index)}
+            />
+          </div>
+        ))}
 
       {activeRect && (
         <div className="pane-overlay" style={slotStyle(activeRect)}>

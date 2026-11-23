@@ -20,7 +20,8 @@ import {
 } from "./sessionConnectionLifecycle";
 import { tabTitle, useStore, type HostKeyPrompt, type Tab } from "./store";
 import type { TerminalController } from "./terminal";
-import { bufferPendingInput, clearPendingInput, takePendingInput } from "./pendingInput";
+import { clearPendingInput, takePendingInput } from "./pendingInput";
+import { sendSessionInput } from "./sessionInput";
 import { disposeController, getController, setController } from "./terminalRegistry";
 import { isFileSession, type SessionInfo, type SessionProfile } from "./types";
 import { rememberWorkspaceDirectory } from "./workspaceDirectories";
@@ -146,17 +147,10 @@ export async function ensureController(id: string): Promise<TerminalController> 
   const controller = new TerminalController(
     id,
     {
-      onData: (data) => {
-        // The tab takes input before the backend has a session to write to;
-        // dropping those bytes made the first keystrokes of a slow handshake
-        // silently disappear. They wait here instead.
-        const tab = useStore.getState().tabs.find((item) => item.info.id === id);
-        if (tab?.state === "connecting") {
-          bufferPendingInput(id, data);
-          return;
-        }
-        void api.writeSession(id, data).catch(() => undefined);
-      },
+      // The funnel owns the two rules that are easy to break here: input typed
+      // during the handshake is held rather than dropped, and synchronized
+      // input reaches the other shells (see sessionInput.ts).
+      onData: (data) => sendSessionInput(id, data),
       onBinary: (data) => void api.writeSessionBytes(id, data).catch(() => undefined),
       // Read at click time: a reconnect replaces the tab's state, and a link
       // in a dead session must not open a tunnel that has no transport.
@@ -166,6 +160,12 @@ export async function ensureController(id: string): Promise<TerminalController> 
       },
       // Enter on the dead session reconnects it; the host key dialog owns
       // the next connection attempt while it is open.
+      // A bell while the reader is in another tab badges this one; selecting
+      // it acknowledges the badge.
+      onBell: () => useStore.getState().noteTabBell(id),
+      // The program's own window title (OSC 0/2): shown beside the tab's name,
+      // never in place of it.
+      onTitleChange: (title) => useStore.getState().noteTabTitle(id, title),
       onReconnect: () => {
         const store = useStore.getState();
         if (store.hostKeyPrompt?.sessionId === id) return;
@@ -195,11 +195,16 @@ export async function ensureController(id: string): Promise<TerminalController> 
         }
         useAgents.setState((state) => ({ recognized: { ...state.recognized, [id]: tool } }));
       },
-      onCommandState: (state, kind) => {
+      onCommandState: (state, kind, exit) => {
         const store = useStore.getState();
         if (state === "running") store.markCommandStarted(id, kind);
-        else if (state === "complete") store.markCommandCompleted(id, kind);
-        else store.clearCommandActivity(id);
+        else if (state === "complete") {
+          store.markCommandCompleted(id, kind);
+          // Only a shell that announces its status (OSC 133 D) can say this;
+          // a command whose status is unknown stays quiet.
+          if (exit !== null && exit !== undefined && exit !== 0)
+            store.setStatus(t("status.commandFailed", { code: exit }));
+        } else store.clearCommandActivity(id);
       },
       suggest: (input) => commandHistory.suggest(input, historyHost(id)),
       forgetSuggestion: (command) =>
@@ -269,6 +274,33 @@ export async function ensureController(id: string): Promise<TerminalController> 
  * `reuseSessionId` puts the new session on that session's SSH connection
  * instead of dialling one of its own; see `duplicateSshChannel`.
  */
+/**
+ * A startup command waits for the prompt. The backend reports "connected" as
+ * soon as the channel is up, which is before a shell has printed anything;
+ * a line sent then would land inside the banner. The delay is short and the
+ * timer re-checks the session, so a tab closed in between sends nothing.
+ */
+const STARTUP_DELAY_MS = 400;
+const startupTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function scheduleStartupCommand(id: string, command: string): void {
+  const previous = startupTimers.get(id);
+  if (previous !== undefined) clearTimeout(previous);
+  startupTimers.set(
+    id,
+    setTimeout(() => {
+      startupTimers.delete(id);
+      const tab = useStore.getState().tabs.find((item) => item.info.id === id);
+      if (!tab || tab.state !== "connected") return;
+      void api.writeSession(id, command + "\r").catch((error: unknown) => {
+        // The reader set this line so the session starts in the right place; a
+        // write that never reached the shell is worth saying out loud.
+        useStore.getState().setStatus(t("session.startupFailed", { error: errorText(error) }));
+      });
+    }, STARTUP_DELAY_MS),
+  );
+}
+
 export async function openSession(
   profile: SessionProfile,
   reuseSessionId?: string,
@@ -305,6 +337,21 @@ export async function openSession(
     return null;
   }
   return connectSession(id, profile, reuseSessionId);
+}
+
+/**
+ * Reopen Closed Tab: the newest closed session comes back on a fresh
+ * connection and a fresh session id. Reusing the old id would collide with
+ * the tab's retired controller, and nothing about the closed session's
+ * transport is worth keeping.
+ */
+export async function reopenClosedTab(): Promise<string | null> {
+  const closed = useStore.getState().takeClosedTab();
+  if (!closed) {
+    useStore.getState().setStatus(t("status.nothingToReopen"));
+    return null;
+  }
+  return openSession(closed.profile);
 }
 
 /**
@@ -520,6 +567,11 @@ export async function connectSession(
     getController(id)?.setEncoding(profile.encoding);
     getController(id)?.setBackspace(profile.backspace);
     attempt.claimBackend();
+    // A fresh shell may never set a window title; the previous program's one
+    // ("vim notes.txt") would otherwise sit beside a session that no longer
+    // runs it. Clearing before the new handshake means the bar only ever shows
+    // a title this shell reported.
+    useStore.getState().noteTabTitle(id, "");
     // The controller exists before the backend is asked to connect (see
     // openSession), so the output channel handed over here already has a
     // terminal to land its bytes on.
@@ -574,7 +626,7 @@ export async function connectSession(
     connectedStore.updateTabInfo(id, info);
     connectedStore.updateTabProfile(id, profile);
     connectedStore.applyState(id, "connected");
-    const name = tabTitle({ info, ordinal: tab.ordinal });
+    const name = tabTitle({ ...tab, info });
     connectedStore.setStatus(
       info.sharedConnection
         ? t("status.connectedShared", { name })
@@ -586,6 +638,13 @@ export async function connectSession(
     const typedWhileConnecting = takePendingInput(id);
     if (typedWhileConnecting) {
       void api.writeSession(id, typedWhileConnecting).catch(() => undefined);
+    }
+
+    // The profile's own first command, after whatever the reader already typed:
+    // a login script is a starting point, not a queue jumper.
+    const startupCommand = useStore.getState().startupCommands[profile.id];
+    if (startupCommand && !typedWhileConnecting && (info.kind === "ssh" || info.kind === "local")) {
+      scheduleStartupCommand(id, startupCommand);
     }
 
     // The pane was fitted while the backend was still connecting, so its

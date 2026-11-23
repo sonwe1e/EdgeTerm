@@ -211,6 +211,34 @@ export function resizeSplit(
 }
 
 /**
+ * Double-click on a boundary: the two sides share their space evenly again.
+ * The pair's total is kept, so a split that was dragged to 80/20 comes back as
+ * 50/50 and the rest of the tree is untouched.
+ */
+export function resetSplit(node: LayoutNode, path: number[], index: number): LayoutNode {
+  if (node.kind !== "split") return node;
+  if (path.length === 0) {
+    if (index < 0 || index >= node.sizes.length - 1) return node;
+    const first = node.sizes[index];
+    const second = node.sizes[index + 1];
+    const even = (first + second) / 2;
+    if (first === even && second === even) return node;
+    const sizes = [...node.sizes];
+    sizes[index] = even;
+    sizes[index + 1] = even;
+    return { ...node, sizes };
+  }
+  const [head, ...rest] = path;
+  const child = node.children[head];
+  if (!child) return node;
+  const reset = resetSplit(child, rest, index);
+  if (reset === child) return node;
+  const children = [...node.children];
+  children[head] = reset;
+  return { ...node, children };
+}
+
+/**
  * Where everything goes, in fractions of the workspace: the rectangle of
  * each pane and the line of each splitter.
  */

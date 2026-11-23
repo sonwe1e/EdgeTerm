@@ -33,7 +33,10 @@ import * as api from "../../api";
 import { loadFilerSizeVisible, saveFilerSizeVisible } from "../../filerColumns";
 import { followMode } from "../../filerFollow";
 import { openGitWorkspace } from "../../gitWorkspace";
+import { cdCommand } from "../../filerShellPath";
+import { opensFilter } from "../../filterKey";
 import { sortFileEntries, toggleFileSort, type SortKey } from "../../fileSort";
+import { sendCommandText } from "../../snippetActions";
 import { typeToSelect, type TypeRun } from "../../fileTypeSelect";
 import { IS_MAC } from "../../platform";
 import { chordLabel } from "../../shortcuts";
@@ -125,7 +128,24 @@ function FilerPanelBase() {
   // preference once at mount and drifting apart.
   const sort = useStore((s) => s.filerSort);
   const setFilerSort = useStore((s) => s.setFilerSort);
-  const sortedEntries = useMemo(() => sortFileEntries(entries, sort), [entries, sort]);
+  // Typing part of a name narrows the listing in place. The filter feeds the
+  // same sorted list every other feature reads, so selection, type-to-select,
+  // arrows and the virtual rows keep working on exactly what is on screen.
+  const [filter, setFilter] = useState("");
+  const filterRef = useRef<HTMLInputElement>(null);
+  // A filter belongs to the folder it was typed in: carrying it into the next
+  // folder would show a filtered view of a listing the reader just asked for,
+  // with no memory of why rows are missing.
+  useEffect(() => {
+    setFilter("");
+  }, [path]);
+  const sortedEntries = useMemo(() => {
+    const sorted = sortFileEntries(entries, sort);
+    const needle = filter.trim().toLowerCase();
+    return needle === ""
+      ? sorted
+      : sorted.filter((entry) => entry.name.toLowerCase().includes(needle));
+  }, [entries, sort, filter]);
   // The size column is a view choice, not a column width: the list gives the
   // name whatever the metadata does not need, so hiding the size returns that
   // room to the name instead of leaving a hole.
@@ -604,6 +624,13 @@ function FilerPanelBase() {
       );
       return;
     }
+    // "/" is how every file manager opens its filter (see `opensFilter`).
+    if (opensFilter(event)) {
+      event.preventDefault();
+      event.stopPropagation();
+      filterRef.current?.focus();
+      return;
+    }
     if (sortedEntries.length === 0) return;
     // Typing the start of a name jumps to it (upstream issue #108); see
     // `typeToSelect`. The run lives in a ref so a second letter a moment later
@@ -800,6 +827,23 @@ function FilerPanelBase() {
       disabled: busy || !canReveal,
       action: () => {
         if (tab) void revealCwdInFiler(tab.info.id);
+      },
+    },
+    {
+      // The inverse of the entry above: walk that shell to this folder. Only
+      // offered when the folder really belongs to a live shell — sending "cd"
+      // to a different session's shell would move the wrong window.
+      label: t("filer.cdHere"),
+      icon: "terminal",
+      disabled: busy || !canReveal || !path || atDrivesRoot,
+      action: () => {
+        const command = cdCommand(path);
+        if (!command) return;
+        // The funnel already says "no shell to write to"; this adds which
+        // folder was asked for, so the reader can retry from the right place.
+        if (!sendCommandText(command)) {
+          useStore.getState().setStatus(t("filer.cdFailed", { path }));
+        }
       },
     },
     {
@@ -1056,6 +1100,38 @@ function FilerPanelBase() {
           </button>
         )}
       </div>
+
+      {entries.length > 0 && (
+        <div className="filer-filter-row">
+          <Icon name="search" className="filer-filter-icon" aria-hidden="true" />
+          <input
+            ref={filterRef}
+            className="filer-filter"
+            type="search"
+            value={filter}
+            placeholder={t("filer.filterPlaceholder")}
+            aria-label={t("filer.filterPlaceholder")}
+            onChange={(event) => {
+              // Narrowing the list hides rows that are still selected; a
+              // delete or move would then act on files the reader cannot see.
+              if (event.target.value !== filter) clearSelection();
+              setFilter(event.target.value);
+            }}
+            onKeyDown={(event) => {
+              // Step back to the whole folder before anything else claims Esc.
+              if (event.key !== "Escape" || filter === "") return;
+              event.preventDefault();
+              event.stopPropagation();
+              setFilter("");
+            }}
+          />
+          {filter.trim() !== "" && (
+            <span className="filer-filter-count" role="status">
+              {t("filer.filterCount", { shown: sortedEntries.length, total: entries.length })}
+            </span>
+          )}
+        </div>
+      )}
 
       <div
         ref={listRef}

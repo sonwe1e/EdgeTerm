@@ -39,6 +39,19 @@ export const FILER_SIZE_VISIBLE_KEY = "edgeterm.filerSizeVisible";
 /** How panels sharing one dock divide it; see dockSplits.ts. */
 export const DOCK_SPLITS_KEY = "edgeterm.dockSplits";
 
+/**
+ * The command palette's recently run commands, newest first; see
+ * commandPalette.ts. A preference like any other: "restore default settings"
+ * clears it and an export carries it.
+ */
+export const COMMAND_RECENTS_KEY = "edgeterm.commandPalette.recents";
+
+/** Saved commands and the command a profile runs after connecting. Both are
+ * preferences the reader wrote, so reset clears them and an export carries
+ * them; their modules validate the stored JSON on every load. */
+export const SNIPPETS_STORAGE_KEY = "edgeterm.snippets";
+export const STARTUP_COMMANDS_STORAGE_KEY = "edgeterm.startupCommands";
+
 /** Concurrency and durability of file transfers; see transferSettings.ts. */
 export const TRANSFER_OPTIONS_KEY = "edgeterm.transfer-options";
 export const RESOURCE_MONITOR_KEY = "edgeterm.resource-monitor";
@@ -65,4 +78,6 @@ export const PANEL_PREFERENCE_KEYS: readonly string[] = [
   RESOURCE_MONITOR_KEY,
   AGENT_SETTINGS_KEY,
   TERMINAL_COLD_HISTORY_KEY,
+  SNIPPETS_STORAGE_KEY,
+  STARTUP_COMMANDS_STORAGE_KEY,
 ];

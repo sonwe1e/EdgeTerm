@@ -1,0 +1,70 @@
+/* The targets list for synchronized input: one row per connected shell, the
+   same quiet rhythm as the other status popovers. */
+
+.broadcast-popover {
+  width: min(360px, calc(100vw - 24px));
+}
+
+.broadcast-hint {
+  margin: 0 0 var(--sp-8);
+  color: var(--fg-dim);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.broadcast-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.broadcast-peer {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-8);
+  min-height: 24px;
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.broadcast-peer:hover {
+  background: var(--bg-hover);
+}
+
+.broadcast-peer-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg);
+}
+
+.broadcast-peer-address {
+  color: var(--fg-faint);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+
+.broadcast-count {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+  margin: var(--sp-10) 0 0;
+  color: var(--accent-bright);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+/* The caret is part of the broadcast indicator, so it wears the same accent
+   ink and the bar's own height. */
+.broadcast-targets-button {
+  flex: none;
+  width: 24px;
+  padding: 0;
+  justify-content: center;
+  color: var(--yellow);
+}

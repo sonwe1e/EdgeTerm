@@ -21,14 +21,12 @@
 .tabstrip::-webkit-scrollbar {
   display: none;
 }
-
 /* F6 lands on the strip itself; the ring has to say so even before the user
    steps into a tab. */
 .tabstrip:focus-visible {
   outline: none;
   box-shadow: inset 0 0 0 1px var(--accent);
 }
-
 /* Edge fades hint that more tabs are hidden past either side. Both are hung
    off zero-width sticky anchors so they stay put while the tabs scroll under
    them; the right one lives on the already-sticky actions block. */
@@ -49,7 +47,7 @@
   width: 28px;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--dur-2) ease;
 }
 
 .tabstrip-fade-left::after {
@@ -71,7 +69,6 @@
   color: var(--fg);
   background: var(--bg-hover);
 }
-
 /* A step button at its end of the strip has nowhere to scroll: it keeps its
    place in the block but reads as unavailable. */
 .tabstrip-actions .panel-action:disabled {
@@ -80,7 +77,6 @@
   color: var(--fg-faint);
   cursor: default;
 }
-
 /* The "all sessions" dropdown: one row per tab, scrolls once it gets tall. */
 .tab-list-menu {
   max-width: 320px;
@@ -117,7 +113,6 @@
   /* WebKit still shows an I-beam over unselectable text under cursor: auto. */
   cursor: default;
 }
-
 /* One restrained moving edge identifies a running background session. The
    same mark stays still when motion is reduced; no per-tab particle nodes or
    multiple simultaneous animations are needed. */
@@ -141,7 +136,6 @@
     transform: translateX(150%);
   }
 }
-
 /* Background activity remains distinct until the tab is visited. */
 .tab.is-command-complete:not(.is-active) {
   color: var(--fg);
@@ -164,14 +158,12 @@
 .tab:hover {
   background: var(--bg-hover);
 }
-
 /* Keyboard focus: the tab is the strip's only Tab stop, so the ring has to
    read clearly inside a surface that clips its own children. */
 .tab:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
-
 /* A pointer user sees it on hover; a keyboard user only when focus reaches
    the tab, so the close target stays reachable either way. It fades in over
    100ms rather than appearing at once. */
@@ -182,7 +174,6 @@
   visibility: visible;
   opacity: 1;
 }
-
 /* Dragged tab: lifted above its neighbours while it follows the pointer; the
    strip drops hover feedback so the reflowing tabs stay calm. */
 .tabstrip.is-reordering {
@@ -226,7 +217,6 @@
   text-decoration: line-through;
   opacity: 0.6;
 }
-
 /* Idle tabs are quiet italic at text weight. A tab whose connection needs
    attention joins the upright vocabulary `.is-active` and
    `.is-command-complete` already use, and takes the one weight step above
@@ -244,7 +234,6 @@
   font-style: normal;
   font-weight: 600;
 }
-
 /* The shape half of the same signal, for a state tab that is not the one on
    screen: a 2px state-coloured edge down its leading side. It is the only
    state mark that survives the strip being scrolled or the label being
@@ -265,6 +254,55 @@
 
 .tab.is-error:not(.is-active)::before {
   background: var(--red);
+}
+
+/* A pinned tab wears a small pin before its number, in the strip's own ink:
+   the gesture that put it first is visible without hovering. */
+.tab-pin {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  color: var(--accent-bright);
+}
+
+.tab-pin .icon {
+  width: 12px;
+  height: 12px;
+}
+
+/* A session rang the bell while this tab was in the background. It sits
+   beside the status dot, in the attention ink rather than the tab's own, so
+   "come back" reads differently from "a command finished". */
+.tab-bell {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  color: var(--yellow);
+}
+
+.tab-bell .icon {
+  width: 12px;
+  height: 12px;
+}
+
+.tab.is-pinned .tab-index {
+  color: var(--fg-dim);
+}
+
+/* The name while it is being typed: field ink so it reads as editable, the
+   tab's own type size so the strip does not jump. */
+.tab-rename {
+  flex: 1 1 auto;
+  min-width: 60px;
+  max-width: 220px;
+  height: 18px;
+  padding: 0 4px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-xs);
+  background: var(--bg-field);
+  color: var(--fg);
+  font: inherit;
+  font-size: inherit;
 }
 
 .tab-index {
@@ -294,15 +332,15 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 22px;
+  flex: 0 0 var(--h-control);
   /* Pinned to the tab's right edge. Items pack from the left, and a tab
      with a short title sits at its min-width floor with free space left
      over — without this the × trailed the title and floated mid-tab, so
      a click aimed at the tab's right edge landed in the empty strip
      beside it. */
   margin-left: auto;
-  width: 22px;
-  height: var(--h-control-sm);
+  width: var(--h-control);
+  height: var(--h-control);
   padding: 0;
   border-radius: var(--radius-xs);
   color: var(--fg-faint);
@@ -311,8 +349,8 @@
      snapping. `visibility` is transitioned as well so the change is held for
      the whole fade rather than cutting it short at the halfway point. */
   transition:
-    visibility 100ms,
-    opacity 100ms ease;
+    visibility var(--dur-2),
+    opacity var(--dur-2) ease;
   opacity: 0;
 }
 
@@ -320,7 +358,6 @@
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
-
 /* Touch has no hover: without this the close target is undiscoverable and
    reachable only via context menu or keyboard. The opacity has to come back
    too — the base rule fades the button out as well as hiding it. */
@@ -350,7 +387,6 @@
 .tab-list-button {
   position: relative;
 }
-
 /* The list may be the only visible route to a finished or failed session. */
 .tab-list-attention {
   position: absolute;

@@ -114,8 +114,8 @@
      are the same control at the same size, and hover used to recolor them
      with no fade at all. Declared on the base state so it fades both ways. */
   transition:
-    background-color 80ms ease,
-    color 80ms ease;
+    background-color var(--dur-1) ease,
+    color var(--dur-1) ease;
 }
 
 .ftp-tool-button:hover:not(:disabled) {
@@ -149,7 +149,7 @@
   font-size: var(--fs-sm);
   /* The foundation input rules recolour this border on focus; the dialog
      fields fade that change over 100ms ease and this field now does too. */
-  transition: border-color 100ms ease;
+  transition: border-color var(--dur-2) ease;
 }
 
 .ftp-browser-columns,
@@ -173,7 +173,9 @@
 }
 
 .ftp-browser-columns {
-  flex: 0 0 24px;
+  /* 25px including the 1px rule: the caption buttons stretch to the content
+     box, and a sortable caption must be a 24px-tall target, not a 23px one. */
+  flex: 0 0 25px;
   align-items: center;
   /* The right padding carries the width a classic scrollbar takes out of the
      rows below, measured at run time and written on this element as
@@ -195,14 +197,20 @@
   white-space: nowrap;
 }
 
-/* Column captions are buttons so they can sort the list; they restyle to the
-   span look they replaced. Text aligns left like the first column under it —
-   a button's own default is centered, and only the later columns go right. */
+/* Column captions are buttons so they can sort the list; they fill the full
+   24px caption row: at the old content height an unsorted caption was a
+   13px-tall click target, below the 16px floor and with no spacing to excuse
+   it (WCAG 2.2 SC 2.5.8). The reserved 2px bottom border is the sorted cue, so
+   changing the sort never moves a caption. */
 .ftp-browser-columns button {
-  display: block;
+  display: flex;
   min-width: 0;
+  align-items: center;
+  align-self: stretch;
+  justify-content: flex-start;
   padding: 0;
   border: 0;
+  border-bottom: 2px solid transparent;
   background: none;
   color: inherit;
   font: inherit;
@@ -211,12 +219,25 @@
   user-select: none;
   /* Base state, so the hover and sorted colours fade in and out alike; a
      transition owned only by :hover would snap on the way back. */
-  transition: color 120ms ease;
+  transition:
+    color var(--dur-2) ease,
+    border-color var(--dur-2) ease;
+}
+
+/* later columns right-align their captions over right-aligned values. */
+.ftp-browser-columns > :nth-child(n + 2) button {
+  justify-content: flex-end;
 }
 
 .ftp-browser-columns button:hover,
 .ftp-browser-columns button.is-sorted {
   color: var(--fg);
+}
+
+/* the sorted column is marked by an accent rule as well as the arrow: the cue
+   must not depend on reading one 16px glyph. */
+.ftp-browser-columns button.is-sorted {
+  border-bottom-color: var(--accent);
 }
 
 .ftp-browser-columns button:focus-visible {
@@ -232,13 +253,15 @@
      over it (`is-drop-target` below); both are state changes and now fade
      like the Filer's list tint does, at the same 120ms. */
   transition:
-    background-color 120ms ease,
-    box-shadow 120ms ease;
+    background-color var(--dur-2) ease,
+    box-shadow var(--dur-2) ease;
 }
 
+/* the same pitch the filer's virtualiser uses (--list-row-pitch), so the two
+   file lists read as one control even across tabs. */
 .ftp-file-row {
-  min-height: 29px;
-  height: 29px;
+  min-height: var(--list-row-pitch, 26px);
+  height: var(--list-row-pitch, 26px);
   align-items: center;
   padding: var(--sp-3) var(--sp-8);
   border-bottom: 1px solid var(--row-separator);
@@ -251,10 +274,10 @@
      over 120ms — the duration the Filer rows and the app's other surface
      states use. Declared on the base row so leaving a state fades too. */
   transition:
-    background-color 120ms ease,
-    box-shadow 120ms ease,
-    color 120ms ease,
-    opacity 120ms ease;
+    background-color var(--dur-2) ease,
+    box-shadow var(--dur-2) ease,
+    color var(--dur-2) ease,
+    opacity var(--dur-2) ease;
 }
 
 .ftp-file-row:hover {
@@ -412,8 +435,8 @@
      its background and border over 100ms ease on hover; this is the same
      control and now answers the same way. */
   transition:
-    background-color 100ms ease,
-    border-color 100ms ease;
+    background-color var(--dur-2) ease,
+    border-color var(--dur-2) ease;
 }
 
 .ftp-transfer-button:hover:not(:disabled) {
@@ -478,7 +501,7 @@
   height: 100%;
   border-radius: inherit;
   background: var(--accent);
-  transition: width 80ms linear;
+  transition: width var(--dur-1) linear;
 }
 
 .ftp-transfer-progress > span.is-indeterminate {
@@ -615,9 +638,50 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* A line the reader is watching out for (a log's error or warning) tints its
+   row and inks its line number. Backgrounds, not bars: a watch mark and a
+   command boundary are different facts and may share a row. */
+.gutter-row.is-watch-error {
+  background: color-mix(in srgb, var(--red) 14%, transparent);
+}
+
+.gutter-row.is-watch-warn {
+  background: color-mix(in srgb, var(--yellow) 16%, transparent);
+}
+
+.gutter-row.is-watch-error .gutter-line {
+  color: var(--red);
+}
+
+.gutter-row.is-watch-warn .gutter-line {
+  color: var(--yellow);
+}
+
 .gutter-row.is-cursor {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
   color: var(--accent-bright);
+}
+
+/* a command start is a timeline mark: a 2px accent bar at the gutter's edge
+   and the line number in the readable accent ink. It is drawn with an inset
+   shadow so the two-track grid never shifts. */
+.gutter-row.is-command {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.gutter-row.is-command .gutter-line {
+  color: var(--accent-bright);
+  font-weight: 600;
+}
+
+/* A failed command keeps the accent bar but takes the error ink: the mark is
+   still a command boundary, and the colour is the outcome. */
+.gutter-row.is-command.is-failed {
+  box-shadow: inset 2px 0 0 var(--red);
+}
+
+.gutter-row.is-failed .gutter-line {
+  color: var(--red);
 }
 
 .gutter-time {
@@ -725,7 +789,7 @@
   text-shadow:
     0 0 2px var(--bg-panel-alt),
     0 0 4px var(--bg-panel-alt);
-  transition: background-color 80ms ease-out;
+  transition: background-color var(--dur-1) ease-out;
 }
 
 .term-suggest-text {
@@ -980,8 +1044,8 @@
   text-align: left;
   cursor: pointer;
   transition:
-    background-color 100ms ease,
-    border-color 100ms ease;
+    background-color var(--dur-2) ease,
+    border-color var(--dur-2) ease;
 }
 
 .term-empty-entry:hover {

@@ -1,17 +1,20 @@
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useState, useSyncExternalStore } from "react";
 
 import { copiedErrorText } from "../errorInfo";
 import { revealLocalPath } from "../openExternal";
 import { writeSystemClipboard } from "../systemClipboard";
 import { t as translateMsg } from "../i18n";
+import { broadcastTargets } from "../broadcast";
 import { useActiveTab, useStore } from "../store";
 import { isFileSession, type LegacyAlgorithms } from "../types";
 import { useT } from "../useT";
 import { Icon } from "./icons";
+import { BroadcastTargets } from "./BroadcastTargets";
 import { TransferCenter } from "./TransferCenter";
 import { ResourceMonitorBar } from "./ResourceMonitorBar";
 import { ForwardCenter } from "./ForwardCenter";
 import { openAgentView } from "../agents/model";
+import { latencyLabel, subscribeLatency } from "../inputLatency";
 
 /** The folder half of a recording's path, for the Reveal click. */
 const parentDir = (path: string): string => path.replace(/[\\/][^\\/]*$/, "") || path;
@@ -29,6 +32,19 @@ function StatusBarBase() {
   // The grid lives beside the tabs, not on the tab: see `AppStore.tabSizes`.
   const size = useStore((s) => (s.activeId ? s.tabSizes[s.activeId] : undefined));
   const status = useStore((s) => s.status);
+  const broadcastInput = useStore((s) => s.broadcastInput);
+  const setBroadcastInput = useStore((s) => s.setBroadcastInput);
+  const [targetsOpen, setTargetsOpen] = useState(false);
+
+  // Turning the mode off (indicator, chord, last recipient leaving) also closes
+  // the targets list: it describes a mode that no longer exists.
+  useEffect(() => {
+    if (!broadcastInput) setTargetsOpen(false);
+  }, [broadcastInput]);
+  const broadcastCount = useStore(
+    (s) =>
+      broadcastTargets(s.tabs, s.activeId, s.broadcastExcluded, s.broadcastExcludedGroups).length,
+  );
   const error = useStore((s) => s.error);
   const errorRequestId = useStore((s) => s.errorRequestId);
   const setError = useStore((s) => s.setError);
@@ -92,6 +108,14 @@ function StatusBarBase() {
 
   const recording = tab?.state === "connected" ? tab.info.recording : null;
   const legacy = tab?.state === "connected" ? tab.info.legacyAlgorithms : [];
+  // Typing latency, recomputed on new samples and when a reading goes stale.
+  // The snapshot is the formatted string itself, so React compares cheaply.
+  const latency = useSyncExternalStore(
+    subscribeLatency,
+    () =>
+      latencyLabel(tab?.info.id ?? null, performance.now(), (ms) => t("status.latency", { ms })),
+    () => "",
+  );
 
   return (
     <div className="statusbar" data-focus-region="status" tabIndex={-1}>
@@ -141,6 +165,36 @@ function StatusBarBase() {
           </>
         )}
       </span>
+      {broadcastInput && (
+        <>
+          {/* A live mode with a blast radius stays in the bar while it is on:
+              the indicator itself turns it off in one click. */}
+          <button
+            type="button"
+            className="status-item is-broadcasting"
+            title={t("broadcast.indicator", { count: broadcastCount })}
+            aria-pressed="true"
+            onClick={() => setBroadcastInput(false)}
+          >
+            <Icon name="broadcast" />
+            {t("broadcast.indicator", { count: broadcastCount })}
+          </button>
+          {/* The recipients are editable beside it: "which shells" is the
+              question a reader asks right after turning this on. */}
+          <button
+            type="button"
+            className="status-item broadcast-targets-button"
+            title={t("broadcast.chooseTargets")}
+            aria-label={t("broadcast.chooseTargets")}
+            aria-haspopup="true"
+            aria-expanded={targetsOpen}
+            onClick={() => setTargetsOpen(!targetsOpen)}
+          >
+            <Icon name="chevron-down" />
+          </button>
+          {targetsOpen && <BroadcastTargets onClose={() => setTargetsOpen(false)} />}
+        </>
+      )}
       <ResourceMonitorBar tab={tab} />
       <ForwardCenter />
       <button
@@ -173,6 +227,19 @@ function StatusBarBase() {
               <Icon name="record" />
               {t("status.recording")}
             </button>
+          )}
+          {tab.state === "connected" && tab.remoteTitle && (
+            <span
+              className="status-item status-remote-title"
+              title={t("status.remoteTitle", { title: tab.remoteTitle })}
+            >
+              {tab.remoteTitle}
+            </span>
+          )}
+          {!isFileSession(tab.info.kind) && latency && (
+            <span className="status-item status-latency" title={t("status.latencyTitle")}>
+              {latency}
+            </span>
           )}
           {!isFileSession(tab.info.kind) && (
             <span className="status-item">

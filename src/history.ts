@@ -95,6 +95,23 @@ class CommandHistory {
     void api.recordCommand(command, host).catch(() => undefined);
   }
 
+  /**
+   * The newest few commands, one row per command text, for a list the reader
+   * picks from instead of typing towards. Sorted by last use, so the palette's
+   * top row is the command this reader reached for most recently.
+   */
+  recent(limit = 40): CommandHistoryEntry[] {
+    const seen = new Set<string>();
+    const rows: CommandHistoryEntry[] = [];
+    for (const entry of [...this.entries].sort((a, b) => b.lastUsed - a.lastUsed)) {
+      if (seen.has(entry.command)) continue;
+      seen.add(entry.command);
+      rows.push(entry);
+      if (rows.length >= limit) break;
+    }
+    return rows;
+  }
+
   suggest(input: string, host: string): CommandSuggestion[] {
     if (input.trim().length < MIN_INPUT) return [];
     // The same command may be remembered for several hosts; keep only the

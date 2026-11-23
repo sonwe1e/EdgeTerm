@@ -1,5 +1,13 @@
 /* --- terminal search ------------------------------------------------------ */
 
+/* A command jump tints the line it landed on for a moment. Without it a
+   scroll into a full screen of output gives no sign that anything moved. */
+.xterm-decoration.command-jump {
+  background-color: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
 .terminal-search {
   position: absolute;
   top: 8px;
@@ -17,7 +25,6 @@
   background: var(--bg-panel);
   box-shadow: var(--shadow-pop);
 }
-
 /* The query and VS Code's three toggles share one field. */
 .terminal-search .search-field {
   display: flex;
@@ -31,7 +38,6 @@
   border-radius: 7px;
   background: var(--bg-panel-alt);
 }
-
 .terminal-search .search-field:focus-within {
   border-color: var(--accent);
 }
@@ -60,7 +66,6 @@
   color: var(--fg-faint);
   line-height: 1;
 }
-
 .search-toggle:hover {
   color: var(--fg);
   background: var(--bg-hover);
@@ -71,7 +76,6 @@
   background: var(--accent-soft);
   border-color: var(--accent);
 }
-
 /* Find in Selection sits among the 22px buttons, outside the field. */
 .terminal-search > .search-toggle {
   width: 22px;
@@ -92,7 +96,6 @@
 .terminal-search .search-count.is-empty {
   color: var(--red);
 }
-
 /* --- terminal ------------------------------------------------------------- */
 
 /*
@@ -110,7 +113,6 @@
   min-height: 0;
   background: var(--bg-terminal);
 }
-
 /* Search follows the active session's box; the rest still takes terminal input. */
 .pane-overlay {
   position: absolute;
@@ -131,7 +133,6 @@
   min-height: 0;
   background: var(--bg-terminal);
 }
-
 /* An unfocused pane still shows which tab it has, but quieter. */
 .pane:not(.is-focused) .tab.is-active {
   color: var(--fg-dim);
@@ -142,6 +143,51 @@
   position: absolute;
   display: flex;
   overflow: hidden;
+}
+
+/* Shown only while the viewport is above the newest row, so it never covers a
+   line the user is reading. A pill, not a toolbar: it sits in the corner the
+   scrollbar is not in, on the glass the menus already use. */
+.term-jump-latest {
+  position: absolute;
+  right: 18px;
+  bottom: 14px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid var(--border-menu);
+  border-radius: var(--radius-pill);
+  background: var(--bg-menu-glass);
+  backdrop-filter: blur(8px);
+  color: var(--fg);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  box-shadow: var(--shadow-pop);
+  transition: background var(--dur-1) ease;
+}
+
+.term-jump-latest:hover {
+  background: var(--bg-hover);
+}
+
+.term-jump-latest:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 2px;
+}
+
+.term-jump-latest .icon {
+  width: 12px;
+  height: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .term-jump-latest {
+    transition: none;
+  }
 }
 
 /* display, not visibility: xterm pauses its renderer only when its
@@ -158,7 +204,6 @@
   display: flex;
   overflow: hidden;
 }
-
 /*
  * A boundary between panes. The 1px line sits on the last pixel of the pane
  * before it, so the panes tile the workspace exactly; the grab area is the
@@ -180,7 +225,6 @@
   height: 1px;
   margin-top: -1px;
 }
-
 /* Where a dragged tab would land: the whole pane, or the half it would split off. */
 .pane-drop {
   position: absolute;
@@ -190,10 +234,10 @@
   background: color-mix(in srgb, var(--accent) 18%, transparent);
   box-shadow: inset 0 0 0 1px var(--accent);
   transition:
-    left 90ms ease,
-    right 90ms ease,
-    top 90ms ease,
-    bottom 90ms ease;
+    left var(--dur-1) ease,
+    right var(--dur-1) ease,
+    top var(--dur-1) ease,
+    bottom var(--dur-1) ease;
 }
 
 .pane-drop.is-left {
@@ -211,7 +255,6 @@
 .pane-drop.is-down {
   top: 50%;
 }
-
 /* The slot a tab dragged from another strip would take. */
 .tab-drop-marker {
   position: relative;
@@ -219,7 +262,6 @@
   width: 0;
   z-index: 2;
 }
-
 .tab-drop-marker::after {
   content: "";
   position: absolute;
@@ -230,13 +272,12 @@
   border-radius: 1px;
   background: var(--accent);
 }
-
 /* Follows the pointer while a tab is dragged beyond its own strip. */
 .tab-drag-ghost {
   position: fixed;
   top: 0;
   left: 0;
-  z-index: 1000;
+  z-index: var(--z-drag);
   pointer-events: none;
   max-width: 220px;
   padding: var(--sp-4) var(--sp-10);

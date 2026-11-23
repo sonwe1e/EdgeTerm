@@ -1,5 +1,4 @@
 @import "@xterm/xterm/css/xterm.css";
-
 /* The dark palette follows VS Code Dark Modern: the editor surface (#1f1f1f)
    inside one neutral chrome gray (#181818) with #2b2b2b borders, #313131
    input fields, a single blue accent (#0078d4) with white-on-blue primaries,
@@ -52,7 +51,6 @@
      themes' deeper yellow takes white. Same shape as --danger-contrast and
      --accent-contrast above. */
   --warn-contrast: #1f1f1f;
-
   /* Text drawn on a tint of its own colour. A pill lifts the canvas toward
      the middle of the ramp and then writes the colour itself on top; the two
      dark palettes survive that, but on the two light ones the mid-tone greens,
@@ -67,7 +65,6 @@
   --panel-session-ink: var(--panel-session);
   --panel-sender-ink: var(--panel-sender);
   --panel-filer-ink: var(--panel-filer);
-
   /* Scrollbars are controls: the thumb has to clear 3:1 against the panel
      it sits on, or it is not findable without hunting for it. */
   --scrollbar-thumb: #6a6a6a;
@@ -75,7 +72,6 @@
   --term-scrollbar-thumb-hover: #8b8b8b;
   --row-separator: rgba(255, 255, 255, 0.07);
   --swatch-ring: rgba(255, 255, 255, 0.1);
-
   /* Menus float above the chrome: a step lighter than the panels, with a
      border that still reads against the editor surface. Segmented controls
      sit a knob on a sunken track. */
@@ -107,9 +103,27 @@
   --shadow-pop: 0 6px 18px rgba(0, 0, 0, 0.36);
   --shadow-notice: 0 5px 18px rgba(0, 0, 0, 0.36);
   --shadow-dialog: 0 20px 60px rgba(0, 0, 0, 0.5);
+  /* The dim a modal paints over the app. It is a token rather than a literal
+     because the dark canvas already sits near black — a 50% scrim barely
+     registers there while it weighs down a light one, so each palette sets
+     the strength its own contrast can carry. */
+  --scrim: rgba(0, 0, 0, 0.5);
 
   --row-h: 26px;
-
+  /* Stacking order for the floating chrome that shares the app root's
+     stacking context: menu dropdowns, the panel-drop guide, the splitter
+     readout, the status popovers and the tab drag ghost. The ghost used to
+     share 1000 with the popovers, so a drag could slide under an open
+     popover; the ladder keeps drag feedback on top of everything transient
+     and dialogs above all of it. Component-local z-index values stay in
+     their own files — inside a component's stacking context they describe
+     its internal layers, not this order. */
+  --z-menu: 100;
+  --z-drop: 120;
+  --z-hud: 200;
+  --z-popover: 1000;
+  --z-drag: 1001;
+  --z-dialog: 10000;
   /* Metrics. The values are pixel sizes, not rung numbers, so a declaration
      reading var(--sp-6) renders 6px and nobody has to remember whether rung
      3 is 8 or 10. A rung only exists because a value occurs three or more
@@ -139,6 +153,13 @@
   --h-control: 24px;
   --h-control-lg: 28px;
   --h-bar: 30px;
+  /* Two state durations, not five. --dur-1 is the small inline change (an icon
+     taking ink, a caret turning, a progress bar widening); --dur-2 is a
+     surface changing (a row, a field, a button). Longer motion — menus
+     appearing, dialogs rising, spinners — is an animation and keeps its own
+     timing: those are effects, not state. */
+  --dur-1: 90ms;
+  --dur-2: 120ms;
 
   --panel-font-size: 12px;
   --buffer-font-size: 14px;
@@ -150,7 +171,6 @@
     "Microsoft YaHei", "Noto Sans SC", "Source Han Sans SC", Roboto, sans-serif;
   --font-mono: Consolas, Menlo, Monaco, "Courier New", monospace;
 }
-
 /* The light palette follows VS Code Light Modern's strategy: a white editor
    surface inside one neutral chrome gray (#f8f8f8) with #e5e5e5 borders,
    white input fields, a single blue accent (#005fb8) with white-on-blue
@@ -201,7 +221,6 @@
   /* White on this deep yellow clears 5.3:1; the dark ink the dark themes use
      would sit at about 3.1:1 and read as a watermark. */
   --warn-contrast: #ffffff;
-
   /* The pill inks for this canvas. Each is the colour above taken deeper in
      the same hue, so the status word stays inside its own family while the
      tint lifts the paper: measured on the 10-12% tints the rules below use,
@@ -249,8 +268,8 @@
   --shadow-pop: 0 6px 18px rgba(0, 0, 0, 0.14);
   --shadow-notice: 0 5px 18px rgba(0, 0, 0, 0.14);
   --shadow-dialog: 0 20px 60px rgba(0, 0, 0, 0.22);
+  --scrim: rgba(0, 0, 0, 0.35);
 }
-
 /* serialX's own two palettes, ported from its workbench design system
    (src/theme.rs there). Ink: a near-black canvas lifted by a hint of blue,
    with the chrome a step above the terminal rather than below it, and a
@@ -301,7 +320,6 @@
   /* This yellow is the lightest of the four, so it takes the darkest ink
      (about 8:1). */
   --warn-contrast: #1f1f1f;
-
   /* The pill inks. This palette's own tints are already dark enough that the
      colour itself clears 4.5:1 on them, so the ink is the colour — see the
      :root block for what an ink is and why the light palettes need deeper
@@ -341,8 +359,17 @@
   --notice-success-fg: #4fc38a;
   --notice-error-bg: rgba(42, 23, 25, 0.96);
   --notice-error-fg: #ef8a83;
+  /* This palette never declared its own elevation shadows, so menus and
+     dialogs fell back to the default dark set painted for #181818. The
+     canvas here is darker (#0f1116), where the same shadow reads as a
+     smudge rather than a lift, so the occlusions deepen with it, and the
+     scrim needs more strength to separate a dialog from near-black. */
+  --shadow-menu: 0 14px 36px -8px rgba(0, 0, 0, 0.74), 0 3px 10px rgba(0, 0, 0, 0.42);
+  --shadow-pop: 0 6px 18px rgba(0, 0, 0, 0.44);
+  --shadow-notice: 0 5px 18px rgba(0, 0, 0, 0.44);
+  --shadow-dialog: 0 20px 60px rgba(0, 0, 0, 0.6);
+  --scrim: rgba(0, 0, 0, 0.62);
 }
-
 /* Paper: serialX's light half. A white terminal inside warm-neutral chrome,
    the same lavender accent at ink strength, and its category hues for the
    panel marks. */
@@ -393,7 +420,6 @@
   --danger-contrast: #ffffff;
   /* The same deep yellow as the VS Code light half, so the same white ink. */
   --warn-contrast: #ffffff;
-
   /* The pill inks for this canvas: the colours above taken deeper in the same
      hue, so the status word stays inside its own family while the tint lifts
      the paper. On the 10-12% tints the pill rules use they measure 5.5-6.3:1,
@@ -420,7 +446,6 @@
   --menu-separator: rgba(0, 0, 0, 0.09);
   --menu-mark: rgba(0, 0, 0, 0.32);
   --bg-track: #eeeeea;
-
   /* The file lists' directory names, at 11-12px weight 600: 4.11:1 on the
      white terminal read weaker than the black file name beside it. One rung
      deeper reaches 5.39:1 there and 5.20:1 on the panel. */
@@ -442,6 +467,7 @@
   --shadow-pop: 0 6px 18px rgba(0, 0, 0, 0.14);
   --shadow-notice: 0 5px 18px rgba(0, 0, 0, 0.14);
   --shadow-dialog: 0 20px 60px rgba(0, 0, 0, 0.22);
+  --scrim: rgba(0, 0, 0, 0.35);
 }
 
 * {
@@ -464,7 +490,6 @@ body {
   -webkit-font-smoothing: antialiased;
   user-select: none;
 }
-
 /* The interface type scale. It is declared on .app, not :root, because the
    custom properties are resolved where they are declared: a value declared
    on :root would freeze at the 12px default and never follow the panel font
@@ -478,10 +503,14 @@ body {
   --fs-md: calc(var(--panel-font-size) + 2px);
   /* Dense rows grow with the text they hold instead of clipping it. */
   --row-h: max(26px, calc(var(--panel-font-size) + 14px));
+  /* The file lists share one rhythm: the Filer's virtualiser computes the same
+     numbers in JS (FilerPanel `rowHeight`), and the dual-pane browsers lay
+     their rows out from these tokens. Keep the two in step. */
+  --list-row-h: max(24px, calc(var(--panel-font-size) + 10px));
+  --list-row-pitch: calc(var(--list-row-h) + 2px);
   /* Chrome text that never declared a size follows the setting too. */
   font-size: var(--panel-font-size);
 }
-
 /* Wide letter-spacing is a Latin small-caps device; on CJK it only loosens
    glyphs that are already square. The interface language is published on
    <html> by setCurrentLanguage. */
@@ -501,7 +530,6 @@ button {
   border: none;
   cursor: pointer;
 }
-
 /* Keyboard focus is a first-class state across the chrome. The earlier
    stylesheet had 88 :hover rules and 24 :focus-visible declarations, so
    most controls changed nothing when reached by Tab. Transparent outline
@@ -533,7 +561,6 @@ textarea {
   padding: var(--sp-3) var(--sp-6);
   outline: none;
 }
-
 /* The chrome is unselectable (see `body`), but the text a field holds is the
    user's own: `user-select` inherits into form controls, so without this a
    drag inside any input selects nothing at all. It belongs here rather than
@@ -543,7 +570,6 @@ textarea {
   user-select: text;
   -webkit-user-select: text;
 }
-
 /* A text field's focus indicator is the soft ring, not an outline: the ring
    is drawn outside the border so nothing in the layout shifts, and an outline
    on top of it would read as two rings. Domain files that used to draw their
@@ -560,6 +586,13 @@ input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
   outline: none;
+}
+/* A checkbox or radio keeps the platform's own glyph, so the soft field ring
+   above would not paint on it: keyboard focus needs the accent ring. */
+input[type="checkbox"]:focus-visible,
+input[type="radio"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 ::-webkit-scrollbar {
@@ -578,7 +611,6 @@ textarea:focus-visible {
   background: var(--scrollbar-thumb-hover);
   background-clip: content-box;
 }
-
 /* The quiet pulse shared by the Sender's sending tag and the panel button that
    reports live work. One keyframe, one duration: a caller only sets the
    animation. */

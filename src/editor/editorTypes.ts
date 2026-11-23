@@ -4,12 +4,6 @@
  * workbench used to carry is gone with it.
  */
 
-/** The editor's per-file state. */
-export type DocSync = "loading" | "synced" | "dirty" | "saving" | "conflict" | "failed";
-
-/** Whether the local draft of a dirty document is safely on disk. */
-export type DraftState = "idle" | "pending" | "saved" | "failed";
-
 export interface EditorDoc {
   /** Stable per document; the single-file editor keys its view on it. */
   id: string;

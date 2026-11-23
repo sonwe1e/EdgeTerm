@@ -392,6 +392,18 @@ export interface Callbacks {
    */
   onReportedCwd?: (cwd: ReportedCwd) => void;
   /**
+   * The session rang the bell (BEL, or a program's attention request). A
+   * background tab badges itself so a build that finished while the reader was
+   * elsewhere is not missed.
+   */
+  onBell?: () => void;
+  /**
+   * The program set the window title (OSC 0/2). It is what the shell says it
+   * is doing — "vim notes.txt", a nested ssh prompt — so the status bar can
+   * show it without renaming the tab the user may have named.
+   */
+  onTitleChange?: (title: string) => void;
+  /**
    * A file path printed by a command was Ctrl+clicked. `cwd` is the directory
    * the line was printed in (null for an absolute path); opening the file,
    * falling back to the session's current directory and reporting failures
@@ -426,7 +438,15 @@ export interface Callbacks {
    * `kind` says what the state is about: the submitted command, or one turn
    * of an agentic CLI that holds the terminal for a whole session.
    */
-  onCommandState: (state: "idle" | "running" | "complete", kind: "command" | "ai") => void;
+  /**
+   * `exit` is the shell-reported status when the shell has OSC 133 integration
+   * (D;<code>); null when the completion was inferred from the prompt text.
+   */
+  onCommandState: (
+    state: "idle" | "running" | "complete",
+    kind: "command" | "ai",
+    exit?: number | null,
+  ) => void;
   /** Actual interactive CLI recognition, independent of its activity heuristic. */
   onAiSession?: (tool: string | null) => void;
   /** Ranked history completions for the current input; [] when none. */

@@ -7,6 +7,7 @@
 @import "./styles/ftp.styles.css";
 @import "./styles/sender.styles.css";
 @import "./styles/status.styles.css";
+@import "./styles/palette.styles.css";
 @import "./styles/dialogs.styles.css";
 @import "./styles/editor.styles.css";
 @import "./styles/filer.styles.css";
@@ -15,3 +16,5 @@
 @import "./styles/transfer.styles.css";
 @import "./styles/forward.styles.css";
 @import "./styles/agent.styles.css";
+@import "./styles/broadcast.styles.css";
+@import "./styles/snippets.styles.css";

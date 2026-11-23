@@ -29,6 +29,7 @@ function mount() {
         panelFontFamily: "",
         bufferFontFamily: "",
         terminalScrollback: 10_000,
+        lineHeight: 1.25,
         cursorStyle: "block",
         cursorBlink: true,
         gpuRenderer: true,

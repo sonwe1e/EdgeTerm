@@ -21,13 +21,40 @@ interface Context {
   readonly erase: string;
 }
 
+/**
+ * How many finished commands stay navigable. Markers are cheap, but a session
+ * that has run thousands of commands should not accumulate them for ever.
+ */
+export const COMMAND_HISTORY_LIMIT = 200;
+
 export class TerminalCommands {
   inputAnchor: InputAnchor | null = null;
 
   /** Marker and prompt signature for detecting when the submitted command returns. */
   private commandMarker: IMarker | null = null;
 
+  /**
+   * Start rows of recent finished commands, oldest first, held as markers so
+   * a scrollback trim or a history prepend moves them with the text (a plain
+   * row number would silently start pointing at other lines). The last entry
+   * is also the start of "the last command" for the copy commands.
+   */
+  private commandStarts: IMarker[] = [];
+
+  /** The exit status of each finished command, in step with `commandStarts`. */
+  private commandExits: Array<number | null> = [];
+
+  /** The first row of the prompt that followed the last finished command. */
+  private lastPrompt: IMarker | null = null;
+
+  private lastCommandText = "";
+
+  /** Absolute row of the line the running command was submitted on. */
+  private commandStartLine = -1;
+
   private commandPrompt = "";
+
+  private commandText = "";
 
   private commandPromptRecognized = false;
 
@@ -154,6 +181,8 @@ export class TerminalCommands {
 
     this.commandMarker?.dispose();
     this.commandMarker = this.context.term.registerMarker(0);
+    this.commandStartLine = this.commandMarker.line;
+    this.commandText = sent ?? this.submittedCommand(prompt);
     this.commandPrompt = prompt;
     this.commandPromptRecognized = isInputPrompt(prompt);
     this.commandOutputAdvanced = false;
@@ -272,11 +301,17 @@ export class TerminalCommands {
     // prompt, a device prompt naming the view just entered, or the prompt
     // back after the statement (see `terminalPrompt.ts`).
     const knownPrompt = this.commandPromptRecognized && isInputPrompt(current.text);
-    if (samePrompt || knownPrompt) this.finishCommand();
+    if (samePrompt || knownPrompt) this.finishCommand(null, current.first);
   }
 
-  finishCommand() {
+  /**
+   * Closes the running command. `promptRow` is the absolute row of the prompt
+   * that returned (the gutter marks that command's start line); `exit` is the
+   * status the shell announced, when it announces one.
+   */
+  finishCommand(exit: number | null = null, promptRow?: number) {
     if (!this.commandRunning) return;
+    if (promptRow !== undefined) this.rememberFinishedCommand(promptRow, exit);
     // Keystrokes sent while the command owned the terminal (`q` to leave
     // top, a pager's keys, an answer to a question) belonged to it, not to
     // the next command line. The anchor they left points at a row the
@@ -284,12 +319,72 @@ export class TerminalCommands {
     this.dropAnchor();
     const kind = this.aiSession ? "ai" : "command";
     this.resetCommandTracking();
-    if (!this.context.disposed) this.context.callbacks.onCommandState("complete", kind);
+    if (!this.context.disposed) this.context.callbacks.onCommandState("complete", kind, exit);
+  }
+
+  /**
+   * Keeps what the reader will want to copy. The cursor sits on the returned
+   * prompt, so both markers are placed relative to it: the start of the command
+   * line, and the first row of the prompt that followed its output.
+   */
+  private rememberFinishedCommand(promptRow: number, exit: number | null) {
+    // An agentic CLI's turn is not a shell command; the copy commands are
+    // about "the command I ran", not the assistant's prose.
+    if (this.aiSession || this.commandStartLine < 0) return;
+    const buffer = this.context.term.buffer.active;
+    const cursorRow = buffer.baseY + buffer.cursorY;
+    const start = this.context.term.registerMarker(this.commandStartLine - cursorRow);
+    if (start) {
+      this.commandStarts.push(start);
+      this.commandExits.push(exit);
+      while (this.commandStarts.length > COMMAND_HISTORY_LIMIT) {
+        this.commandStarts.shift()?.dispose();
+        this.commandExits.shift();
+      }
+    }
+    this.lastPrompt?.dispose();
+    this.lastPrompt = this.context.term.registerMarker(promptRow - cursorRow);
+    this.lastCommandText = this.commandText;
+  }
+
+  /** Start rows of the finished commands whose shell reported a failure. */
+  commandFailures(): number[] {
+    const lines: number[] = [];
+    for (let index = 0; index < this.commandStarts.length; index += 1) {
+      const marker = this.commandStarts[index];
+      const exit = this.commandExits[index];
+      if (marker && !marker.isDisposed && exit !== null && exit !== undefined && exit !== 0) {
+        lines.push(marker.line);
+      }
+    }
+    return lines;
+  }
+
+  /** Absolute rows of finished commands still in the buffer, oldest first. */
+  commandLineList(): number[] {
+    const lines: number[] = [];
+    for (const marker of this.commandStarts) {
+      if (!marker.isDisposed) lines.push(marker.line);
+    }
+    return lines;
+  }
+
+  /**
+   * The last finished command and the rows its output occupies, or null when
+   * it has scrolled out of the buffer (the markers report their own disposal).
+   */
+  lastFinishedCommand(): { command: string; start: number; end: number } | null {
+    const start = this.commandStarts[this.commandStarts.length - 1];
+    if (!start || start.isDisposed) return null;
+    if (!this.lastPrompt || this.lastPrompt.isDisposed) return null;
+    return { command: this.lastCommandText, start: start.line, end: this.lastPrompt.line };
   }
 
   resetCommandTracking() {
     this.commandMarker?.dispose();
     this.commandMarker = null;
+    this.commandStartLine = -1;
+    this.commandText = "";
     this.commandPrompt = "";
     this.commandPromptRecognized = false;
     this.awaitingCommandEcho = false;

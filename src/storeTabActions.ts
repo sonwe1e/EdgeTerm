@@ -1,9 +1,10 @@
 import type { StateCreator } from "zustand";
 import * as api from "./api";
 import { t } from "./i18n";
-import { adjacentPane, resizeSplit, splitPane as splitPaneInLayout } from "./layout";
+import { adjacentPane, resetSplit, resizeSplit, splitPane as splitPaneInLayout } from "./layout";
 import {
   acknowledgeTab,
+  clampStripIndex,
   newPaneId,
   paneState,
   patchPane,
@@ -13,7 +14,7 @@ import {
   sessionKey,
   settlePane,
 } from "./storeLayout";
-import { AppStore, Tab, TerminalSize } from "./storeTypes";
+import { AppStore, ClosedTab, Tab, TerminalSize } from "./storeTypes";
 import { disposeController, getController } from "./terminalRegistry";
 import {
   beginTabConnectionClose,
@@ -31,6 +32,24 @@ const dropSize = (sizes: Record<string, TerminalSize>, id: string) => {
   return next;
 };
 
+/** How many closed sessions stay reopenable. A safety net, not a log. */
+const CLOSED_TAB_LIMIT = 10;
+
+/**
+ * What "Close Others" closes: everything but `keepId` and the pinned tabs.
+ * Pinned is a promise that the tab survives the bulk closes, not the explicit
+ * close, so it lives here where both the menu and any later caller share it.
+ */
+export const closeOthersTargets = (
+  tabs: readonly { info: { id: string }; pinned?: boolean }[],
+  keepId: string,
+): string[] =>
+  tabs.filter((tab) => tab.info.id !== keepId && !tab.pinned).map((tab) => tab.info.id);
+
+/** Newest last, bounded: the order `takeClosedTab` pops from. */
+export const pushClosedTab = (list: ClosedTab[], entry: ClosedTab): ClosedTab[] =>
+  [...list, entry].slice(-CLOSED_TAB_LIMIT);
+
 export const createTabActions: StateCreator<
   AppStore,
   [],
@@ -43,15 +62,24 @@ export const createTabActions: StateCreator<
     | "closeTab"
     | "requestCloseTab"
     | "requestCloseTabs"
+    | "closedTabs"
+    | "takeClosedTab"
     | "setClosePrompt"
     | "setActive"
+    | "noteTabBell"
+    | "noteTabTitle"
     | "setActivePane"
     | "activateAdjacentTab"
     | "activateAdjacentPane"
     | "moveTab"
     | "moveTabToPane"
     | "splitPane"
+    | "zoomedPaneId"
+    | "toggleZoomedPane"
     | "resizeLayout"
+    | "resetSplitSizes"
+    | "toggleTabPinned"
+    | "renameTab"
     | "setTabDrag"
     | "applyState"
     | "markCommandStarted"
@@ -60,6 +88,8 @@ export const createTabActions: StateCreator<
     | "setSize"
   >
 > = (set, get) => ({
+  closedTabs: [],
+  zoomedPaneId: null,
   addTab(info, profile, state = "connected") {
     const { tabs, panes, activePaneId } = get();
     const taken = new Set(tabs.map((tab) => tab.number));
@@ -146,11 +176,27 @@ export const createTabActions: StateCreator<
         clipboardPrompt: current.clipboardPrompt?.sessionId === id ? null : current.clipboardPrompt,
         authPrompts: current.authPrompts.filter((prompt) => prompt.sessionId !== id),
         closePrompt: closePrompt && closePrompt.length > 0 ? closePrompt : null,
+        // Remember what was closed, newest last, bounded: reopened sessions
+        // are a safety net, not a log.
+        closedTabs: closingTab
+          ? pushClosedTab(current.closedTabs, {
+              info: closingTab.info,
+              profile: closingTab.profile,
+            })
+          : current.closedTabs,
         tabSizes: dropSize(current.tabSizes, id),
       });
     } finally {
       endTabConnectionClose(id);
     }
+  },
+
+  takeClosedTab() {
+    const closed = get().closedTabs;
+    if (closed.length === 0) return null;
+    const newest = closed[closed.length - 1];
+    set({ closedTabs: closed.slice(0, -1) });
+    return newest;
   },
 
   requestCloseTab(id) {
@@ -191,6 +237,28 @@ export const createTabActions: StateCreator<
     });
   },
 
+  noteTabTitle(id, raw) {
+    // A program may set a title of anything: clip the control characters and
+    // the length, and treat "no title" as clearing what was there.
+    const title = raw
+      .replace(/[\u0000-\u001f\u007f]/g, "")
+      .trim()
+      .slice(0, 120);
+    const tab = get().tabs.find((item) => item.info.id === id);
+    if (!tab || tab.remoteTitle === (title || undefined)) return;
+    set({ tabs: patchTab(get().tabs, id, { remoteTitle: title || undefined }) });
+  },
+
+  noteTabBell(id) {
+    const { tabs, activeId } = get();
+    // A bell in the pane the reader is already looking at needs no badge: the
+    // user is there, and a marker would only survive until the next click.
+    if (id === activeId) return;
+    const tab = tabs.find((item) => item.info.id === id);
+    if (!tab || tab.attention) return;
+    set({ tabs: patchTab(tabs, id, { attention: true }) });
+  },
+
   setActivePane(paneId) {
     const { panes, activePaneId, tabs } = get();
     const pane = panes.find((item) => item.id === paneId);
@@ -201,6 +269,30 @@ export const createTabActions: StateCreator<
       tabFocusTarget: "terminal",
       tabs: acknowledgeTab(tabs, pane.activeTabId),
     });
+  },
+
+  renameTab(id, title) {
+    const tab = get().tabs.find((item) => item.info.id === id);
+    if (!tab) return;
+    const trimmed = title.trim();
+    // Committing the name the tab already shows must not freeze a derived
+    // title: an untouched Rename would otherwise survive later name changes.
+    const plain = tab.ordinal ? `${tab.info.name} (${tab.ordinal})` : tab.info.name;
+    const next = trimmed === "" || trimmed === plain ? undefined : trimmed;
+    if (next === tab.title) return;
+    set({ tabs: patchTab(get().tabs, id, { title: next }) });
+  },
+
+  toggleTabPinned(id) {
+    const current = get();
+    const tab = current.tabs.find((item) => item.info.id === id);
+    if (!tab) return;
+    const pinned = !tab.pinned;
+    const tabs = current.tabs.map((item) => (item.info.id === id ? { ...item, pinned } : item));
+    // Pinning parks the tab at the front of its own strip: the array order is
+    // the display order, so no derived ordering is needed and drag-reorder
+    // keeps working on the positions it sees.
+    set({ tabs: pinned ? placeTab(tabs, id, tab.paneId, 0) : tabs });
   },
 
   activateAdjacentTab(direction) {
@@ -226,9 +318,9 @@ export const createTabActions: StateCreator<
     if (!tab) return;
     const strip = tabs.filter((item) => item.paneId === tab.paneId);
     const from = strip.indexOf(tab);
-    const to = Math.max(0, Math.min(index, strip.length - 1));
+    const to = Math.max(0, clampStripIndex(strip, tab.pinned === true, index));
     if (to === from) return;
-    set({ tabs: placeTab(tabs, id, tab.paneId, index) });
+    set({ tabs: placeTab(tabs, id, tab.paneId, to) });
   },
 
   moveTabToPane(id, paneId, index) {
@@ -241,9 +333,17 @@ export const createTabActions: StateCreator<
     }
     // The tab is shown and focused where it lands; then the pane it left
     // picks a new tab to show, or folds away.
+    // The destination strip has its own pinned region: a drop can land
+    // beside it, never inside it from the wrong side.
+    const target = current.tabs.filter((item) => item.paneId === paneId);
     const settled = settlePane(
       {
-        tabs: placeTab(current.tabs, id, paneId, index),
+        tabs: placeTab(
+          current.tabs,
+          id,
+          paneId,
+          clampStripIndex(target, tab.pinned === true, index, true),
+        ),
         activeId: id,
         panes: patchPane(current.panes, paneId, { activeTabId: id }),
         layout: current.layout,
@@ -252,6 +352,11 @@ export const createTabActions: StateCreator<
       tab.paneId,
     );
     set({ ...settled, tabs: acknowledgeTab(settled.tabs, id), tabFocusTarget: "terminal" });
+  },
+
+  toggleZoomedPane() {
+    const { zoomedPaneId, activePaneId } = get();
+    set({ zoomedPaneId: zoomedPaneId === activePaneId ? null : activePaneId });
   },
 
   splitPane(paneId, side, tabId) {
@@ -269,10 +374,18 @@ export const createTabActions: StateCreator<
       return paneId;
     }
     const newId = newPaneId();
+    // A new pane the reader cannot see would look like a no-op: unzoom first.
     const layout = splitPaneInLayout(current.layout, paneId, side, newId);
     const panes = [...current.panes, { id: newId, activeTabId: tab?.info.id ?? null }];
     if (!tab) {
-      set({ layout, panes, activePaneId: newId, activeId: null, tabFocusTarget: "terminal" });
+      set({
+        layout,
+        panes,
+        activePaneId: newId,
+        activeId: null,
+        tabFocusTarget: "terminal",
+        zoomedPaneId: null,
+      });
       return newId;
     }
     const settled = settlePane(
@@ -289,8 +402,15 @@ export const createTabActions: StateCreator<
       ...settled,
       tabs: acknowledgeTab(settled.tabs, tab.info.id),
       tabFocusTarget: "terminal",
+      zoomedPaneId: null,
     });
     return newId;
+  },
+
+  resetSplitSizes(path, index) {
+    const layout = get().layout;
+    const reset = resetSplit(layout, path, index);
+    if (reset !== layout) set({ layout: reset });
   },
 
   resizeLayout(path, index, delta, minSize) {

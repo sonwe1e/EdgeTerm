@@ -11,6 +11,7 @@ import {
 } from "react";
 
 import { ensureController, openSessionGit, revealCwdInFiler } from "../actions";
+import { zoomFontSize } from "../fontZoom";
 import { fontStack } from "../fonts";
 import { IS_MAC } from "../platform";
 import { chordLabel, type ShortcutCommand } from "../shortcuts";
@@ -19,7 +20,15 @@ import type { TerminalController } from "../terminal";
 import { getController } from "../terminalRegistry";
 import { isFileSession } from "../types";
 import { useT } from "../useT";
+import { commandHistory } from "../history";
+import {
+  requestSnippetRun,
+  requestSnippetSave,
+  requestSnippetsOpen,
+  sendCommandText,
+} from "../snippetActions";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
+import { Icon } from "./icons";
 
 // The dual-pane file workspace only exists for FTP and SFTP tabs, so it loads
 // with the first one instead of with the window.
@@ -109,6 +118,7 @@ function TerminalHost({ tab, visible, focused }: { tab: Tab; visible: boolean; f
   const t = useT();
   const gutterMode = useStore((s) => s.gutterMode);
   const bufferFontSize = useStore((s) => s.bufferFontSize);
+  const lineHeight = useStore((s) => s.lineHeight);
   const bufferFontFamily = useStore((s) => s.bufferFontFamily);
   const symbolFontFamilies = useStore((s) => s.symbolFontFamilies);
   const systemMonoFamily = useStore((s) => s.systemMonoFamily);
@@ -118,9 +128,12 @@ function TerminalHost({ tab, visible, focused }: { tab: Tab; visible: boolean; f
   const suggestionsEnabled = useStore((s) => s.suggestionsEnabled);
   const pasteWarning = useStore((s) => s.pasteWarning);
   const copyOnSelect = useStore((s) => s.copyOnSelect);
+  const snippets = useStore((s) => s.snippets);
   const programClipboard = useStore((s) => s.programClipboard);
   const rightClickAction = useStore((s) => s.rightClickAction);
   const [menu, setMenu] = useState<TerminalMenu | null>(null);
+  // The pill only exists when it can help: the viewport has left the end.
+  const [atBottom, setAtBottom] = useState(true);
   const closeMenu = useCallback(() => setMenu(null), []);
   const id = tab.info.id;
   // xterm loads on demand, so the terminal can arrive a tick after the pane
@@ -135,6 +148,32 @@ function TerminalHost({ tab, visible, focused }: { tab: Tab; visible: boolean; f
   const selectAllKey = useAccelerator("selectAll");
   const clearKey = useAccelerator("clear");
   const revealCwdKey = useAccelerator("revealCwd");
+
+  useEffect(() => {
+    if (!terminal) return;
+    const off = terminal.onScrollState(setAtBottom);
+    setAtBottom(terminal.isAtBottom());
+    return off;
+  }, [terminal]);
+
+  // Ctrl+wheel is the muscle-memory zoom of every terminal. The listener has
+  // to be non-passive to keep the browser from zooming the whole page.
+  useEffect(() => {
+    // The controller's xterm may not exist yet (lazy import, and jsdom tests
+    // that only stub the parts they use).
+    const element = terminal?.term?.element;
+    if (!element) return;
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      const store = useStore.getState();
+      const next = zoomFontSize(store.bufferFontSize, event.deltaY < 0 ? 1 : -1);
+      if (next !== store.bufferFontSize) store.setBufferFontSize(next);
+      store.setStatus(t("status.fontSize", { size: next }));
+    };
+    element.addEventListener("wheel", onWheel, { passive: false });
+    return () => element.removeEventListener("wheel", onWheel);
+  }, [terminal, t]);
 
   const ownsClick = (event: ReactMouseEvent) => {
     const controller = getController(id);
@@ -193,6 +232,10 @@ function TerminalHost({ tab, visible, focused }: { tab: Tab; visible: boolean; f
     fn(controller);
   };
 
+  // Read when the pane draws its menu: the list is what the reader reached for
+  // most recently, and the menu is rebuilt each time it opens.
+  const recentCommands = commandHistory.recent(10).map((entry) => entry.command);
+
   const menuItems: MenuItem[] = [
     {
       label: t("menu.copy"),
@@ -233,6 +276,64 @@ function TerminalHost({ tab, visible, focused }: { tab: Tab; visible: boolean; f
       disabled: tab.state !== "connected" || !["local", "ssh"].includes(tab.info.kind),
       action: withTerminal(() => void openSessionGit(id)),
     },
+    // Saved commands, where the shell is: a reader who is about to type a
+    // command should not have to leave the terminal to run one they kept.
+    ...(snippets.length > 0
+      ? [
+          "separator" as const,
+          {
+            label: t("terminal.sendSavedCommand"),
+            icon: "book" as const,
+            disabled: tab.state !== "connected",
+            children: snippets.slice(0, 15).map((snippet) => ({
+              label: snippet.name,
+              title: snippet.command,
+              action: () => requestSnippetRun(snippet),
+            })),
+          },
+          {
+            label: t("palette.saveSnippet"),
+            icon: "save" as const,
+            disabled: tab.state !== "connected",
+            action: () => requestSnippetSave(),
+          },
+          {
+            label: t("palette.openSnippets"),
+            icon: "book" as const,
+            action: () => requestSnippetsOpen(),
+          },
+        ]
+      : [
+          "separator" as const,
+          {
+            label: t("palette.saveSnippet"),
+            icon: "save" as const,
+            disabled: tab.state !== "connected",
+            action: () => requestSnippetSave(),
+          },
+          {
+            label: t("palette.openSnippets"),
+            icon: "book" as const,
+            action: () => requestSnippetsOpen(),
+          },
+        ]),
+    // Recent commands sit beside the saved ones: a command that worked a
+    // minute ago is more often sent again than saved first.
+    ...(recentCommands.length > 0
+      ? [
+          "separator" as const,
+          {
+            label: t("menu.recentCommands"),
+            icon: "history" as const,
+            disabled: tab.state !== "connected",
+            children: recentCommands.map((command) => ({
+              label: command,
+              title: command,
+              action: () => sendCommandText(command),
+            })),
+          },
+        ]
+      : []),
   ];
 
   useEffect(() => {
@@ -264,6 +365,10 @@ function TerminalHost({ tab, visible, focused }: { tab: Tab; visible: boolean; f
   useEffect(() => {
     terminal?.setFontSize(bufferFontSize);
   }, [bufferFontSize, terminal]);
+
+  useEffect(() => {
+    terminal?.setLineHeight(lineHeight);
+  }, [lineHeight, terminal]);
 
   useEffect(() => {
     terminal?.setFontFamily(
@@ -317,7 +422,27 @@ function TerminalHost({ tab, visible, focused }: { tab: Tab; visible: boolean; f
   // target also applies when the controller arrives after a lazy mount.
   useEffect(() => {
     if (!terminal || !autoFocus) return;
-    const frame = requestAnimationFrame(() => terminal.focus());
+    // Where focus was when this autofocus was scheduled. If the reader moved it
+    // somewhere else before the frame lands — onto a tab, a menu, a field — that
+    // move was deliberate and outranks this convenience. Without this the
+    // pending frame steals the keyboard from the strip, and F2 (a strip key)
+    // silently stops working whenever a terminal attaches a frame later.
+    const before = document.activeElement;
+    const frame = requestAnimationFrame(() => {
+      // Autofocus is a convenience, never stronger than a field the user is
+      // already typing in — renaming a tab must not lose its keystrokes to
+      // the terminal arriving a moment later. The terminal's own hidden
+      // textarea is not such a field; it is where focus belongs.
+      const active = document.activeElement;
+      if (
+        active?.closest("input, textarea, select") &&
+        !active.closest(".xterm, .xterm-helper-textarea")
+      ) {
+        return;
+      }
+      if (active !== before && active !== document.body) return;
+      terminal.focus();
+    });
     return () => cancelAnimationFrame(frame);
   }, [autoFocus, terminal]);
 
@@ -330,6 +455,24 @@ function TerminalHost({ tab, visible, focused }: { tab: Tab; visible: boolean; f
         onMouseUp={onMiddleButton}
         onAuxClick={onMiddleButton}
       />
+      {!atBottom && (
+        // A jump, not a mode: mousedown is swallowed so the click cannot
+        // pull focus out of the terminal.
+        <button
+          type="button"
+          className="term-jump-latest"
+          title={t("terminal.jumpToLatest")}
+          aria-label={t("terminal.jumpToLatest")}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => {
+            terminal?.scrollToBottom();
+            terminal?.focus();
+          }}
+        >
+          <Icon name="arrow-down" />
+          <span>{t("terminal.jumpToLatest")}</span>
+        </button>
+      )}
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={closeMenu} />}
     </>
   );

@@ -82,6 +82,7 @@ export function restoreWorkspace(snapshot: WorkspaceSnapshot): Tab[] {
       profile,
       number: saved.number,
       ordinal: saved.ordinal,
+      title: saved.title,
       paneId: paneMap.get(saved.paneId)!,
       directories: saved.directories,
       state: "connecting",

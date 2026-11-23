@@ -1,6 +1,12 @@
 import type { StateCreator } from "zustand";
 import { DEFAULT_FILE_SORT, parseFileSort, saveFileSort } from "./fileSort";
 import { commandHistory } from "./history";
+import {
+  DEFAULT_LINE_HEIGHT,
+  LINE_HEIGHT_KEY,
+  normalizeLineHeight,
+  saveLineHeight,
+} from "./storePreferences";
 import { detectLanguage, parseLanguage, setCurrentLanguage } from "./i18n";
 import { parseProgramClipboardMode } from "./osc52";
 import {
@@ -10,6 +16,8 @@ import {
   samePanelDocks,
 } from "./panelDock";
 import { PANEL_PREFERENCE_KEYS, SORT_STORAGE_KEY } from "./persistKeys";
+import { loadSnippets } from "./snippets";
+import { loadStartupCommands } from "./startupCommands";
 import { HAS_TRAY, IS_MAC } from "./platform";
 import {
   defaultShortcuts,
@@ -87,6 +95,7 @@ export const createPreferenceActions: StateCreator<
     | "setLanguage"
     | "setPanelFontSize"
     | "setBufferFontSize"
+    | "setLineHeight"
     | "setPanelFontFamily"
     | "setBufferFontFamily"
     | "setSymbolFontFamilies"
@@ -178,6 +187,13 @@ export const createPreferenceActions: StateCreator<
     const bufferFontSize = normalizeFontSize(size, BUFFER_FONT_SIZE);
     set({ bufferFontSize });
     saveFontSize(BUFFER_FONT_SIZE_KEY, bufferFontSize);
+  },
+
+  setLineHeight(height) {
+    const lineHeight = normalizeLineHeight(height);
+    if (get().lineHeight === lineHeight) return;
+    set({ lineHeight });
+    saveLineHeight(lineHeight);
   },
 
   setPanelFontFamily(family) {
@@ -318,6 +334,7 @@ export const createPreferenceActions: StateCreator<
       theme: "dark",
       panelFontSize: PANEL_FONT_SIZE.default,
       bufferFontSize: BUFFER_FONT_SIZE.default,
+      lineHeight: DEFAULT_LINE_HEIGHT,
       panelFontFamily: "",
       bufferFontFamily: "",
       terminalScrollback: TERMINAL_SCROLLBACK.default,
@@ -342,6 +359,7 @@ export const createPreferenceActions: StateCreator<
       localStorage.removeItem(THEME_KEY);
       localStorage.removeItem(PANEL_FONT_SIZE_KEY);
       localStorage.removeItem(BUFFER_FONT_SIZE_KEY);
+      localStorage.removeItem(LINE_HEIGHT_KEY);
       localStorage.removeItem(PANEL_FONT_FAMILY_KEY);
       localStorage.removeItem(BUFFER_FONT_FAMILY_KEY);
       localStorage.removeItem(TERMINAL_SCROLLBACK_KEY);
@@ -360,7 +378,13 @@ export const createPreferenceActions: StateCreator<
     } catch {
       // The defaults still apply for this run when storage is unavailable.
     }
-    set({ panelPreferencesRevision: get().panelPreferencesRevision + 1 });
+    // Saved commands and startup commands live in the store as well as in
+    // storage: restoring defaults must empty both, not just the keys.
+    set({
+      snippets: [],
+      startupCommands: {},
+      panelPreferencesRevision: get().panelPreferencesRevision + 1,
+    });
   },
 
   exportSettings() {
@@ -392,6 +416,7 @@ export const createPreferenceActions: StateCreator<
       language: state.language,
       panelFontSize: state.panelFontSize,
       bufferFontSize: state.bufferFontSize,
+      lineHeight: state.lineHeight,
       panelFontFamily: state.panelFontFamily,
       bufferFontFamily: state.bufferFontFamily,
       terminalScrollback: state.terminalScrollback,
@@ -443,6 +468,9 @@ export const createPreferenceActions: StateCreator<
         }
       }
     }
+    // These two are store state as well as stored preferences: an import that
+    // changed them must show up now, not after a restart.
+    set({ snippets: loadSnippets(), startupCommands: loadStartupCommands() });
     const panels = parsePanels(values.panels, state.panels);
     set({ panelPreferencesRevision: get().panelPreferencesRevision + 1 });
     if (panels) {
@@ -459,6 +487,9 @@ export const createPreferenceActions: StateCreator<
     }
     if (typeof values.bufferFontSize === "number") {
       state.setBufferFontSize(values.bufferFontSize);
+    }
+    if (typeof values.lineHeight === "number") {
+      state.setLineHeight(values.lineHeight);
     }
     if (typeof values.panelFontFamily === "string") {
       state.setPanelFontFamily(values.panelFontFamily);

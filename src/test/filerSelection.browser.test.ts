@@ -86,6 +86,40 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
+it("filters the listing in place, drops hidden selections, and steps back", async () => {
+  await open();
+  await click(1);
+  await twoFrames();
+  expect(selected()).toEqual(["file1.txt"]);
+  const filter = document.querySelector<HTMLInputElement>(".filer-filter")!;
+  expect(filter, "the folder offers a filter").not.toBeNull();
+
+  filter.focus();
+  await userEvent.keyboard("file999");
+  await twoFrames();
+  const names = [...document.querySelectorAll(".filer-entry .row-label")].map(
+    (node) => node.textContent,
+  );
+  expect(names).toEqual(["file999.txt"]);
+  expect(document.querySelector(".filer-filter-count")?.textContent).toBe("1 of 1000");
+  expect(selected(), "a hidden row must not stay selected").toEqual([]);
+
+  await userEvent.keyboard("{Escape}");
+  await twoFrames();
+  expect(filter.value, "Escape clears the filter first").toBe("");
+  expect(row(0), "the whole folder is back").not.toBeNull();
+});
+
+it("opens the filter with the slash key from the list", async () => {
+  await open();
+  // The list owns the keys: rows are buttons, not focus targets.
+  document.querySelector<HTMLElement>(".filer-list")!.focus();
+  await twoFrames();
+  await userEvent.keyboard("/");
+  await twoFrames();
+  expect(document.activeElement).toBe(document.querySelector(".filer-filter"));
+});
+
 it("opens source control at the folder currently displayed in the Files panel", async () => {
   await open();
   await userEvent.click(page.getByRole("button", { name: "More actions", exact: true }));

@@ -1,9 +1,7 @@
 /* Transfer centre: the status-bar affordance, the queue body and its rows.
    The frame — width, header, gutter, scroll and field language — belongs to
    popover.styles.css; this file only styles what the transfer body adds.
-   The pinned variant places the same frame in the app's bottom dock. */
-
-:root .transfer-center {
+   The pinned variant places the same frame in the app's bottom dock. */ :root .transfer-center {
   position: relative;
 }
 
@@ -16,7 +14,6 @@
   font-size: var(--fs-xs);
   white-space: nowrap;
 }
-
 /* The body's gap owns the rhythm; a note inside it carries no margins of its
    own, or it would push the next section twice as far. */
 .transfer-center-popover .status-popover-note {
@@ -26,7 +23,6 @@
 .transfer-center-popover .status-popover-body > * {
   flex-shrink: 0;
 }
-
 /* The whole queue on one line directly under the header. */
 .transfer-center-total {
   margin: 0;
@@ -46,13 +42,13 @@
   max-height: 320px;
   overflow: auto;
 }
-
 /* ---- one queue row: identity, route, progress and stage ------------------ */
 .transfer-job {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  height: 100px; /* keep in step with JOB_ROW_HEIGHT in TransferCenter.tsx */
+  height: 100px;
+  /* keep in step with JOB_ROW_HEIGHT in TransferCenter.tsx */
   padding: var(--sp-6) 0;
   box-sizing: border-box;
   overflow: hidden;
@@ -177,7 +173,6 @@
   flex: none;
   margin-left: var(--sp-4);
 }
-
 .status-popover .transfer-job-context:hover {
   background: transparent;
   color: var(--fg);
@@ -188,7 +183,6 @@
   width: 35% !important;
   opacity: 0.5;
 }
-
 .transfer-dock:empty {
   display: none;
 }
@@ -228,7 +222,7 @@
   height: 100%;
   border-radius: inherit;
   background: var(--accent);
-  transition: width 80ms linear;
+  transition: width var(--dur-1) linear;
 }
 
 .transfer-job.is-complete .transfer-job-bar {
@@ -293,7 +287,6 @@
   background: color-mix(in srgb, var(--red) 8%, transparent);
   border-color: color-mix(in srgb, var(--red) 45%, var(--border));
 }
-
 /* ---- failed-row confirmation: same row height, explicit question --------- */
 /* The band replaces the row's content instead of growing it: the queue keeps
    its pitch, and the question, the two buttons and the server boundary all
@@ -324,7 +317,6 @@
   font-size: var(--fs-xs);
   line-height: 20px;
 }
-
 /* ---- bulk clear confirmation: one band above the queue ------------------- */
 .transfer-clear-band {
   display: flex;
@@ -350,7 +342,6 @@
   color: var(--fg-dim);
   font-size: var(--fs-xs);
 }
-
 /* ---- section heads (failed files, interrupted transfers) ----------------- */
 .transfer-failures,
 .transfer-recovery {
@@ -390,7 +381,6 @@
   margin: 0;
   font-size: var(--fs-xs);
 }
-
 /* ---- failed files: one ellipsised message per 24px line ------------------ */
 .transfer-failure-rows {
   position: relative;
@@ -401,7 +391,8 @@
 .status-popover .transfer-failure-row {
   display: block;
   width: 100%;
-  height: 24px; /* keep in step with FAILURE_ROW_HEIGHT */
+  height: 24px;
+  /* keep in step with FAILURE_ROW_HEIGHT */
   padding: 0 var(--sp-4);
   border: 0;
   background: transparent;
@@ -436,7 +427,6 @@
   overflow-wrap: anywhere;
   user-select: text;
 }
-
 /* ---- interrupted transfers: name and endpoint, resume or clear ----------- */
 .transfer-recovery-rows {
   position: relative;
@@ -448,7 +438,8 @@
   display: flex;
   align-items: center;
   gap: var(--sp-8);
-  height: 56px; /* keep in step with RECOVERY_ROW_HEIGHT */
+  height: 56px;
+  /* keep in step with RECOVERY_ROW_HEIGHT */
   padding: var(--sp-8) 0;
   box-sizing: border-box;
 }
@@ -471,7 +462,6 @@
 .transfer-recovery-main .transfer-job-meta-text {
   flex: none;
 }
-
 /* ---- settings: one quiet disclosure, two columns of fields --------------- */
 .transfer-settings > summary {
   display: flex;
@@ -483,11 +473,9 @@
   cursor: pointer;
   list-style: none;
 }
-
 .transfer-settings > summary::-webkit-details-marker {
   display: none;
 }
-
 /* The same chevron the panels' disclosures use, turned as the section opens. */
 .transfer-settings > summary::before {
   content: "";
@@ -497,9 +485,8 @@
   border-top: 3px solid transparent;
   border-bottom: 3px solid transparent;
   border-left: 4px solid currentColor;
-  transition: transform 120ms ease;
+  transition: transform var(--dur-2) ease;
 }
-
 .transfer-settings[open] > summary::before {
   transform: rotate(90deg);
 }
@@ -538,7 +525,6 @@
   justify-content: flex-start;
   color: var(--fg);
 }
-
 @media (prefers-reduced-motion: reduce) {
   .transfer-job-bar,
   .transfer-settings > summary::before {

@@ -122,7 +122,6 @@ export const en = {
   "agent.reloadPi": "Saved. Run /reload in Pi, or restart it. Project settings take precedence.",
   "agent.piExitHint":
     "Pi 1.4.0 defaults to replaying the transcript on fullscreen exit. resume-hint keeps the resume command. Check project and remote settings separately; an unreadable file does not prove its effective setting.",
-  // --- shared buttons and words --------------------------------------------
   "common.cancel": "Cancel",
   "common.apply": "Apply",
   "common.close": "Close",
@@ -130,8 +129,6 @@ export const en = {
   "common.save": "Save",
   "common.enabled": "Enabled",
   "common.loading": "Loading…",
-
-  // --- menu bar -------------------------------------------------------------
   "menu.session": "Session",
   "menu.edit": "Edit",
   "menu.search": "Search",
@@ -139,7 +136,6 @@ export const en = {
   "menu.help": "Help",
   "menu.language": "Language",
   "menu.menubar": "Application Menu",
-
   "menu.newSession": "New Session…",
   "empty.newSession": "New Session",
   "empty.hint":
@@ -154,17 +150,14 @@ export const en = {
   "menu.disconnectSession": "Disconnect Session",
   "menu.cancelConnection": "Cancel Connection",
   "menu.closeSession": "Close Session",
-
   "menu.timestampLine": "Timestamp & Line",
   "menu.gutterBoth": "Timestamp + Line Number",
   "menu.gutterLine": "Line Number Only",
   "menu.gutterTime": "Timestamp Only",
   "menu.gutterOff": "No Gutter",
-
   "menu.exportData": "Export Data…",
   "menu.importData": "Import Data…",
   "menu.importOpenSshConfig": "Import OpenSSH Config…",
-
   "menu.copy": "Copy",
   "menu.paste": "Paste",
   "menu.selectAll": "Select All",
@@ -182,15 +175,12 @@ export const en = {
   "menu.clearBuffer": "Clear Buffer",
   "menu.commandSuggestions": "Command Suggestions",
   "menu.clearCommandHistory": "Clear Command History…",
-
   "menu.find": "Find…",
   "menu.findNext": "Find Next",
-
   "menu.panelSessions": "Sessions Panel",
   "menu.panelFiler": "Filer Panel",
   "menu.panelSender": "Sender Panel",
   "menu.panelLayout": "Panel Layout",
-  // "{panel} on {dock}", e.g. "Filer on Right".
   "menu.panelOnDock": "{panel} on {dock}",
   "menu.resetPanelLayout": "Reset Panel Layout",
   "menu.splitRight": "Split Right",
@@ -199,54 +189,154 @@ export const en = {
   "menu.theme": "Theme",
   "menu.displaySettings": "Display Settings…",
   "menu.keyboardShortcuts": "Keyboard Shortcuts…",
-
   "menu.tutorial": "Tutorial",
   "menu.checkForUpdates": "Downloads and Updates…",
   "menu.openLogDirectory": "Open Log Directory",
   "menu.exportDiagnostics": "Export Diagnostics…",
   "menu.restoreDefaultSettings": "Restore Default Settings…",
   "menu.about": "About EdgeTerm",
-
-  // Window caption buttons (Windows / Linux title bar).
+  "sc.snippets.label": "Saved Commands",
+  "sc.snippets.hint": "Open the list of saved commands",
+  "sc.commandPalette.label": "Command Palette",
+  "sc.commandPalette.hint": "Search every action, panel, tab and session",
+  "palette.title": "Command Palette",
+  "palette.placeholder": "Type a command or search…",
+  "palette.noMatch": "No command matches “{query}”",
+  "palette.group.actions": "Actions",
+  "palette.group.layout": "Layout",
+  "palette.group.panels": "Panels",
+  "palette.group.tabs": "Open tabs",
+  "palette.group.sessions": "Saved sessions",
+  "palette.group.appearance": "Appearance",
+  "palette.group.settings": "Settings",
+  "palette.tabItem": "Switch to {title}",
+  "palette.sessionItem": "Connect to {name}",
+  "palette.themeItem": "Theme: {theme}",
+  "palette.current": "Current",
+  "palette.switchHint": "Open tab",
+  "palette.connectHint": "Saved session",
+  "palette.footer": "↑↓ navigate · Enter run · Esc close",
+  "palette.count": "{count} commands",
+  "sc.prevCommand.label": "Previous Command",
+  "sc.prevCommand.hint": "Scroll to the command before the cursor, then step further back",
+  "sc.nextCommand.label": "Next Command",
+  "sc.prevFailed.label": "Previous Failed Command",
+  "sc.prevFailed.hint": "Jump to the previous command the shell reported as failed",
+  "sc.nextFailed.label": "Next Failed Command",
+  "sc.nextFailed.hint": "Jump to the next command the shell reported as failed",
+  "sc.prevWatch.label": "Previous Watch Mark",
+  "sc.prevWatch.hint": "Jump to the previous line with an error or a warning",
+  "sc.nextWatch.label": "Next Watch Mark",
+  "sc.nextWatch.hint": "Jump to the next line with an error or a warning",
+  "sc.nextCommand.hint": "Scroll to the first command after the last jump",
+  "status.noCommandToJump": "No command in that direction",
+  "sc.broadcast.label": "Broadcast Input",
+  "sc.broadcast.hint": "Type once and send it to every connected shell session",
+  "broadcast.on": "Broadcasting input to {count} sessions",
+  "broadcast.off": "Broadcast input off",
+  "broadcast.needsSecondSession": "Open another connected shell session before broadcasting input",
+  "broadcast.indicator": "Broadcast to {count}",
+  "broadcast.targets": "Broadcast targets",
+  "broadcast.group": "Group: {name}",
+  "broadcast.targetsHint": "Untick a shell to leave it out of synchronized input",
+  "broadcast.chooseTargets": "Choose broadcast targets",
+  "broadcast.noPeers": "No other connected shell is open",
+  "menu.prevCommand": "Previous Command",
+  "menu.prevFailed": "Previous Failed Command",
+  "menu.nextFailed": "Next Failed Command",
+  "menu.snippets": "Saved Commands…",
+  "terminal.sendSavedCommand": "Send Saved Command",
+  "palette.sendSnippet": "Send {name}",
+  "palette.saveSnippet": "Save Last Command as a Snippet",
+  "palette.saveSnippetHint": "Keeps the last submitted command under a name",
+  "snippets.saveTitle": "Save Command as a Snippet",
+  "snippets.saveHint": "Saved command: {command}",
+  "snippets.noCommandToSave": "No submitted command to save yet",
+  "snippets.saved": "Saved: {name}",
+  "snippets.saveButton": "Save",
+  "snippets.argsTitle": "Fill in {name}",
+  "snippets.argsHint": "Each value replaces its {{name}} placeholder before the command is sent.",
+  "snippets.argsSend": "Send",
+  "snippets.title": "Saved Commands",
+  "snippets.hint": "Click a command to send it to the active shell.",
+  "snippets.empty": "Nothing saved yet. Add a command below.",
+  "snippets.emptyHint":
+    "Or save one you just ran from the terminal's right-click menu — Save Last Command as a Snippet — or from the command palette.",
+  "snippets.add": "Add",
+  "snippets.nameLabel": "Name",
+  "snippets.namePlaceholder": "Restart app",
+  "snippets.commandLabel": "Command",
+  "snippets.commandPlaceholder": "sudo systemctl restart app",
+  "snippets.delete": "Delete {name}",
+  "snippets.edit": "Edit {name}",
+  "menu.recentCommands": "Recent Commands",
+  "snippets.duplicate": "Duplicate {name}",
+  "snippets.duplicated": "Duplicated as {name}",
+  "snippets.saveChanges": "Save Changes",
+  "snippets.nameTaken": "Another saved command already uses this name",
+  "snippets.filterLabel": "Filter saved commands",
+  "snippets.noMatches": "No saved command matches “{filter}”",
+  "snippets.copyAll": "Copy All",
+  "snippets.importFromClipboard": "Import from Clipboard",
+  "snippets.copied": "Copied {count} saved commands",
+  "snippets.imported": "Imported {count} saved commands",
+  "snippets.importedSkipped": "Imported {count}, skipped {skipped}",
+  "snippets.importFailed.clipboard": "Could not read the clipboard",
+  "snippets.importFailed.not-json": "The clipboard does not contain JSON",
+  "snippets.importFailed.wrong-format": "That is not an EdgeTerm saved-command bundle",
+  "snippets.importFailed.empty": "The bundle contains no usable commands",
+  "snippets.sent": "Sent: {name}",
+  "snippets.sentToMany": "Sent: {name} — to {count} shells",
+  "snippets.needsShell": "Open a connected shell first: there is nothing to send the command to",
+  "menu.prevWatch": "Previous Watch Mark",
+  "menu.nextWatch": "Next Watch Mark",
+  "status.noWatchMark": "No line in the buffer carries an error or a warning",
+  "status.remoteTitle": "Window title reported by the program: {title}",
+  "status.latency": "{ms} ms",
+  "status.latencyTitle":
+    "Typing latency: from a keystroke until its echo comes back (median of the last few)",
+  "status.noFailedCommand": "No failed command to jump to",
+  "menu.nextCommand": "Next Command",
+  "menu.copyCommandOutput": "Copy Last Command Output",
+  "menu.copyCommandLine": "Copy Last Command Line",
+  "sc.copyCommandOutput.label": "Copy Last Command Output",
+  "sc.copyCommandOutput.hint": "Copy only the rows the last finished command printed",
+  "sc.copyCommand.label": "Copy Last Command Line",
+  "sc.copyCommand.hint": "Copy the last finished command itself",
+  "status.copiedFromTerminal": "Copied to the clipboard",
+  "status.nothingToCopy": "No finished command to copy yet",
   "window.minimize": "Minimize",
   "window.maximize": "Maximize",
   "window.restoreDown": "Restore Down",
   "window.close": "Close",
-
-  // --- enumerations shown in menus -----------------------------------------
   "theme.dark": "Dark",
   "theme.light": "Light",
   "theme.serialxDark": "Dark (serialX)",
   "theme.serialxLight": "Light (serialX)",
-
   "dock.left": "Left",
   "dock.right": "Right",
   "dock.bottom": "Bottom",
-  // Panel header context menu: "Dock {dock}" and "Hide {panel}".
   "dock.dock": "Dock",
   "dock.hide": "Hide",
-
   "panel.sessions": "Session",
   "panel.sessionTree": "Saved sessions",
   "panel.localShell": "Local Shell",
   "panel.filer": "Filer",
   "panel.sender": "Sender",
-
   "clipboard.ask": "Ask",
   "clipboard.allow": "Allow",
   "clipboard.deny": "Deny",
-  // Fallback session name in the clipboard-write confirmation.
   "clipboard.unknownSession": "a session",
-
-  // --- About dialog ---------------------------------------------------------
   "about.title": "About EdgeTerm",
   "about.tagline":
     "A small, fast terminal, SSH, SFTP, FTP and serial client. The installer is tiny, it starts instantly, and it stays out of your way.",
   "about.madeBy": "Original author: miskin ·",
   "about.distribution": "This distribution ·",
-
-  // --- status bar and imperative notices -----------------------------------
   "status.ready": "Ready",
+  "status.nothingToReopen": "There is no closed session to reopen",
+  "status.fontSize": "Terminal font {size}px",
+  "terminal.jumpToLatest": "Jump to latest output",
+  "status.commandFailed": "Command exited with status {code}",
   "status.copyError": "Copy the message",
   "status.moreFailures": "+{count} more",
   "titleBar.actionFailed": "The window action failed: {error}",
@@ -297,14 +387,10 @@ export const en = {
   "status.previewOpened": "Preview opened in the browser: {url}",
   "status.previewFailed": "Preview failed: {error}",
   "status.previewStopped": "Preview stopped",
-
-  // --- text written into a terminal when a session ends --------------------
   "terminal.sessionClosed": "[session closed — press Enter to reconnect]",
   "terminal.connectionFailed": "[connection failed: {message}",
   "terminal.pressEnterToReconnect": " — press Enter to reconnect]",
   "terminal.acceptedHostKey": "[accepted new host key {fingerprint}; reconnecting]",
-
-  // --- confirmations raised from the menu bar ------------------------------
   "confirm.clearCommandHistory": "Delete the recorded command history used for inline suggestions?",
   "confirm.clearCommandHistoryTitle": "Clear Command History",
   "confirm.clear": "Clear",
@@ -312,8 +398,6 @@ export const en = {
     "Restore panel visibility, layout and widths, timestamp and line display, theme, fonts, scrollback, command suggestions, keyboard shortcuts, mouse and clipboard preferences, transfer and monitoring settings, interface language, and saved Workbench state to their defaults?",
   "confirm.restoreDefaultsTitle": "Restore Default Settings",
   "confirm.restore": "Restore",
-
-  // Shared words and the lowercase verbs the confirm dialogs show as key hints.
   "common.quit": "Quit",
   "common.paste": "Paste",
   "common.question": "?",
@@ -326,8 +410,6 @@ export const en = {
   "keys.paste": "paste",
   "keys.allow": "allow",
   "keys.deny": "deny",
-
-  // CloseSessionDialog
   "close.titleOne": "Close Session",
   "close.titleMany": "Close {count} Sessions",
   "close.close": "Close",
@@ -339,8 +421,6 @@ export const en = {
   "close.hintConnectingMany": "The connection attempts will be cancelled.",
   "close.hintOne": "The session will be disconnected and its terminal output discarded.",
   "close.hintMany": "The sessions will be disconnected and their terminal output discarded.",
-
-  // QuitConfirmDialog
   "quit.title": "Quit EdgeTerm",
   "quit.with": "Quit with",
   "quit.sessionOne": " active session",
@@ -349,16 +429,12 @@ export const en = {
   "quit.hint": "All connections will be disconnected and their terminal output discarded.",
   "quit.transfers":
     "Quitting will interrupt {count} unfinished file transfer(s), including paused tasks. Cancel to review them in the transfer center.",
-
-  // CloseChoiceDialog — what the window ✕ does while the setting is "ask".
   "closeChoice.title": "Close EdgeTerm",
   "closeChoice.body":
     "Minimize EdgeTerm to the system tray, where every session keeps running, or quit the app?",
   "closeChoice.tray": "Minimize to Tray",
   "closeChoice.exit": "Quit",
   "closeChoice.remember": "Remember my choice",
-
-  // PasteWarningDialog
   "pasteWarning.linesTitle": "{count} Lines",
   "pasteWarning.longText": "Long Text",
   "pasteWarning.holds": "The clipboard holds ",
@@ -368,19 +444,13 @@ export const en = {
   "pasteWarning.onOneLine": " on one line.",
   "pasteWarning.andMoreLines": "… and {count} more lines",
   "pasteWarning.dontWarn": "Don’t warn me again",
-
-  // ClipboardWriteDialog
   "clipboardWrite.title": "Allow Clipboard Access",
   "clipboardWrite.aProgramIn": "A program in ",
   "clipboardWrite.wantsToCopy": " wants to copy ",
   "clipboardWrite.toClipboard":
     " to the clipboard. Allowing it lets this session set the clipboard until it closes.",
   "clipboardWrite.alwaysAllow": "Always allow programs to set the clipboard",
-
-  // Shared: the delete verb and its key hint.
   "keys.delete": "delete",
-
-  // DeleteEntryDialog
   "deleteEntry.titleFolder": "Delete Folder",
   "deleteEntry.titleLink": "Delete Link",
   "deleteEntry.titleFile": "Delete File",
@@ -399,8 +469,6 @@ export const en = {
   "deleteEntry.hintLink":
     "Only the link itself is removed; what it points to is left alone. This cannot be undone.",
   "deleteEntry.hintFile": "The file will be removed. This cannot be undone.",
-
-  // DeleteProfileDialog
   "deleteProfile.title": "Delete Session",
   "deleteProfile.hintStart": "The saved session, any stored credentials for it",
   "deleteProfile.cmdUnknown":
@@ -408,14 +476,10 @@ export const en = {
   "deleteProfile.cmdOne": " and its 1 saved Sender command",
   "deleteProfile.cmdMany": " and its {count} saved Sender commands",
   "deleteProfile.hintEnd": " will be removed. This cannot be undone.",
-
-  // GroupNameDialog
   "groupName.error": "Enter a group name.",
   "groupName.nameLabel": "Name",
   "groupName.placeholder": "Group name",
   "groupName.in": "In {location}",
-
-  // AuthPromptDialog
   "auth.title": "Verification Required",
   "auth.signingInTo": "Signing in to ",
   "auth.as": " as ",
@@ -424,8 +488,6 @@ export const en = {
   "auth.hint": "Answers are sent to the server for this login only; EdgeTerm never stores them.",
   "auth.sending": "Sending…",
   "auth.continue": "Continue",
-
-  // FontSizeDialog (View → Display Settings…)
   "fontDialog.title": "Display Settings",
   "fontDialog.panels": "Panels",
   "fontDialog.panelsHint": "Filer, Session, and Sender panels",
@@ -439,6 +501,9 @@ export const en = {
   "fontDialog.bufferFontHint": "Terminal typeface; pick a monospaced one",
   "fontDialog.cursor": "Cursor",
   "fontDialog.cursorHint": "Shape of the terminal cursor",
+  "fontDialog.lineSpacing": "Line spacing",
+  "fontDialog.lineSpacingHint": "Space between terminal rows, for long logs",
+  "fontDialog.lineSpacingDefault": " (default)",
   "fontDialog.cursorStyle": "Cursor style",
   "fontDialog.cursorBlock": "Block",
   "fontDialog.cursorUnderline": "Underline",
@@ -457,8 +522,6 @@ export const en = {
     "Experimental (off by default). The 64/256 MB caps cover compressed storage only; reloaded rows use more RAM, and long wrapped lines may lose text.",
   "fontDialog.resetDefaults": "Reset Defaults",
   "fontDialog.systemDefault": "System default",
-
-  // HostKeyDialog
   "hostKey.title": "Host Key Changed",
   "hostKey.presented": " presented a key that does not match the one recorded for it.",
   "hostKey.newKey": "New key",
@@ -469,8 +532,6 @@ export const en = {
   "hostKey.hintEnd": " on the server. Accepting replaces every key recorded for this host.",
   "hostKey.accepting": "Accepting…",
   "hostKey.accept": "Accept New Key",
-
-  // SearchOverlay
   "search.noResults": "No results",
   "search.placeholder": "Find in buffer",
   "search.matchCase": "Match Case",
@@ -479,8 +540,6 @@ export const en = {
   "search.previous": "Previous match",
   "search.next": "Next match",
   "search.close": "Close search",
-
-  // UpdateDialog
   "update.titleDefault": "Downloads and Updates",
   "update.installed": "Installed: {version}",
   "update.manualHint":
@@ -488,8 +547,6 @@ export const en = {
   "update.packageHint":
     "Windows x64 installers and portable archives are currently available. Keep the data folder when replacing a portable copy; see the release page for other platforms.",
   "update.openDownload": "Open This Fork's Releases",
-
-  // SessionDialog — protocol picker
   "protocol.sshTelnet.label": "SSH / Telnet",
   "protocol.sshTelnet.hint": "Remote shell",
   "protocol.sftp.label": "(S)FTP",
@@ -498,8 +555,6 @@ export const en = {
   "protocol.shell.hint": "Local shell",
   "protocol.serial.label": "Serial",
   "protocol.serial.hint": "Device port",
-
-  // SessionDialog — header, identity, validation
   "session.newTitle": "New Session",
   "session.editTitle": "Edit Session",
   "session.saveTitle": "Save Session",
@@ -520,8 +575,6 @@ export const en = {
   "session.baudError": "Baud rate must be a positive whole number up to 4294967295.",
   "session.hostRequired": "Enter a host to connect to.",
   "session.portError": "The port must be a whole number from 1 to 65535.",
-
-  // SessionDialog — SSH / Telnet
   "session.sshConnection": "SSH connection",
   "session.telnetConnection": "Telnet connection",
   "session.serverAndAuth": "Server and authentication",
@@ -538,16 +591,12 @@ export const en = {
     "Port 23 opens with the usual telnet negotiation. On any other port the connection stays plain until the server negotiates, so text services such as HTTP or SMTP can be tested too; lines are edited and echoed locally until the server echoes them itself.",
   "session.telnetWarning":
     "Telnet sends everything you type, passwords included, without encryption. Use it only on a trusted network — choose SSH when the device supports it.",
-
-  // SessionDialog — authentication (SSH / SFTP)
   "session.authentication": "Authentication",
   "session.authPassword": "Password",
   "session.authPublicKey": "Public key",
   "session.authAgent": "SSH agent",
   "session.privateKey": "Private key",
   "session.passphrase": "Passphrase",
-  // Shown where a password or passphrase is typed when it will not survive a
-  // restart (see `credentialStoreHint`).
   "session.secretsRunOnlyPortable":
     "Portable mode keeps passwords for this run only: they are not written to disk.",
   "session.secretsRunOnlyNoKeyStore":
@@ -559,8 +608,6 @@ export const en = {
   "session.jumpDeleted": "(deleted session)",
   "session.jumpNote":
     "Connect through a saved SSH session (ProxyJump) to reach a host that is only visible from its network.",
-
-  // SessionDialog — text fields (encoding / backspace / locale)
   "session.encoding": "Encoding",
   "session.backspaceSends": "Backspace sends",
   "session.locale": "Locale",
@@ -569,8 +616,6 @@ export const en = {
     "The locale is sent as LANG when the shell starts, so a server with AcceptEnv LANG prints file names in UTF-8 instead of octal escapes. Empty keeps the server's default.",
   "session.localeNoteLocal":
     "The locale becomes the shell's LANG. Empty inherits the environment, with a UTF-8 locale filled in when the environment names none.",
-
-  // SessionDialog — (S)FTP
   "session.sftpConnection": "(S)FTP connection",
   "session.sftpSubtitle": "SFTP · encrypted file transfer over SSH",
   "session.ftpSubtitle": "FTP · passive mode · unencrypted",
@@ -579,15 +624,11 @@ export const en = {
   "session.optionalAnonFtp": "Optional for anonymous FTP",
   "session.ftpWarning":
     "Standard FTP sends credentials and file contents without encryption. Use it only on a trusted network — choose SFTP when transport security is required.",
-
-  // SessionDialog — local shell
   "session.localShell": "Local shell",
   "session.processAndCwd": "Process and working directory",
   "session.shell": "Shell",
   "session.directory": "Directory",
   "session.homeDirectory": "Home directory",
-
-  // SessionDialog — serial
   "session.serialConnection": "Serial connection",
   "session.flowWordSoftware": "software",
   "session.flowWordHardware": "hardware",
@@ -613,8 +654,6 @@ export const en = {
   "session.flowNone": "None",
   "session.flowSoftware": "XON/XOFF (software)",
   "session.flowHardware": "RTS/CTS (hardware)",
-
-  // SessionDialog — recording
   "session.recording": "Recording",
   "session.recordingHint": "Terminal output to a file",
   "session.recordOutput": "Record this session's output to a file",
@@ -625,8 +664,6 @@ export const en = {
   "session.recordNameHint": "Each connection starts a new file, named {name}.",
   "session.recordNote":
     "The file is the raw output the terminal received, escape sequences included, so it replays in a terminal with cat. What you type appears only as the far end echoes it, so a password entered without echo is not recorded.",
-
-  // SessionDialog — footer
   "session.connecting": "Connecting…",
   "session.saving": "Saving…",
   "session.connect": "Connect",
@@ -682,8 +719,6 @@ export const en = {
   "session.connectionFailed": "connection failed",
   "session.defaultShell": "default shell",
   "session.via": " via ",
-
-  // Session-panel sections and per-kind names (sessionGroups.ts)
   "section.sshTelnet": "SSH / Telnet Sessions",
   "section.sftp": "(S)FTP Sessions",
   "section.serial": "Serial Sessions",
@@ -694,15 +729,11 @@ export const en = {
   "kind.ftp": "FTP Sessions",
   "kind.serial": "Serial Sessions",
   "kind.local": "Shell Sessions",
-
-  // Sender command scope names (senderScope.ts)
   "sender.everywhere": "Everywhere",
   "sender.group": "Group",
   "sender.groupNamed": "Group “{path}”",
   "sender.session": "Session",
   "sender.sessionNamed": "Session “{name}”",
-
-  // SessionPanel
   "panel.powerDisconnect": "Disconnect",
   "panel.powerConnecting": "Cancel connection",
   "panel.powerReconnect": "Reconnect",
@@ -732,9 +763,7 @@ export const en = {
   "panel.groupEmpty": "It contains no sessions.",
   "panel.groupDeleteConsequence":
     "Its subgroups, {contents} will be deleted with it. This cannot be undone.",
-  "panel.deleteGroupPrompt": 'Delete the group "{name}" and everything in it? {consequence}',
   "panel.deleteGroupTitle": "Delete Group",
-  "panel.groupDeleted": 'Group "{name}" deleted',
   "panel.failedDeleteGroup": "Failed to delete group",
   "panel.failedMoveSession": "Failed to move session",
   "panel.failedDuplicateSession": "Failed to duplicate session",
@@ -743,8 +772,6 @@ export const en = {
   "panel.savedCommandsUnknown": "its saved Sender commands (the list could not be read)",
   "panel.oneSavedCommand": "1 saved Sender command",
   "panel.manySavedCommands": "{count} saved Sender commands",
-
-  // SenderPanel
   "sender.savedCommands": "Saved commands",
   "sender.sendAria": "Send {name}: {text}",
   "sender.optionsFor": "Options for {name}",
@@ -773,7 +800,6 @@ export const en = {
   "sender.repeatingTimer": "A command is repeating on a timer",
   "sender.tagName": "Tag name (optional)",
   "sender.savedCommandTagName": "Saved command tag name",
-  "sender.updateTitle": 'Update "{name}" — asks where to list it',
   "sender.update": "Update",
   "sender.save": "Save",
   "sender.saveTitle": "Save the command — asks where to list it",
@@ -844,8 +870,6 @@ export const en = {
   "sender.repeatStopped": "Sender: stopped repeating, the session was closed",
   "sender.repeatDone": "Sender: repeated the command {count} times, done",
   "sender.scheduleProblem": "Sender: {problem}",
-
-  // FilerPanel
   "filer.offline": "Session disconnected — reconnect to browse and upload files",
   "filer.followOff": "Follow terminal",
   "filer.following": "Following",
@@ -976,8 +1000,6 @@ export const en = {
   "filer.renameFailed": "Could not rename {name}: {error}",
   "filer.moveFailed": "Could not move {name}: {error}",
   "filer.transferring": "transferring",
-  "filer.invalidName": '"{name}" is not a valid {kind} name',
-  "filer.alreadyExists": '"{name}" already exists in this folder',
   "filer.sshOnly": " (connected SSH sessions only)",
   "filer.local": "local",
   "filer.remote": "remote",
@@ -988,8 +1010,12 @@ export const en = {
   "filer.downloadFileOrFolder": "Download file or folder",
   "filer.home": "Home folder",
   "filer.parentFolder": "Parent folder",
+  "filer.cdHere": "Open in Terminal",
+  "filer.cdFailed": "No connected shell to change into {path}",
   "filer.terminalFolder": "Terminal folder",
   "filer.size": "Size",
+  "filer.filterPlaceholder": "Filter this folder",
+  "filer.filterCount": "{shown} of {total}",
   "filer.showSize": "Show size",
   "filer.moreActions": "More actions",
   "filer.editPath": "Edit path",
@@ -1066,8 +1092,6 @@ export const en = {
   "filer.tr.stage.complete": "Ready to drop",
   "filer.tr.stage.error": "Could not prepare the drag",
   "filer.tr.stage.cancelled": "Drag cancelled",
-
-  // StatusBar
   "status.legacyAlgorithms":
     "Connected with legacy SSH algorithms, because the server offers nothing newer:",
   "status.legacySsh": "Legacy SSH",
@@ -1077,21 +1101,23 @@ export const en = {
   "status.protocol": "Protocol",
   "splitter.resize": "Resize panel",
   "splitter.value": "{value} pixels",
-
-  // SshReuseSetting (Session panel)
   "sshReuse.aria": "Automatically reuse authenticated SSH connections",
   "sshReuse.label": "Reuse authenticated SSH connections",
   "sshReuse.hint":
     "New SSH and SFTP tabs with the same connection and authentication settings share a connection. Turn off to log in separately. Existing tabs and Duplicate SSH Channel keep their current connections.",
-
-  // TabStrip
   "tab.ai": "AI",
   "tab.aiActive": "session active",
   "tab.aiAttention": "session needs review",
   "tab.command": "command",
   "tab.running": "running",
   "tab.finished": "finished",
+  "tab.awaitingInput": "The session rang the bell while you were away",
   "tab.selectToView": " — select to view",
+  "tab.rename": "Rename Tab…",
+  "tab.renameReset": "Reset Tab Name",
+  "tab.renameField": "Tab name",
+  "tab.pin": "Pin Tab",
+  "tab.unpin": "Unpin Tab",
   "tab.closeOthers": "Close Others",
   "tab.closeLeft": "Close to the Left",
   "tab.closeRight": "Close to the Right",
@@ -1107,8 +1133,6 @@ export const en = {
   "tab.state.connected": "Connected",
   "tab.state.closed": "Disconnected",
   "tab.state.error": "Error",
-
-  // Shortcuts dialog and shortcuts.ts
   "sc.title": "Keyboard Shortcuts",
   "sc.fixed": "Fixed",
   "sc.switchTab": "Switch to tab N",
@@ -1138,6 +1162,16 @@ export const en = {
   "sc.newSession.label": "New Session",
   "sc.newSession.hint": "Open the new-session dialog",
   "sc.closeSession.label": "Close Session",
+  "sc.reopenTab.label": "Reopen Closed Tab",
+  "sc.reopenTab.hint": "Bring the most recently closed session back on a fresh connection",
+  "sc.zoomPane.label": "Zoom Pane",
+  "sc.zoomPane.hint": "Show the focused pane full-size; press again to restore the split",
+  "sc.fontSizeUp.label": "Increase Terminal Font Size",
+  "sc.fontSizeUp.hint": "One pixel larger, up to the size the display settings allow",
+  "sc.fontSizeDown.label": "Decrease Terminal Font Size",
+  "sc.fontSizeDown.hint": "One pixel smaller, down to the smallest allowed size",
+  "sc.fontSizeReset.label": "Reset Terminal Font Size",
+  "sc.fontSizeReset.hint": "Back to the default terminal font size",
   "sc.closeSession.hint": "Close the current tab",
   "sc.prevTab.label": "Previous Session",
   "sc.prevTab.hint": "Select the tab on the left",
@@ -1173,8 +1207,6 @@ export const en = {
   "sc.panelFiler.hint": "Show or hide the right panel",
   "sc.panelSender.label": "Toggle Sender Panel",
   "sc.panelSender.hint": "Show or hide the bottom panel",
-
-  // TransferCenter
   "data.fileFilter": "EdgeTerm data",
   "data.exportTitle": "Export EdgeTerm Data",
   "data.exportDone":
@@ -1264,8 +1296,6 @@ export const en = {
   "filer.showNames": "Names",
   "transfer.failedFilesCount": "{count} failed files",
   "transfer.closeFailedFiles": "Close failed files",
-
-  // ForwardCenter
   "forward.tunnels": "Tunnels",
   "forward.failedCount": "{count} failed",
   "forward.sshPortForwarding": "SSH tunnels",
@@ -1311,8 +1341,6 @@ export const en = {
   "forward.trafficTitle": "Sent / received",
   "forward.stopTunnel": "Stop tunnel",
   "forward.removeTunnel": "Remove tunnel",
-
-  // ResourceMonitorBar
   "monitor.resourcesOff": "Resources off",
   "monitor.resourcesUnsupported": "Unsupported host",
   "monitor.resourcesUnavailable": "Resources unavailable",
@@ -1340,8 +1368,6 @@ export const en = {
   "monitor.stateDenied": "Permission denied",
   "monitor.stateUnsupported": "Not available",
   "monitor.stateError": "Unreadable",
-
-  // SshConfigImportDialog
   "sshImport.title": "Import OpenSSH Config",
   "sshImport.hostsGroup": "Hosts",
   "sshImport.selectAllHosts": "Select all hosts",
@@ -1371,8 +1397,6 @@ export const en = {
   "sshImport.authKey": "key {name}",
   "sshImport.authAgent": "agent",
   "sshImport.authPassword": "password",
-
-  // PublicKeyLoginDialog
   "keySetup.title": "Set Up Public-Key Login",
   "keySetup.intro":
     "EdgeTerm will add the key below to {target}, then open a fresh connection to prove the key alone logs in. The session is switched to the key only once that proof passes.",
@@ -1397,8 +1421,6 @@ export const en = {
   "keySetup.notSaved": "The saved session was not changed.",
   "keySetup.entry": "Key entry: {path}",
   "keySetup.failed": "The setup failed: {message}",
-
-  // FileDiffDialog
   "diff.dialogAria": "Local and remote file comparison",
   "diff.heading": "Compare files · Read only",
   "diff.closeAria": "Close file comparison",
@@ -1437,23 +1459,18 @@ export const en = {
   "diff.noFinalNewline": " · no final newline",
   "diff.linesCount": " · {count} lines",
   "diff.sha256": "SHA-256 {hash}…",
-
-  // fix: PD-02 — the public-key setup dialog can generate a new key
   "keySetup.generate": "Generate New Key…",
   "keySetup.generatePathAria": "Path for the new private key",
   "keySetup.generateRun": "Generate",
   "keySetup.generating": "Generating…",
   "keySetup.generateHint":
     "The new key is written to the path above; an existing file is never overwritten. A passphrase above, if any, encrypts it.",
-
-  // fix: PD-05 — the first-run empty state names the file panel and the Sender
   "empty.openFiler": "Open File Panel",
   "empty.hideFiler": "Hide File Panel",
   "empty.openFilerHint": "Browse local and remote files; drag to transfer.",
   "empty.openSender": "Open Sender",
   "empty.hideSender": "Hide Sender",
   "empty.openSenderHint": "Keep frequent commands at hand and send them to the active session.",
-  // fix: PD-06 — one settings dialog gathers the scattered preferences
   "menu.settings": "Settings…",
   "menu.allSettings": "All Settings…",
   "settings.title": "Settings",
@@ -1477,9 +1494,6 @@ export const en = {
   "settings.panelsVisible": "Panel visibility",
   "settings.panelDock": "{panel} on",
   "settings.restoreNote": "After a restore the Filer and Sender panels are hidden again.",
-
-  // fix: PD-04 — port forwards become visible: the import list, the import
-  // summary and the session dialog all name them before they start
   "forward.letterLocal": "L",
   "forward.letterRemote": "R",
   "forward.letterDynamic": "D",
@@ -1495,12 +1509,8 @@ export const en = {
   "session.addForward": "Add Forward",
   "session.deleteForwardTitle": "Delete Port Forward",
   "session.deleteForwardPrompt": "Delete the forward rule {route}?",
-
-  // fix: PD-01 — the Filer dock stays mounted on a file session and says why
   "filer.dualPaneNotice":
     "This session uses the dual-pane file manager. Browse and transfer files in the center area.",
-
-  // --- ported from upstream v1.0.1–v1.0.4 -----------------------------------
   "search.inSelection": "Find in Selection",
   "search.noSelection": "No selection",
   "search.invalidRegex": "Invalid regular expression",
@@ -1541,4 +1551,16 @@ export const en = {
   "transfer.pin": "Pin to bottom",
   "transfer.unpin": "Unpin",
   "session.organization": "Name, color and group (optional)",
+  "session.startupTitle": "Command after connecting",
+  "session.startupFailed": "Startup command could not be sent: {error}",
+  "session.startupPlaceholder": "e.g. cd /srv/app && tmux attach",
+  "session.startupHint": "Typed once the shell is ready. One line; saved with this app's settings.",
+  "palette.openSnippets": "Saved Commands",
+  "palette.openSnippetsHint": "Add, edit or send the commands you keep",
+  "tab.reopen": "Reopen Closed Tab",
+  "panel.deleteGroupPrompt": 'Delete the group "{name}" and everything in it? {consequence}',
+  "panel.groupDeleted": 'Group "{name}" deleted',
+  "sender.updateTitle": 'Update "{name}" — asks where to list it',
+  "filer.invalidName": '"{name}" is not a valid {kind} name',
+  "filer.alreadyExists": '"{name}" already exists in this folder',
 } as const;

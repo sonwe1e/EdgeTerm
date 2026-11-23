@@ -5,6 +5,7 @@ import { type LayoutNode, type Side } from "./layout";
 import { type ProgramClipboardMode } from "./osc52";
 import { type PanelDock, type PanelDocks } from "./panelDock";
 import { type ShortcutBindings } from "./shortcuts";
+import type { Snippet } from "./snippets";
 import type { WorkspaceDirectories } from "./workspaceSnapshot";
 import type { CursorStyle, GutterMode, RightClickAction } from "./terminal";
 import type {
@@ -17,6 +18,12 @@ import type {
   SshConfigPreview,
   ThemeMode,
 } from "./types";
+
+/** What a closed tab is remembered by, for "Reopen Closed Tab". */
+export interface ClosedTab {
+  info: SessionInfo;
+  profile: SessionProfile;
+}
 
 /** What a tab's activity treatment stands for; see `Tab.activityKind`. */
 export type ActivityKind = "command" | "ai";
@@ -34,6 +41,16 @@ export interface Tab {
    * reordering or closing other tabs never renumbers it.
    */
   number: number;
+  /**
+   * Pinned tabs sit at the front of their strip and survive "Close Others";
+   * an explicit close still closes them.
+   */
+  pinned?: boolean;
+  /**
+   * What the user called this tab, when the session name no longer says what
+   * the tab is doing. In memory only; clearing it goes back to the session.
+   */
+  title?: string;
   /**
    * Which open tab of the same session this is: 0 for the first, shown under
    * the bare name, then 1, 2, … shown as "name (1)", "name (2)". Like
@@ -56,6 +73,16 @@ export interface Tab {
   message?: string;
   /** The pane whose strip shows this tab; see `AppStore.panes`. */
   paneId: string;
+  /**
+   * The session rang the bell (or a program asked for attention) while this
+   * tab was in the background. Selecting the tab is the acknowledgement.
+   */
+  attention?: boolean;
+  /**
+   * What the shell reported as its window title. Transient by nature, so it
+   * lives beside the tab's name in the status bar rather than replacing it.
+   */
+  remoteTitle?: string;
   /** Last confirmed paths, independent of the connection profile and of each other. */
   directories?: WorkspaceDirectories;
 }
@@ -133,6 +160,8 @@ export interface AppSettings {
   language: Language;
   panelFontSize: number;
   bufferFontSize: number;
+  /** Terminal line spacing; see lineHeight.ts. */
+  lineHeight: number;
   /** Interface font family; empty means the platform default stack. */
   panelFontFamily: string;
   /** Terminal font family; empty means the platform default stack. */
@@ -267,6 +296,21 @@ export interface AppStore {
    */
   closePrompt: string[] | null;
   /**
+   * The pane shown full-size while zoomed, or null. A view state, not a layout
+   * change: the split tree is untouched, so unzooming restores the same sizes.
+   */
+  zoomedPaneId: string | null;
+  /** Zooms the active pane, or unzooms when it is already the zoomed one. */
+  toggleZoomedPane: () => void;
+  /**
+   * Sessions the reader closed, newest last, so one can be reopened with its
+   * profile (a fresh session id, a fresh connection). Runtime only: reopening
+   * after a restart would open a connection nobody asked for.
+   */
+  closedTabs: ClosedTab[];
+  /** Removes and returns the newest closed session, or null when there is none. */
+  takeClosedTab: () => ClosedTab | null;
+  /**
    * A directory the Filer was asked to show (⌘J / "Reveal Working Directory
    * in Filer"). `token` tells a repeat request for the same path apart from
    * the last one; `sessionId` lets the panel drop a request that resolved
@@ -287,6 +331,11 @@ export interface AppStore {
    * panel reloads its library.
    */
   senderLibraryVersion: number;
+
+  /** A command a profile types once its shell is ready, keyed by profile id. */
+  startupCommands: Record<string, string>;
+  /** Stores that command, or removes it when the text is empty. */
+  setStartupCommand: (profileId: string, command: string) => void;
 
   /** Fetches saved profiles and their groups together. */
   loadProfiles: () => Promise<boolean>;
@@ -331,6 +380,25 @@ export interface AppStore {
   setClosePrompt: (ids: string[] | null) => void;
   /** Shows a tab in its pane and focuses it, making that pane the active one. */
   setActive: (id: string, focusTarget?: AppStore["tabFocusTarget"]) => void;
+  /** Saved commands, newest last; persisted in the browser. */
+  snippets: Snippet[];
+  /** Adds a command, or replaces the one stored under the same name. */
+  saveSnippet: (name: string, command: string) => void;
+  deleteSnippet: (id: string) => void;
+  /**
+   * Edits one saved command in place, name included. Returns false when the
+   * name belongs to another entry: two rows named alike would be a puzzle.
+   */
+  replaceSnippet: (id: string, name: string, command: string) => boolean;
+  /**
+   * Merges an imported list by name and persists once. Returns how many
+   * entries landed; entries beyond the list cap are left out.
+   */
+  importSnippets: (entries: { name: string; command: string }[]) => number;
+  /** A background session asked for attention; the tab shows a bell. */
+  noteTabBell: (id: string) => void;
+  /** The program set the window title (OSC 0/2); shown beside the session. */
+  noteTabTitle: (id: string, title: string) => void;
   /** Focuses a pane: the tab it shows becomes the active tab. */
   setActivePane: (paneId: string) => void;
   /** Steps through the active pane's tabs. */
@@ -358,6 +426,12 @@ export interface AppStore {
   splitPane: (paneId: string, side: Side, tabId?: string) => string;
   /** Drags a boundary between panes; the arguments are `resizeSplit`'s. */
   resizeLayout: (path: number[], index: number, delta: number, minSize: number) => void;
+  /** Double-click on a boundary: its two sides share their space evenly again. */
+  resetSplitSizes: (path: number[], index: number) => void;
+  /** Pin or unpin a tab; pinning also parks it at the front of its strip. */
+  toggleTabPinned: (id: string) => void;
+  /** Rename a tab; an empty name goes back to the session's name. */
+  renameTab: (id: string, title: string) => void;
   /** Publishes a tab drag so every strip and pane can draw its part of it. */
   setTabDrag: (draggingTabId: string | null, dropTarget?: DropTarget | null) => void;
 
@@ -377,6 +451,27 @@ export interface AppStore {
   tabSizes: Record<string, TerminalSize>;
   setSize: (id: string, cols: number, rows: number) => void;
 
+  /**
+   * Synchronized input: while on, every keystroke typed in the focused shell
+   * is also written to every other connected shell. Runtime only — see
+   * `createBroadcastActions` for why it is never restored.
+   */
+  broadcastInput: boolean;
+  /**
+   * Enables or disables synchronized input. Enabling is refused (and reported
+   * in the status bar) when no other connected shell would receive bytes.
+   */
+  setBroadcastInput: (on: boolean) => void;
+  /**
+   * Sessions the reader unchecked in the broadcast targets list. Ids stay in
+   * the list across on/off so a shell excluded once is not silently included
+   * the next time the mode is switched on.
+   */
+  broadcastExcluded: string[];
+  /** Session groups whose members receive no synchronized input. */
+  broadcastExcludedGroups: string[];
+  setBroadcastPeer: (id: string, included: boolean) => void;
+  setBroadcastGroup: (groupId: string, included: boolean) => void;
   togglePanel: (panel: PanelName) => void;
   /**
    * Docks `panel` in `dock` in front of `before` (last when null) and shows
@@ -393,6 +488,12 @@ export interface AppStore {
   setBufferFontSize: (size: number) => void;
   setPanelFontFamily: (family: string) => void;
   setBufferFontFamily: (family: string) => void;
+  /**
+   * Terminal line spacing (xterm's lineHeight multiplier). Reading long logs
+   * comfortably is the point; 1 is the font's own spacing.
+   */
+  lineHeight: number;
+  setLineHeight: (height: number) => void;
   setSymbolFontFamilies: (families: string[]) => void;
   setSystemMonoFamily: (family: string) => void;
   setTerminalScrollback: (rows: number) => void;

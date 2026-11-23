@@ -10,7 +10,9 @@ import arrowLeft from "@vscode/codicons/src/icons/arrow-left.svg?raw";
 import arrowRight from "@vscode/codicons/src/icons/arrow-right.svg?raw";
 import arrowSwap from "@vscode/codicons/src/icons/arrow-swap.svg?raw";
 import arrowUp from "@vscode/codicons/src/icons/arrow-up.svg?raw";
+import bell from "@vscode/codicons/src/icons/bell.svg?raw";
 import book from "@vscode/codicons/src/icons/book.svg?raw";
+import broadcast from "@vscode/codicons/src/icons/broadcast.svg?raw";
 import caseSensitive from "@vscode/codicons/src/icons/case-sensitive.svg?raw";
 import check from "@vscode/codicons/src/icons/check.svg?raw";
 import chevronDown from "@vscode/codicons/src/icons/chevron-down.svg?raw";
@@ -77,6 +79,7 @@ import serverEnvironment from "@vscode/codicons/src/icons/server-environment.svg
 import settingsGear from "@vscode/codicons/src/icons/settings-gear.svg?raw";
 import shield from "@vscode/codicons/src/icons/shield.svg?raw";
 import sourceControl from "@vscode/codicons/src/icons/source-control.svg?raw";
+import screenFull from "@vscode/codicons/src/icons/screen-full.svg?raw";
 import splitHorizontal from "@vscode/codicons/src/icons/split-horizontal.svg?raw";
 import splitVertical from "@vscode/codicons/src/icons/split-vertical.svg?raw";
 import symbolColor from "@vscode/codicons/src/icons/symbol-color.svg?raw";
@@ -97,7 +100,9 @@ const SVGS = {
   "arrow-right": arrowRight,
   "arrow-swap": arrowSwap,
   "arrow-up": arrowUp,
+  bell,
   book,
+  broadcast,
   "case-sensitive": caseSensitive,
   check,
   "chevron-down": chevronDown,
@@ -163,6 +168,7 @@ const SVGS = {
   "settings-gear": settingsGear,
   shield,
   "source-control": sourceControl,
+  "screen-full": screenFull,
   "split-horizontal": splitHorizontal,
   "split-vertical": splitVertical,
   "symbol-color": symbolColor,

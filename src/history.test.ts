@@ -121,3 +121,11 @@ it("puts a forgotten command back when the delete cannot be written", async () =
     "deploy --token abc",
   ]);
 });
+
+it("lists recent commands newest first, one row per text", async () => {
+  const { history, finish } = await pendingHistory();
+  finish(structuredClone(oldEntries));
+  await Promise.resolve();
+  expect(history.recent().map((entry) => entry.command)).toEqual(["git diff", "git status"]);
+  expect(history.recent().length, "no duplicate rows for one text").toBe(2);
+});

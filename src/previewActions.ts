@@ -20,9 +20,15 @@ const running = new Map<string, RemotePreview>();
 
 const keyOf = (sessionId: string, path: string): string => `${sessionId}\u0000${path}`;
 
+/** Whether the session that owns a preview is still open. */
+const sessionAlive = (sessionId: string): boolean =>
+  useStore.getState().tabs.some((tab) => tab.info.id === sessionId);
+
 /** Whether this exact report already has a preview this window started. */
 export function isPreviewRunning(sessionId: string, path: string): boolean {
-  return running.has(keyOf(sessionId, path));
+  // A closed session took its previews with it on the Rust side, so a record
+  // for it is stale: the panel must not offer to stop something that is gone.
+  return running.has(keyOf(sessionId, path)) && sessionAlive(sessionId);
 }
 
 /** Opens (or reuses) one report's preview in the system browser. */
@@ -47,6 +53,12 @@ export async function stopReportPreview(sessionId: string, path: string): Promis
   const key = keyOf(sessionId, path);
   const entry = running.get(key);
   if (!entry) return;
+  if (!sessionAlive(sessionId)) {
+    // Nothing left to stop: drop the stale record instead of reporting an
+    // error for a preview the closing session already released.
+    running.delete(key);
+    return;
+  }
   try {
     await stopPreview(entry.id);
     running.delete(key);
@@ -54,10 +66,4 @@ export async function stopReportPreview(sessionId: string, path: string): Promis
   } catch (error) {
     useStore.getState().setError(t("status.previewFailed", { error: errorText(error) }), sessionId);
   }
-}
-
-/** Drops this window's records for a session that is closing. */
-export function forgetSessionPreviews(sessionId: string): void {
-  const prefix = `${sessionId}\u0000`;
-  for (const key of [...running.keys()]) if (key.startsWith(prefix)) running.delete(key);
 }

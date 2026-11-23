@@ -21,6 +21,11 @@ export type MenuMark = "check" | "radio";
 
 export interface MenuAction {
   label: string;
+  /**
+   * Text shown on hover when the label itself is cut short: a menu row stays
+   * one line, and a command read back from history can be long.
+   */
+  title?: string;
   action?: () => void;
   disabled?: boolean;
   /** Destructive entries are tinted red. */
@@ -511,6 +516,7 @@ export function ContextMenu({ x, y, items, onClose, align = "left", className }:
             .filter(Boolean)
             .join(" ")}
           disabled={item.disabled}
+          title={item.title}
           style={item.indent ? ({ paddingLeft: 8 + item.indent * 14 } as CSSProperties) : undefined}
           onClick={() => {
             onClose();

@@ -71,6 +71,7 @@ function makeController() {
     setLocked() {},
     setGutterMode() {},
     setFontSize() {},
+    setLineHeight() {},
     setFontFamily() {},
     setScrollback() {},
     setCursor() {},
@@ -79,6 +80,11 @@ function makeController() {
     setCopyOnSelect() {},
     setProgramClipboard() {},
     setRightClickAction() {},
+    // The "jump to latest" pill asks the controller where the viewport is;
+    // this stub never scrolls, so it is always at the live end.
+    isAtBottom: () => true,
+    scrollToBottom() {},
+    onScrollState: () => () => {},
   } as unknown as TerminalController;
   return { input, controller };
 }

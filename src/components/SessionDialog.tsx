@@ -359,6 +359,16 @@ export function SessionDialog({
     void fetchCredentialStoreStatus().then((status) => setSecretsHint(credentialStoreHint(status)));
   }, []);
 
+  const startupCommands = useStore((s) => s.startupCommands);
+  const setStartupCommand = useStore((s) => s.setStartupCommand);
+  // The command is saved with the profile, not on every keystroke: a new
+  // connection has no id to file it under until Save or Connect returns one.
+  const [startupDraft, setStartupDraft] = useState(() =>
+    initial?.id ? (startupCommands[initial.id] ?? "") : "",
+  );
+  const commitStartup = (saved: SessionProfile) => {
+    if (saved.id) setStartupCommand(saved.id, startupDraft);
+  };
   const patch = (fields: Partial<SessionProfile>) => {
     setProfile((prev) => ({ ...prev, ...fields }));
     // The message described the attempt as it was; editing the form makes it
@@ -875,6 +885,7 @@ export function SessionDialog({
       const saved = saveSessionId
         ? await saveTabProfile(saveSessionId, candidate)
         : await upsertProfile(candidate);
+      commitStartup(saved);
       onSaved?.(saved);
       onClose();
     } catch (e) {
@@ -906,6 +917,7 @@ export function SessionDialog({
       // saving "shell" on every Connect left a pile of identical profiles.
       const quickLocal = candidate.kind === "local" && !initial?.id;
       const saved = candidate.name && !quickLocal ? await upsertProfile(candidate) : candidate;
+      commitStartup(saved);
       setProfile((current) => ({ ...current, id: saved.id }));
       attemptTabId.current ??= crypto.randomUUID();
       const id = await openSession(
@@ -1559,6 +1571,23 @@ export function SessionDialog({
                 <small className="session-field-hint">{t("session.groupHint")}</small>
               )}
             </div>
+            {/* Every shell profile may carry a first command; a brand-new one
+                gets it when Save or Connect hands back an id. */}
+            {(profile.kind === "ssh" || profile.kind === "local") && (
+              <div className="session-field is-wide">
+                <label className="session-field-label" htmlFor="session-startup">
+                  {t("session.startupTitle")}
+                </label>
+                <input
+                  {...RAW_TEXT_INPUT}
+                  id="session-startup"
+                  value={startupDraft}
+                  placeholder={t("session.startupPlaceholder")}
+                  onChange={(event) => setStartupDraft(event.target.value)}
+                />
+                <small className="session-field-hint">{t("session.startupHint")}</small>
+              </div>
+            )}
           </div>
         </details>
 

@@ -5,7 +5,7 @@
 
 .status-popover {
   position: fixed;
-  z-index: 1000;
+  z-index: var(--z-popover);
   right: var(--sp-12);
   bottom: calc(var(--h-control) + var(--sp-8));
   display: flex;
@@ -33,7 +33,6 @@
   background: var(--bg-panel-alt);
   border-bottom: 1px solid var(--border);
 }
-
 /* Sentence case, not the caps of a docked panel: the popover is a floating
    surface like a dialog, and the dialog headers name themselves at --fs-md. */
 .status-popover-title {
@@ -53,7 +52,6 @@
   align-items: center;
   gap: var(--sp-4);
 }
-
 /* The close control is an icon button, not a form field: two classes keep it
    ahead of the shared field rules below, whatever their order. */
 .status-popover .status-popover-close {
@@ -61,8 +59,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: var(--h-control-sm);
-  height: var(--h-control-sm);
+  /* 24px, not the 22px small control: closing a popover is a full-size action
+     and the header has room for it (WCAG 2.2 SC 2.5.8). */
+  width: 24px;
+  height: 24px;
   padding: 0;
   color: var(--fg-dim);
   background: none;
@@ -93,7 +93,6 @@
   overflow: auto;
   padding: var(--sp-12);
 }
-
 /* The body owns the rhythm; a first/last child never adds to the frame's
    own padding. */
 .status-popover-body > :first-child {
@@ -103,7 +102,6 @@
 .status-popover-body > :last-child {
   margin-bottom: 0;
 }
-
 /* A short line that reports state (loading, empty, unavailable) instead of
    carrying a description. */
 .status-popover-note {
@@ -115,7 +113,6 @@
   color: var(--red);
   overflow-wrap: anywhere;
 }
-
 /* A section is a labelled group of controls or rows; the label is optional —
    omit it when the content explains itself. */
 .status-popover-section {
@@ -138,7 +135,6 @@
   text-transform: uppercase;
   color: var(--fg-faint);
 }
-
 /* Form controls inside a popover use the same field language as dialogs.
    The element part sits in :where(), so the rule carries one class of weight:
    a feature sheet (loaded after this one) restyles its own controls with a

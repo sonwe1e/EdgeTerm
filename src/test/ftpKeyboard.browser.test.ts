@@ -8,6 +8,7 @@ import { createElement as h, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 import { browserAfterEach, mount, twoFrames } from "./browserHarness";
+import { useStore } from "../store";
 import { EMPTY_SELECTION, type FileSelection } from "../fileBatch";
 import { FileBrowser } from "../components/ftpPresentation";
 import type { FileEntry } from "../types";
@@ -64,6 +65,79 @@ function StatefulBrowser() {
 }
 
 const list = () => document.querySelector<HTMLDivElement>('.ftp-browser-list[role="listbox"]')!;
+
+/** The pane whose folder changes, to prove the filter belongs to one folder. */
+function PathChangingBrowser() {
+  const [selection, setSelection] = useState<FileSelection>(EMPTY_SELECTION);
+  const [path, setPath] = useState("/remote");
+  return h(
+    "div",
+    null,
+    h("button", { type: "button", id: "go-next", onClick: () => setPath("/next") }, "next"),
+    h(FileBrowser, browser({ path, draft: path, selection, onSelectionChange: setSelection })),
+  );
+}
+
+describe("FTP/SFTP dual-pane filter", () => {
+  it("narrows the listing in place, and Escape gives it back", async () => {
+    useStore.getState().setLanguage("en");
+    mount(h(StatefulBrowser));
+    await twoFrames();
+
+    const filter = document.querySelector<HTMLInputElement>(".ftp-file-browser .filer-filter")!;
+    expect(filter, "the pane offers a filter").not.toBeNull();
+    filter.focus();
+    await userEvent.keyboard("file-b");
+    await twoFrames();
+    const names = () =>
+      [...document.querySelectorAll(".ftp-browser-list .ftp-file-name")].map(
+        (node) => node.textContent,
+      );
+    expect(names()).toEqual(["file-b.txt"]);
+    expect(document.querySelector(".filer-filter-count")?.textContent).toBe("1 of 3");
+
+    await userEvent.keyboard("{Escape}");
+    await twoFrames();
+    expect(filter.value).toBe("");
+    expect(names().length).toBe(3);
+  });
+});
+
+describe("FTP/SFTP dual-pane filter scope", () => {
+  it("drops the filter when the pane walks into another folder", async () => {
+    useStore.getState().setLanguage("en");
+    mount(h(PathChangingBrowser));
+    await twoFrames();
+    const filter = document.querySelector<HTMLInputElement>(".ftp-file-browser .filer-filter")!;
+    filter.focus();
+    await userEvent.keyboard("file-b");
+    await twoFrames();
+    const names = () =>
+      [...document.querySelectorAll(".ftp-browser-list .ftp-file-name")].map(
+        (node) => node.textContent,
+      );
+    expect(names()).toEqual(["file-b.txt"]);
+
+    await userEvent.click(document.querySelector<HTMLButtonElement>("#go-next")!);
+    await twoFrames();
+    await twoFrames();
+    expect(document.querySelector<HTMLInputElement>(".filer-filter")?.value).toBe("");
+    expect(names().length, "the new folder is listed whole").toBe(3);
+  });
+});
+
+describe("FTP/SFTP dual-pane filter key", () => {
+  it("opens the pane's filter with the slash key from the list", async () => {
+    useStore.getState().setLanguage("en");
+    mount(h(StatefulBrowser));
+    await twoFrames();
+    list().focus();
+    await twoFrames();
+    await userEvent.keyboard("/");
+    await twoFrames();
+    expect(document.activeElement).toBe(document.querySelector(".ftp-file-browser .filer-filter"));
+  });
+});
 
 describe("FTP/SFTP dual-pane keyboard (IX-03)", () => {
   it("is one Tab stop whose cursor aria announces, with selection following it", async () => {

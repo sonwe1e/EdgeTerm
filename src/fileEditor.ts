@@ -3,6 +3,7 @@ import { errorInfo, errorText } from "./errorInfo";
 import { t } from "./i18n";
 import { ask } from "./nativeDialog";
 import { useStore } from "./store";
+import { forgetEditorState } from "./editor/editorState";
 import * as api from "./editor/textFile";
 import type { TextFile } from "./editor/editorTypes";
 
@@ -69,6 +70,10 @@ async function closeCurrentEditor(): Promise<boolean> {
       current.file !== before.file
     )
       return false;
+    // The view's remembered state is keyed by the document id this open
+    // minted; once the document is closed that id can never match again, so
+    // releasing it here keeps the cache from filling with closed documents.
+    if (before.target) forgetEditorState(before.target.id);
     useFileEditor.setState({ ...empty });
     return true;
   } finally {

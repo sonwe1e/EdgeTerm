@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { loadWorkspaceSnapshot } from "./workspaceSnapshot";
 import { ROOT_PANE_ID } from "./storeLayout";
+import { createBroadcastActions } from "./storeBroadcastActions";
 import { createPreferenceActions } from "./storePreferenceActions";
 import {
   BUFFER_FONT_FAMILY_KEY,
@@ -16,6 +17,7 @@ import {
   loadCursorBlink,
   loadCursorStyle,
   loadFontFamily,
+  loadLineHeight,
   loadFontSize,
   loadGpuRenderer,
   loadGutterMode,
@@ -31,9 +33,12 @@ import {
 } from "./storePreferences";
 import { createProfileActions } from "./storeProfileActions";
 import { createPromptActions } from "./storePromptActions";
+import { createSnippetActions } from "./storeSnippetActions";
+import { createStartupActions } from "./storeStartupActions";
 import { createTabActions } from "./storeTabActions";
 import { AppStore, Tab } from "./storeTypes";
 export { tabTitle } from "./storeLayout";
+export { closeOthersTargets } from "./storeTabActions";
 export {
   BUFFER_FONT_SIZE,
   PANEL_FONT_SIZE,
@@ -73,6 +78,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
   bufferFontSize: loadFontSize(BUFFER_FONT_SIZE_KEY, BUFFER_FONT_SIZE),
   panelFontFamily: loadFontFamily(PANEL_FONT_FAMILY_KEY),
   bufferFontFamily: loadFontFamily(BUFFER_FONT_FAMILY_KEY),
+  lineHeight: loadLineHeight(),
   symbolFontFamilies: [],
   systemMonoFamily: "",
   terminalScrollback: loadScrollback(),
@@ -115,7 +121,11 @@ export const useStore = create<AppStore>((set, get, store) => ({
 
   ...createPreferenceActions(set, get, store),
 
+  ...createBroadcastActions(set, get, store),
+
   ...createPromptActions(set, get, store),
+  ...createSnippetActions(set, get, store),
+  ...createStartupActions(set, get, store),
 }));
 
 export const useActiveTab = (): Tab | undefined =>

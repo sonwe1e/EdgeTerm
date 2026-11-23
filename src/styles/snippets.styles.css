@@ -1,0 +1,139 @@
+/* Saved commands: one row per command, the name and the line of shell text. */
+.snippets-dialog {
+  width: min(680px, 92vw);
+}
+
+.snippets-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+  max-height: min(60vh, 520px);
+  overflow-y: auto;
+}
+
+.snippets-hint,
+.snippets-empty {
+  margin: 0;
+  color: var(--fg-muted);
+}
+
+/* The empty list's second line: a quieter paragraph that names the two
+   places a command can be saved from, so an empty dialog is not a dead end. */
+.snippets-empty-hint {
+  margin: var(--sp-4) 0 0;
+  color: var(--fg-dim);
+}
+
+.snippets-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.snippets-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.snippets-send {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: baseline;
+  gap: var(--sp-12);
+  min-width: 0;
+  padding: var(--sp-6) var(--sp-8);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-field);
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.snippets-send:hover {
+  border-color: var(--accent);
+}
+
+.snippets-name {
+  flex: 0 0 auto;
+  font-weight: 600;
+}
+
+.snippets-command {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+.snippets-delete {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: var(--h-control);
+  height: var(--h-control);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.snippets-delete:hover {
+  border-color: var(--border);
+  color: var(--red);
+}
+
+.snippets-form {
+  display: flex;
+  gap: var(--sp-4);
+}
+
+.snippets-name-input {
+  flex: 0 0 30%;
+}
+
+.snippets-command-input {
+  flex: 1 1 auto;
+  font-family: var(--font-mono);
+}
+/* The command being filled in, kept visible above the fields. */
+.snippet-args-preview {
+  display: block;
+  padding: var(--sp-6) var(--sp-8);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-field);
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-x: auto;
+  white-space: pre;
+}
+/* Narrowing a long list: the field sits above the rows and shrinks nothing. */
+.snippets-filter {
+  width: 100%;
+  box-sizing: border-box;
+}
+/* Clipboard transfer: secondary actions, aligned to the right of the form. */
+.snippets-transfer {
+  display: flex;
+  gap: var(--sp-8);
+  margin-top: var(--sp-8);
+}
+
+.snippets-notice {
+  margin-top: var(--sp-6);
+  color: var(--fg-muted);
+  font-size: 0.92em;
+}

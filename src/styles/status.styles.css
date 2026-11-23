@@ -14,7 +14,6 @@
   color: var(--fg-dim);
   font-size: var(--fs-sm);
 }
-
 /* The session details at the right end of the bar — window size, protocol,
    legacy algorithms, recording — read as one cluster, so they are grouped
    tighter than the bar's own step. */
@@ -23,7 +22,6 @@
   align-items: center;
   gap: var(--sp-8);
 }
-
 /* F6 can focus the bar as a region (data-focus-region); a browser-default
    focus ring around a full-width strip reads as a broken white frame, so the
    region is marked with a hairline of accent inside its own edge instead. */
@@ -43,13 +41,41 @@
 .status-item.is-error {
   color: var(--red);
 }
+/* Synchronized input reaches every connected shell, so its indicator wears the
+   warning ink and keeps the glyph at the bar's own size. */
+.status-item.is-broadcasting {
+  color: var(--yellow);
+  font-weight: 500;
+}
+
+.status-item.is-broadcasting .icon {
+  width: 14px;
+  height: 14px;
+}
+
+/* Typing latency: a measurement, so its digits must not shift the bar as the
+   number changes width. */
+.status-latency {
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-muted);
+}
+
+/* What the program says it is doing ("vim notes.txt", a nested prompt). It is
+   transient text, so it may shrink: the session's own details must not be
+   pushed off the bar by a long title. */
+.status-remote-title {
+  max-width: 28ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-muted);
+}
 
 /* The protocol reads as one identity token: the field's name lives in its
    tooltip, not in a second label on the bar. */
 .status-protocol {
   letter-spacing: 0.06em;
 }
-
 /* The message may carry a dismiss control; the text, not the row, ellipsises.
    It is the only item allowed to shrink: a long status or error must never
    push the resource summary or the session details off the bar. */
@@ -108,7 +134,6 @@
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
-
 /* Transfers, tunnels and the resource summary are buttons, so they get the
    same hover/open affordance as every other clickable item in the chrome.
    The 20px height fills the 24px strip with a 2px breathing edge; without it
@@ -154,7 +179,6 @@ button.status-item:focus-visible {
 .statusbar .transfer-center {
   flex-shrink: 0;
 }
-
 /* The active session is being recorded to a file; the button opens the
    folder. The dot is the Codicon, tinted the recording red. The button's
    box (height, gap, tint) comes from the shared status-item rule above. */
@@ -170,7 +194,6 @@ button.status-item:focus-visible {
 .status-recording:hover {
   background: var(--bg-hover);
 }
-
 /* The active SSH session only connected on algorithms kept for old devices;
    the tooltip names them. */
 .status-legacy {
@@ -182,11 +205,11 @@ button.status-item:focus-visible {
 .status-legacy .icon {
   color: var(--yellow);
 }
-
 /* A popover's own failure reads as a failure, not as body copy. */
 .status-popover-error {
   color: var(--red);
 }
+/* --- splitters ------------------------------------------------------------ */
 
 /* --- splitters ------------------------------------------------------------ */
 
@@ -215,69 +238,67 @@ button.status-item:focus-visible {
 .splitter:focus-visible {
   outline: none;
 }
-
 .splitter::before,
 .splitter::after {
   content: "";
   position: absolute;
 }
-
 .splitter.is-vertical,
 .splitter.is-vertical::after {
   cursor: col-resize;
 }
-
 .splitter.is-horizontal,
 .splitter.is-horizontal::after {
   cursor: row-resize;
 }
-
 .splitter.is-vertical::after {
   top: 0;
   bottom: 0;
   left: -5px;
   width: 11px;
 }
-
 .splitter.is-horizontal::after {
   left: 0;
   right: 0;
   top: -5px;
   height: 11px;
 }
-
 .splitter::before {
   background: var(--accent);
   opacity: 0;
-  transition: opacity 80ms ease;
+  transition: opacity var(--dur-1) ease;
   pointer-events: none;
 }
 
+/* the sash line is feedback, not decoration: readers who ask for reduced
+   motion get the state change without the fade. */
+@media (prefers-reduced-motion: reduce) {
+  .splitter::before {
+    transition: none;
+  }
+}
 .splitter.is-vertical::before {
   top: 0;
   bottom: 0;
   left: -1.5px;
   width: 4px;
 }
-
-/* The guide moves during a dock drag; the dock itself moves on release. A side
-   dock's own edge is vertical and travels in X; the splitters that divide a
-   side dock are horizontal and travel in Y, so both carry the same line. */
+/* The guide moves during a dock drag;the dock itself moves on release. a side
+   dock's own edge is vertical and travels in: the dock itself moves on release. A side
+   dock's own edge is vertical and travels in X;the splitters that divide a
+   side dock are horizontal and travel in y, so both carry the same line. */
 .splitter.is-vertical[data-preview]::before {
   transform: translateX(var(--splitter-preview-x, 0px));
 }
-
 .splitter.is-horizontal::before {
   left: 0;
   right: 0;
   top: -1.5px;
   height: 4px;
 }
-
 .splitter.is-horizontal[data-preview]::before {
   transform: translateY(var(--splitter-preview-y, 0px));
 }
-
 /* The size the drag is heading for, beside the pointer. Positioned by the
    splitter itself (fixed, translated per frame); pointer-events off so it can
    never swallow the movement it is describing. */
@@ -285,7 +306,7 @@ button.status-item:focus-visible {
   position: fixed;
   top: 0;
   left: 0;
-  z-index: 200;
+  z-index: var(--z-hud);
   padding: 2px var(--sp-6);
   border: 1px solid var(--border-menu);
   border-radius: var(--radius-sm);
@@ -297,7 +318,6 @@ button.status-item:focus-visible {
   white-space: nowrap;
   pointer-events: none;
 }
-
 .splitter:hover::before,
 .splitter:focus-visible::before,
 .splitter.is-dragging::before {
@@ -310,7 +330,6 @@ button.status-item:focus-visible {
 .app:has(.splitter.is-vertical.is-dragging) * {
   cursor: col-resize !important;
 }
-
 .app:has(.splitter.is-horizontal.is-dragging),
 .app:has(.splitter.is-horizontal.is-dragging) * {
   cursor: row-resize !important;

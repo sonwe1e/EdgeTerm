@@ -1,7 +1,7 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
-import { Terminal } from "@xterm/xterm";
+import { type IDecoration, type IMarker, Terminal } from "@xterm/xterm";
 
 import { TerminalClipboard } from "./terminalClipboard";
 import { CwdAttribution, createFileLinkProvider } from "./terminalFileLinks";
@@ -37,6 +37,7 @@ import { setSemanticColorTheme } from "./semanticColors";
 import { selectionEdit } from "./terminalSelectionEdit";
 import { terminalColdHistoryEnabled } from "./storePreferences";
 import { DEFAULT_FIND_OPTIONS, type FindOptions, type SearchResults } from "./terminalSearch";
+import { latencyMeter } from "./inputLatency";
 import { type TransferNoticeKind } from "./terminalTransfer";
 import type { BackspaceKey, ThemeMode } from "./types";
 import { ZmodemController } from "./zmodem";
@@ -102,6 +103,158 @@ export class TerminalController {
 
   copySelection(): boolean {
     return this.clipboard.copySelection();
+  }
+
+  /** Whose viewport is on the newest row. */
+  isAtBottom(): boolean {
+    const buffer = this.term.buffer.active;
+    return buffer.viewportY >= buffer.baseY;
+  }
+
+  /** Back to the live end, e.g. from the "jump to latest" pill. */
+  scrollToBottom() {
+    this.term.scrollToBottom();
+  }
+
+  /**
+   * Fires whenever the viewport moves or output lands, with whether the
+   * newest row is on screen. Output can push the bottom down while the user
+   * is scrolled up, which is exactly when the pill has to appear.
+   */
+  onScrollState(listener: (atBottom: boolean) => void) {
+    const offScroll = this.term.onScroll(() => listener(this.isAtBottom()));
+    const offWrite = this.term.onWriteParsed(() => listener(this.isAtBottom()));
+    return () => {
+      offScroll.dispose();
+      offWrite.dispose();
+    };
+  }
+
+  /** The last finished command line, for "copy the command". */
+  lastCommandText(): string | null {
+    return this.commands.lastFinishedCommand()?.command ?? null;
+  }
+
+  /**
+   * Scrolls to the previous (direction -1) or next (1) finished command.
+   * The reference is the top row of the viewport: a command line already on
+   * that row is "here", so the jump goes one further, the way every editor
+   * treats "previous match".
+   */
+  jumpToCommand(direction: -1 | 1): boolean {
+    return this.jumpToLines(this.commands.commandLineList(), direction);
+  }
+
+  /**
+   * The same walk over the commands the shell reported as failed: from the
+   * bottom, "previous" lands on the most recent failure first.
+   */
+  jumpToFailedCommand(direction: -1 | 1): boolean {
+    return this.jumpToLines(this.commands.commandFailures(), direction);
+  }
+
+  /** Start rows of the failed commands still in the buffer, oldest first. */
+  failedCommandLines(): number[] {
+    return this.commands.commandFailures();
+  }
+
+  /**
+   * The same walk over the rows the gutter marked as watch words (an error or
+   * a warning in the text). It shares the command jumps' landing so "previous"
+   * always means "up from where I am looking", whichever family got me here.
+   */
+  jumpToWatchMark(direction: -1 | 1): boolean {
+    return this.jumpToLines(this.lineGutter.watchLines(), direction);
+  }
+
+  /** Absolute rows carrying a watch word, oldest first. */
+  watchMarkLines(): number[] {
+    return this.lineGutter.watchLines();
+  }
+
+  private jumpToLines(lines: number[], direction: -1 | 1): boolean {
+    if (lines.length === 0) return false;
+    const buffer = this.term.buffer.active;
+    // The walk starts at the cursor and continues from the last landing, the
+    // way editors step through matches: pressing "previous" twice must go two
+    // commands up, not return to the same line.
+    const reference = this.commandJumpLine ?? buffer.baseY + buffer.cursorY;
+    let target: number | undefined;
+    if (direction < 0) {
+      for (let index = lines.length - 1; index >= 0; index -= 1) {
+        if (lines[index] < reference) {
+          target = lines[index];
+          break;
+        }
+      }
+    } else {
+      target = lines.find((line) => line > reference);
+    }
+    if (target === undefined) return false;
+    this.commandJumpLine = target;
+    this.scrollToLine(target);
+    this.flashCommandLine(target);
+    return true;
+  }
+
+  /**
+   * Tints the command line a jump landed on for a moment. A scroll with no
+   * marker leaves the reader unsure whether anything happened, and the prompt
+   * itself is often outside the viewport after a long output.
+   */
+  /** Where the last command jump landed; the walk continues from there. */
+  private commandJumpLine: number | null = null;
+
+  /** The one live "you landed here" tint, so two jumps never fight. */
+  private commandFlash: { decoration: IDecoration; marker: IMarker } | null = null;
+
+  private flashCommandLine(absoluteLine: number) {
+    this.clearCommandFlash();
+    const buffer = this.term.buffer.active;
+    const marker = this.term.registerMarker(absoluteLine - (buffer.baseY + buffer.cursorY));
+    if (!marker) return;
+    const decoration = this.term.registerDecoration({ marker, x: 0, width: this.term.cols });
+    if (!decoration) {
+      marker.dispose();
+      return;
+    }
+    decoration.onRender((element) => element.classList.add("command-jump"));
+    const flash = { decoration, marker };
+    this.commandFlash = flash;
+    window.setTimeout(() => {
+      // A second jump replaced the flash; that one owns the cleanup.
+      if (this.commandFlash !== flash) return;
+      this.clearCommandFlash();
+    }, 1200);
+  }
+
+  private clearCommandFlash() {
+    this.commandFlash?.decoration.dispose();
+    this.commandFlash?.marker.dispose();
+    this.commandFlash = null;
+  }
+
+  copyLastCommand(): boolean {
+    const command = this.commands.lastFinishedCommand()?.command;
+    return command ? this.clipboard.copyText(command) : false;
+  }
+
+  /**
+   * Copies only the output of the last finished command: the rows between the
+   * line it was submitted on and the prompt that followed. Trailing blank rows
+   * are trimmed, so a pasted copy does not arrive with a run of empty lines.
+   */
+  copyLastCommandOutput(): boolean {
+    const range = this.commands.lastFinishedCommand();
+    if (!range) return false;
+    // xterm selects a pair of 0-based inclusive buffer lines, not a length.
+    const first = range.start + 1;
+    const last = range.end - 1;
+    if (last < first) return false;
+    this.term.selectLines(first, last);
+    const text = this.term.getSelection().replace(/\s+$/, "");
+    this.term.clearSelection();
+    return this.clipboard.copyText(text);
   }
 
   selectAll() {
@@ -212,7 +365,7 @@ export class TerminalController {
    * A font change made while the pane was display:none, landed at the show
    * boundary where the renderer can measure it; see setFontSize.
    */
-  private pendingFont: { size?: number; family?: string } | null = null;
+  private pendingFont: { size?: number; family?: string; lineHeight?: number } | null = null;
   /**
    * Watches the fit parent itself: the gutter widening after its rows first
    * paint (or a font-size change) shrinks the host the fit measured, and the
@@ -408,6 +561,14 @@ export class TerminalController {
 
       get scrollback() {
         return owner.scrollback;
+      },
+
+      get commandLines() {
+        return new Set(owner.commands.commandLineList());
+      },
+
+      get commandFailures() {
+        return new Set(owner.commands.commandFailures());
       },
 
       get host() {
@@ -635,9 +796,16 @@ export class TerminalController {
     // is the authoritative completion signal when available; prompt matching
     // below covers ordinary bash/zsh/fish/cmd/PowerShell installations.
     this.term.parser.registerOscHandler(133, (data) => {
-      const marker = data.split(";", 1)[0];
+      // D may carry the exit status: D;0, D;127, or a bare D.
+      const [marker, status] = data.split(";");
+      const exit = status !== undefined && /^\d+$/.test(status) ? Number(status) : null;
       if (marker === "C" && !this.commands.commandRunning) this.commands.beginCommand();
-      else if (marker === "D" || marker === "A") this.commands.finishCommand();
+      else if (marker === "D") {
+        // The cursor sits on the prompt that returned: that row is what the
+        // gutter marks, and the exit is what makes it a failure mark.
+        const buffer = this.term.buffer.active;
+        this.commands.finishCommand(exit, buffer.baseY + buffer.cursorY);
+      } else if (marker === "A") this.commands.finishCommand();
       return marker === "A" || marker === "B" || marker === "C" || marker === "D";
     });
     // A shell's `clear` restarts the line numbering and drops the scrollback,
@@ -733,6 +901,8 @@ export class TerminalController {
       this.viewport.scheduleCellMeasure();
     });
 
+    this.term.onBell(() => this.callbacks.onBell?.());
+    this.term.onTitleChange((title) => this.callbacks.onTitleChange?.(title));
     this.term.onLineFeed(() => this.lineGutter.recordLine());
     this.term.onRender(() => {
       if (!this.visible) return;
@@ -941,6 +1111,9 @@ export class TerminalController {
       consumed?.();
       return;
     }
+    // The first bytes back after a keystroke are that keystroke's answer: the
+    // meter turns the gap into the typing-latency chip's sample.
+    if (data.length > 0) latencyMeter(this.sessionId).markOutput(performance.now());
     this.outputBytes += data.length;
     // Cheap enough for the byte path: one timestamp, only while a turn is
     // open, and the quiet timer reads it instead of being re-armed here.
@@ -1261,6 +1434,21 @@ export class TerminalController {
       return;
     }
     this.term.options.fontFamily = fontFamily;
+    this.refreshFontMetrics();
+  }
+
+  /**
+   * Line spacing is a layout property, not a font: the renderer re-measures
+   * rows from it, so the gutter's cell height must be refreshed the same way a
+   * font change refreshes it.
+   */
+  setLineHeight(lineHeight: number) {
+    if ((this.pendingFont?.lineHeight ?? this.term.options.lineHeight) === lineHeight) return;
+    if (!this.visible) {
+      this.pendingFont = { ...this.pendingFont, lineHeight };
+      return;
+    }
+    this.term.options.lineHeight = lineHeight;
     this.refreshFontMetrics();
   }
 

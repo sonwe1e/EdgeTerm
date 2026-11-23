@@ -118,6 +118,18 @@ export class TerminalClipboard {
   }
 
   /**
+   * Writes text the terminal selected on the reader's behalf (the last
+   * command's output). Empty text is refused rather than clearing the
+   * clipboard: a command that printed nothing must not cost what was copied
+   * before it.
+   */
+  copyText(text: string): boolean {
+    if (!text.trim()) return false;
+    this.writeClipboard(text);
+    return true;
+  }
+
+  /**
    * Copies the selection to the clipboard; false when there is none. A write
    * that fails is reported in the pane rather than swallowed: with Copy on
    * Select there is no other sign that nothing was copied.

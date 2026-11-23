@@ -12,9 +12,12 @@ import {
 
 import { canDuplicateSshChannel, duplicateSshChannel, splitSession } from "../actions";
 import type { Translate } from "../i18n";
-import { tabTitle, useStore, type DropTarget, type Tab } from "../store";
+import { closeOthersTargets, tabTitle, useStore, type DropTarget, type Tab } from "../store";
+import { clampStripIndex } from "../storeLayout";
+import { getController } from "../terminalRegistry";
 import { colorForSession } from "../types";
 import { useT } from "../useT";
+import { reopenClosedTab } from "../actions";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { Icon } from "./icons";
 import { AgentTabActions } from "./AgentTabActions";
@@ -153,11 +156,22 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
   const setActive = useStore((s) => s.setActive);
   const setActivePane = useStore((s) => s.setActivePane);
   const requestCloseTabs = useStore((s) => s.requestCloseTabs);
+  const toggleTabPinned = useStore((s) => s.toggleTabPinned);
+  const renameTab = useStore((s) => s.renameTab);
+  // Which tab's name is being edited, and whether the escape key asked for
+  // the old one back (blur commits, so cancel has to be remembered).
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const renameCancel = useRef(false);
+  // The strip captures the pointer for its drag, so the browser's own
+  // dblclick is not reliable here: the second press within this window is
+  // what starts a rename.
+  const lastPress = useRef<{ id: string; at: number } | null>(null);
   const moveTab = useStore((s) => s.moveTab);
   const moveTabToPane = useStore((s) => s.moveTabToPane);
   const splitPane = useStore((s) => s.splitPane);
   const setTabDrag = useStore((s) => s.setTabDrag);
   const closeKey = useAccelerator("closeSession");
+  const reopenKey = useAccelerator("reopenTab");
   const splitRightKey = useAccelerator("splitRight");
   const splitDownKey = useAccelerator("splitDown");
   const stripRef = useRef<HTMLDivElement>(null);
@@ -207,6 +221,10 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
       case " ":
         event.preventDefault();
         setActive(id);
+        return;
+      case "F2":
+        event.preventDefault();
+        setRenamingId(id);
         return;
     }
   };
@@ -300,10 +318,19 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
     y: number;
     id: string;
   } | null>(null);
+  // Right-clicking the strip itself (not a tab) offers the one command that
+  // has no tab to hang from: bringing back the last closed session.
+  const [stripMenu, setStripMenu] = useState<{ x: number; y: number } | null>(null);
   const closeTabMenu = useCallback(() => setTabMenu(null), []);
+  const closeStripMenu = useCallback(() => setStripMenu(null), []);
+  const closedTabs = useStore((s) => s.closedTabs);
   const onContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
     const id = (event.target as Element).closest<HTMLElement>(".tab")?.dataset.tabId;
-    if (!id) return;
+    if (!id) {
+      event.preventDefault();
+      setStripMenu({ x: event.clientX, y: event.clientY });
+      return;
+    }
     event.preventDefault();
     setTabMenu({ x: event.clientX, y: event.clientY, id });
   };
@@ -319,10 +346,12 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
         action: () => requestCloseTabs([id]),
       },
       {
+        // A pinned tab is the one thing "Close Others" leaves alone; closing
+        // it itself is still the explicit Close above.
         label: t("tab.closeOthers"),
         icon: "close-all",
-        disabled: ids.length < 2,
-        action: () => requestCloseTabs(ids.filter((other) => other !== id)),
+        disabled: ids.filter((other) => other !== id).length === 0,
+        action: () => requestCloseTabs(closeOthersTargets(tabs, id)),
       },
       {
         label: t("tab.closeLeft"),
@@ -342,6 +371,23 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
         action: () => requestCloseTabs(ids),
       },
       "separator",
+      {
+        label: tab?.pinned ? t("tab.unpin") : t("tab.pin"),
+        icon: "pin",
+        action: () => toggleTabPinned(id),
+      },
+      {
+        label: t("tab.rename"),
+        icon: "edit",
+        shortcut: "F2",
+        action: () => setRenamingId(id),
+      },
+      {
+        label: t("tab.renameReset"),
+        icon: "refresh",
+        disabled: !tab?.title,
+        action: () => renameTab(id, ""),
+      },
       {
         label: t("tab.saveSession"),
         icon: "save",
@@ -541,6 +587,19 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
       if (!target.closest("button")) setActivePane(paneId);
       return;
     }
+    // Renaming is about the name: only a press on the label arms the pair.
+    const onLabel = Boolean(target.closest(".tab-label"));
+    const press = lastPress.current;
+    const now = performance.now();
+    if (onLabel && press && press.id === id && now - press.at < 400) {
+      lastPress.current = null;
+      // Cancel the compatibility mousedown: its default action would focus
+      // the tab and blur the field the same press just opened.
+      event.preventDefault();
+      setRenamingId(id);
+      return;
+    }
+    lastPress.current = onLabel ? { id, at: now } : null;
     const strip = event.currentTarget;
     try {
       strip.setPointerCapture(event.pointerId);
@@ -617,9 +676,19 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
     updateDrag();
   };
 
-  // Where a tab dragged from another strip would be inserted here.
+  // Where a tab dragged from another strip would be inserted here. Clamped
+  // like the drop itself, so the marker never promises a spot inside the
+  // pinned region that the drop would refuse.
+  const draggedTab = tabs.find((tab) => tab.info.id === draggingTabId);
   const marker =
-    dropTarget?.paneId === paneId && dropTarget.zone === "strip" ? dropTarget.index : null;
+    dropTarget?.paneId === paneId && dropTarget.zone === "strip"
+      ? clampStripIndex(
+          tabs,
+          draggedTab?.pinned === true,
+          dropTarget.index,
+          draggedTab === undefined,
+        )
+      : null;
 
   return (
     <div
@@ -644,6 +713,15 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
         if (event.pointerId === drag.current?.pointerId) finishDrag(false);
       }}
       onContextMenu={onContextMenu}
+      onKeyDown={(event) => {
+        // F6 puts focus on the strip itself, not on a tab: F2 has to work
+        // there too, for the tab the strip is showing.
+        if (event.key !== "F2" || event.defaultPrevented) return;
+        const id = shownId ?? tabs[0]?.info.id;
+        if (!id) return;
+        event.preventDefault();
+        setRenamingId(id);
+      }}
     >
       <div className="tabstrip-fade-left" aria-hidden="true" />
       {tabs.flatMap((tab, index) => {
@@ -658,6 +736,7 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
             className={[
               "tab",
               active ? "is-active" : "",
+              tab.pinned ? "is-pinned" : "",
               `is-${tab.state}`,
               `is-command-${tab.commandActivity}`,
               tab.info.id === draggingTabId ? "is-dragging" : "",
@@ -672,12 +751,88 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
             tabIndex={active ? 0 : -1}
             data-tab-id={tab.info.id}
             onMouseDown={() => setActive(tab.info.id)}
+            onAuxClick={(event) => {
+              // Middle-click closes, the way every tab strip behaves. A pinned
+              // tab is exempt: that gesture is easy to make by accident, and
+              // pinning is a promise to keep it. Its own Close still works.
+              if (event.button !== 1) return;
+              event.preventDefault();
+              if (tab.pinned) return;
+              requestCloseTabs([tab.info.id]);
+            }}
             onKeyDown={(event) => onTabKeyDown(event, index, tab.info.id)}
-            title={`${tab.info.protocol} · ${tab.info.address} · ${details}${tab.commandActivity === "complete" && tab.activityKind !== "ai" ? t("tab.selectToView") : ""}`}
+            title={`${tab.info.protocol} · ${tab.info.address} · ${details}${tab.attention ? ` · ${t("tab.awaitingInput")}` : ""}${tab.commandActivity === "complete" && tab.activityKind !== "ai" ? t("tab.selectToView") : ""}`}
           >
+            {tab.pinned && (
+              <span className="tab-pin" aria-hidden="true">
+                <Icon name="pin" />
+              </span>
+            )}
             <span className="tab-index">{tab.number}.</span>
             <span className="tab-dot" aria-hidden="true" />
-            <span className="tab-label">{tabTitle(tab)}</span>
+            {tab.attention && tab.state !== "closed" && (
+              <span className="tab-bell" aria-hidden="true" title={t("tab.awaitingInput")}>
+                <Icon name="bell" />
+              </span>
+            )}
+            {renamingId === tab.info.id ? (
+              <input
+                className="tab-rename"
+                // Nothing selects or drags the tab while its name is being
+                // typed: the pointer belongs to the field.
+                autoFocus
+                defaultValue={tabTitle(tab)}
+                aria-label={t("tab.renameField")}
+                // The whole name is selected, so the first keystroke replaces
+                // it instead of appending to it.
+                onFocus={(event) => event.currentTarget.select()}
+                onPointerDown={(event) => event.stopPropagation()}
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+                onDoubleClick={(event) => event.stopPropagation()}
+                onBlur={(event) => {
+                  if (!renameCancel.current) renameTab(tab.info.id, event.currentTarget.value);
+                  renameCancel.current = false;
+                  setRenamingId(null);
+                }}
+                onKeyDown={(event) => {
+                  // An IME's Enter picks a candidate; it is not a commit.
+                  if (event.nativeEvent.isComposing) {
+                    event.stopPropagation();
+                    return;
+                  }
+                  const field = event.currentTarget;
+                  // Focus never falls to <body>. A committed name hands the
+                  // keys to the shell of that tab (the same place clicking the
+                  // tab leads); a cancelled one stays on the tab.
+                  const tabElement = field.closest<HTMLElement>(".tab");
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    field.blur();
+                    const controller = getController(tab.info.id);
+                    if (active && controller) controller.focus();
+                    else tabElement?.focus();
+                  } else if (event.key === "Escape") {
+                    event.preventDefault();
+                    renameCancel.current = true;
+                    field.blur();
+                    tabElement?.focus();
+                  }
+                  event.stopPropagation();
+                }}
+              />
+            ) : (
+              <span
+                className="tab-label"
+                // The fastest way to name a tab: double-click the name itself.
+                onDoubleClick={(event) => {
+                  event.stopPropagation();
+                  setRenamingId(tab.info.id);
+                }}
+              >
+                {tabTitle(tab)}
+              </span>
+            )}
             <button
               className="tab-close"
               // Kept out of the tab order: the strip is one Tab stop, and the
@@ -762,6 +917,23 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
           className="tab-list-menu"
           items={listItems}
           onClose={closeListMenu}
+        />
+      )}
+
+      {stripMenu && (
+        <ContextMenu
+          x={stripMenu.x}
+          y={stripMenu.y}
+          items={[
+            {
+              label: t("tab.reopen"),
+              icon: "history",
+              shortcut: reopenKey,
+              disabled: closedTabs.length === 0,
+              action: () => void reopenClosedTab(),
+            },
+          ]}
+          onClose={closeStripMenu}
         />
       )}
 

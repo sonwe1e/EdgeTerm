@@ -30,7 +30,6 @@
   min-width: 0;
   overflow: hidden;
 }
-
 /* Label, mini trend and reading per gauge. Hairline separators rather than
    dots, so the row reads as an instrument strip, not as a sentence. */
 .resource-vitals {
@@ -45,7 +44,6 @@
   align-items: center;
   gap: var(--sp-4);
 }
-
 .vital + .vital::before {
   content: "";
   width: 1px;
@@ -64,7 +62,6 @@
   font-size: var(--fs-sm);
   font-variant-numeric: tabular-nums;
 }
-
 /* --- resource trend sparklines -------------------------------------------
    Shared by the status-bar resource monitor and the body of its popover. They
    live in this sheet because it is the one the monitor UI owns; the colour
@@ -141,7 +138,6 @@
 .resource-compact {
   display: none;
 }
-
 @media (max-width: 1100px) {
   .resource-wide {
     display: none;
@@ -151,7 +147,6 @@
     display: inline;
   }
 }
-
 /* --- popover body --------------------------------------------------------- */
 
 /* A note or an error is body copy, not a paragraph: no default margins, and
@@ -160,7 +155,6 @@
   margin: 0;
   line-height: 1.5;
 }
-
 /* Refresh lives in the header's actions slot as an icon button, like the close
    control beside it. The shell's button rule pads and outlines every button in
    a popover, so this one resets those to a square hit area. */
@@ -177,12 +171,10 @@
   border-radius: var(--radius-sm);
   cursor: pointer;
 }
-
 .status-popover .monitor-refresh:hover:not(:disabled) {
   color: var(--fg);
   background: var(--bg-hover);
 }
-
 .status-popover .monitor-refresh:disabled {
   opacity: 0.4;
   cursor: default;
@@ -234,7 +226,6 @@
   letter-spacing: -0.01em;
   line-height: 1.1;
 }
-
 /* The trend box is stretched by CSS; the path is drawn in its own 140×32
    coordinate space, so the stroke stays even (non-scaling-stroke). */
 .monitor-spark {
@@ -268,7 +259,6 @@
   flex: none;
   color: var(--fg-dim);
 }
-
 /* Accelerators appear only when one was detected. A hairline separates them
    from the host gauges, which are always there. */
 .monitor-devices {
@@ -319,7 +309,7 @@
   height: 100%;
   background: var(--green);
   border-radius: inherit;
-  transition: width 160ms ease;
+  transition: width var(--dur-2) ease;
 }
 
 .monitor-device-track.is-warn .monitor-device-fill {
@@ -344,7 +334,6 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-
 /* The two settings stay one quiet row under the readings; they are controls,
    not part of the instrument. */
 .monitor-controls {
@@ -377,7 +366,6 @@
   width: 48px;
   text-align: right;
 }
-
 @media (prefers-reduced-motion: reduce) {
   .monitor-device-fill {
     transition: none;

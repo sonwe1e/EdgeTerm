@@ -94,7 +94,6 @@
   height: var(--h-control-lg);
   font-size: var(--fs);
 }
-
 /* --- dialog --------------------------------------------------------------- */
 
 /* The modal primitive: the <dialog> element itself fills the viewport and
@@ -119,17 +118,16 @@ dialog.dialog-backdrop[open] {
   display: grid;
   place-items: center;
 }
-
 dialog.dialog-backdrop::backdrop {
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--scrim);
 }
 
 /* showModal-less fallback: no top layer, so the dialog element itself paints
    the dim. Focus containment and Escape are the primitive's own job here;
    the background is not inert (declared platform boundary). */
 dialog.dialog-backdrop.is-fallback[open] {
-  z-index: 10000;
-  background: rgba(0, 0, 0, 0.5);
+  z-index: var(--z-dialog);
+  background: var(--scrim);
 }
 
 /* The box is a column of three parts: a fixed header, a body that takes the
@@ -166,7 +164,6 @@ dialog.dialog-backdrop.is-fallback[open] {
   min-height: 0;
   flex-direction: column;
 }
-
 /* A backdrop click on a dialog that holds a form does not close it; the
    dialog blinks its accent ring twice instead (see dialogAttention.ts).
    `animationend` removes the class, so reduced motion swaps in a steady,
@@ -210,7 +207,6 @@ dialog.dialog-backdrop.is-fallback[open] {
     translate: none;
   }
 }
-
 @media (prefers-reduced-motion: reduce) {
   .dialog {
     animation: none;
@@ -235,7 +231,6 @@ dialog.dialog-backdrop.is-fallback[open] {
      used, so both dialog headers share one weight. */
   font-size: var(--fs-md);
 }
-
 /* A header that drags the dialog around (see useDialogDrag). */
 .dialog-header.is-drag-handle {
   user-select: none;
@@ -252,7 +247,6 @@ dialog.dialog-backdrop.is-fallback[open] {
   flex-direction: column;
   gap: var(--sp-10);
 }
-
 /* Every dialog field is a label above its control (`.session-field`); the
    old right-aligned two-column `.field` grid had no users left. */
 
@@ -263,14 +257,12 @@ dialog.dialog-backdrop.is-fallback[open] {
   max-height: min(780px, calc(100vh - 32px));
   overflow: hidden;
 }
-
 /* Icon tile, title and live target line, then the close button. */
 .session-dialog-header {
   flex: 0 0 auto;
   gap: var(--sp-12);
   padding: var(--sp-12) var(--sp-16);
 }
-
 /* The tile wears the session colour picked in the form, as a tint rather
    than a fill so the icon stays legible whichever colour that is. */
 .session-dialog-badge {
@@ -408,8 +400,8 @@ dialog.dialog-backdrop.is-fallback[open] {
   border-radius: var(--radius-lg);
   background: var(--bg-field);
   transition:
-    border-color 100ms ease,
-    box-shadow 100ms ease;
+    border-color var(--dur-2) ease,
+    box-shadow var(--dur-2) ease;
 }
 
 /* The composite field (input + suffix) is one control, so its ring belongs on
@@ -490,14 +482,12 @@ dialog.dialog-backdrop.is-fallback[open] {
   border-radius: 50%;
   box-shadow: 0 0 0 1px var(--swatch-ring);
   transition:
-    transform 120ms ease,
-    box-shadow 120ms ease;
+    transform var(--dur-2) ease,
+    box-shadow var(--dur-2) ease;
 }
-
 .session-color-option:hover {
   transform: scale(1.12);
 }
-
 /* The chosen swatch keeps a ring held off the colour by the card behind it. */
 .session-color-option.is-selected {
   transform: scale(1.06);
@@ -505,7 +495,6 @@ dialog.dialog-backdrop.is-fallback[open] {
     0 0 0 2px var(--bg-panel-alt),
     0 0 0 3px var(--fg);
 }
-
 .session-color-option:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
@@ -523,7 +512,6 @@ dialog.dialog-backdrop.is-fallback[open] {
   padding: 0;
   color: var(--fg-dim);
 }
-
 .serial-refresh:hover {
   color: var(--fg);
 }
@@ -536,8 +524,8 @@ dialog.dialog-backdrop.is-fallback[open] {
   border-radius: var(--radius-md);
   background: var(--bg-field);
   transition:
-    border-color 100ms ease,
-    box-shadow 100ms ease;
+    border-color var(--dur-2) ease,
+    box-shadow var(--dur-2) ease;
 }
 
 .session-field .input-with-suffix input {
@@ -546,7 +534,6 @@ dialog.dialog-backdrop.is-fallback[open] {
   border-radius: 0;
   background: transparent;
 }
-
 .session-field .input-with-suffix input:focus {
   box-shadow: none;
 }
@@ -560,7 +547,6 @@ dialog.dialog-backdrop.is-fallback[open] {
   background: var(--bg-panel);
   font-size: var(--fs-sm);
 }
-
 /* --- combo box (ComboBox.tsx, the serial form's baud rate) ---------------- */
 
 /* The caret at the end of the field that lists every suggestion. */
@@ -573,10 +559,9 @@ dialog.dialog-backdrop.is-fallback[open] {
   padding: 0;
   color: var(--fg-dim);
   transition:
-    background-color 80ms ease,
-    color 80ms ease;
+    background-color var(--dur-1) ease,
+    color var(--dur-1) ease;
 }
-
 .combo-toggle:hover,
 .combo-toggle.is-open {
   color: var(--fg);
@@ -584,13 +569,12 @@ dialog.dialog-backdrop.is-fallback[open] {
 }
 
 .combo-toggle .icon {
-  transition: transform 120ms ease;
+  transition: transform var(--dur-2) ease;
 }
 
 .combo-toggle.is-open .icon {
   transform: rotate(180deg);
 }
-
 /* The suggestions wear the menus' panel (.menu-dropdown), as wide as their
    field (placed inline). Inside the dialog primitive they hang in its top
    layer; elsewhere they are portalled to <body>, which the z-index keeps
@@ -635,7 +619,6 @@ dialog.dialog-backdrop.is-fallback[open] {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
 /* What the typed text matched, the way VS Code marks a suggestion. */
 .combo-match {
   color: var(--accent);
@@ -669,11 +652,10 @@ dialog.dialog-backdrop.is-fallback[open] {
   border: 1px solid var(--border-strong);
   background: var(--bg-panel-alt);
   transition:
-    background-color 100ms ease,
-    border-color 100ms ease,
-    filter 100ms ease;
+    background-color var(--dur-2) ease,
+    border-color var(--dur-2) ease,
+    filter var(--dur-2) ease;
 }
-
 .btn:hover {
   background: var(--bg-hover);
 }
@@ -686,7 +668,6 @@ dialog.dialog-backdrop.is-fallback[open] {
 .btn:active:not(:disabled):not(.is-primary):not(.is-danger) {
   background: var(--bg-active);
 }
-
 .btn.is-primary:active:not(:disabled),
 .btn.is-danger:active:not(:disabled) {
   filter: brightness(0.9);
@@ -699,7 +680,6 @@ dialog.dialog-backdrop.is-fallback[open] {
 .btn.is-loading {
   cursor: default;
 }
-
 .btn.is-loading::before {
   content: "";
   width: 14px;
@@ -718,17 +698,14 @@ dialog.dialog-backdrop.is-fallback[open] {
   border-color: color-mix(in srgb, currentColor 35%, transparent);
   border-top-color: currentColor;
 }
-
 .btn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-
 .btn:disabled {
   cursor: default;
   opacity: 0.4;
 }
-
 .btn:disabled:hover {
   background: var(--bg-panel-alt);
   filter: none;
@@ -741,11 +718,9 @@ dialog.dialog-backdrop.is-fallback[open] {
   font-weight: 600;
   box-shadow: 0 1px 2px color-mix(in srgb, var(--accent) 35%, transparent);
 }
-
 .btn.is-primary:hover {
   filter: brightness(1.1);
 }
-
 .btn.is-primary:disabled:hover {
   background: var(--accent);
 }
@@ -756,7 +731,6 @@ dialog.dialog-backdrop.is-fallback[open] {
   color: var(--danger-contrast);
   font-weight: 600;
 }
-
 .btn.is-danger:hover {
   filter: brightness(1.1);
 }
@@ -769,7 +743,6 @@ dialog.dialog-backdrop.is-fallback[open] {
   color: var(--red);
   user-select: text;
 }
-
 /* The connection error keeps its icon beside the text it belongs to. */
 .session-dialog-error {
   display: flex;
@@ -808,7 +781,6 @@ dialog.dialog-backdrop.is-fallback[open] {
   align-items: center;
   gap: var(--sp-10);
 }
-
 .font-size-setting > span:first-child {
   display: flex;
   min-width: 0;
@@ -838,7 +810,6 @@ dialog.dialog-backdrop.is-fallback[open] {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
-
 /* Free text with the installed families as suggestions, shown in the face it
    names so the setting previews itself. */
 .font-family-input {
@@ -887,12 +858,10 @@ dialog.dialog-backdrop.is-fallback[open] {
 .font-size-dialog-footer .font-size-reset {
   margin-right: auto;
 }
-
 @media (max-width: 500px) {
   .font-size-setting {
     grid-template-columns: 1fr 58px 18px;
   }
-
   .font-size-setting > span:first-child {
     grid-column: 1 / -1;
   }
@@ -913,7 +882,6 @@ dialog.dialog-backdrop.is-fallback[open] {
     grid-column: 2 / -1;
   }
 }
-
 /* --- keyboard shortcuts --------------------------------------------------- */
 
 .shortcuts-dialog {
@@ -944,7 +912,9 @@ dialog.dialog-backdrop.is-fallback[open] {
 
 .shortcut-row {
   display: grid;
-  grid-template-columns: 1fr minmax(120px, auto) 22px;
+  /* the clear button is a real target: 24px is the WCAG 2.2 floor, and the
+     column owns the full width so the row's grid does not shrink it. */
+  grid-template-columns: 1fr minmax(120px, auto) 24px;
   align-items: center;
   gap: var(--sp-10);
   padding: var(--sp-4) 0;
@@ -966,7 +936,6 @@ dialog.dialog-backdrop.is-fallback[open] {
   color: var(--fg-faint);
   font-size: var(--fs-sm);
 }
-
 /* The binding reads as the key it stands for, so it is set in the terminal
    face and centred like a keycap. */
 .shortcut-key {
@@ -979,11 +948,9 @@ dialog.dialog-backdrop.is-fallback[open] {
   font-family: var(--font-mono);
   text-align: center;
 }
-
 .shortcut-key:hover {
   background: var(--bg-hover);
 }
-
 .shortcut-key:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -1004,23 +971,20 @@ dialog.dialog-backdrop.is-fallback[open] {
 
 .shortcut-clear {
   display: grid;
-  width: 22px;
-  height: var(--h-control-sm);
+  width: 24px;
+  height: 24px;
   border-radius: var(--radius-sm);
   color: var(--fg-faint);
   place-items: center;
 }
-
 .shortcut-clear:hover:not(:disabled) {
   background: var(--bg-hover);
   color: var(--fg);
 }
-
 .shortcut-clear:disabled {
   cursor: default;
   opacity: 0.4;
 }
-
 /* Reserves its line so assigning a key never shifts the rows underneath. */
 .shortcuts-notice {
   min-height: 15px;
@@ -1274,11 +1238,10 @@ dialog.dialog-backdrop.is-fallback[open] {
   background: transparent;
   color: var(--fg-dim);
   transition:
-    background-color 120ms ease,
-    border-color 120ms ease,
-    color 120ms ease;
+    background-color var(--dur-2) ease,
+    border-color var(--dur-2) ease,
+    color var(--dur-2) ease;
 }
-
 .protocol-option:hover {
   background: var(--bg-hover);
   color: var(--fg);
@@ -1290,7 +1253,6 @@ dialog.dialog-backdrop.is-fallback[open] {
   color: var(--fg);
   box-shadow: inset 0 0 0 1px var(--accent);
 }
-
 .protocol-option:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -1300,7 +1262,6 @@ dialog.dialog-backdrop.is-fallback[open] {
   display: inline-flex;
   color: var(--fg-faint);
 }
-
 .protocol-option:hover .protocol-option-icon,
 .protocol-option.is-active .protocol-option-icon {
   color: var(--accent);
@@ -1346,10 +1307,9 @@ dialog.dialog-backdrop.is-fallback[open] {
   text-align: center;
   color: var(--fg-dim);
   transition:
-    background-color 120ms ease,
-    color 120ms ease;
+    background-color var(--dur-2) ease,
+    color var(--dur-2) ease;
 }
-
 .kind-option:hover {
   background: var(--bg-hover);
   color: var(--fg);
@@ -1361,12 +1321,10 @@ dialog.dialog-backdrop.is-fallback[open] {
   font-weight: 600;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
 }
-
 .kind-option:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
-
 @media (max-width: 560px) {
   .session-dialog {
     width: calc(100vw - 20px);
@@ -1381,7 +1339,6 @@ dialog.dialog-backdrop.is-fallback[open] {
   .session-note.is-wide {
     grid-column: auto;
   }
-
   /* Two rows of two cards rather than four squeezed names. */
   .protocol-picker {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1404,7 +1361,6 @@ dialog.dialog-backdrop.is-fallback[open] {
   color: var(--fg-dim);
   user-select: text;
 }
-
 /* The path field keeps its row so the browse button can ride it. */
 .key-setup-path {
   display: flex;
@@ -1421,7 +1377,6 @@ dialog.dialog-backdrop.is-fallback[open] {
   flex-direction: column;
   gap: var(--sp-4);
 }
-
 /* One step of a run (the key preview, the install/check verdict). */
 .key-setup-result {
   display: flex;
@@ -1449,7 +1404,6 @@ dialog.dialog-backdrop.is-fallback[open] {
   background: color-mix(in srgb, var(--yellow) 12%, transparent);
   color: var(--yellow);
 }
-
 /* The install's path and the "nothing was saved" line under a verdict. */
 .key-setup-entry {
   color: var(--fg-faint);
@@ -1519,7 +1473,6 @@ dialog.dialog-backdrop.is-fallback[open] {
   color: var(--fg-faint);
   font-weight: 600;
 }
-
 /* --- session dialog: port forwards --------------------------------------- */
 
 .session-forwards-list {
@@ -1570,12 +1523,10 @@ dialog.dialog-backdrop.is-fallback[open] {
   width: var(--h-control-lg);
   padding: 0;
 }
-
 .session-forward-remove:hover:not(:disabled) {
   border-color: var(--red);
   color: var(--red);
 }
-
 /* The add form is the tunnel popover's own field pattern; only its submit
    needs a home here, at the end of the column (see forward.styles.css). */
 .session-forwards-form {
@@ -1633,7 +1584,6 @@ dialog.dialog-backdrop.is-fallback[open] {
   overflow: auto;
   flex-shrink: 0;
 }
-
 /* The Filer's photo canvas uses most of the available desktop, while its
    metadata and controls remain in the familiar fixed modal chrome. */
 .image-preview-dialog {
@@ -1731,7 +1681,6 @@ dialog.dialog-backdrop.is-fallback[open] {
   font-size: var(--fs-sm);
   text-align: center;
 }
-
 /* Large remote files are read as bounded windows, never mounted in CodeMirror
    or downloaded as watched editable copies. The viewer follows editor chrome
    while allowing its own log pane to scroll in both directions. */

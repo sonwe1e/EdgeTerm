@@ -7,6 +7,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -15,17 +16,22 @@ import { useShallow } from "zustand/react/shallow";
 
 import {
   acceptHostKey,
+  openSession,
+  reopenClosedTab,
   revealCwdInFiler,
   sessionClosedNotice,
   shouldApplySessionState,
   splitSession,
 } from "./actions";
 import * as api from "./api";
+import { useSnippetRunner } from "./components/useSnippetRunner";
+import { jumpInActiveTab } from "./terminalJump";
 import { useAgents } from "./agents/model";
 import { AuthPromptDialog } from "./components/AuthPromptDialog";
 import { ClipboardWriteDialog } from "./components/ClipboardWriteDialog";
 import { CloseChoiceDialog } from "./components/CloseChoiceDialog";
 import { CloseSessionDialog } from "./components/CloseSessionDialog";
+import { CommandPalette } from "./components/CommandPalette";
 import { QuitConfirmDialog } from "./components/QuitConfirmDialog";
 import { FontSizeDialog } from "./components/FontSizeDialog";
 import { HostKeyDialog } from "./components/HostKeyDialog";
@@ -51,9 +57,13 @@ import { SessionPanel } from "./components/panels/SessionPanel";
 import { applyFonts, symbolFallbacks } from "./fonts";
 import { focusNextRegion } from "./focusRegions";
 import { commandHistory } from "./history";
+import { requestSnippetsOpen, sendSnippet } from "./snippetActions";
 import type { PanelDock } from "./panelDock";
 import { HAS_TRAY, IS_WINDOWS } from "./platform";
-import { matchAppShortcut } from "./shortcuts";
+import { broadcastTargets } from "./broadcast";
+import { buildPaletteCommands } from "./commandPalette";
+import { importSshConfig } from "./dataTransfer";
+import { matchAppShortcut, type AppShortcut } from "./shortcuts";
 import {
   clampBottom,
   clampSide,
@@ -64,6 +74,8 @@ import {
   savePanelSizing,
 } from "./panelSizing";
 import { type PanelName, tabTitle, useStore, type Tab } from "./store";
+import { zoomFontSize } from "./fontZoom";
+import { BUFFER_FONT_SIZE } from "./storePreferences";
 import { allControllers, getController, setWebglEnabled } from "./terminalRegistry";
 import { isFileSession, type SessionGroup, type SessionProfile, type SessionState } from "./types";
 import { useT } from "./useT";
@@ -97,6 +109,7 @@ function GitWorkspaceOverlay() {
 
 /** Stable empty result for the closing-tabs selector (see `useShallow`). */
 const EMPTY_CLOSING_TABS: Tab[] = [];
+
 const exitSafely = async () => {
   if (await closeFileEditor()) {
     await flushWorkspace();
@@ -152,6 +165,8 @@ export default function App() {
   const setSshConfigImport = useStore((s) => s.setSshConfigImport);
   const panelFontSize = useStore((s) => s.panelFontSize);
   const bufferFontSize = useStore((s) => s.bufferFontSize);
+  const lineHeight = useStore((s) => s.lineHeight);
+  const setLineHeight = useStore((s) => s.setLineHeight);
   const terminalScrollback = useStore((s) => s.terminalScrollback);
   const panelFontFamily = useStore((s) => s.panelFontFamily);
   const bufferFontFamily = useStore((s) => s.bufferFontFamily);
@@ -169,13 +184,36 @@ export default function App() {
   const gpuRenderer = useStore((s) => s.gpuRenderer);
   const setGpuRenderer = useStore((s) => s.setGpuRenderer);
   const shortcuts = useStore((s) => s.shortcuts);
+  const snippets = useStore((s) => s.snippets);
   const setShortcuts = useStore((s) => s.setShortcuts);
   const setActive = useStore((s) => s.setActive);
+  const setTheme = useStore((s) => s.setTheme);
+  const broadcastInput = useStore((s) => s.broadcastInput);
+  const broadcastCount = useStore(
+    (s) =>
+      broadcastTargets(s.tabs, s.activeId, s.broadcastExcluded, s.broadcastExcludedGroups).length,
+  );
   const activateAdjacentTab = useStore((s) => s.activateAdjacentTab);
   const activateAdjacentPane = useStore((s) => s.activateAdjacentPane);
   const closeTab = useStore((s) => s.closeTab);
   const requestCloseTab = useStore((s) => s.requestCloseTab);
   const setClosePrompt = useStore((s) => s.setClosePrompt);
+  /**
+   * Live terminal zoom: one pixel per press, and 0 means "back to default".
+   * The store clamps and persists, so a rebound key and the display dialog end
+   * up at the same value.
+   */
+  const bumpFontSize = useCallback(
+    (delta: number) => {
+      const store = useStore.getState();
+      const next =
+        delta === 0 ? BUFFER_FONT_SIZE.default : zoomFontSize(store.bufferFontSize, delta);
+      if (next !== store.bufferFontSize) store.setBufferFontSize(next);
+      store.setStatus(t("status.fontSize", { size: next }));
+    },
+    [t],
+  );
+  const toggleZoomedPane = useStore((s) => s.toggleZoomedPane);
   const applyState = useStore((s) => s.applyState);
   const hostKeyPrompt = useStore((s) => s.hostKeyPrompt);
   const setHostKeyPrompt = useStore((s) => s.setHostKeyPrompt);
@@ -184,6 +222,32 @@ export default function App() {
   const addAuthPrompt = useStore((s) => s.addAuthPrompt);
   const clearAuthPrompt = useStore((s) => s.clearAuthPrompt);
   const theme = useStore((s) => s.theme);
+  // The palette needs the open tabs and saved sessions, but App must not
+  // re-render on every background activity tick: these project just the fields
+  // a palette label reads, as JSON strings, so useShallow keeps the reference
+  // until one of those fields actually changes.
+  const paletteTabKeys = useStore(
+    useShallow((s) =>
+      s.tabs.map((tab) =>
+        JSON.stringify([tab.info.id, tabTitle(tab), tab.info.address ?? "", tab.number]),
+      ),
+    ),
+  );
+  const paletteProfileKeys = useStore(
+    useShallow((s) =>
+      s.profiles.map((profile) =>
+        JSON.stringify([
+          profile.id,
+          profile.name,
+          profile.kind,
+          profile.host ?? "",
+          profile.username ?? "",
+          profile.shell ?? "",
+          profile.port ?? 0,
+        ]),
+      ),
+    ),
+  );
   // A boolean, not the tab: the tab object changes with every resize and
   // every command state, and none of that is the App's business.
   const fileMode = useStore((s) => {
@@ -221,6 +285,15 @@ export default function App() {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [fontSettingsOpen, setFontSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  // Bumped when the palette opens: the history list is captured in memory, so
+  // the catalogue is rebuilt at that moment instead of on every recorded
+  // command (which would re-render the window on each Enter).
+  const [historyTag, setHistoryTag] = useState(0);
+  const openPalette = useCallback(() => {
+    setHistoryTag((tag) => tag + 1);
+    setPaletteOpen(true);
+  }, []);
   const [quitPromptOpen, setQuitPromptOpen] = useState(false);
   // The close-choice dialog ("minimize to tray, or quit?"), shown while the
   // closeAction setting is "ask".
@@ -534,6 +607,162 @@ export default function App() {
 
   // --- keyboard -------------------------------------------------------------
 
+  // Both copy commands report through the status bar: the palette closes on
+  // run, so without a message a refused copy would look like a successful one.
+  const copyFromTerminal = useCallback(
+    (copy: (controller: NonNullable<ReturnType<typeof getController>>) => boolean) => {
+      const state = useStore.getState();
+      const controller = state.activeId ? getController(state.activeId) : null;
+      const copied = controller ? copy(controller) : false;
+      state.setStatus(copied ? t("status.copiedFromTerminal") : t("status.nothingToCopy"));
+    },
+    [t],
+  );
+
+  // Synchronized input is one toggle, shared by the keyboard, the palette and
+  // the Session menu. The store owns the refusal rules.
+  const toggleBroadcast = useCallback(() => {
+    const state = useStore.getState();
+    state.setBroadcastInput(!state.broadcastInput);
+  }, []);
+
+  // One dispatcher for the keyboard and the command palette: a command must do
+  // the same thing however it was invoked, and a rebinding must never leave the
+  // palette on a different code path. The return value says whether the app
+  // answered at all, so the key handler only suppresses the browser default for
+  // keys this app actually owns.
+  const runShortcut = useCallback(
+    (shortcut: AppShortcut): boolean => {
+      switch (shortcut.kind) {
+        case "commandPalette":
+          openPalette();
+          return true;
+        case "snippets":
+          requestSnippetsOpen();
+          return true;
+        case "broadcast":
+          toggleBroadcast();
+          return true;
+        // The three buffer walks share one implementation (terminalJump), so
+        // the keyboard, the palette and the menu cannot drift apart.
+        case "prevCommand":
+          jumpInActiveTab("command", -1);
+          return true;
+        case "nextCommand":
+          jumpInActiveTab("command", 1);
+          return true;
+        case "prevFailed":
+          jumpInActiveTab("failed", -1);
+          return true;
+        case "nextFailed":
+          jumpInActiveTab("failed", 1);
+          return true;
+        case "prevWatch":
+          jumpInActiveTab("watch", -1);
+          return true;
+        case "nextWatch":
+          jumpInActiveTab("watch", 1);
+          return true;
+        case "copyCommandOutput":
+          copyFromTerminal((controller) => controller.copyLastCommandOutput());
+          return true;
+        case "copyCommand":
+          copyFromTerminal((controller) => controller.copyLastCommand());
+          return true;
+        case "focusRegion":
+          return focusNextRegion(1);
+        case "tabStep":
+          activateAdjacentTab(shortcut.step);
+          return true;
+        case "togglePanel":
+          togglePanel(shortcut.panel);
+          return true;
+        case "newSession":
+          newSession();
+          return true;
+        case "closeSession":
+          if (!activeId) return false;
+          requestCloseTab(activeId);
+          return true;
+        case "reopenTab":
+          void reopenClosedTab();
+          return true;
+        case "zoomPane":
+          toggleZoomedPane();
+          return true;
+        case "fontSizeUp":
+          bumpFontSize(1);
+          return true;
+        case "fontSizeDown":
+          bumpFontSize(-1);
+          return true;
+        case "fontSizeReset":
+          bumpFontSize(0);
+          return true;
+        case "find":
+          openSearch();
+          return true;
+        case "findNext":
+          findNext();
+          return true;
+        case "clear":
+          if (!activeId || fileMode) return false;
+          getController(activeId)?.clear();
+          return true;
+        case "revealCwd":
+          if (!activeId || fileMode) return false;
+          void revealCwdInFiler(activeId);
+          return true;
+        case "splitPane":
+          if (!activeId) return false;
+          void splitSession(activeId, shortcut.side);
+          return true;
+        case "paneStep":
+          activateAdjacentPane(shortcut.step);
+          return true;
+        case "copy":
+        case "paste":
+        case "selectAll":
+          // The terminal's own: its key filter answers them while it has
+          // focus (see terminal.ts). Anywhere else the browser keeps its
+          // native editing keys, so ⌘C in a text field still copies from it.
+          return false;
+        case "tab": {
+          const tab = useStore.getState().tabs.find((item) => item.number === shortcut.number);
+          if (!tab) return false;
+          setActive(tab.info.id);
+          return true;
+        }
+      }
+    },
+    [
+      activateAdjacentPane,
+      activateAdjacentTab,
+      activeId,
+      bumpFontSize,
+      copyFromTerminal,
+      findNext,
+      fileMode,
+      newSession,
+      openPalette,
+      openSearch,
+      requestCloseTab,
+      setActive,
+      toggleBroadcast,
+      togglePanel,
+      toggleZoomedPane,
+    ],
+  );
+
+  // Synchronized input cannot outlive its recipients: when the last other
+  // connected shell goes away, the mode turns itself off rather than waiting
+  // to surprise whichever session connects next.
+  useEffect(() => {
+    if (broadcastInput && broadcastCount === 0) {
+      useStore.getState().setBroadcastInput(false);
+    }
+  }, [broadcastCount, broadcastInput]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       // xterm keeps a hidden textarea for input, so "focus is in a text field"
@@ -551,88 +780,86 @@ export default function App() {
       // and lives in shortcuts.ts; only the dispatch happens here.
       const shortcut = matchAppShortcut(event);
       if (!shortcut) return;
-
-      switch (shortcut.kind) {
-        case "focusRegion":
-          if (focusNextRegion(1)) event.preventDefault();
-          return;
-        case "tabStep":
-          event.preventDefault();
-          activateAdjacentTab(shortcut.step);
-          return;
-        case "togglePanel":
-          event.preventDefault();
-          togglePanel(shortcut.panel);
-          return;
-        case "newSession":
-          event.preventDefault();
-          newSession();
-          return;
-        case "closeSession":
-          event.preventDefault();
-          if (activeId) requestCloseTab(activeId);
-          return;
-        case "find":
-          event.preventDefault();
-          openSearch();
-          return;
-        case "findNext":
-          event.preventDefault();
-          findNext();
-          return;
-        case "clear":
-          if (activeId && !fileMode) {
-            event.preventDefault();
-            getController(activeId)?.clear();
-          }
-          return;
-        case "revealCwd":
-          if (activeId && !fileMode) {
-            event.preventDefault();
-            void revealCwdInFiler(activeId);
-          }
-          return;
-        case "splitPane":
-          if (activeId) {
-            event.preventDefault();
-            void splitSession(activeId, shortcut.side);
-          }
-          return;
-        case "paneStep":
-          event.preventDefault();
-          activateAdjacentPane(shortcut.step);
-          return;
-        case "copy":
-        case "paste":
-        case "selectAll":
-          // The terminal's own: its key filter answers them while it has
-          // focus (see terminal.ts). Anywhere else the browser keeps its
-          // native editing keys, so ⌘C in a text field still copies from it.
-          return;
-        case "tab": {
-          const tab = useStore.getState().tabs.find((item) => item.number === shortcut.number);
-          if (tab) {
-            event.preventDefault();
-            setActive(tab.info.id);
-          }
-          return;
-        }
-      }
+      if (runShortcut(shortcut)) event.preventDefault();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [
-    activateAdjacentPane,
-    activateAdjacentTab,
-    activeId,
-    findNext,
-    fileMode,
-    newSession,
-    openSearch,
-    requestCloseTab,
-    setActive,
-    togglePanel,
-  ]);
+  }, [runShortcut]);
+
+  // The saved-command surfaces own their dialogs and their entry points.
+  const snippetsUi = useSnippetRunner();
+
+  // The palette catalogue is rebuilt only when something it displays changes:
+  // the language, a rebinding, the theme, or one of the tab/session labels.
+  const paletteCommands = useMemo(
+    () =>
+      buildPaletteCommands({
+        t,
+        shortcuts,
+        theme,
+        tabs: paletteTabKeys.map((key) => {
+          const [id, title, address] = JSON.parse(key) as [string, string, string, number];
+          return { id, title, hint: address };
+        }),
+        profiles: paletteProfileKeys.map((key) => {
+          const [id, name, kind, host, username, shell] = JSON.parse(key) as [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            number,
+          ];
+          const address = host ? (username ? username + "@" + host : host) : shell;
+          return { id, name, hint: [kind, address].filter(Boolean).join(" · ") };
+        }),
+        snippets: snippets.map(({ id, name, command }) => ({ id, name, command })),
+        history: commandHistory.recent(40).map(({ command, host }) => ({ command, host })),
+        actions: {
+          runShortcut: (action) => {
+            runShortcut(action);
+          },
+          sendSnippet: (id) => {
+            const snippet = useStore.getState().snippets.find((item) => item.id === id);
+            if (snippet) snippetsUi.runSnippet(snippet);
+          },
+          saveLastCommandAsSnippet: snippetsUi.saveLastCommandAsSnippet,
+          sendHistory: (command) => {
+            // The same funnel typed commands use: it refuses a non-shell
+            // session with a reason instead of writing bytes nowhere.
+            void sendSnippet({ id: "history", name: command, command });
+          },
+          openSnippetsDialog: snippetsUi.openSnippets,
+          activateTab: (id) => setActive(id),
+          connectProfile: (id) => {
+            const profile = useStore.getState().profiles.find((item) => item.id === id);
+            if (profile) void openSession(profile);
+          },
+          setTheme,
+          openDisplaySettings: () => setFontSettingsOpen(true),
+          openShortcutSettings: () => setShortcutsOpen(true),
+          openAbout: () => setAboutOpen(true),
+          checkForUpdates: () => void updater.checkForUpdates(),
+          importSshConfig: () => void importSshConfig(),
+        },
+      }),
+    [
+      copyFromTerminal,
+      historyTag,
+      paletteProfileKeys,
+      paletteTabKeys,
+      runShortcut,
+      setActive,
+      setTheme,
+      snippetsUi,
+      shortcuts,
+      snippets,
+      t,
+      theme,
+      updater,
+    ],
+  );
 
   // F6 / Shift+F6 cycle the focus regions. This runs in the capture phase
   // because xterm answers function keys itself and keeps the event from
@@ -801,8 +1028,12 @@ export default function App() {
     >
       <MenuBar
         onNewSession={newSession}
+        onSnippets={snippetsUi.openSnippets}
         onFind={openSearch}
         onFindNext={findNext}
+        onCommandPalette={openPalette}
+        broadcast={broadcastInput}
+        onBroadcast={toggleBroadcast}
         onFontSettings={() => setFontSettingsOpen(true)}
         onKeyboardShortcuts={() => setShortcutsOpen(true)}
         onCheckForUpdates={() => void updater.checkForUpdates()}
@@ -888,6 +1119,12 @@ export default function App() {
       </div>
 
       <StatusBar />
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        commands={paletteCommands}
+      />
 
       <UpdateDialog
         appVersion={updater.appVersion}
@@ -1019,6 +1256,8 @@ export default function App() {
         />
       )}
 
+      {snippetsUi.surfaces}
+
       {fontSettingsOpen && (
         <FontSizeDialog
           panelFontSize={panelFontSize}
@@ -1026,6 +1265,7 @@ export default function App() {
           panelFontFamily={panelFontFamily}
           bufferFontFamily={bufferFontFamily}
           terminalScrollback={terminalScrollback}
+          lineHeight={lineHeight}
           cursorStyle={cursorStyle}
           cursorBlink={cursorBlink}
           gpuRenderer={gpuRenderer}
@@ -1035,6 +1275,7 @@ export default function App() {
             setPanelFontFamily(settings.panelFontFamily);
             setBufferFontFamily(settings.bufferFontFamily);
             setTerminalScrollback(settings.terminalScrollback);
+            setLineHeight(settings.lineHeight);
             setCursorStyle(settings.cursorStyle);
             setCursorBlink(settings.cursorBlink);
             setGpuRenderer(settings.gpuRenderer);

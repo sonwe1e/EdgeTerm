@@ -12,6 +12,7 @@ import {
 } from "../store";
 import type { CursorStyle } from "../terminal";
 import { useT } from "../useT";
+import { DEFAULT_LINE_HEIGHT, LINE_HEIGHTS, lineHeightPercent } from "../lineHeight";
 import { ModalDialog } from "./ModalDialog";
 
 /** Everything the dialog hands back when Apply is pressed. */
@@ -21,6 +22,8 @@ export interface DisplaySettings {
   panelFontFamily: string;
   bufferFontFamily: string;
   terminalScrollback: number;
+  /** xterm's lineHeight multiplier; see lineHeight.ts. */
+  lineHeight: number;
   cursorStyle: CursorStyle;
   cursorBlink: boolean;
   gpuRenderer: boolean;
@@ -43,6 +46,7 @@ export function FontSizeDialog({
   panelFontFamily,
   bufferFontFamily,
   terminalScrollback,
+  lineHeight,
   cursorStyle,
   cursorBlink,
   gpuRenderer,
@@ -56,6 +60,7 @@ export function FontSizeDialog({
   const [panelFamily, setPanelFamily] = useState(panelFontFamily);
   const [bufferFamily, setBufferFamily] = useState(bufferFontFamily);
   const [scrollback, setScrollback] = useState(String(terminalScrollback));
+  const [spacing, setSpacing] = useState(lineHeight);
   const [cursor, setCursor] = useState<CursorStyle>(cursorStyle);
   const [blink, setBlink] = useState(cursorBlink);
   const [gpu, setGpu] = useState(gpuRenderer);
@@ -133,6 +138,7 @@ export function FontSizeDialog({
             panelFontFamily: panelFamily.trim(),
             bufferFontFamily: bufferFamily.trim(),
             terminalScrollback: scrollbackValue,
+            lineHeight: spacing,
             cursorStyle: cursor,
             cursorBlink: blink,
             gpuRenderer: gpu,
@@ -201,6 +207,25 @@ export function FontSizeDialog({
               onBlur={() => setBufferSize(String(bufferValue))}
             />
             <span className="font-size-unit">px</span>
+          </label>
+
+          <label className="font-size-setting">
+            <span>
+              <strong>{t("fontDialog.lineSpacing")}</strong>
+              <small>{t("fontDialog.lineSpacingHint")}</small>
+            </span>
+            <select
+              aria-label={t("fontDialog.lineSpacing")}
+              value={String(spacing)}
+              onChange={(event) => setSpacing(Number(event.target.value))}
+            >
+              {LINE_HEIGHTS.map((height) => (
+                <option key={height} value={String(height)}>
+                  {lineHeightPercent(height)}
+                  {height === DEFAULT_LINE_HEIGHT ? t("fontDialog.lineSpacingDefault") : ""}
+                </option>
+              ))}
+            </select>
           </label>
 
           <FontFamilyField

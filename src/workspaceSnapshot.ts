@@ -46,6 +46,8 @@ export interface SavedTab {
   profile: SessionProfile;
   number: number;
   ordinal: number;
+  /** The name the user gave the tab, when they gave it one. */
+  title?: string;
   paneId: string;
   directories: WorkspaceDirectories;
 }
@@ -203,6 +205,14 @@ function storedPaneIds(value: unknown, out = new Set<string>(), depth = 0): Set<
   return out;
 }
 
+/** A tab name the user set: printable, bounded, and never blank. */
+export function workspaceTitle(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 120 || /[\x00-\x1f\x7f]/.test(trimmed)) return undefined;
+  return trimmed;
+}
+
 export function parseWorkspace(raw: string | null): WorkspaceSnapshot | null {
   try {
     if (!raw || raw.length > 2_000_000) return null;
@@ -239,6 +249,7 @@ export function parseWorkspace(raw: string | null): WorkspaceSnapshot | null {
         profile,
         number,
         ordinal,
+        title: workspaceTitle(item.title),
         paneId: id(item.paneId) ? item.paneId : "root",
         directories: directories(item.directories),
       });
@@ -301,6 +312,9 @@ export function snapshotWorkspace(state: PaneState, localFilerPath?: string): Wo
       profile: workspaceProfile(tab.profile)!,
       number: tab.number,
       ordinal: tab.ordinal,
+      // Omitted entirely when unset, so workspaces without renamed tabs keep
+      // the payload they had.
+      title: workspaceTitle(tab.title),
       paneId: tab.paneId,
       directories: directories(tab.directories),
     })),

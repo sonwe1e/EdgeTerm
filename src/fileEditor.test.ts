@@ -10,10 +10,15 @@ import {
 } from "./fileEditor";
 import * as api from "./editor/textFile";
 import { ask } from "./nativeDialog";
+import { forgetEditorState } from "./editor/editorState";
 import { useStore } from "./store";
 
 vi.mock("./editor/textFile", () => ({ readText: vi.fn(), writeText: vi.fn() }));
 vi.mock("./nativeDialog", () => ({ ask: vi.fn() }));
+vi.mock("./editor/editorState", async (original) => ({
+  ...(await original<typeof import("./editor/editorState")>()),
+  forgetEditorState: vi.fn(),
+}));
 const original = useFileEditor.getState();
 const loadedFile = {
   path: "/resolved/config.txt",
@@ -413,4 +418,11 @@ it("preserves text changed while reload confirmation was pending", async () => {
   await reloading;
   expect(api.readText).toHaveBeenCalledTimes(1);
   expect(useFileEditor.getState().content).toBe("newer draft");
+});
+
+it("releases the editor's remembered state when the document closes", async () => {
+  await openFileEditor(null, "C:/config.txt");
+  const id = useFileEditor.getState().target!.id;
+  expect(await closeFileEditor()).toBe(true);
+  expect(forgetEditorState, "a closed document's cache entry is released").toHaveBeenCalledWith(id);
 });

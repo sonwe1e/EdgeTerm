@@ -1,3 +1,4 @@
+import { forgetLatency } from "./inputLatency";
 import type { TerminalController } from "./terminal";
 
 /**
@@ -38,6 +39,9 @@ export function getController(id: string): TerminalController | undefined {
 
 export function disposeController(id: string) {
   registry.get(id)?.dispose();
+  // A closed session's samples must not outlive it: the chip would otherwise
+  // keep showing a number for a tab that no longer exists.
+  forgetLatency(id);
   if (registry.delete(id)) notifyControllersChanged();
 }
 

@@ -1,0 +1,221 @@
+import { createElement as h, StrictMode } from "react";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { page, userEvent } from "vitest/browser";
+
+import App from "../App";
+import { COMMAND_RECENTS_KEY } from "../persistKeys";
+import { IS_MAC } from "../platform";
+import { useStore } from "../store";
+import type { SessionProfile } from "../types";
+import { clippedTextIssues, targetSizeIssues, textContrastIssues } from "../uiAudit";
+import { browserAfterEach, mount, twoFrames } from "./browserHarness";
+import "../styles.css";
+
+/**
+ * The palette as the user meets it: a real key chord in the real App opens a
+ * native modal, the field filters the catalogue built from the app's own
+ * state, Enter runs the pointed command and Escape leaves. The new surface
+ * also goes through the round's visual audit (contrast, hit targets, clipped
+ * labels), so a palette that only "works" but cannot be read fails here.
+ *
+ * Boundary: synthetic CDP input in Chromium over a controlled IPC stub. Not
+ * WebView2, not a real server.
+ */
+
+let serial = 0;
+window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
+(window as unknown as { __TAURI_INTERNALS__: unknown }).__TAURI_INTERNALS__ = {
+  metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main" } },
+  transformCallback: () => ++serial,
+  unregisterCallback() {},
+  async invoke(command: string) {
+    if (command === "list_profiles") return [PROFILE];
+    if (command === "list_groups") return [];
+    if (command.startsWith("list_")) return [];
+    if (command === "plugin:event|listen") return ++serial;
+    if (command === "plugin:app|version") return "1.7.7";
+    if (command === "portable_mode") return false;
+    return null;
+  },
+};
+
+const PROFILE: SessionProfile = {
+  id: "p-build",
+  name: "Build server",
+  kind: "ssh",
+  host: "build.internal",
+  username: "build",
+  port: 22,
+} as SessionProfile;
+
+const initial = useStore.getState();
+
+const applyFixture = () => {
+  useStore.setState(
+    {
+      ...initial,
+      language: "en",
+      theme: "dark",
+      gpuRenderer: false,
+      panelFontSize: 12,
+      bufferFontSize: 14,
+      profiles: [PROFILE],
+      groups: [],
+      tabs: [
+        {
+          info: {
+            id: "t-build",
+            profileId: "p-build",
+            name: "Build server",
+            kind: "ssh",
+            protocol: "ssh",
+            address: "build@build.internal:22",
+            color: null,
+            supportsRemoteFiles: true,
+            recording: null,
+            legacyAlgorithms: [],
+            sharedConnection: false,
+          },
+          profile: PROFILE,
+          number: 1,
+          ordinal: 0,
+          state: "connected",
+          commandActivity: "idle",
+          activityKind: "command",
+          paneId: "root",
+        },
+      ],
+      panes: [{ id: "root", activeTabId: "t-build" }],
+      layout: { kind: "leaf", paneId: "root" },
+      activePaneId: "root",
+      activeId: "t-build",
+      panels: { sessions: true, sender: false, filer: true },
+      panelDocks: { left: ["sessions"], right: ["filer"], bottom: ["sender"] },
+      status: "Connected",
+      error: null,
+    },
+    true,
+  );
+};
+
+/**
+ * The palette chord through the runner's own keyboard: raw CDP input goes to the
+ * outer page, while the test frame is where the app lives.
+ */
+const pressPaletteChord = async () => {
+  await userEvent.keyboard(
+    IS_MAC ? "{Meta>}{Shift>}P{/Shift}{/Meta}" : "{Control>}{Shift>}P{/Shift}{/Control}",
+  );
+  await twoFrames();
+};
+
+const palette = (): HTMLElement | null => document.querySelector<HTMLElement>(".command-palette");
+/** The controlled dialog stays mounted when closed; its open flag is the truth. */
+const paletteOpen = (): boolean =>
+  document.querySelector(".command-palette")?.closest("dialog")?.open === true;
+const input = (): HTMLInputElement | null =>
+  document.querySelector<HTMLInputElement>(".command-palette-input");
+const options = (): HTMLElement[] =>
+  Array.from(document.querySelectorAll<HTMLElement>(".command-palette [role='option']"));
+
+const typeQuery = async (value: string) => {
+  const field = input()!;
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+  setter.call(field, value);
+  field.dispatchEvent(new Event("input", { bubbles: true }));
+  await twoFrames();
+};
+
+const pressKey = async (key: string) => {
+  input()!.dispatchEvent(
+    new KeyboardEvent("keydown", { key, code: key, bubbles: true, cancelable: true }),
+  );
+  await twoFrames();
+};
+
+describe("the command palette in the real app", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  afterEach(async () => {
+    await browserAfterEach();
+  });
+
+  it("opens from the real chord, is readable, and filters what is typed", async () => {
+    await page.viewport(1280, 800);
+    applyFixture();
+    mount(h(StrictMode, null, h(App)));
+    await twoFrames();
+    await twoFrames();
+
+    await pressPaletteChord();
+    const panel = palette();
+    expect(panel, "the chord opens the palette").not.toBeNull();
+    expect(paletteOpen(), "the palette is the open modal").toBe(true);
+    expect(document.querySelector("dialog[open]")?.contains(panel)).toBe(true);
+    expect(document.activeElement, "the field owns focus").toBe(input());
+    expect(options().length, "the catalogue is not empty").toBeGreaterThan(20);
+
+    // The new surface meets the same measured bar as the rest of the chrome.
+    const contrast = textContrastIssues(panel!);
+    const targets = targetSizeIssues(panel!);
+    const clips = clippedTextIssues(panel!);
+    expect(contrast.issues.map((issue) => issue.path + " " + issue.detail)).toEqual([]);
+    expect(targets.issues.map((issue) => issue.path + " " + issue.detail)).toEqual([]);
+    expect(clips.issues.map((issue) => issue.path + " " + issue.detail)).toEqual([]);
+    expect(contrast.inspected, "text runs inspected").toBeGreaterThan(3);
+    expect(targets.inspected, "targets inspected").toBeGreaterThan(3);
+
+    // The same surface in all four palettes: a menu ink that clears 4.5:1 in
+    // the dark half must not fall under it in serialX's warm canvases.
+    for (const theme of ["light", "serialx-dark", "serialx-light"] as const) {
+      useStore.setState({ theme });
+      await twoFrames();
+      const themed = textContrastIssues(palette()!);
+      expect(
+        themed.issues.map((issue) => theme + " " + issue.path + " " + issue.detail),
+        theme,
+      ).toEqual([]);
+    }
+    useStore.setState({ theme: "dark" });
+
+    const before = options().length;
+    await typeQuery("theme");
+    expect(options().length).toBeLessThan(before);
+    expect(options()[0].textContent?.toLowerCase()).toContain("theme");
+
+    await typeQuery("zzzz");
+    expect(options()).toHaveLength(0);
+    expect(document.querySelector(".command-palette-empty")?.textContent).toContain("zzzz");
+  });
+
+  it("runs the pointed command with Enter, and Escape leaves without running one", async () => {
+    await page.viewport(1280, 800);
+    applyFixture();
+    useStore.setState({ theme: "dark" });
+    mount(h(StrictMode, null, h(App)));
+    await twoFrames();
+    await twoFrames();
+
+    await pressPaletteChord();
+    // An exact label ranks first, so the pointed row is deterministic.
+    await typeQuery("Theme: Light");
+    expect(options()[0].textContent).toContain("Theme: Light");
+    await pressKey("Enter");
+    await twoFrames();
+    expect(paletteOpen(), "running a command closes the palette").toBe(false);
+    expect(useStore.getState().theme, "the command really ran").toBe("light");
+    const recents = JSON.parse(localStorage.getItem(COMMAND_RECENTS_KEY) ?? "[]") as string[];
+    expect(recents[0]).toBe("theme:light");
+
+    // A second visit, abandoned: no command runs and the modal is gone.
+    useStore.setState({ theme: "dark" });
+    await pressPaletteChord();
+    expect(paletteOpen()).toBe(true);
+    await pressKey("Escape");
+    await twoFrames();
+    expect(paletteOpen()).toBe(false);
+    expect(useStore.getState().theme).toBe("dark");
+  });
+});
