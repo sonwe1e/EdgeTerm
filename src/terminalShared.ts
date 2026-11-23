@@ -213,6 +213,28 @@ export function openTerminalWebLink(
 }
 
 /**
+ * What the terminal underlines as an SSH target: the `ssh://` links tools and
+ * tickets print. **No `g` flag here**: the addon appends one itself, and a
+ * regex that already has it becomes `gig`, which throws inside the provider and
+ * takes every link on the terminal down with it. The addon also drops matches
+ * `new URL` rejects, so the shape here may stay generous.
+ */
+export const SSH_URI_REGEX = /ssh:\/\/[^\s"<>]+/i;
+
+/**
+ * The same addon handler for SSH links: a click starts a session with the
+ * address instead of asking a browser to open it.
+ */
+export function terminalSshLinkHandler(
+  callbacks: Callbacks,
+): (event: MouseEvent, uri: string) => void {
+  return (event, uri) => {
+    event.preventDefault();
+    callbacks.onSshLink?.(uri);
+  };
+}
+
+/**
  * The WebLinksAddon handler for one terminal: binds the session the owner
  * resolves at click time, plus the status line, to `openTerminalWebLink`.
  */
@@ -410,6 +432,8 @@ export interface Callbacks {
    * belong to the owner.
    */
   onFileLink?: (path: string, line: number | undefined, cwd: string | null) => void;
+  /** An `ssh://` link clicked in the output: start a session for it. */
+  onSshLink?: (uri: string) => void;
   onResize: (cols: number, rows: number) => void;
   /**
    * The controller is going away. The owner drops the work it queued for this

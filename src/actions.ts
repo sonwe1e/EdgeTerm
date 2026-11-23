@@ -23,6 +23,8 @@ import type { TerminalController } from "./terminal";
 import { clearPendingInput, takePendingInput } from "./pendingInput";
 import { sendSessionInput } from "./sessionInput";
 import { disposeController, getController, setController } from "./terminalRegistry";
+import { parseQuickConnect, quickConnectProfile } from "./quickConnect";
+import { newSessionProfile } from "./sessionDefaults";
 import { isFileSession, type SessionInfo, type SessionProfile } from "./types";
 import { rememberWorkspaceDirectory } from "./workspaceDirectories";
 import { createResizeCoalescer, type ResizeCoalescer } from "./resizeCoalescer";
@@ -187,6 +189,13 @@ export async function ensureController(id: string): Promise<TerminalController> 
       // A Ctrl+clicked path from the output: open it in the built-in editor at
       // the printed line, through this session's own file system.
       onFileLink: (path, line, cwd) => void openTerminalFileLink(id, path, line, cwd),
+      // An ssh:// link in the output: the same unsaved session the palette
+      // starts from a typed target.
+      onSshLink: (uri) => {
+        const target = parseQuickConnect(uri);
+        if (!target) return;
+        void openSession(quickConnectProfile(target, newSessionProfile()));
+      },
       onCommand: (command) => commandHistory.record(command, historyHost(id)),
       onAiSession: (tool) => {
         if (tool === null) {

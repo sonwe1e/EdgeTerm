@@ -17,6 +17,10 @@ import {
 import type { MessageKey, Translate } from "../i18n";
 import { ask, open as openDialog } from "../nativeDialog";
 import { IS_WINDOWS } from "../platform";
+import { defaultSessionPort, newSessionProfile } from "../sessionDefaults";
+
+// Kept here for the callers that already import it from the dialog.
+export { newSessionProfile };
 import { validateProfile, invalidField, type InvalidSessionField } from "../sessionValidation";
 import { flattenGroups, groupCategory, groupPath, sectionLabel } from "../sessionGroups";
 import { useStore } from "../store";
@@ -30,7 +34,6 @@ import {
   colorForSession,
   isFileSession,
   isSshTransport,
-  randomSessionColor,
   SESSION_COLORS,
   type BackspaceKey,
   type SerialPortDesc,
@@ -51,33 +54,13 @@ interface Props {
   sshOnly?: boolean;
 }
 
-const BLANK: SessionProfile = {
-  id: "",
-  name: "",
-  kind: "ssh",
-  port: 22,
-  auth: "password",
-  baudRate: 115200,
-  dataBits: 8,
-  stopBits: 1,
-  parity: "none",
-  flowControl: "none",
-};
-
 const RAW_TEXT_INPUT = {
   autoCapitalize: "none",
   autoCorrect: "off",
   spellCheck: false,
 } as const;
 
-const defaultPort = (kind: SessionKind, current?: number | null) =>
-  kind === "ssh" || kind === "sftp"
-    ? (current ?? 22)
-    : kind === "ftp"
-      ? (current ?? 21)
-      : kind === "telnet"
-        ? (current ?? 23)
-        : current;
+const defaultPort = defaultSessionPort;
 
 /**
  * A new session's starting profile. With a group, the group decides the kind
@@ -85,18 +68,6 @@ const defaultPort = (kind: SessionKind, current?: number | null) =>
  * "ftp" kind, so a session created in it starts on the encrypted protocol the
  * way picking (S)FTP by hand does.
  */
-export function newSessionProfile(group?: SessionGroup): SessionProfile {
-  if (!group) return { ...BLANK, color: randomSessionColor() };
-  const kind: SessionKind = group.kind === "ftp" ? "sftp" : group.kind;
-  const port = defaultPort(kind);
-  return {
-    ...BLANK,
-    kind,
-    groupId: group.id,
-    ...(port === undefined ? {} : { port }),
-    color: randomSessionColor(),
-  };
-}
 
 /**
  * Protocol picker entries. FTP and SFTP share one "(S)FTP" choice, and SSH

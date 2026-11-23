@@ -23,7 +23,7 @@ import {
   parseOsc7,
   parseOsc9,
 } from "./terminalShared";
-import { terminalWebLinkHandler } from "./terminalShared";
+import { SSH_URI_REGEX, terminalSshLinkHandler, terminalWebLinkHandler } from "./terminalShared";
 import { TerminalViewport } from "./terminalViewport";
 export { parseOsc1337, parseOsc7, parseOsc9 } from "./terminalShared";
 export type { CursorStyle, GutterMode, ReportedCwd, RightClickAction } from "./terminalShared";
@@ -711,6 +711,13 @@ export class TerminalController {
     // loopback link is opened through a tunnel to that server, not to this
     // machine's own localhost.
     this.term.loadAddon(new WebLinksAddon(terminalWebLinkHandler(this.callbacks)));
+    // An ssh:// link printed by a script or a ticket: clicking it starts a
+    // session for that address instead of handing it to a browser, which has no
+    // handler for the scheme. The addon drops anything that is not a URL, so a
+    // half-typed address in the output stays plain text.
+    this.term.loadAddon(
+      new WebLinksAddon(terminalSshLinkHandler(this.callbacks), { urlRegex: SSH_URI_REGEX }),
+    );
     // File paths printed by commands, opened in the built-in editor on
     // Ctrl+click. A relative path belongs to the directory the shell was in
     // when that line was printed, which is why the reports are kept per line
