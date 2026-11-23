@@ -6,10 +6,13 @@ import type { SessionProfile } from "./types";
  * the length of this window, without adding a profile the reader did not ask
  * for.
  *
- * Parsing is strict on purpose: the same field is a search box, so anything
- * with spaces (a normal phrase) is not a target, and neither is a bare word
- * that happens to look like a host — `ssh` as a query must keep finding the
- * command named "ssh", not try to connect to a machine called "ssh".
+ * Accepted shapes: `host`, `user@host`, `host:port`, `user@host:port`,
+ * `[::1]:port` for IPv6, and any of those behind an `ssh://` scheme, which is
+ * how a link pasted from a ticket or a wiki arrives.
+ *
+ * A target must say so — `@`, a port, a host with a dot, or a bracketed
+ * address. One bare word is a search term, so `ssh` keeps finding the command
+ * named "ssh" instead of dialling a machine called "ssh".
  */
 export interface QuickTarget {
   /** Null when the text named no user: the session then asks for one. */
@@ -24,34 +27,40 @@ const HOST = /^(?:\[[0-9a-fA-F:.]+\]|[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)$
 const USER = /^[a-zA-Z0-9._-]+$/;
 
 export function parseQuickConnect(text: string): QuickTarget | null {
-  const value = text.trim();
-  if (value === "" || /\s/.test(value)) return null;
-  const at = value.lastIndexOf("@");
-  const user = at >= 0 ? value.slice(0, at) : null;
-  const rest = at >= 0 ? value.slice(at + 1) : value;
-  if (user !== null && (user === "" || !USER.test(user))) return null;
-  // A port is the last colon outside brackets: `[::1]:22` keeps its address.
-  let host = rest;
-  let port: number | null = null;
-  const colon = rest.lastIndexOf(":");
-  if (colon > 0 && !rest.startsWith("[")) {
-    host = rest.slice(0, colon);
-    port = parsePort(rest.slice(colon + 1));
-    if (port === null) return null;
-  } else if (colon > 0 && rest.startsWith("[") && rest.endsWith("]") === false) {
-    const close = rest.indexOf("]");
-    if (close < 0) return null;
-    host = rest.slice(0, close + 1);
-    port = parsePort(rest.slice(close + 2));
-    if (port === null) return null;
-  }
+  const raw = text.trim().replace(/^ssh:\/\//i, "");
+  if (raw === "" || /\s/.test(raw)) return null;
+  const at = raw.lastIndexOf("@");
+  const username = at >= 0 ? raw.slice(0, at) : null;
+  if (username !== null && (username === "" || !USER.test(username))) return null;
+  const address = at >= 0 ? raw.slice(at + 1) : raw;
+  const parsed = splitAddress(address);
+  if (!parsed) return null;
+  const { host, port } = parsed;
   if (!HOST.test(host)) return null;
-  // One bare word is a search term, not a machine: `ssh` must keep finding the
-  // command named "ssh". A target says so by naming a user, a port, or a host
-  // with a dot (or a bracketed address).
-  const names = user !== null || port !== null || host.includes(".") || host.startsWith("[");
-  return names ? { username: user, host, port } : null;
+  const says = username !== null || port !== null || host.includes(".") || host.startsWith("[");
+  return says ? { username, host, port } : null;
 }
+
+/** Splits `host`, `host:port` and `[v6]:port`; null when the shape is wrong. */
+const splitAddress = (address: string): { host: string; port: number | null } | null => {
+  if (address.startsWith("[")) {
+    const close = address.indexOf("]");
+    if (close < 0) return null;
+    const host = address.slice(0, close + 1);
+    const rest = address.slice(close + 1);
+    if (rest === "") return { host, port: null };
+    if (!rest.startsWith(":")) return null;
+    const port = parsePort(rest.slice(1));
+    return port === null ? null : { host, port };
+  }
+  const colon = address.lastIndexOf(":");
+  if (colon < 0) return { host: address, port: null };
+  // An unbracketed address with the colon it needs is not an address: IPv6
+  // must be written in brackets so the port stays unambiguous.
+  if (address.indexOf(":") !== colon) return null;
+  const port = parsePort(address.slice(colon + 1));
+  return port === null ? null : { host: address.slice(0, colon), port };
+};
 
 const parsePort = (text: string): number | null => {
   if (!/^\d{1,5}$/.test(text)) return null;

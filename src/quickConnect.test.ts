@@ -29,6 +29,20 @@ describe("parseQuickConnect", () => {
       port: 2222,
     });
     expect(parseQuickConnect("[::1]:2222")).toEqual({ username: null, host: "[::1]", port: 2222 });
+    expect(parseQuickConnect("[::1]")).toEqual({ username: null, host: "[::1]", port: null });
+  });
+
+  it("takes the ssh:// scheme a pasted link arrives with", () => {
+    expect(parseQuickConnect("ssh://root@example.com:2200")).toEqual({
+      username: "root",
+      host: "example.com",
+      port: 2200,
+    });
+    expect(parseQuickConnect("SSH://example.com")).toEqual({
+      username: null,
+      host: "example.com",
+      port: null,
+    });
   });
 
   it("refuses anything that is a search phrase rather than a target", () => {
@@ -39,15 +53,13 @@ describe("parseQuickConnect", () => {
     expect(parseQuickConnect("host:0")).toBeNull();
     expect(parseQuickConnect("host:99999")).toBeNull();
     expect(parseQuickConnect("host:22x")).toBeNull();
-    expect(parseQuickConnect("host:2222")).toEqual({
-      username: null,
-      host: "host",
-      port: 2222,
-    });
     expect(parseQuickConnect("bad host.com")).toBeNull();
     // A single word is a command name or a phrase, not a machine.
     expect(parseQuickConnect("ssh")).toBeNull();
     expect(parseQuickConnect("zzzz")).toBeNull();
+    // IPv6 without brackets leaves the port ambiguous.
+    expect(parseQuickConnect("::1")).toBeNull();
+    expect(parseQuickConnect("[::1]x")).toBeNull();
   });
 });
 
