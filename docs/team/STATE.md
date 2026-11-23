@@ -1,5 +1,14 @@
 # 项目状态
 
+
+## 本轮：一条命令跑完整个验证门（2026-11-24 第 88 轮）
+
+- 背景：每轮收尾要跑 `format:check`／`typecheck`／`lint`／`npm test`／`npm run test:browser` 五个门，此前靠我在 shell 里逐条串联；仓库里没有同样的入口给下一个人。
+- 交付：`scripts/verify.mjs` + `npm run verify`——依次跑五个任务（每条仍经过托管运行器，遵守「同一时刻一个托管任务」），第一个失败即停但打印每条状态，结尾一张 `ok`/`FAILED (code)`/`skipped` 表并带耗时；可传参只跑子集。
+- 实测（最终树，`VERIFY_EXIT=0`）：format:check ok 0.9s、typecheck ok 7.1s、lint ok 0.9s、test ok 124.0s、test:browser ok 190.3s，整门约 5 分 24 秒；单测 202 文件／1869 用例、浏览器契约 72 文件／316 用例。
+- 门自身的测试：`scripts/verify.test.mjs`（默认任务顺序；表格对 ok/FAILED/skipped 的措辞与耗时）。
+- 边界：不含 Rust 侧门（`test:rust`／`cargo fmt`／`check:clippy`），那些需要原生工具链；也不做增量判断——`ok` 的含义是「这次真的跑过」。
+
 ## 本轮：一个站不住的改动前提（2026-11-24 第 87 轮）
 
 - 想法：第 83 轮的「在终端中打开」只在当前标签是已连接 shell 时可用。试着改成「发给面板自己的会话」，让 A 标签的面板能直接 cd A 的 shell。
