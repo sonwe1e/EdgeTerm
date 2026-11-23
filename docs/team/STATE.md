@@ -1,5 +1,13 @@
 # 项目状态
 
+## 本轮：关掉第 72 轮的缺口——问题在夹具，不在产品（2026-11-24 第 124 轮）
+
+- 定位上一轮的否定结果：`goUp` 走的是 `api.localParent(path)`，而 `filerSelection.browser.test.ts` 的 `vi.mock("../api")` **没有 stub 它**——浏览器夹具里没有 Tauri，这个调用 reject，`setError` 后**根本没有导航**。所以筛选没被清空是夹具问题，不是产品缺陷。
+- 交付：夹具补 `localParent` stub（把路径的最后一个片段去掉），并在该文件末尾加回用例「切换目录后筛选清空」——输入 `file1` → 点「Parent folder」→ 轮询断言筛选值变空。
+- 验证：`filerSelection.browser.test.ts` **7/7**；全量门 `VERIFY_EXIT=0`（单测 **212 文件／1918 用例**，浏览器 **72 文件／331 用例**）。
+- **负控制**：把 `FilerPanel` 里的 `useEffect(() => setFilter(""), [path])` 清空行去掉 → 新用例失败；恢复后通过。
+
+
 ## 本轮：动手测「切目录后筛选清空」，结果没清——根因未定（2026-11-24 第 123 轮）
 
 - 按上轮计划给 `filerSelection.browser.test.ts` 末尾写了用例：打开面板 → 在筛选框输入 `file1` → 点「Parent folder」→ 断言筛选被清空。
