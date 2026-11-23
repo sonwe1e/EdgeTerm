@@ -1,5 +1,14 @@
 # 项目状态
 
+## 本轮：颜色字面量只许出现在 foundation 层（2026-11-24 第 106 轮）
+
+- 背景：四套主题共用一套 token，约定新样式只写 `var(--...)`；此前没有任何门禁检查这条约定。实测结果：19 个组件样式表里**没有**颜色字面量，210 个全部在 `foundation.styles.css`（唯一命中注释里 `issue #108` 的 `#` 已剔除）。
+- 交付：新增 `src/colourLiterals.test.ts` 2 条——① 除 foundation 外的样式表里不得出现 `#rgb(a)`／`#rrggbb(aa)`（先剥注释）；② foundation 自身必须仍有 100 个以上字面量，防止 glob 失效让门变成空转。用 `import.meta.glob("./styles/*.css", { query: "?raw", eager: true })`，新增样式表自动纳入。
+- **负控制**：往 `ftp.styles.css` 追加 `.term-empty-x { color: #123456; }` → 失败（`expected [ './styles/ftp.styles.css: #123456' ] to deeply equal []`）；删除后恢复。
+- 意义：这条约定从「文档里的规矩」变成「进门的断言」，与 styleCensus、shortcutCensus 同一族。
+- 门（`npm run verify`）：`VERIFY_EXIT=0`；format:check ok 0.9s、typecheck ok 7.3s、lint ok 1.0s、test ok 125.2s（**211 文件／1909 用例**）、test:browser ok 191.2s（**72 文件／323 用例**）。
+
+
 ## 本轮：给快捷键表加一次普查（2026-11-24 第 105 轮）
 
 - 背景：`shortcuts.ts` 里三张表（`SHORTCUT_COMMANDS`、`shortcutLabels`、`shortcutHints`）与两份平台默认值（`MAC_DEFAULTS`、`OTHER_DEFAULTS`）靠人工保持一致；`shortcuts.test.ts` 只测解析与匹配，不测「表与表之间是否对得上」。
