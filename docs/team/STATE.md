@@ -1,5 +1,13 @@
 # 项目状态
 
+## 本轮：终端里的 ssh:// 链接可以直接连（2026-11-24 第 93 轮）
+
+- 交付：终端再挂一个 `WebLinksAddon`，`urlRegex` 只匹配 `ssh://…`；点击走第 89 轮解析器，直接开一个不保存的会话。插件自身用 `new URL` 过滤，不成立的地址不会被下划线。
+- **一次真实缺陷**：正则第一版带 `g` 标志，插件 `computeLink` 做 `new RegExp(source, flags + "g")` → `gig` → 抛错，连带把同一终端上的**文件链接**也弄坏（既有 `terminalLinks.browser.test.ts` 立刻失败）。改为无 `g` 的 `/…/i`，并加守卫用例（`global === false`、`ignoreCase === true`）。
+- 验证：`src/terminalSshLinks.test.ts` 4 条；`src/test/terminalLinks.browser.test.ts` 2/2 通过（既有文件链接未被破坏）。
+- 浏览器契约三次运行记录：**第一次全量失败**（`SyntaxError: Invalid flags … 'gig'`）→ 修好后跑该文件通过 → **第二次全量通过**。
+- 门（第二次全量 `npm run verify`）：`VERIFY_EXIT=0`；format:check ok 1.0s、typecheck ok 7.2s、lint ok 0.9s、test ok 121.7s（**205 文件／1884 用例**）、test:browser ok 188.9s（**72 文件／317 用例**）。
+
 ## 本轮：死代码清理，把 styleCensus 变成门（2026-11-24 第 92 轮）
 
 - 扫描方式：列出 `src/` 所有 `export`，数全仓库引用，只出现一次（只有定义）的即死导出；共 6 个候选。
