@@ -1,5 +1,12 @@
 # 项目状态
 
+## 本轮：记住的主机只有一处来源（2026-11-24 第 94 轮）
+
+- 问题：第 91 轮把「最近连接过的目标」放在 App 的局部状态，第 93 轮的终端链接点击在 `actions.ts` 里拿不到它——于是从面板连的会记住，从链接点开的不记。
+- 交付：列表移进 store（`AppStore.quickConnectRecents` + 动作 `rememberQuickTarget`），面板与链接**都调用它**；`App` 只读 store；「恢复默认设置」把内存列表一并清空，「导入设置」后从存储重新读取。
+- 验证：新增 `src/storeQuickTargets.test.ts`（3 条：新在前并落盘、重复前移、上限与空标签）；`quickConnectRecents.test.ts` 5 条未改；`commandPalette.browser.test.ts` 3/3 通过。
+- 门（`npm run verify`）：`VERIFY_EXIT=0`；format:check ok 0.9s、typecheck ok 7.1s、lint ok 0.9s、test ok 123.4s（**206 文件／1887 用例**）、test:browser ok 191.2s（**72 文件／317 用例**）。
+
 ## 本轮：终端里的 ssh:// 链接可以直接连（2026-11-24 第 93 轮）
 
 - 交付：终端再挂一个 `WebLinksAddon`，`urlRegex` 只匹配 `ssh://…`；点击走第 89 轮解析器，直接开一个不保存的会话。插件自身用 `new URL` 过滤，不成立的地址不会被下划线。
