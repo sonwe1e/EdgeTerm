@@ -23,6 +23,7 @@
     "lint": "node scripts/run-task.mjs lint",
     "format": "node scripts/run-task.mjs format",
     "format:check": "node scripts/run-task.mjs format:check",
+    "verify": "node scripts/verify.mjs",
     "bindings": "node scripts/run-task.mjs bindings",
     "check:bindings": "node scripts/run-task.mjs check:bindings",
     "check:file-performance": "node scripts/run-task.mjs check:file-performance",
