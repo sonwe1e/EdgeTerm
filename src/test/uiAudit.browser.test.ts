@@ -7,6 +7,7 @@ import type { SessionGroup, SessionProfile } from "../types";
 import { browserAfterEach, mount, twoFrames } from "./browserHarness";
 import {
   clippedTextIssues,
+  styleCensus,
   targetSizeIssues,
   textContrastIssues,
   type AuditIssue,
@@ -233,6 +234,9 @@ const auditShell = () => ({
   contrast: textContrastIssues(document.body),
   targets: targetSizeIssues(document.body, { ignore: ".splitter" }),
   clips: clippedTextIssues(document.body),
+  // Not an assertion on its own: the frequency table of what was painted, so a
+  // style drift shows up as a number before it shows up as a screenshot.
+  census: styleCensus(document.body),
 });
 
 const applyConfig = (config: Config) => {
@@ -304,6 +308,20 @@ describe("shell visual audit", () => {
         // collector that silently stopped inspecting fails the gate too.
         expect(report.contrast.inspected, "text runs inspected").toBeGreaterThan(40);
         expect(report.targets.inspected, "targets inspected").toBeGreaterThan(20);
+
+        // The type and shape scale, measured on the painted chrome. The numbers
+        // are today's counts (three type sizes, six radii, six text colours);
+        // the caps allow one spare so a deliberate addition is possible while a
+        // slow drift — a stray 13px here, a one-off 5px radius there — is not.
+        // The floor proves the census looked at the shell rather than an empty
+        // document.
+        const census = report.census;
+        expect(census.elements, "elements painted").toBeGreaterThan(250);
+        expect(Object.keys(census.fontSize).sort(), "type sizes").toEqual(["10px", "11px", "12px"]);
+        expect(Object.keys(census.lineHeight).length, "line heights").toBeLessThanOrEqual(4);
+        expect(Object.keys(census.radius).length, "corner radii").toBeLessThanOrEqual(7);
+        expect(Object.keys(census.color).length, "text colours").toBeLessThanOrEqual(8);
+        expect(Object.keys(census.background).length, "surfaces").toBeLessThanOrEqual(14);
       },
     );
   }

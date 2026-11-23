@@ -31,6 +31,3 @@ export const startPreview = (sessionId: string, path: string): Promise<RemotePre
  * session close stops the previews that session owned.
  */
 export const stopPreview = (id: string): Promise<void> => invoke<void>("preview_stop", { id });
-
-/** The previews still serving, for a panel that lists or reopens them. */
-export const listPreviews = (): Promise<RemotePreview[]> => invoke<RemotePreview[]>("preview_list");

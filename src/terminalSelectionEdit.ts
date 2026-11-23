@@ -155,12 +155,6 @@ export function selectionEdit(term: Terminal, guards: SelectionGuards): Selectio
   };
 }
 
-/** The whole edit for a plain Delete/Backspace: the delete and the walk back. */
-export function selectionDeleteSequence(term: Terminal, guards: SelectionGuards): string | null {
-  const edit = selectionEdit(term, guards);
-  return edit ? edit.deleteSequence + edit.restore : null;
-}
-
 /**
  * Sends the walk back once the replacement text has gone out. The text itself
  * is xterm's own keypress output for a printable key and `term.paste` for a
