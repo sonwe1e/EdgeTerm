@@ -207,6 +207,23 @@ it("preserves a group during native drag and confirms every selected deletion", 
   ]);
 });
 
+it("says when the filter removes every row, and clears it on request", async () => {
+  await open();
+  const filter = document.querySelector<HTMLInputElement>(".filer-filter")!;
+  filter.focus();
+  await userEvent.keyboard("zzz");
+  await twoFrames();
+  const rows = () => document.querySelectorAll(".filer-entry").length;
+  expect(rows(), "nothing matches").toBe(0);
+  const note = document.querySelector(".filer-list .panel-empty");
+  expect(note?.textContent, "the empty list explains itself").toContain("zzz");
+  // The clear button must hand the keyboard back: it unmounts with the note.
+  await userEvent.click(document.querySelector<HTMLButtonElement>(".panel-empty-action")!);
+  await expect.poll(() => filter.value, { timeout: 3000 }).toBe("");
+  expect(document.activeElement, "focus returns to the filter").toBe(filter);
+  expect(rows(), "the whole folder is back").toBeGreaterThan(0);
+});
+
 it("clears the filter when the folder changes", async () => {
   await open();
   const filter = document.querySelector<HTMLInputElement>(".filer-filter")!;

@@ -1192,6 +1192,27 @@ function FilerPanelBase() {
             )}
           </div>
         )}
+        {!offlineReason &&
+          !error &&
+          filter.trim() !== "" &&
+          entries.length > 0 &&
+          sortedEntries.length === 0 && (
+            // The folder has rows and the filter removed all of them: say so,
+            // or an empty list reads as an empty folder.
+            <div className="panel-empty" role="status">
+              <span>{t("filer.noMatches", { filter: filter.trim() })}</span>
+              <button
+                type="button"
+                className="panel-empty-action"
+                onClick={() => {
+                  setFilter("");
+                  filterRef.current?.focus();
+                }}
+              >
+                {t("panel.clearFilter")}
+              </button>
+            </div>
+          )}
         {error && (
           <div className="panel-empty is-error" role="alert">
             <Icon name="error" className="panel-empty-icon" />

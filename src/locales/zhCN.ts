@@ -976,6 +976,7 @@ export const zhCN: Catalog = {
   "filer.uploadFilesOrFolders": "上传文件或文件夹",
   "filer.downloadFileOrFolder": "下载文件或文件夹",
   "filer.home": "主目录",
+  "filer.noMatches": "没有匹配“{filter}”的文件。",
   "filer.parentFolder": "上级文件夹",
   "filer.cdHere": "在终端中打开",
   "filer.cdFailed": "没有可切换目录的已连接终端：{path}",

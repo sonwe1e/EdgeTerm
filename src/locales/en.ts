@@ -1018,6 +1018,7 @@ export const en = {
   "filer.uploadFilesOrFolders": "Upload files or folders",
   "filer.downloadFileOrFolder": "Download file or folder",
   "filer.home": "Home folder",
+  "filer.noMatches": "No files match “{filter}”.",
   "filer.parentFolder": "Parent folder",
   "filer.cdHere": "Open in Terminal",
   "filer.cdFailed": "No connected shell to change into {path}",
