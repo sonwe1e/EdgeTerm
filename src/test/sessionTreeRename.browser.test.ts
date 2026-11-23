@@ -88,6 +88,22 @@ it("keeps the mark visible beside a long name at a narrow width", async () => {
   expect(markBox.right, "and stays inside the row").toBeLessThanOrEqual(rowBox.right + 0.5);
 });
 
+it("returns the keyboard to the filter after clearing it", async () => {
+  mount(h(SessionPanel, { onEditProfile: vi.fn(), onNewSession: vi.fn() }));
+  await twoFrames();
+  const input = document.querySelector<HTMLInputElement>(".panel-filter input")!;
+  await userEvent.type(input, "no-such-session");
+  await twoFrames();
+  const clear = document.querySelector<HTMLButtonElement>(".panel-empty-action")!;
+  expect(clear, "the empty state offers a way out").toBeTruthy();
+  await userEvent.click(clear);
+  await twoFrames();
+  expect(document.querySelector(".panel-empty-action"), "the message is gone").toBeNull();
+  // The button unmounts with the message, so focus must land somewhere useful:
+  // the field the reader was typing in.
+  expect(document.activeElement, "focus returns to the filter box").toBe(input);
+});
+
 it("names its own keys for assistive technology", async () => {
   mount(h(SessionPanel, { onEditProfile: vi.fn(), onNewSession: vi.fn() }));
   await twoFrames();

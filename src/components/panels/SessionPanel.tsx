@@ -935,7 +935,16 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
             <span>{t("panel.noMatches", { filter: filter.trim() })}</span>
             {/* The filter is the reason the list is empty, so the way out of
                 it belongs here rather than only in the field. */}
-            <button type="button" className="panel-empty-action" onClick={() => setFilter("")}>
+            {/* Back to the field, not to the document: the button is about to
+                unmount with the message, and the reader is still searching. */}
+            <button
+              type="button"
+              className="panel-empty-action"
+              onClick={() => {
+                setFilter("");
+                filterRef.current?.focus();
+              }}
+            >
               {t("panel.clearFilter")}
             </button>
           </div>
