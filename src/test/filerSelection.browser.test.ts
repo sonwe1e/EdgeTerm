@@ -12,6 +12,9 @@ import "../styles.css";
 vi.mock("../api", async (original) => ({
   ...(await original<typeof import("../api")>()),
   localHome: vi.fn(async () => "/selection-browser"),
+  // The panel asks the backend for a parent path; without a stub the call
+  // rejects in the browser harness and the button appears to do nothing.
+  localParent: vi.fn(async (path: string) => path.replace(/\/[^/]+$/, "") || "/"),
   localList: vi.fn(async (path: string) => ({
     path,
     entries: Array.from({ length: 1000 }, (_, index) => ({
@@ -202,4 +205,21 @@ it("preserves a group during native drag and confirms every selected deletion", 
     ["/selection-browser/file0.txt", false, false],
     ["/selection-browser/file2.txt", false, false],
   ]);
+});
+
+it("clears the filter when the folder changes", async () => {
+  await open();
+  const filter = document.querySelector<HTMLInputElement>(".filer-filter")!;
+  filter.focus();
+  await userEvent.keyboard("file1");
+  await twoFrames();
+  expect(filter.value, "the filter narrows the listing in place").toBe("file1");
+  // Leaving the folder is the moment the filter stops making sense: it was
+  // typed while looking at a listing the reader has just left.
+  await userEvent.click(page.getByRole("button", { name: "Parent folder", exact: true }));
+  await expect
+    .poll(() => document.querySelector<HTMLInputElement>(".filer-filter")?.value, {
+      timeout: 3000,
+    })
+    .toBe("");
 });
