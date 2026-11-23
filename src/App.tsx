@@ -1137,6 +1137,15 @@ export default function App() {
           rememberQuickTarget(quickConnectLabel(target));
           void openSession(quickConnectProfile(target, newSessionProfile()));
         }}
+        describeQuickConnect={(target) => {
+          // The same defaults the session itself starts from, so the row says
+          // which user and port an omitted part will fall back to.
+          const profile = quickConnectProfile(target, newSessionProfile());
+          return t("palette.quickConnectAs", {
+            user: profile.username ?? "",
+            port: String(profile.port ?? 22),
+          });
+        }}
         recentTargets={recentTargets}
       />
 

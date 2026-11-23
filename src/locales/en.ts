@@ -217,6 +217,7 @@ export const en = {
   "palette.quickConnect": "Connect to {target}",
   "palette.quickConnectHint": "Open an SSH session without saving it",
   "palette.quickConnectRecent": "Connected recently",
+  "palette.quickConnectAs": "SSH as {user}, port {port}",
   "palette.connectHint": "Saved session",
   "palette.footer": "↑↓ navigate · Enter run · Esc close",
   "palette.count": "{count} commands",

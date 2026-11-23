@@ -46,6 +46,9 @@ interface Props {
   onQuickConnect?: (target: QuickTarget) => void;
   /** Hosts connected this way before, newest first; offered while the field is empty. */
   recentTargets?: readonly string[];
+  /** What connecting to a target will actually use (user, port); App resolves
+   *  it from the same defaults the session itself starts from. */
+  describeQuickConnect?: (target: QuickTarget) => string;
 }
 
 const optionId = (index: number): string => "command-palette-option-" + index;
@@ -71,6 +74,7 @@ export function CommandPalette({
   commands,
   onQuickConnect,
   recentTargets = [],
+  describeQuickConnect,
 }: Props) {
   const t = useT();
   const [query, setQuery] = useState("");
@@ -92,8 +96,11 @@ export function CommandPalette({
     if (!onQuickConnect) return base;
     // A query that parses as `user@host:port` is a target, not a search: the
     // row goes first so Enter connects without walking the list.
+    const hint = (target: QuickTarget): string | undefined =>
+      describeQuickConnect?.(target) ?? t("palette.quickConnectHint");
     const target = parseQuickConnect(query);
-    if (target) return [quickConnectCommand(target, t, () => onQuickConnect(target)), ...base];
+    if (target)
+      return [quickConnectCommand(target, t, () => onQuickConnect(target), hint(target)), ...base];
     // Machines connected from here before are offered like any other command:
     // the ranking decides where they belong, and each one is still a target, so
     // Enter reconnects. The row says it is a recent one rather than a fresh
@@ -102,10 +109,19 @@ export function CommandPalette({
       .map((label) => parseQuickConnect(label))
       .flatMap((entry) => (entry ? [entry] : []))
       .map((entry) =>
-        quickConnectCommand(entry, t, () => onQuickConnect(entry), t("palette.quickConnectRecent")),
+        // A remembered row says both where it came from and what it will use:
+        // only the first part tells it apart from the row the field makes.
+        quickConnectCommand(
+          entry,
+          t,
+          () => onQuickConnect(entry),
+          [t("palette.quickConnectRecent"), describeQuickConnect?.(entry)]
+            .filter((part): part is string => Boolean(part))
+            .join(" · "),
+        ),
       );
     return [...base, ...recent];
-  }, [commands, query, recents, recentTargets, onQuickConnect, t]);
+  }, [commands, query, recents, recentTargets, onQuickConnect, describeQuickConnect, t]);
 
   // One heading per group, rows of the same group kept together. The flattened
   // order below is what the arrow keys walk and what the option ids number, so

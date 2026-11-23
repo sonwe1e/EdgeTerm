@@ -159,6 +159,11 @@ describe("the command palette in the real app", () => {
     expect(first.textContent, "the target is the first thing Enter would run").toContain(
       "Connect to root@10.0.0.5:2222",
     );
+    // The row says which account and port the connection will use, so an
+    // address typed without one is not a guess.
+    expect(first.textContent, "the row names the resolved account").toContain(
+      "SSH as root, port 2222",
+    );
 
     await pressKey("Enter");
     await twoFrames();
