@@ -1,5 +1,14 @@
 # 项目状态
 
+## 本轮：会话筛选能按主机、用户、端口找（2026-11-24 第 107 轮）
+
+- 缺陷（代码里确认）：`SessionPanel` 的筛选只比较 `p.name`——按主机 `10.0.0` 或用户名搜不到任何会话，而用户记得的通常是机器，不是保存时随手起的名字。
+- 交付：纯函数 `sessionMatchesFilter(profile, needle)`（`src/sessionFilter.ts`）搜索名称、主机、用户名、`user@host`、端口、串口名；空筛选全通过。筛选框占位文字改为「按名称、主机或用户名过滤」（中英各一处）。
+- 验证：`src/sessionFilter.test.ts` 5 条；`sessionTreeRename.browser.test.ts` **7/7**（新增 1 条：输入 `lab.inv` 把名称不含该串的会话找回来，输入匹配不到时它消失）。
+- **负控制**：把面板改回只比 `name` → 新用例失败（`the host brings the session back: expected false to be true`）；恢复后通过、typecheck EXIT=0。
+- 门（`npm run verify`）：`VERIFY_EXIT=0`；format:check ok 0.9s、typecheck ok 7.3s、lint ok 0.9s、test ok 125.6s（**212 文件／1914 用例**）、test:browser ok 192.5s（**72 文件／324 用例**）。
+
+
 ## 本轮：颜色字面量只许出现在 foundation 层（2026-11-24 第 106 轮）
 
 - 背景：四套主题共用一套 token，约定新样式只写 `var(--...)`；此前没有任何门禁检查这条约定。实测结果：19 个组件样式表里**没有**颜色字面量，210 个全部在 `foundation.styles.css`（唯一命中注释里 `issue #108` 的 `#` 已剔除）。
