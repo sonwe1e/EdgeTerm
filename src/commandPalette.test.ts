@@ -218,6 +218,19 @@ describe("the catalogue", () => {
     expect(ids).toContain("session:profile-1");
   });
 
+  it("marks a session the reader connected to recently, and only that one", () => {
+    const plain = buildPaletteCommands(sources());
+    expect(plain.find((item) => item.id === "session:profile-1")?.hint).not.toContain(
+      english("palette.usedRecently"),
+    );
+    const marked = buildPaletteCommands(sources({ recentProfiles: ["profile-1"] }));
+    const hint = marked.find((item) => item.id === "session:profile-1")?.hint ?? "";
+    expect(hint).toContain(english("palette.usedRecently"));
+    // The address and the verb stay: the mark is added, not substituted.
+    expect(hint).toContain("root@db.internal");
+    expect(hint).toContain(english("palette.connectHint"));
+  });
+
   it("files commands under the group a reader would look in", () => {
     const commands = buildPaletteCommands(sources());
     const group = (id: string) => commands.find((item) => item.id === id)?.group;

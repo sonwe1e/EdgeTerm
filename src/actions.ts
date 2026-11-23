@@ -638,6 +638,10 @@ export async function connectSession(
     connectedStore.updateTabInfo(id, info);
     connectedStore.updateTabProfile(id, profile);
     connectedStore.applyState(id, "connected");
+    // A profile the reader saved is one they keep coming back to; remembering
+    // it here is what lets the palette mark it later. An unsaved quick-connect
+    // target has no id and is remembered by its label instead.
+    if (profile.id) connectedStore.rememberRecentProfile(profile.id);
     const name = tabTitle({ ...tab, info });
     connectedStore.setStatus(
       info.sharedConnection

@@ -50,6 +50,9 @@ export const COMMAND_RECENTS_KEY = "edgeterm.commandPalette.recents";
  *  quickConnectRecents.ts. A preference like the command recents above. */
 export const QUICK_CONNECT_RECENTS_KEY = "edgeterm.quickConnect.recents";
 
+/** Saved profiles that were connected to, newest first; see recentProfiles.ts. */
+export const RECENT_PROFILES_KEY = "edgeterm.recentProfiles";
+
 /** Saved commands and the command a profile runs after connecting. Both are
  * preferences the reader wrote, so reset clears them and an export carries
  * them; their modules validate the stored JSON on every load. */
@@ -85,4 +88,5 @@ export const PANEL_PREFERENCE_KEYS: readonly string[] = [
   SNIPPETS_STORAGE_KEY,
   STARTUP_COMMANDS_STORAGE_KEY,
   QUICK_CONNECT_RECENTS_KEY,
+  RECENT_PROFILES_KEY,
 ];

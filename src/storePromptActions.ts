@@ -13,6 +13,7 @@ import {
 import { t } from "./i18n";
 import { IS_WINDOWS } from "./platform";
 import { rememberTarget, saveRecentTargets } from "./quickConnectRecents";
+import { rememberProfile, saveRecentProfiles } from "./recentProfiles";
 import { AppStore } from "./storeTypes";
 import { getController } from "./terminalRegistry";
 
@@ -32,6 +33,7 @@ export const createPromptActions: StateCreator<
     | "bumpSenderLibrary"
     | "setStatus"
     | "rememberQuickTarget"
+    | "rememberRecentProfile"
     | "setError"
     | "addAuthPrompt"
     | "clearAuthPrompt"
@@ -154,6 +156,13 @@ export const createPromptActions: StateCreator<
 
     setStatus(status) {
       set({ status });
+    },
+
+    rememberRecentProfile(id) {
+      if (!id) return;
+      const next = rememberProfile(get().recentProfiles, id);
+      saveRecentProfiles(next);
+      set({ recentProfiles: next });
     },
 
     rememberQuickTarget(label) {

@@ -795,6 +795,8 @@ export default function App() {
   // The saved-command surfaces own their dialogs and their entry points.
   const snippetsUi = useSnippetRunner();
 
+  const recentProfiles = useStore((s) => s.recentProfiles);
+
   // The palette catalogue is rebuilt only when something it displays changes:
   // the language, a rebinding, the theme, or one of the tab/session labels.
   const paletteCommands = useMemo(
@@ -807,6 +809,7 @@ export default function App() {
           const [id, title, address] = JSON.parse(key) as [string, string, string, number];
           return { id, title, hint: address };
         }),
+        recentProfiles,
         profiles: paletteProfileKeys.map((key) => {
           const [id, name, kind, host, username, shell] = JSON.parse(key) as [
             string,
@@ -855,6 +858,7 @@ export default function App() {
       historyTag,
       paletteProfileKeys,
       paletteTabKeys,
+      recentProfiles,
       runShortcut,
       setActive,
       setTheme,

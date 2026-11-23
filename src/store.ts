@@ -60,6 +60,7 @@ export type {
 
 import { loadFileSort } from "./fileSort";
 import { loadRecentTargets } from "./quickConnectRecents";
+import { loadRecentProfiles } from "./recentProfiles";
 import { t } from "./i18n";
 import { leaf } from "./layout";
 
@@ -73,6 +74,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
   gutterMode: loadGutterMode(),
   filerSort: loadFileSort(),
   quickConnectRecents: loadRecentTargets(),
+  recentProfiles: loadRecentProfiles(),
   panelPreferencesRevision: 0,
   theme: loadTheme(),
   language: initialLanguage,

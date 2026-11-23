@@ -249,6 +249,8 @@ export function quickConnectCommand(
 }
 
 export interface PaletteSources {
+  /** Profile ids connected to on this machine, newest first. */
+  recentProfiles?: readonly string[];
   t: Translate;
   shortcuts: ShortcutBindings;
   tabs: { id: string; title: string; hint: string }[];
@@ -391,12 +393,17 @@ export function buildPaletteCommands(sources: PaletteSources): PaletteCommand[] 
     });
   }
 
+  const recent = sources.recentProfiles ?? [];
   for (const profile of sources.profiles) {
     commands.push({
       id: "session:" + profile.id,
       group: "sessions",
       label: t("palette.sessionItem", { name: profile.name }),
-      hint: detailHint([profile.hint, t("palette.connectHint")]),
+      hint: detailHint([
+        profile.hint,
+        recent.includes(profile.id) ? t("palette.usedRecently") : undefined,
+        t("palette.connectHint"),
+      ]),
       keywords: [englishLabel("palette.sessionItem"), profile.name, "connect", "session"],
       run: () => actions.connectProfile(profile.id),
     });

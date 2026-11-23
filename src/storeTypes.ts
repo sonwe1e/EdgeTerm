@@ -229,10 +229,17 @@ export interface AppStore {
    */
   quickConnectRecents: string[];
   /**
+   * Saved profiles connected to on this machine, newest first; the palette
+   * marks them so a long list says which ones are in use (recentProfiles.ts).
+   */
+  recentProfiles: string[];
+  /**
    * Remembers a target that was just connected to, in front of the others and
    * persisted; the palette offers the list back while its field is empty.
    */
   rememberQuickTarget: (label: string) => void;
+  /** Records a saved profile that just connected; an unsaved one has no id. */
+  rememberRecentProfile: (id: string) => void;
   theme: ThemeMode;
   /** Interface language; drives every `t(...)` in the frontend. */
   language: Language;
