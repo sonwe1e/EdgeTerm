@@ -1,5 +1,14 @@
 # 项目状态
 
+## 本轮：找到上轮那条浏览器用例失败的根因，并补上证据（2026-11-24 第 110 轮）
+
+- 根因：App **挂载后会从后端加载 profiles**（夹具里 `list_profiles` 返回 `PROFILE`），所以在 `mount` 之前设置的 2222 端口被这次加载覆盖——搜索查的是旧数据。把设置挪到挂载并等待两帧之后，用例立刻通过。
+- 定位手法：把断言写成哨兵（`expect(palette()?.textContent).toContain("SENTINEL-TEXT")`），失败消息直接给出渲染文本——先是 `No command matches "2222"`（确认没有匹配，而不是选择器错），改顺序后变成 `Saved sessions Connect to Build ser…`（确认已找到）。
+- 交付：`commandPalette.browser.test.ts` 新增「按地址端口找到会话」（4/4），**上轮那句没有证据的话现在有证据了**。
+- **负控制**：去掉 App 里 `address = target + ":" + port` 的拼接 → 该用例失败（`expected '' to contain 'Build server'`）；恢复后通过、typecheck EXIT=0。
+- 门（`npm run verify`）：`VERIFY_EXIT=0`；format:check ok 0.9s、typecheck ok 7.3s、lint ok 0.9s、test ok 125.5s（**212 文件／1916 用例**）、test:browser ok 191.5s（**72 文件／325 用例**）。第 109 轮那句「浏览器层无证据」到此关掉。
+
+
 ## 本轮：命令面板的提示补上端口（2026-11-24 第 109 轮）
 
 - 补齐上轮记下的不一致：App 里构造会话 hint 的那段解析只取 6 个字段，第 7 个（`port`）虽在 key 里却没用上，于是 Ctrl+P 不能按端口找会话，而树可以。现在 hint 为 `ssh · build@build.internal:2222 · Connect`。
