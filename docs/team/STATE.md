@@ -1,264 +1,338 @@
 # 项目状态
 
-## 当前续轮：EdgeTerm 1.8.0 全面筛查（2026-11-10）
-
-- 用户授权：沿用稳定性优先与图片双击只读，Team 审查功能、界面、交互后实施修复；不合并/发布，不启用 A2，不更换底层架构。
-- 本地基线 `2c38cd3` / PR #4 远端 `95fabfe`（开始时同源码树）；三名真实 Agent 分片审查、实施、交叉复核，root 串行整合验证。
-- 功能代码冻结本地 `f6b2812`／同树远端 `0a65f937`，[CI 42670446468](https://github.com/sonwe1e/EdgeTerm/actions/runs/42670446468) 三项全部通过：前端 1363 通过／7 跳过、真实 Chrome 182 通过、Rust 512 通过／31 ignored；生成绑定 Fresh 104/110、40 提交逐一类型检查通过。21 场景截图门与字号矩阵通过，二级子菜单裁剪已修并有实际指针命中及独立截图复核。本地候选生产 build 通过；详细修复、失败闭环与边界见 [本轮审查记录](edge-term-1.8-full-audit.md)。
-- 原生 WebView2 / Ubuntu 18.04 SSH / 输入法验收仍待完成；7 个开发依赖受影响包节点未清理；实际 SSH 图片耗时与 SFTP 吞吐未测。PR 保持 Draft，不以合成事件测试替代原生验收或宣称“零 bug／顶尖美观”。
-
-## 本轮：四向性能优化（2026-11-06）
-
-- 用户确认：A（长历史内存）+B（批量传输）+C（链接识别走查）+D（全局排查）全选；修改并逐提交 main（`perf:` 带 Measured/Unmeasured、`fix:` 带 Tests:）；允许 WSL sshd 真实基准；按路线图验收门验收。
-- 环境预检：`./dev.ps1 doctor` 通过（Node 24.19.0、rustc/cargo 1.99.1、cargoJobs=2、34.7 GiB 空闲）；`.tmp/ssh/id_ed25519` 仍在；127.0.0.1:2222 未监听，且会话沙箱内 `wsl` 报 `WSL_E_ACCESSDENIED`（命名管道边界）——真实服务器基准到 Wave 2 需提权或用户侧启动。
-- 研究结论（3 个只读子代理 + Lead 逐条抽查核实）：
-  - **路线图 B 项已大半落地**（13cec59 journal 出 runtime、43817f1 小文件 2 次 save、ea6e02c TOCTOU 修复+plain rename、53301cd readdir 规划、bb47ac7 files 8→16、4dbabeb FTP 精简、926e2ed tar 流、91dedbf/39607cd 窗口共享；5842f6c close 流水线被 dc09dfa 回退——真实 sftp-server 拒绝迟到 write）。原 B0→B3→B1 计划作废。**剩余缺口**：串行服务器模式未接入 3 个 `#[ignore]` 基准、并发文件数无引擎级断言、基准无数值记录（仅 eprintln）、job 无分阶段计时、无 bench-transfer.ps1（由 real_tests.rs 6 个 `#[ignore]` 替代）、`local::signature` 仍同步于 async fn（sftp.rs:1038/1179）、B7 多通道与 B9 并行遍历未做。行号以重验报告为准，勿引用路线图旧行号。
-  - A 项：A0 已落地（默认 10k+内存估算+WebGL LRU+隐藏暂停；搜索已自研非 addon-search；无隐藏自动停闪）。A2 唯一高危假设＝xterm 无"裁剪前"事件 → 先做裁剪捕获 spike 再谈 2-3 周估算。工作区恢复（e0a905a）放大了启动内存涌入（20 标签×10k 行×200 列×12B≈480MB）。
-  - C 项：链接 provider 仅在鼠标换格时求值（高输出+鼠标静止＝零求值）；现有测试无性能基准；方案 `scripts/measure-file-links.mjs` 复用 measure-agent-scroll.mjs 骨架。
-  - D-lite 缺口：冷启动（卖点从未测量）、应用常驻内存、安装包体积守卫（README 卖点 4–5MB 无门禁）、终端 tab 切换门禁。
-  - 战略：价值排序 B剩余 ≥ A > D-lite > C；Wave0＝测量重定基线，Wave1＝B7 探针+A2 spike+history 纯函数，Wave2＝真实 CSV 后定并发。砍：FTP 新工作、B11 快速模式、A3/A4、原生渲染评估。
-- 分工：c-bench-builder（teammate）写 measure-file-links.mjs；Lead 做 B0-lite（串行基准变体+并发文件断言+跑基准记数值）；验证由 Lead 串行执行（单 runner 约束）。
-- **本会话沙箱实测（重要）**：受管任务/子进程对仓库内被 gitignore 的目录（`src-tauri/target`、`.tmp/`、`node_modules/`、`artifacts/`）一律 os error 5 拒写（旧会话建成的 ACE 只带旧沙箱身份；`G:\Workspaces\acl-reports\` 有 ACL 修复记录与回滚命令，修复了 WRITE_OWNER 前端条件但不改变该行为）；未忽略路径与 `%TEMP%` 可写。绕行：`CARGO_TARGET_DIR=%TEMP%\edgeterm-cargo-target`；浏览器/测量脚本输出目录同样需可覆盖到临时区。gitignore 之外的构建产物目录在本会话均按此约束设计验证命令。后续实测补充：拒写不限于忽略目录——`src-tauri/src`、`scripts`、`.git`（提交需提权命令）同样拒写；仓库根与前端 `src/` 可写。PowerShell 会吞裸 `--`，传给 cargo 的分隔符需引号 `'--'`。
-
-### B0 基线数值（2026-11-06，受管 runner，CPU 亲和被拒用满核、cargo jobs=2，fixture 20ms RTT，提交 085a3e2，`--ignored --nocapture` 单次运行）
-
-| 基准 | 数值 |
-| --- | --- |
-| journal 落盘成本 | 200 次 save 297.0ms → **每次 1.485ms**；每 fresh 文件 6 次 save 共 8.91ms |
-| 500×4KiB/51 目录（重叠应答） | F=4：copy 20.94s；F=8：11.28s；F=16：6.05s；F=32：3.35s（随 F 近似线性） |
-| 500×4KiB/51 目录（**串行服务器**） | **F=4：84.23s；F=16：84.75s——完全打平**；plan 约 3.1s（串行下 mkdir/realpath 窗口也逐个应答） |
-| 8MiB pipeline 深度 | upload 2.38s@1→0.53s@8→0.26s@32；download 2.28s→0.56s→0.41s；peak_inflight 与深度一致 |
-| 24×4KiB | F=1：4.80s；F=4：1.20s |
-| 50×4KiB/11 目录 | F=4：2.34s；F=8：1.36s |
-
-结论（fixture 证据，非真实服务器）：重叠应答服务器上文件并发收益到 F=32 仍在；**单线程 sftp-server 形态下文件并发收益为零（T_server 主导）**，串行服务器只有多 sftp channel（B7，T_server/C）或 opt-in tar 流两个杠杆；plan 阶段在串行链路约占 3.1s。真实服务器 CSV（netem 三档 RTT）留待 Wave 2 决策 B7 时再做。
-
-### C 项：高输出链接识别走查（2026-11-07 关闭——未发现性能问题）
-
-- 交付：`scripts/measure-file-links.mjs` + scripts/README 小节（提交 86b79d1）。首个基准：进程内 node:http 页面 + 真实 xterm（无渲染器/无鼠标管线/无 IPC）+ 生产 `createFileLinkProvider`，经与 src/terminal.ts 相同的 registerLinkProvider 路径计时每次 provideLinks；固定校验块证明夹具真实出链（traceback/path:line 必须出、普通行必须不出）。
-- 实测（Edge 157.0.4341.42 headless，external-cdp 接入，两轮 PASS 差异 ≤0.7ms；工件 `.tmp/records/file-links/`，含采样数组与 sourceSha256）：
-  - 80×24、801k 字符 → 10,024 缓冲行（scrollback 触顶）：全缓冲逐行 19.0–19.6ms ≈ **0.002ms/行**；视口扫过（24 行）p50 0.1 / p95 0.2–0.3ms。
-  - 200×24、801k 字符 → 5,242 行：全缓冲 17.1–17.8ms ≈ 0.0034ms/行（80→200 列 ~1.7×，随行宽缩放符合预期）。
-  - 单次调用受非跨域页 performance.now ~0.1ms 量化限制（p99=0.1ms 即下限），全缓冲均值是可信口径。
-- **结论：指针扫过整个视口的链接求值成本 0.1–0.3ms，距 50ms tripwire 三个数量级；2026-11-02 轮遗留的"高输出下链接识别/跟随性能走查"以证据关闭。** 未覆盖：Linkifier 行缓存/dispose、渲染器命中、hover 下划线、click/open IO、WebView2 真实渲染。
-- 本会话沙箱适配（已写入脚本与 README）：`--out` 覆盖输出；esbuild 管道进程被禁 → 进程内 transpileModule；浏览器 spawn 全禁 → `EDGETERM_FILE_LINKS_CDP` 连接外部调试 Edge（Lead 提权启动，测后关闭）。
-
-### A1-lite：终端内存/吞吐基线（2026-11-07，脚本 measure-terminal-memory.mjs，本波提交）
-
-- 矩阵 W1/W3 × {10k,100k} 行 × {80,200} 列（scrollback=行数），进程内 node:http + 真实 xterm 无渲染器，CDP HeapProfiler.collectGarbage×2 + Runtime.getHeapUsage 取堆；external-cdp 接入 Edge 157 headless；两轮 PASS，堆增量差异 ≤0.2%，校验块（buffer.length、首末行）全过。工件 `.tmp/records/terminal-memory/`。
-- 数值：10k 行 ≈ +2.2–2.4 MB；100k 行 ≈ +20.55–20.59 MB（≈205–240 B/行）；写吞吐 6.6–15.7 MB/s（W3 比 W1 低 20–30%，200 列比 80 列低 20–30%，100k 比 10k 慢）；滚动 p50/p95 ≈7/8 ms 全变体无差异（无渲染器 O(1)，JS 侧上限口径）。
-- 关键发现 2：SGR/spinner 负载（W3）堆与纯文本几乎相同（属性稀疏存储），代价在解析吞吐而非内存。
-- **更正（同日，W2 满宽行 + 堆快照校准后）**：本节初版"堆与列宽无关、A0 公式对短行高估至 11×、A2 前提需重估"的结论**错误**——那是 Runtime.getHeapUsage 的度量盲区：typed-array 背储在 V8 外部内存。xterm 6.0 每行急切分配 `Uint32Array(cols×3)`=精确 12 B/cell（随包源码核实；快照 `system/JSArrayBufferData` 240.337 MB vs 公式 240.0024 MB，误差 +0.14%）。**路线图 §1.1 模型成立**：真实内存 = JS 堆 ~205–240 B/行 + rows×cols×12，与负载形态无关。初版 JS 堆数据本身无误，错的只是解读；详见下一节。
-
-### Wave 1 补测：W2 满宽行、多标签聚合与冷启动（2026-11-07）
-
-- W2 满宽行四变体（四轮一致，JS 堆差异 ≤0.1%；工件 `.tmp/records/terminal-memory/w2-*.json`，-3 为中途崩溃轮留证）：总内存（JS 堆 + cell 外部储）10k×80=12.03 MB、10k×200=26.17、100k×80=116.54、100k×200=**260.58 MB**（总/公式比 1.09–1.25）；吞吐 10.0–14.7 MB/s；滚动 ~8.3/8.5–9 ms。
-- tabs×20（80×24、各 10k 行、W1/W3 交替、全部存活）：JS 堆 +42.30 MB（2.115/标签）+ cell 储 192.02 = **234.32 MB**——工作区恢复（e0a905a）20 标签启动涌入即此量级；1M×200 单标签 ≈2.4 GB cell + ~0.22 GB JS。**A2 冷存储的内存收益前提被证实**（上节更正的反面结论作废）。
-- 冷启动（scripts/measure-cold-start.ps1，release 1.7.2 便携空档，安静机器，5 冷+1 热）：主窗口句柄中位 **102.4 ms**（min 100.7 / max 161.2，真首启最慢）；进程响应中位 131.1 ms；热启动 61.1 ms。口径=窗口句柄出现≠首帧可交互；单机单轮样本。测量曾被一个 11-05 起驻留的 TestStudio install-smoke 实例经 single-instance 插件阻挡（新实例转发即退、退出码 0），经用户确认后关闭。
-- 真实服务器基准（2026-11-07，WSL OpenSSH 回环 RTT≈0，release 构建，500×4KiB/51 目录）：`connect=6.67ms, plan=30.59ms, copy=939.28ms, plan+copy=969.87ms`，files in flight=16（服务器声明 limits，F 取配置默认 16）。对照 fixture@20ms RTT 的 F=16 copy=6.05s：低 RTT 下每文件 ~1.9ms 主要是请求计数+服务器处理，plan 可忽略；B7 多通道的收益空间集中在高 RTT+串行服务器场景（与串行 fixture 打平数据互补）。sshd 重建：`wsl -d Ubuntu-26.04 -u root -- bash /mnt/g/Workspaces/EdgeTerm/.tmp/ssh/setup.sh`。
-
-### A2 启动（2026-11-07，用户确认全量，决策 D14）
-
-- 范围：热窗口 + Rust 内存冷存储 + lz4_flex 压缩 + **无缝滚动**（用户明确选高风险项，替代独立只读视图）；仅内存；会话 64MB/全局 256MB；裁剪前导出与无缝前置两个高危假设的 spike 提前。
-- 分工：c-bench-builder 负责 `src/terminalHistory.ts` 序列化纯函数 + 黄金向量（跨语言一致）；Lead 负责 Rust `session/history.rs` 块存储/搜索/上限 + IPC + terminal.ts 集成；xterm 6 无缝前置可行性研究已派只读子代理。依赖：Cargo.toml 新增 `lz4_flex = "0.11"`（D14-4）。
-- **无缝前置可行性研究结论（2026-11-07，源码证据）**："xterm 无法顶部前置行"仅在公开 API 层成立；内部层 `CircularList.splice(0,0,…)`（CircularList.ts:156-186，InputHandler.ts:1433-1450 自用同款）+ `Buffer.ybase/ydisp` 可写（Buffer.ts:29-33）+ 渲染器按 ydisp 取行 → **路线 A（活缓冲前置注入）有条件可行，且是唯一保住原生选择/搜索/decoration 的无缝方案，列首选**。陷阱：splice 溢出从最老端裁（须先扩 maxLength）；resize/scrollback 变化从顶裁；SelectionService 只听 onTrim 不听 onInsert（前置前 clearSelection）；clear/reset 清空（Rust 为 source of truth）；reflow 按原 cols 重建（冷数据须记录列宽/折行）。滚顶无弹性、v6 默认不吞顶界 wheel（冒泡可接管）；scrollback=0 时 wheel 转箭头键（双终端方案的坑）。无 Viewport 替换 API、无顶外绘制扩展点。判定顺序 A → B（自绘接管，最安全但接缝最差/工程最大）→ C（双终端，不推荐）。@xterm/xterm 已固化 6.0.0，内部 API 面稳定。
-- 进展：Rust `session/history.rs`（含 lz4 块压缩、会话 64MB/100 万行、全局 256MB LRU 淘汰、newest-first 分页读、限时子串搜索、清理）10/10 测试通过；`src/terminalHistory.ts` + 黄金向量（Lead 定稿、c-bench 修正一处 off-by-one 并暴露 Rust u16 截断 bug——已改显式拒绝）双方对齐，vitest 验收进行中。
-- **A2-3～A2-5（2026-11-07 提交 875270d/0f99e57/bfb800a）**：IPC 五命令 + specta 绑定再生（103/108）；**裁剪前导出证伪件成立**（marker 停靠导出前沿，dispose=精确失配信号；5×scrollback 洪灌零丢行、reflow 后连续、clear 新纪元；vitest 5/5——Lead 修两处 vitest 环境适配：rAF 垫片下块写 5 行/次、scrollback 可空收窄）；**顶部前置证伪件成立**（`_core._bufferService.buffer` 防御式访问 + clone + `CircularList.splice(0,0,…)` + 先扩 maxLength；视口平移保内容、resize 存活、内部缺失降级为零；语义：扩容使有效容量临时+N 直到惰性回收，集成层须知）。**无缝滚动两个技术前提全部实证**。集成注意事项：单次 write 内部裁剪可越过余量带（边界①，集成须分块或加大 ratio）；前置前须 clearSelection；resize 顶裁仍需集成层防护。
-
-### A2 完成记录（2026-11-07，提交 e83e528/138973c）
-
-- **A2-6 集成**：TerminalColdHistory 接入 onWriteParsed（偏好开→惰性建 capture，批量→IPC）；ED3/clear-buffer/dispose/close_session（Rust 侧）四处清理；滚顶 wheel 触发冷块物化（scratch 终端按当前列宽重析 + splice 前置 + capture 前沿重停防重导 + gutter 行号回拨）；exportedTexts 上限 20k 防前端无界增长（设计审查发现的真实缺陷，已修）；设置开关（FontSizeDialog，默认关，即时生效，已注册 persistKeys）。**A2-7**：find 面板冷区计数（降级版：TerminalFind 同步游标无到顶事件，完整跳转留 newestAbsLine 待升级；regex/wholeWord/不区分大小写按 Rust 字面语义门控）。
-- 验收门状态（对照路线图 §2.4）：
-  - 门1 正确性 ✅：热冷往返、clear 清空、无缺号重号、失配信号（48 个 A2 前端用例 + Rust 10 用例）。
-  - 门2 内存：设计有界（热窗 2.2–2.4MB@10k 实测 + 前端文本集 ≤20k 条 + Rust 64/256MB 硬上限）；1M 行 Playwright 数值**未执行**。
-  - 门3 吞吐 ≥90% 基线：jsdom 洪灌下 capture 开销不可见（500 行含编码 ≈0.1s 实算）；浏览器级对比**未执行**。
-  - 门4 交互：无缝前置+视口钉顶 jsdom 已证；真实 WebView2 p95 **未执行**。
-  - 门5 冷搜索 <300ms/2s：Rust 限时预算已强制；1M 行 release 数值**未执行**。
-  - **未验证（真机项）**：真实 Tauri/WebView2 窗口内开关→洪灌→滚顶接回→搜索计数全链路；默认开启（路线图步骤 6）留待上述真机验证与用户拍板后单独提交。
-- 全量回归：前端 120 文件/1147 用例、Rust 467/30、typecheck/format/rustfmt/check:bindings/check:commits 全绿。
-
-## 本轮：目录与打包整理、缺陷修复（2026-11-01）
-
-- 基线 `b4ba925`，工作区干净。协作约定见 [TEAM.md](../../TEAM.md)：本轮由 Lead 派两个只读审计任务（打包一致性、前端缺陷），修复与验证由 Lead 完成；审计者无写权限，结论逐条由 Lead 复核并给出可执行证据。
-- 提交：`3536ebe` 受管入口在受限主机上的降级、`613c54b` 版本一致性守卫、`1e54e02` 手工发版产物忽略 + bump 脚本不再推送、`97d22e3` 文档索引与发版清单、`9ba681d` Sender 重复计数与状态本地化、`38d9800` 面板宽度偏好、`210e166` 传输设置写入失败、`e1012fa` 一条命令装配发版附件。
-
-### 修复与证据
-
-| 问题 | 修复 | 证据 |
-| --- | --- | --- |
-| 受限主机拒绝 CPU affinity 时，所有受管任务在启动前失败 | affinity/优先级降级为警告，doctor 报告真实预算；doctor 的版本探测不再经管道捕获 | `3536ebe`；`./dev.ps1 doctor` 由 “Exception setting ProcessorAffinity: Access is denied” 变为 `cpuMask: unbounded` 并继续执行；入口契约用例只接受“有预算”或“降级且告警” |
-| 四个版本文件没有自动一致性校验（原校验随停用 workflow 失效） | 只读 `scripts/check-version.mjs` + `npm run version:check`，接入 CI | `613c54b`；漂移副本退出码 1 并指出 Cargo.toml 1.5.0 ≠ 1.5.1 |
-| 手工发版产物未被忽略；`version-bump.sh` 会直接 push | 增加忽略规则；脚本只改版本、跑校验并打印提交命令 | `1e54e02` |
-| Sender 在没有可写会话时仍计一次重复，并虚报 “repeated … done” | 只有 sendUnits 真正写入至少一个会话才计数；三条状态改走语言目录 | `9ba681d`；旧实现一个 tick 后 `getSchedule()` 变 null 且状态含 done，新实现保持等待；中文界面断言 “发送器：命令已重复 1 次，完成” |
-| 窗口缩放后的面板宽度被当作偏好写回，放大窗口也回不去 | 偏好与显示值分离（`loadPanelSizingPreference`），底栏同一规则 | `38d9800`；500/500 在 1000px 窗口打开后仍能在 1600px 恢复 |
-| 存储写入失败时 `saveTransferOptions` 把异常抛给 UI | 与其余偏好一致地捕获 | `210e166`；旧实现抛 QuotaExceededError |
-
-### 出包链路（本轮追加）
-
-发版附件过去只存在于停用 workflow 和人工步骤里，本轮把它变成一条可复现的命令，并在当前树上真实跑通：
-
-| 项目 | 结果 |
-| --- | --- |
-| 真实出包 | `./dev.ps1 tauri:build --bundles nsis` → `EdgeTerm_1.5.1_x64-setup.exe` 4,184,827 B（3.99 MiB） |
-| 附件装配 | `npm run release:package` → 安装包 + 便携包 5,212,734 B + 诊断包 5,471 B + `SHA256SUMS.txt`，0.9 s；`--check` 三个附件全部匹配 |
-| 还原验证 | 便携包经 Windows `Expand-Archive` 还原出 `EdgeTerm.exe`、空 `data/`、`README.txt`，exe 的 SHA-256 与源一致；诊断包还原出两个脚本与说明 |
-| 阻塞与绕法 | Tauri 的 NSIS 工具链下载在本机失败（CLI 报 `Peer disconnected`；PowerShell/curl 走 Schannel 报 `SEC_E_NO_CREDENTIALS`；Node 能连）。用 Node 分块下载并按 tauri-cli v2.12.1 源码里的 SHA-1 校验后预置到 `%LOCALAPPDATA%\tauri\NSIS`，重跑成功 |
-
-### 验证
-
-- 单元：113 文件 / 955 用例通过（基线 111 / 944；新增 3 条 Sender 重复、2 条面板偏好、1 条传输设置、5 条发版归档）。
-- 浏览器：`PERF_BROWSER=msedge` 32 文件 / 172 用例通过（真实 Edge）。
-- Rust：`./dev.ps1 test:rust` 459 通过、27 ignored、0 失败；本轮未改 Rust。
-- 类型检查、Biome lint（仅生成绑定里两条既有 `any` 警告）、`format:check`、前端生产构建通过。
-- 新增回归用例先在旧实现上运行并失败，修复后通过（逐条见上表）。
-- 未验证：真实 Tauri 窗口内的面板拖拽与 Sender 重复（jsdom 与浏览器用例只覆盖状态机、纯布局函数和既有界面契约）；安装包未做安装、卸载与签名验证。
-
-### 边界与后续
-
-- 发版第 5、6 步已由 `scripts/package-release.mjs` 承担，步骤见[发布索引](../releases.zh-CN.md#发版步骤可复现清单)。`artifacts/release-1.5.1/` 只是本地验证产物：版本号仍是 1.5.1，但源码已比已发布的 1.5.1 多 9 个提交，不能按 1.5.1 发布；正式发版要先 `npm run version:set`。
-- 只读审计已报告但本轮未做：`check:icons` 只校验 dist 里的文件图标、不校验 `bundle.icon`；CI 不跑 `build`/`check:bindings`；`.cmd` 文件在 `.gitattributes` 下统一为 LF。
-- 上一轮的输入、剪贴板与 Pi 修复细节见[终端输入修复](../terminal-input-fixes.zh-CN.md)、[侧栏诊断](../sidebar-freeze-diagnostics.zh-CN.md)，提交范围 `b6b5527..8353e4c`。
-
-## 追加修复：本地终端启动失败（2026-11-01）
-
-- 用户实测反馈：新建本地终端后连接失败，技术详情为 `CreateProcessW ... in cwd ... failed: 系统找不到指定的文件 (os error 2)`。
-- 根因：本地会话把 Shell 字段当命令行切分，未加引号的 `C:\Program Files\PowerShell\7\pwsh.exe` 被切成 `C:\Program` + `Files\PowerShell\7\pwsh.exe`，于是去启动 `C:\Program`。报错里的 `\0` 是 portable-pty 打印 NUL 结尾缓冲区的产物，不是原因；`C:\Users\Sonwe\0` 是默认工作目录，同样只是打印方式。
-- 修复（`563a47f`）：`shell_words` 在 Windows 下把“不带引号且整串指向已存在文件”当作单个程序，其余情况仍走原切分；本地会话改用它。失败提示按会话类型区分，本地失败指向 Shell 字段而不是地址/端口。
-- 证据：新用例先断言旧切分（同一路径被切成两段）再断言新行为；`cargo test --lib shell` 14 通过，Rust 全量 460 通过 / 27 ignored，前端 113 文件 / 955 用例通过，typecheck/lint/format:check 通过；用当前树重出安装包 4,183,760 B。
-- 未验证：真实窗口里“新建本地终端”的端到端路径，需用户实机复验。
-
-## 删除实验工作台（2026-11-02）
-
-用户决定把"实验工作台"整套能力从产品中移除，回到纯终端 + Filer + Sender 的表面。保留的唯一用户能力是 Filer 的"在内置编辑器中编辑"。
-
-- 删除：`src/workbench/` 整目录（含浏览器截图）、`src/styles/workbench.styles.css`、`docs/workbench.zh-CN.md`；Rust 侧 `workspace.rs`、`drafts.rs`、`commands/workspaces.rs`、`commands/drafts.rs` 与 20 个 IPC 命令。
-- 裁剪：`project.rs` 2902 → 922 行，只留 `read_text`/`write_text` 及 `ProjectOps`、`Sftp`、替换阶梯与锁；`commands/project.rs` 157 → 37 行。`file_diff.rs` 删 `compare_remote`，`session/exec.rs` 删 `ExecStatus`/`run_status`（均只剩工作台调用方）。
-- 迁移（删了会连带删掉用户可见功能）：`CodeEditor`/`codemirror`/`editorState`/`editorTypes`/`textFile` → `src/editor/`；`Sparkline`/`resourceTrend` → `src/monitor/`；`.spark*` 样式迁 `monitor.styles.css`，`@keyframes wb-pulse` 改名 `pulse` 并迁 `foundation.styles.css`；i18n `wb.loading` → `common.loading`。
-- 界面：菜单项、空状态入口、视图切换、两处快捷键守卫、`StatusBar` 的 `showResources` 全部移除；Tab 的 `workspaceId`/`workspaceName` 与项目 chip 删除。
-
-### 验证
-
-| 项目 | 结果 |
-| --- | --- |
-| 前端单测 | 107 文件 / 898 用例通过（删除前 113 / 955，差额为工作台用例） |
-| typecheck | 通过 |
-| 前端生产构建 | 通过 |
-| Biome format / lint | format 通过；lint 仅 `src/bindings.ts` 两条既有 `any` 警告 |
-| Rust | `cargo test --lib` 431 通过 / 0 失败 / 27 ignored（沙箱外基线 460 / 0 / 27，差额为工作台用例） |
-| 绑定 | `node scripts/bindings.mjs` 重新生成，`--check` 通过（94/99 命令，工作台命令与类型已消失） |
-| `cargo fmt --check` | **失败，但只在 `src-tauri/src/tests.rs`**，该文件本轮未改；已用 `git show HEAD` 的原文 + rustfmt 复现同样 diff，属既有问题 |
-
-### 边界与后续
-
-- `project_read_text`/`project_write_text`/`local_text.rs` 保留：内置编辑器的本地与远程读写仍走它们，`read_text` 与 `write_text` 函数体与删除前逐字节一致。
-- 用户磁盘上已有的 `workspaces.json` 与 `drafts/` 目录不再被读取，也未主动删除。
-- 提交（`40191cf` 之后四个，逐个独立通过 typecheck）：`608b390` 迁移共享模块、`63f1606` 删除工作台前端、`6173ce0` 删除 Rust 后端并重建绑定、`8a670f0` 文档。删除动作一度被仓库 ACL（继承 `Everyone:(I)(CI)(DENY)(DC)`）拒绝，四个 Rust 文件与 `__sandbox_probe__.txt` 由用户在普通终端执行一次性脚本删除。
-- `src-tauri/src/tests.rs` 的 rustfmt 偏差是既有问题，可另行单独提交修复，不要混进本轮。
-- 未验证：真实 Tauri 窗口内的内置编辑器端到端路径（jsdom 与浏览器用例只覆盖状态机与组件契约）；浏览器用例未在本机运行（Playwright Chromium 未安装）。
-
-## 本轮：终端与远程资源协同（2026-11-02）
-
-用户 2026-11-02 确认：四项功能一次交付、质量优先（发现缺陷堆积或质量下滑可停下报告）；只提交代码、不发版；验收先做本机可验项，真机项最后列清单；基线用当前 HEAD `48a12a0`（方案写作时的 `8805e77` 已过期，见 DECISIONS D12）。
-
-| # | 功能 | 用户已定约束 |
-| --- | --- | --- |
-| ② | 鼠标定位 | 普通 Shell Alt+左键；OpenCode/TUI 走程序原生点击；用户未实测过症状 → 先复现再改；CJK/宽字符/折行必须测 |
-| ③ | Filer 跟随终端 | 默认关闭、可暂停、每服务器独立、仅运行期内存、不轮询服务器 |
-| ④ | 文件路径 Ctrl+点击 | 主要是 Linux 风格报错路径；相对路径归属"想办法解决、体验优先"（不拿确认弹窗打断）；复用内置编辑器与 revealLine |
-| ⑤ | 远程预览 | 入口只在 Filer 右键；首版只支持 HTML 同目录相对资源；系统浏览器打开；允许 hyper/hyper-util 作为直接依赖 |
-
-### 协作与写入边界
-
-Lead 负责 `src/terminal.ts`、`src/actions.ts`、`src/locales/*`、`src/test/*` 的接线与全部验证/提交；共享任务 task-1..4 分别由 follow-builder（③）、links-builder（④）、preview-builder（⑤-B Rust）、remote-builder（⑤-A）独占写入范围。
-
-### 验收环境（本机真实环境）
-
-- WSL Ubuntu 26.04 内专用 sshd：`127.0.0.1:2222`，用户 `edgeterm`，密钥 `.tmp/ssh/id_ed25519`（`.tmp/` 已被忽略）；账号已解锁，密码仅用于解锁语义。
-- 真实样例：`/home/edgeterm/work/exp`（`report.html` + `style.css` + `charts.js` + `data.json` + `assets/loss.png` + 8 MiB `big.bin` + 两个指向根目录外的符号链接）、`/home/edgeterm/work/project/train/model.py`（第 238 行）、远端 `127.0.0.1:6006` 静态服务作为 TensorBoard 替身。
-- 浏览器契约用真实 Edge（`PERF_BROWSER=msedge`）。
-
-### P0 鼠标定位：结论（已实测）
-
-用真实 App + 真实 xterm + 真实 Chromium 指针输入（CDP，含 Alt 修饰键）验证：xterm 6.0.0 的 `_handleMouseUp` 在"无选择、按下-抬起 <500ms、Alt 按住、视口贴底"时用 `moveToCellSequence` 发方向键序列。4 条用例通过：
-
-| 用例 | 断言 |
-| --- | --- |
-| 普通缓冲区 Alt+点击第 2 列（光标在第 20 列） | 发出 18 个 `\x1b[D`，无选择、光标未被本地改动 |
-| 6 个 CJK 宽字符（光标 12 格） | 发出 12 个 `\x1b[D`（按格不按字符） |
-| 程序已开鼠标跟踪（`?1000h?1006h`） | 发出 SGR 鼠标报告（按钮码含 Alt 位），不发方向键，不走 binary 通道 |
-| 视口回滚进历史 | 不发出任何字节（不会改前台程序输入） |
-
-⇒ 结论：该能力在终端契约层已存在且正确（此前缺少的是显式声明与回归用例，不是重新开发）。仍需真机 WebView2 验收（见文末未验证项）。
-
-### 逐项进展
-
-（Builder 交付后逐条补充；验证结果统一在"验证"一节。）
-
-
-### 最终结果（2026-11-02）
-
-四项功能全部落地，验证在本机真实环境完成（WSL sshd、真实 Edge、真实 Rust 后端）。
-
-| 项目 | 结果 |
-| --- | --- |
-| 前端单测 | 110 文件 / 1026 用例通过 |
-| 浏览器契约（真实 Edge） | 29 文件 / 156 用例通过（含本轮新增 Alt+点击 4 条、跟随与文件跳转 2 条） |
-| Rust 全量 | 451 通过 / 0 失败 / 28 ignored |
-| Rust 真实 sshd 验收（ignored） | `real_remote_report_preview_serves_assets_refuses_escapes_and_stops` 1 通过（127.0.0.1:2222） |
-| typecheck / format / lint / 前端构建 | 通过（lint 仅 `src/bindings.ts` 两条既有 any 警告） |
-| 绑定 | 重新生成 97/102 命令，`check:bindings` 通过 |
-| rustfmt | `cargo fmt -- --check` 通过（顺带修掉 `scripts/bindings.mjs` 之外的 Rust 排版） |
-
-逐项：
-
-- ② 鼠标定位：xterm 6 的 Alt+点击在真实 Chromium 中已可用（普通缓冲区走方向键、CJK 按格、鼠标跟踪程序收 SGR 报告、历史区不动前台输入）。本轮做的是显式声明 `altClickMovesCursor`、补真实浏览器回归，并确认 TUI 场景不抢鼠标。
-- ③ Filer 跟随：三态按钮（pin / 暂停图标 / 胶囊高亮），每会话独立、默认关闭、手动浏览即暂停、隐藏零请求、400ms 防抖只落最后一个目录、本地会话跨主机会暂停并提示、无 OSC 时首次同步回退到一次 `session_cwd`。浏览器用例覆盖"按钮开启 → 报目录 → Filer 落地"。
-- ④ 文件跳转：`terminalFileLinks.ts`（traceback / path:N / path:N:C / 相对路径 / 引号括号 / grep 风格；抑制 URL、Windows 形态、裸 a:b、超限行号、超长 token）+ `CwdAttribution`（按稳定行号锚定，trim 由 `firstLineNumber` 换算）+ xterm link provider（Ctrl/Cmd、单元格 1-based、TUI 不响应、hover 零 IO）+ 编辑器先读后开、行号透传与 `clearRevealLine`。相对路径回退顺序：锚定 cwd → 会话当前 cwd → 报错；成功后在状态栏说明打开路径。
-- ⑤-A 远程服务：SSH 会话里字面 loopback 地址经 127.0.0.1:0 转发打开，按 (session, 目标 host, 目标 port) 去重、并发点击共享一次建链、失败回滚本次创建的转发、浏览器失败保留可用转发；公网地址与其它会话类型按原行为直接打开。
-- ⑤-B HTML 预览：Rust 只读回环服务（127.0.0.1:0 + 128-bit token + Host 校验 + realpath 根边界 + 只 GET/HEAD + no-store + 64 KiB 流式 + 单段 Range + 512 MiB/8 并发/16 连接/16 预览上限），Filer 右键 .html 打开、再右键可停止；会话关闭显式清理（`close_session` 已接入）。
-
-需要留意的新增依赖：hyper 的 `server` feature 强制带进 `httpdate 1.0.3`（Cargo.lock 新增一条传递依赖，无其它新 crate）。
-
-### 未验证（真机项，需用户复验）
-
-- 真实 Tauri/WebView2 窗口内的行为：Alt+点击、Ctrl+点击文件路径、Filer 跟随按钮、右键预览菜单、系统浏览器实际打开。本机的浏览器用例跑在 Edge 页里，证明的是终端与前端契约，不是 WebView2。
-- OpenCode / Vim / tmux 的真实 TUI 点击（无真实环境）；中文输入法组合态下点击。
-- 真实隧道端到端：应用窗口内点 `http://localhost:6006/` 建转发并在系统浏览器打开（后端转发与前端分类各自有测试，但没在窗口里串起来验过）。
-- 高输出下的链接识别/跟随性能走查（本轮未做基准测量）。
-- 8 路并发/512 MiB 上限/客户端中途断开的资源回收；macOS 与 Linux 构建。
-
-## 1.6.0 打包产物（2026-11-02）
-
-- 版本从 1.5.1 提升到 1.6.0（兼容性新功能，minor），四个版本文件由 `npm run version:set 1.6.0` 同步，`version:check` 通过。
-- 发布源码固定为 `42d01f0f29ea61c2362b716685fb36a2e8ffb492`（`v1.6.0` 标签解引用），该提交含发布说明；构建与打包都在该提交的干净工作区完成。
-- 在 Windows x64 上用受管 runner 执行 `./dev.ps1 tauri:build --bundles nsis`（Node 24.19.0、rustc/cargo 1.99.1、MSVC 与 Windows SDK、已预置的 NSIS），release 构建 3m20s；`edgeterm.exe` 与安装器的文件版本均为 1.6.0。
-- 产物在 `artifacts/release-1.6.0/`（git 忽略）；`npm run release:package -- --check` 三个附件与 `SHA256SUMS.txt` 匹配：
-
-| 附件 | 字节 | SHA-256 |
-| --- | ---: | --- |
-| EdgeTerm_1.6.0_x64-setup.exe | 4,097,199 | `fa963c165f1003d771ca95fd712b65ea86d4643705e7547158cc6a3ab79ef6b3` |
-| EdgeTerm_1.6.0_x64-portable.zip | 5,097,433 | `ed361ee31a63e35d11fc30ac24e26c5b0f57d469cc77dfef12f9260c17ae2187` |
-| EdgeTerm_1.6.0_windows-diagnostics.zip | 5,471 | `e2e841260726ca0705dc400dcdce1303ec5490bd621e8690ae48733e7eaef0bc` |
-
-- 便携包内 `EdgeTerm.exe` 为 10,058,240 字节，SHA-256 `c04acff0954182cc246c9e0daad37116a0a57f7294516fbdd40134497ae69add`，另含 `data/` 与 `README.txt`。
-- 2026-11-02 08:19（北京时间）公开为 latest（非草稿、非预发布）：https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.6.0 。发布后从该页回下载四个附件逐个计算 SHA-256，与本地 `SHA256SUMS.txt` 一致。
-- GitHub CI（push 到 main）：run [41366374494](https://github.com/sonwe1e/EdgeTerm/actions/runs/41366374494) 的 frontend 与 rust 两个 job 均通过。本轮之前的两条 main 推送是失败状态（`cargo fmt --check` 的既有偏差），本轮的 `d9d8b71` 修掉该偏差后转绿。
-- 未验证：安装、卸载、覆盖升级与数字签名；未在干净机器上运行安装器；未在真实 Tauri/WebView2 窗口内验收交互（见"未验证（真机项）"）。
-
-## 1.6.1 打包产物（2026-11-02）
-
-- 内容为 1.6.0 之后的兼容修复（Alt+点击后菜单栏误弹出）与一项兼容新能力（输入行选区删除/替换，`79a6b64`、`fce6752`）；按维护者决定使用补丁版本 1.6.1（先例 1.5.1），四个版本文件由 `npm run version:set 1.6.1` 同步，`version:check` 通过，`tauri.conf.json` 仍引用 `../package.json`。
-- 在 Windows x64 上用受管 runner 执行 `./dev.ps1 tauri:build --bundles nsis`（Node 24.19.0、rustc/cargo 1.99.1、MSVC 与 Windows SDK、已预置的 NSIS），release 构建 2m55s；`edgeterm.exe` 与安装器的文件版本均为 1.6.1。本轮未改 Rust 代码；`test:rust` 全量首跑有一条 `closing_a_pending_remote_forward_cancels_its_late_allocation` 在并行负载下断言 `stopping`≠`stopped` 失败，单独重跑与全量重跑（451 通过 / 28 ignored / 0 失败）均通过，判定为既有用例的时序抖动，不是本轮改动引入。
-- 产物在 `artifacts/release-1.6.1/`（git 忽略）；`npm run release:package -- --check` 三个附件与 `SHA256SUMS.txt` 匹配：
-
-| 附件 | 字节 | SHA-256 |
-| --- | ---: | --- |
-| EdgeTerm_1.6.1_x64-setup.exe | 4,098,396 | `9f7db9b83f9bd083f23a7521917c99f509b38829050266bdcef4f5c257f3c92e` |
-| EdgeTerm_1.6.1_x64-portable.zip | 5,092,743 | `fdc101d785a62e88ae5e01bf792e0082ecb332e2ca8d6901748080a3c4c10d6b` |
-| EdgeTerm_1.6.1_windows-diagnostics.zip | 5,471 | `d9ee8815b2282371791bdd84845ad4c97863ecd350955d479f4d06ad299cc55a` |
-
-- 便携包内 `EdgeTerm.exe` 为 10,058,752 字节，SHA-256 `fb6ebe9d8e56165676bc96b7977592671c316039347c6c0973305ca10d3454ef`，另含 `data/` 与 `README.txt`。
-- Windows 本地检查：111 个前端单元测试文件 / 1051 项、30 个浏览器测试文件 / 160 项（真实 Edge，含 Alt+点击 5 项、终端输入 5 项、选区编辑 3 项）、typecheck、Biome 格式、lint（保留生成绑定两条既有 `any` 警告）与前端生产构建通过；`79a6b64` 与 `fce6752` 两条提交已逐个独立验证（fix 提交独立通过 typecheck 与自身浏览器套件）。
-- 发布源码固定为 `fe8976be5fb486fec27e9104aa19562e1b2d762f`（`v1.6.1` 标签解引用），构建与打包在其干净工作区完成。2026-11-02 14:38（北京时间）公开为 latest（非草稿、非预发布）：https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.6.1 。发布后回下载四个附件逐个计算 SHA-256 与本地一致，远端标签解引用确认。
-- GitHub CI（push 到 main）：run [41401149489](https://github.com/sonwe1e/EdgeTerm/actions/runs/41401149489) 通过。
-- 未验证：安装、卸载、覆盖升级与数字签名；未在干净机器上运行安装器；未在真实 Tauri/WebView2 窗口内验收 Alt+点击、选区编辑与 IME 组合态。
+## 本轮：「/ 打开筛选」收敛成一个判断（2026-11-24 第 86 轮）
+
+- 问题：四处列表（文件面板、双栏两侧、会话树、常用命令列表）各自抄了一遍 `event.key === "/" && !ctrl && !meta && !alt`。将来加例外要改四处，第 81 轮就出现过「改一处忘别处」的同类风险。
+- 交付：新增 `src/filterKey.ts` 的 `opensFilter(event)`，四处改为调用它；行为一处未变。
+- 验证：`src/filterKey.test.ts`（2 条：空 `/` 为真，`Ctrl/⌘/Alt + /` 与其它键为假）；四处接线仍由既有浏览器用例守着（`filerSelection`、`ftpKeyboard`、`sessionTreeRename`、`snippets` 各一条「按 / 焦点进入筛选框」）。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（591 文件）、typecheck EXIT=0、lint 0 error（2 条既有警告）、单测 **UNIT_EXIT=0 / 201 文件 / 1867 用例**、浏览器契约 **BROWSER_EXIT=0 / 72 文件 / 316 用例**。
+## 本轮：那条重流程用例的超时预算（2026-11-24 第 85 轮）
+
+- 第 84 轮全量浏览器失败的**真实原因**是 `Error: Test timed out in 15000ms`（不是断言不成立）：`lineSpacing.browser.test.ts` 这条要走三次对话框往返（键盘开命令面板→输入→回车→等对话框），中间还夹终端重排的行数测量。
+- 修正：给这一条 `it(..., 30000)` 并写明原因；断言一条没动（行数变多/变少、记忆、gutter 行高照旧）。
+- 判断依据：同一文件单独跑 8.7 秒通过；本轮全量 72 文件/316 用例通过；失败信息是超时。
+- **没有做的事**：没有给所有浏览器用例统一放宽超时（会连「真的很慢」一起藏起来）；没有改 `until()` 轮询上限；第 80 轮 `watchWords` 的失败是断言（`expected undefined to be true`），与超时不同源，仍未复现，保持原记录。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（589 文件）、typecheck EXIT=0、lint 0 error（2 条既有警告）、单测 **UNIT_EXIT=0 / 200 文件 / 1865 用例**、浏览器契约 **BROWSER_EXIT=0 / 72 文件 / 316 用例**。
+## 本轮：补上「在终端中打开」的接线证据（2026-11-24 第 84 轮）
+
+- 补第 83 轮缺口：新增 `src/test/filerOpenInTerminal.browser.test.ts`（2 条）——①文件面板的会话是活跃已连接本地 shell 时，菜单出现「Open in Terminal」，点击后 `api.writeSession` 收到 `("t1", "cd '/root'\r")`；②该会话不是活跃标签时，菜单项仍在但 `disabled`，且没有写入任何字节。
+- 夹具两次自我修正：①语言包在 `useStore.setState({...initialState})` 里被重置回中文，`aria-label` 查不到——改为在 setState 之后显式 `setLanguage("en")`；②禁用态是 `<button disabled>`，不是 `aria-disabled`，改断言元素自身的 `disabled`。
+- **第二次未复现的全量失败**：本轮全量浏览器 EXIT=1（`lineSpacing.browser.test.ts` 1 条），该文件单独跑 1/1 通过、重跑全量 72 文件/316 用例通过。上一轮是 `watchWords` 3 条，同样未复现。两轮合计：全量浏览器偶发**布局/终端拟合类**用例失败，单跑与重跑均通过；按 D76 只记为未复现，下一轮若继续出现，再查顺序依赖或 worker 共享状态。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（589 文件）、typecheck EXIT=0、lint 0 error（2 条既有警告）、单测 **UNIT_EXIT=0 / 200 文件 / 1865 用例**、浏览器契约 **BROWSER_EXIT=0（重跑）/ 72 文件 / 316 用例**。
+## 本轮：文件面板「在终端中打开」（2026-11-24 第 83 轮）
+
+- 背景：反方向早有（终端 Reveal → 文件面板跟随），反过来「翻到某目录，在那个 shell 里 cd 过去」只能手抄路径。
+- 交付：文件面板「…」菜单新增 `filer.cdHere`，紧挨反向动作「Terminal folder」；仅当文件面板所属会话就是当前活跃的已连接 shell 时可用（复用 `canReveal`），避免把 `cd` 送进另一个窗口。
+- 新增 `src/filerShellPath.ts` 的 `cdCommand(path)`：按**路径形状**决定引号——以 `/` 开头按 POSIX（名字里的 `'` 写成 `'\''`），否则按 PowerShell（`''` 双写）；空白返回 `null`。理由：同一台 Windows 机器既浏览本机路径也浏览远端 POSIX 路径，按平台判断会错。
+- 验证：`src/filerShellPath.test.ts` 3 条（POSIX 普通/空格/单引号；Windows 普通/单引号；空与空白）。
+- **缺口（如实记录）**：菜单项接线（启用条件、点击后写入 shell）本轮没有自动化用例——需要在夹具里构造「已连接的本地 shell 且为活跃标签」，超出本轮预算，下一轮补。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（588 文件）、typecheck EXIT=0、lint 0 error（2 条既有警告）、语言包各 1479 键（一致）、单测 **UNIT_EXIT=0 / 200 文件 / 1865 用例**、浏览器契约 **BROWSER_EXIT=0 / 71 文件 / 314 用例**。
+## 本轮：双栏筛选补上「/」键，并证明筛选属于一个目录（2026-11-24 第 82 轮）
+
+- 背景：第 73 轮给双栏加筛选时只测了「输入筛选、Esc 恢复」，有两条行为没有证据：换目录后筛选是否清掉、键盘能不能进筛选框。
+- 交付：双栏列表聚焦时 `/` 聚焦本侧筛选框（组合键不拦截，其余按键仍交给列表的键盘模型）。至此四处列表（文件面板、双栏两侧、会话树、常用命令列表）的 `/` 行为一致。
+- 验证（两条都是补证据）：`ftpKeyboard.browser.test.ts` 6 条（新增 2）——①夹具里 `path` 由状态驱动，筛成只剩 `file-b.txt` 后切到 `/next` → 筛选框为空、列表回到三条；②列表聚焦按 `/` → 焦点在 `.filer-filter`。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（586 文件）、typecheck EXIT=0、lint 0 error（2 条既有警告）、单测 **UNIT_EXIT=0 / 199 文件 / 1862 用例**、浏览器契约 **BROWSER_EXIT=0 / 71 文件 / 314 用例**。
+## 本轮：会话树也能用「/」筛，Esc 先清筛选（2026-11-24 第 81 轮）
+
+- 背景：文件面板与常用命令列表都支持「列表里按 / 进入筛选」；会话树有同样的筛选框，却只能点进去。
+- 交付：树聚焦时 `/` 聚焦筛选框（Ctrl/⌘/Alt 组合键不拦截）；筛选框里 `Esc` 先清空筛选（与另两处一致）。
+- 验证：`sessionTreeRename.browser.test.ts` 2 条（新增 1：树聚焦 → `/` → 焦点在 `.panel-filter input`；输入 `zzz` → 会话行消失；`Esc` → 筛选清空、会话行回来）。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（586 文件）、typecheck EXIT=0、lint 0 error（2 条既有警告）、单测 **UNIT_EXIT=0 / 199 文件 / 1862 用例**、浏览器契约 **BROWSER_EXIT=0 / 71 文件 / 312 用例**。
+## 本轮：预览记录跟着会话走（2026-11-24 第 80 轮）
+
+- 补第 79 轮记下的缺口：`forgetSessionPreviews` 无调用点。没有补调用，而是改判断——`isPreviewRunning` 要求「记录存在**且**会话仍在」，`stopReportPreview` 对已关闭会话丢弃记录并返回（不再对已释放的预览报错）；`forgetSessionPreviews` 删除。
+- 理由：关闭动作在 store 里，`previewActions` 已 import store，反向依赖会成环；按状态判断就不存在「忘记调用」。
+- 验证：新增 `src/previewActions.test.ts`（2 条：会话关闭后不再显示在跑、且停止时不调用 `stopPreview`；会话仍在时正常停止并清记录）。
+- **一次未复现的失败**：首次全量浏览器 EXIT=1（`watchWords.browser.test.ts` 3 条），该文件单独跑 3/3 通过、重跑全量 311/311 通过；与本轮改动无关，按 D76 记为未复现。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（586 文件）、typecheck EXIT=0、lint 0 error（2 条既有警告）、单测 **UNIT_EXIT=0 / 199 文件 / 1862 用例**、浏览器契约 **BROWSER_EXIT=0 / 71 文件 / 311 用例**。
+## 本轮：关掉编辑器时释放它的记忆（2026-11-23 第 79 轮）
+
+- 做法：写只读脚本统计 `src` 全部导出符号在其它文件的出现次数（269 个零外部引用；剔除生成文件与测试入口后 23 个连自身文件都不用）。
+- **发现一个真缺陷**：`src/editor/editorState.ts` 的 `forgetEditorState` 实现齐全（删缓存 + 记 `suppressed` 供随后 unmount 判断），但**全仓无人调用**。文档 id 每次打开都是新的 `crypto.randomUUID()`，所以关闭后那份 CodeMirror 状态永远不可能再命中，只会占满 16 项上限；`suppressed` 这条防线也从未启用。
+- 修正：`src/fileEditor.ts` 的 `closeCurrentEditor` 在清空状态前调用 `forgetEditorState(before.target.id)`。
+- 验证：`src/fileEditor.test.ts` 新增 1 条（打开 → 记 id → 关闭 → 断言被调用且参数为该 id）；`fileEditor.test.ts`+`codemirror.test.ts` 24 条通过。
+- 其余扫描结果：`checkGeneratedContract` 保留（只编译的负控制）；`forgetSessionPreviews`/`listPreviews`/`selectionDeleteSequence`/`styleCensus` 暂留并记录原因。
+- **数字更正**：本轮 `npm test` 实际为 **198 文件／1860 用例**（退出码 0）。此前多轮 STATE 里写的「199 文件」是转抄时的偏差，用例数（1859→1860，正好是本轮新增 1 条）与日志一致；今后总量一律从日志行抄录。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（585 文件）、typecheck EXIT=0、lint 0 error（2 条既有警告）、单测 **UNIT_EXIT=0 198 文件／1860 用例**、浏览器契约 EXIT=0 311 用例。
+## 本轮：两个没人用的编辑器类型 +「/」聚焦筛选（2026-11-23 第 78 轮）
+
+- **代码质量**：`src/editor/editorTypes.ts` 的 `DocSync`、`DraftState` 全仓各只有声明处一处引用（`src` 下 `.ts`/`.tsx` 0 命中），是一代编辑器实现留下的残骸；更糟的是 `DraftState` 的注释描述了一套**并不存在**的「本地草稿落盘」机制（真实保护是 `fileEditor.ts` 的 `hasUnsavedFile()` + 关闭时询问）。已删除，typecheck EXIT=0、lint 仍 2 条既有警告。
+- **交互**：常用命令管理器行上按 `/` 聚焦筛选框（与文件面板一致；`Ctrl/⌘/Alt` 组合不拦截）。
+- 验证：`snippets.browser.test.ts` 25 条（新增 1：行聚焦按 `/` → 焦点在 `.snippets-filter`）。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（585 文件）、typecheck EXIT=0、lint 0 error（2 条既有警告）、单测 199 文件／1859 用例、浏览器契约 EXIT=0 311 用例。
+## 本轮：Esc 先从编辑里退一步（2026-11-23 第 77 轮）
+
+- 问题：在常用命令管理器里改写一条命令时，按 Esc 会把整个管理器关掉，改到一半的内容无声消失。管理器本来就是「Esc 先清筛选、再关窗」的两级结构（第 11 轮），编辑是同一类「读者正身处其中」的地方。
+- 交付：有编辑在进行时，Esc 与「Close」按钮先退出编辑（丢弃表单内容、回到空表单），再按一次才关窗。只对**已存在**的条目生效：写全新命令时 Esc 仍直接关窗，对话框不困住读者。
+- 验证：`snippets.browser.test.ts` 24 条（新增 1：点「Edit Deploy」→ Esc → 管理器仍在、表单清空、列表条目未改动；再 Esc → 关闭）。
+- 边界：三级 Esc——筛选 → 编辑 → 关窗，每一级只退一步。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（585 文件）、typecheck EXIT=0、lint 0 error（2 条既有警告）、单测 199 文件／1859 用例、浏览器契约 EXIT=0 310 用例。
+## 本轮：改名时名字已经是选中的（2026-11-23 第 76 轮）
+
+- 问题：上一轮让常用命令列表认 F2，但按下之后焦点仍在行上，读者要再点一次输入框、再全选一次才能输入新名字。
+- 交付：进入编辑（F2 / 铅笔按钮）后，名字输入框获得焦点且**全文选中**：直接打字就替换，Enter 保存。
+- 关键实现：动作放在 `useEffect(editingId)` 而不是 `edit()` 里——`edit()` 只写状态，随后的渲染把值写进输入框，而**赋值会把光标移到末尾**；渲染之后再选中才是读者看到的那一屏。
+- 用例加强：`snippets.browser.test.ts` 断言 F2 后 ①表单名字正确 ②焦点在输入框 ③选择区间覆盖整个名字 `[0, 6]` ④没有发送、列表仍是两条。
+- 一次自我修正：第一版把 `focus()/select()` 写在 `edit()` 里，同步成功但被随后的渲染清掉；移到 effect 后通过。
+- 另一处清理：给这个 effect 加的 `biome-ignore` 是多余的（依赖已完整），lint 因此从 2 条警告变成 3 条；删除后回到 2 条。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（585 文件）、typecheck EXIT=0、lint 0 error（2 条既有警告）、单测 199 文件／1859 用例、浏览器契约 EXIT=0 309 用例。
+## 本轮：常用命令列表也认 F2（2026-11-23 第 75 轮）
+
+- 背景：上一轮给会话树加了 F2；常用命令列表能用方向键走动，却唯独改名要拿鼠标点铅笔按钮。
+- 交付：命令行的 `F2` 把光标所在行载入表单，走的就是铅笔按钮那条路径（`edit(snippet)`）。没有另做就地改名：一行有两块内容，改名与改命令本就共用一张表单。
+- 验证：`snippets.browser.test.ts` 23 条（新增 1：焦点放到第二行按 `F2` → 表单名字是 `Deploy`，且 `WRITES` 仍为空、列表仍是两条）。
+- 边界：`F2` 只填表不保存，读者仍要按「Save Changes」；行上 Delete / Backspace / 方向键行为不变。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（585 文件）、typecheck EXIT=0、lint 0 error（2 条既有警告）、单测 199 文件／1859 用例、浏览器契约 EXIT=0 309 用例。
+## 本轮：F2 重命名当前项（2026-11-23 第 74 轮）
+
+- 背景：文件面板早有 F2；会话树没有，读者必须放下键盘去右键菜单找「Edit…」。
+- 交付：会话树里 `F2` 作用于光标所在行——会话 → 打开会话编辑器；分组 → 打开分组重命名框；类型分区标题不做任何事。放在树的按键处理器而不是行按钮上（行按钮自己吞按键，而方向键走动时光标可能在任意行）。
+- 一次自我修正：首次没先走动光标——焦点进入树时激活的是第一行（类型分区标题），F2 对分区不做事，断言 0 次调用；改为「先走到会话行再按 F2」，并用 `toContain("Lab box")` 让失败时直接报出光标停在哪一行。
+- 验证：新文件 `sessionTreeRename.browser.test.ts`（单会话夹具挂载会话树，`aria-activedescendant` 走到 `Lab box` 后按 F2 → `onEditProfile` 调用一次且参数正确）。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（585 文件）、typecheck EXIT=0、lint 0 error（2 条既有警告）、单测 199 文件／1859 用例、浏览器契约 EXIT=0 308 用例。
+## 本轮：双栏文件浏览器也有筛选了（2026-11-23 第 73 轮）
+
+- 背景：上一轮只给 Filer 面板加了筛选；FTP/SFTP 双栏走的是另一个组件（`FileBrowser`），那里一直没有筛选。
+- 交付：双栏每侧在路径栏下方新增筛选栏（与 Filer 同一套样式与计数文案）；筛选进入排序 memo；`path` 变化清空；筛选变化清空本侧选择；`aria-label` 带面板标题，两栏同名也能区分。
+- 两次自我修正：①`onSelectionChange(new Set())` 类型不对——这个组件的选择模型是 `{ paths, anchor }`，不是 `Set`，typecheck 抓到；②断言 `1 of 3` 实际是 `1 / 3`——夹具默认中文，在该用例开头设 `setLanguage("en")`。
+- 验证：`ftpKeyboard.browser.test.ts` 4 条（新增 1：三条目夹具输入 `file-b` → 只剩一条、计数 `1 of 3`、Esc 恢复三条）。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（584 文件）、typecheck EXIT=0、lint 0 error（2 条既有警告）、单测 199 文件／1859 用例、浏览器契约 EXIT=0 307 用例。
+## 本轮：把第 71 轮留下的缺口补成证据（2026-11-23 第 72 轮）
+
+- 目标：第 71 轮「切目录后筛选清空」只有实现、没有测试，当时写进已有夹具文件的用例会让邻居用例在 `open()` 阶段超时。
+- 做法：新建**只有一条用例、自有 mock** 的 `filerFilterNavigation.browser.test.ts`（`/root` 含目录 `sub` 与文件 `a.txt`，`/root/sub` 含 `b.txt`）：筛成 `1 of 2` 后双击进入 `sub` → 列出 `b.txt` 且筛选值为空。
+- 证据：该文件 1/1 通过；全量浏览器 306 项通过（较上轮 +1）。
+- 结论：第 71 轮的超时不是产品行为，而是**用例放进共享夹具后的相互影响**；同一条行为在独立夹具里一次通过。第 71 轮文档已把「未覆盖」改为已覆盖并说明原因。
+- 过程中两次自我修正：①先断言 `0 of 2` 却得到 `0 / 2`——夹具语言不是 en，补 `setLanguage("en")`；②先用 `filter.blur()` 再按 Esc 清空，但 Esc 清空处理器挂在输入框上，失焦后不会触发——改为「先筛出目录名（`su`），再双击进入」，这更接近读者真实路径。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（584 文件）、typecheck EXIT=0、lint 0 error（2 条既有警告）、单测 199 文件／1859 用例、浏览器契约 EXIT=0 306 用例。
+## 本轮：筛选属于它所在的文件夹；被筛掉的行不再保持选中（2026-11-23 第 71 轮）
+
+- 补齐上一轮留下两个语义问题：切换目录后筛选仍然生效（读者看到被旧关键词过滤的目录）；被筛掉的行仍留在选中集（一次删除会作用在看不见的文件上）。
+- 交付：`path` 变化时清空筛选；筛选值改变时清空选择。
+- 证据：`filerSelection.browser.test.ts` 覆盖「选中 file1 → 输入 file999 → 选中集为空」（并入筛选用例，6/6 通过）。
+- **未覆盖的缺口（如实记录）**：「切目录后筛选清空」没有测试。写过一个用路径编辑框导航到 `/elsewhere` 的用例，它让该文件后续 6 条用例在 `open()` 阶段超时；移除后恢复。根因未确认（疑似共享 mock 与二次挂载的交互），本轮不把这条行为算作已验证。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（583 文件）、typecheck EXIT=0、lint 0 error（2 条既有警告）、单测 199 文件／1859 用例、浏览器契约 EXIT=0 305 用例。
+## 本轮：文件面板能就地筛选（2026-11-23 第 70 轮）
+
+- 问题：文件面板只有 type-to-select，没有筛选；1000 个文件的目录里找 `file999.txt` 只能翻或跳。FileZilla、WinSCP、资源管理器都有筛选框。
+- 交付：路径栏下方新增筛选栏（按名称、不区分大小写），非空时右侧显示「{shown} / {total}」；列表里按 `/` 聚焦筛选框；筛选框里 `Esc` 先清空筛选。
+- 关键实现：筛选放进 `sortedEntries` 这一个 memo，选择、type-to-select、方向键、虚拟滚动自动作用于筛选后的列表——否则读者会遇到「选中了看不见的文件」。
+- 验证：`filerSelection.browser.test.ts` 6 条（新增 2：1000 文件夹具中输入 `file999` → 只剩一个、计数 `1 of 1000`、Esc 恢复；列表聚焦按 `/` → 焦点进入筛选框）。
+- 一次测试修正：先给行按钮 `.focus()` 不成立（行不在 Tab 顺序），keydown 没经过列表处理器；改为聚焦列表容器。
+- 格式化门一次为 1（新 CSS 行），`biome format --write` 后 0；两语言包各 1477 条键（一致）。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（583 文件）、typecheck EXIT=0、lint 0 error（2 条既有警告）、单测 199 文件／1859 用例、浏览器契约 EXIT=0 305 用例。
+## 本轮：常用命令有了自己的快捷键（2026-11-23 第 69 轮）
+
+- 交付：新增 `snippets` 快捷键命令——Windows/Linux 为 **Ctrl+Shift+S**，macOS 为 **⌘⇧S**，可在键盘快捷键里改绑；分发到 `requestSnippetsOpen()`，与菜单打开同一个弹层。
+- 为什么是 Ctrl+Shift+S：终端里 Shift 不参与控制字节，`Ctrl+Shift+字母` 不损失任何按键（VS Code/WindTerm/MobaXterm 同一家族）；S 与「保存」语义一致，且与已占用的 P/B/O/L/W/T/Z/F/G/J/C/V/A 都不冲突。
+- 面板不重复列出该命令（面板里已有「Saved Commands」动作行），避免同一动作两行。
+- 验证：`shortcuts.test.ts` + `commandPalette.test.ts` 50 条通过（默认表含新命令、无冲突、标签/提示齐全）；`snippets.browser.test.ts` 22 条（新增 1：真实页面按 Ctrl+Shift+S 打开弹层）。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（583 文件）、typecheck EXIT=0、lint 0 error（2 条既有警告）、单测 199 文件／1859 用例、浏览器契约 EXIT=0 303 用例。
+## 本轮：发送常用命令时说出「发给了几个终端」（2026-11-23 第 68 轮）
+
+- 问题：同步输入打开时，一条常用命令写到每个勾选的终端，状态栏却只说「Sent: Logs」——没说是只发了这一个还是发到了五台机器。
+- 交付：同步输入打开且有其它目标时，状态栏变成 `Sent: {name} — to {count} shells`（含来源终端）；其它情况保持原文案。
+- 关键点：目标数来自 `broadcastTargets`——与真正写入用的是**同一个纯函数**，不另写筛选，「说发的」和「实际发的」不可能分叉。
+- 验证：新增 `snippetSend.test.ts` 4 条（单目标／同步开启计数并写到 b／b 被排除后回到单目标文案／活动标签是 SFTP 时拒绝并给出原因）。
+- 一次类型返工：测试夹具手写 Tab 对象漏了 6 个字段、`pendingSessionInfo` 又要求完整 SessionInfo；最后改用真实的 `pendingSessionInfo` 构造，typecheck 才过。**夹具也别手搓大对象。**
+- 全量（定稿树，均取退出码）：format:check EXIT=0（583 文件）、typecheck EXIT=0、lint 0 error（2 条既有警告）、单测 199 文件／1859 用例、浏览器契约 EXIT=0 302 用例。
+## 本轮：启动命令发不出去时，说一声（2026-11-23 第 67 轮）
+
+- 缺陷：启动命令的 `writeSession` 失败此前是 `catch(() => undefined)`——静默失败。读者专门设了这一行，就是为了让会话落在正确目录。
+- 交付：失败改为在状态栏报「Startup command could not be sent: {error}」（中英文各一条）。
+- 原则延续：第 62 轮是「结果已在屏幕上就不出声」，这一轮是它的另一面——**应当出现的结果没出现，必须说**。
+- 验证：`startupCommand.browser.test.ts` 3 条（新增 1：让 `write_session` 抛错 → 状态栏出现该消息并含原因）。
+- 边界：只覆盖写入失败；标签在 400ms 内被关闭仍静默（读者自己关的）。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（582 文件）、typecheck EXIT=0、lint 0 error（2 条既有警告）、单测 198 文件／1855 用例、浏览器契约 EXIT=0 302 用例。
+## 本轮：空列表不是死胡同 + Esc 先退筛选（2026-11-23 第 66 轮）
+
+- 问题：常用命令弹层第一次打开只写「在下面添加一条」；读者刚跑完的命令在屏幕上，而保存它的两条更快路径（终端右键、命令行面板）没人告诉他。
+- 交付：空列表第二行（更暗更小）点明两个入口；筛选框里 `Esc` 先清空筛选，**再按一次**才关闭弹层。
+- 判断：指导只出现在空列表（有了条目就撤掉，避免永久占据版面）；`Esc` 是一步退——筛选是读者走进去的一层。
+- 验证：`snippets.browser.test.ts` 21 条（新增 2：空列表含两条指引、保存一条后消失；筛选无匹配时 Esc 清空且弹层仍在，再按关闭）。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（582 文件）、typecheck EXIT=0、lint 0 error（2 条既有警告）、单测 198 文件／1855 用例、浏览器契约 EXIT=0 301 用例。
+## 本轮：终端右键菜单也能打开常用命令管理（2026-11-23 第 65 轮）
+
+- 问题：右键菜单能发送、能保存、能重跑最近命令，但想**改一条或删一条**还得先想起命令行面板。
+- 交付：`snippetActions` 增加打开管理器的注册（与运行/保存同形，未注册为空操作）；hook 在同一个 effect 注册三个入口；终端菜单新增「Saved Commands」。
+- 判断：管理**不依赖连接**——它只是编辑动作；断线时读者更需要整理命令库，而不是被告知先连上。发送与保存仍然要求已连接。
+- 验证：`snippetRunner.test.ts` 6 条（新增 2：打开者被调用／未注册不抛错）；`snippets.browser.test.ts` 19 条（新增 1：右键 → 「Saved Commands」→ 管理器打开）。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（582 文件）、typecheck EXIT=0、lint 0 error（2 条既有警告）、单测 198 文件／1855 用例、浏览器契约 EXIT=0 299 用例。
+## 本轮：第 59 轮「复制不覆盖源」的承诺其实不成立（2026-11-23 第 64 轮）
+
+- 缺陷：`copyName` 先前是「先拼后缀、再裁到上限」。名字已用满 60 字符时，`X copy` 裁回 60 位正好等于原名；`saveSnippet` 按名覆盖，于是复制把**源条目改成了副本**。
+- 为什么当时没发现：单测只断言长度 ≤ 上限，没断言结果与既有名字不同；浏览器用例用的名字很短。
+- 负向对照（独立脚本复现旧算法）：`old: 60 个 x → overwrites source: true`；`new: "…x copy" → distinct: true`。
+- 修法：按后缀长度**先缩短词干**再拼后缀，后缀永不被裁掉；计数用尽后继续计数而不是交回已占用名字。
+- 验证：`snippets.test.ts` 14 条（新增 2：60 字符名、连续 4 个副本）；`snippets.browser.test.ts` 18 条（新增 1：界面点复制后是**两条**条目，源命令不变）。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（582 文件）、typecheck EXIT=0、lint 0 error（2 条既有警告）、单测 198 文件／1853 用例、浏览器契约 EXIT=0 298 用例。
+## 本轮：长命令不能把菜单撑到窗外（2026-11-23 第 63 轮）
+
+- 背景：上一轮把最近命令放进右键菜单，菜单里第一次可能出现一整行命令（示例 74 字符）。实测子菜单被撑到 **488px**（原先只有 `max-width: calc(100vw - 12px)`）。
+- 交付：`.context-submenu` 改为 `box-sizing: border-box` + `max-width: min(440px, calc(100vw - 12px))`（与菜单栏面板同一个 440px 上限，且把内边距算进上限）；`MenuAction` 新增 `title`，最近命令与已保存命令的每一行都带完整文本。
+- 第一版写错：把上限写在 `shell.styles.css` 的 `.menu-submenu` 上，被后加载的 `panels.styles.css` `.context-submenu` 覆盖。是在测试里打印 `getComputedStyle(panel).maxWidth`（得到 1088px）才定位的。
+- 验证：`snippets.browser.test.ts` 17 条（新增 1：74 字符命令 → 子菜单宽度 < 448px、标签 `scrollWidth > clientWidth`、`title` 是完整命令）。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（582 文件）、typecheck EXIT=0、lint 0 error（2 条既有警告）、单测 198 文件／1851 用例、浏览器契约 EXIT=0 297 用例。
+## 本轮：终端右键菜单发送最近命令（2026-11-23 第 62 轮）
+
+- 目标：读者想重跑刚用过的一条命令时，手就在终端里；右键比先想起快捷键更快。
+- 交付：终端右键菜单新增「最近命令」子菜单（最多 10 条，最近在前，未连接禁用）；抽出 `sendCommandText` 与发送已保存命令共用同一条通道与同一句拒绝理由，`sendSnippet` 改为调用它后再报「已发送」。
+- 两个判断：历史行成功时**不出声**（命令已经在屏幕上，状态提示只是噪音）；菜单在绘制时读历史（每次打开都重建，无需订阅）。
+- 验证：`snippets.browser.test.ts` 16 条（新增 1：记一条历史 → 右键 → 子菜单 → 点击 → `git status\r`，状态栏没有「Sent:」）。
+- 一次真实失败：测试最初用 `noteCommandSent` 期望顺带写入历史，实际没有；改为 `commandHistory.record`。这说明历史只在真实提交路径写入，模拟「上一条命令」不等于「已记录」。
+- 一次自查抓到的回归：把 `setPaletteOpen(true)` 换成 `openPalette()` 后忘了补依赖，typecheck 不报、lint 的 `useExhaustiveDependencies` 报 error；补进依赖后 lint 回到 0 error。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（582 文件）、typecheck EXIT=0、lint 2 条既有警告、单测 198 文件／1851 用例、浏览器契约 EXIT=0 296 用例。
+## 本轮：命令行面板列出最近用过的命令（2026-11-23 第 61 轮）
+
+- 问题：历史此前只做行内补全与清空；重跑几天前的长命令只能靠记忆打出足够长的前缀。
+- 交付：`history.recent(limit)`（按最近使用排序、同文本一行）；面板新增 `history` 数据源（id `history:<n>`，标签是命令本身，提示行是主机）与 `sendHistory` 动作，走与打字相同的发送通道；面板打开时装入最近 40 条。
+- 三个判断：历史行放在目录**最后**（不把 40 行压在其他命令之上，搜索仍能找到）；目录在**打开面板时**重建（不是每次记录都重建，否则每按一次 Enter 就重渲染整个窗口）；非 shell 会话由同一条拒绝路径说明原因。
+- 验证：`history.test.ts` 新增 1（三条记录含重复文本 → 去重且按最近排序）；`paletteHistory.test.ts` 新增 2（标签/提示/关键字/run 调用；无历史时没有 `history:` 行）。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（582 文件）、typecheck EXIT=0、lint 2 条既有警告、单测 198 文件／1851 用例、浏览器契约 EXIT=0 295 用例。
+## 本轮：带参数的常用命令记住上次填的值（2026-11-23 第 60 轮）
+
+- 问题：`ssh {{host}}`、`deploy {{env}}` 每跑一次都要重填参数。
+- 交付：同一应用会话内，按命令 id 记住上次填的值；再次运行时预填、立即可以发送。只记在内存里——参数常是环境名/主机名/一次性代号，写进设置会让「保存的命令」带上读者没打算保存的上下文，也让导出/恢复带上它们。
+- 验证：`snippets.browser.test.ts` 15 条（新增 1：首次填 `prod` 发送 → 再次打开已预填、发送可用 → 第二次 `write_session` 收到 `deploy prod\r`）。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（581 文件）、typecheck EXIT=0、lint 2 条既有警告、单测 197 文件／1848 用例、浏览器契约 EXIT=0 295 用例。
+## 本轮：常用命令可以复制一份再改（2026-11-23 第 59 轮）
+
+- 目标：读者想要的常是「照这条改一条」，此前只能新建再手动重打命令。
+- 交付：行内新增「复制」按钮；`copyName` 依次试 `X copy`、`X copy 2`…，大小写不敏感，结果裁到名字上限；复制绝不覆盖源（名字是查找与「再保存即替换」的键）。
+- 验证：`snippets.test.ts` 12 条（新增 4：空位／被占计数／大小写／上限）；`snippets.browser.test.ts` 14 条（新增 1：点复制后 `Logs` 与 `Logs copy` 并存且命令相同）。
+- 过程中一次真实失误：第一次追加上单测时用正则找 import 行，格式化后的多行 import 让匹配为 null，追加失败；改用 edit 精确插入后 12 条通过。这说明「追加到文件」的脚本要按当前格式定位，不能假设单行。
+- 格式门：本轮首次 format:check 为 1（新增 locale 行未按 Biome 排版），`biome format --write` 后 0；随后核对两语言包各 1469 条键（一致），未发生截断。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（581 文件）、typecheck EXIT=0、lint 2 条既有警告、单测 197 文件／1848 用例、浏览器契约 EXIT=0 294 用例。
+## 本轮：右键菜单也能「把上一条命令存成常用命令」（2026-11-23 第 58 轮）
+
+- 问题：命令行面板有「Save Last Command as a Snippet」，终端右键菜单却只有「发送已保存命令」。读者记住一条命令后的自然动作是右键，而不是先想起一个快捷键。
+- 交付：终端右键菜单新增该项（有已保存命令时紧跟在子菜单后，否则在分隔线后；未连接禁用）；`snippetActions` 增加保存回调注册，与运行注册同形，没有注册者时是安全空操作；hook 在同一个 effect 里注册运行与保存。
+- 类型教训：注册 effect 写在 `saveLastCommandAsSnippet` 之前 → `TS2448`。`useCallback` 不提升，effect 必须排在它引用的回调之后。
+- 验证：`snippetRunner.test.ts` 4 条（新增 2：已注册被调用一次／未注册不抛错）；`snippets.browser.test.ts` 13 条（新增 1：提交 `kubectl get pods` → 右键 → 菜单项 → 命名 `Pods` → store 里存的是这条命令）。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（581 文件）、typecheck EXIT=0、lint 2 条既有警告、单测 197 文件／1844 用例、浏览器契约 EXIT=0 293 用例。
+## 本轮：常用命令列表的键盘走查（2026-11-23 第 57 轮）
+
+- 问题：每行三个按钮全在 Tab 顺序里，两条命令就要按 6 次 Tab 才能在它们之间挪动。
+- 交付：行上 `↑`/`↓` 在相邻行之间移动焦点（筛选后的可见列表内，边界不动）；`Delete`/`Backspace` 删除该行并在正在编辑它时退出编辑；`Tab` 顺序保持不变。
+- 判断依据：行内按钮不接收文本，Backspace 在这里本来无意义，因此借来当删除不与打字冲突；删除不确认，与既有删除按钮一致。
+- 验证：`snippets.browser.test.ts` 新增 1 条——聚焦第一行、↓ 到第二行、↑ 回第一行、Delete 后只剩 Deploy，且**没有任何写入**（删除不是发送）。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（581 文件）、typecheck EXIT=0、lint 2 条既有警告、单测 197 文件／1842 用例、浏览器契约 EXIT=0 292 用例。
+## 本轮：新连接也能设「连接后执行的命令」（2026-11-23 第 56 轮）
+
+- 修上一轮留下的洞：字段原本只在已保存连接上出现，读者必须先保存再打开一次。现在新建 ssh/local 也能填写，Save / Save & connect 用返回的 id 归属，随后连接时自动发送。
+- 顺带改进：字段改为本地草稿，保存时一次写入——此前每敲一个字就写一次 localStorage，取消还会留下半条命令。
+- 验证：`startupField.browser.test.ts` 1 条端到端——新连接可见字段、输入后未保存不落盘、点主按钮后命令存到 `p-new`、随后 `write_session` 收到 `cd /srv/app\r`。这条同时补上了第 53 轮只在直接 openSession 路径验证过的自动发送。
+- 一次类型教训：`SessionDialog` 的 `initial` 类型是 `SessionProfile | null`，不是 `undefined`；浏览器测试能跑，typecheck 抓到。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（581 文件）、typecheck EXIT=0、lint 2 条既有警告、单测 197 文件／1842 用例、浏览器契约 291 用例。
+## 本轮：终端高亮补测试 + 整行分类抽出（2026-11-23 第 55 轮）
+
+- 先量后改：最大的、无测试的逻辑模块是 `semanticColors.ts`（754 行、0 测试），而它决定每一行终端输出的样子。
+- 测试：19 条——提示符词汇（user@host、方括号、venv 前缀、cmd/PowerShell、❯/>>>/$、`# comment` 不算 root）、只有提示符才算提示符、8 类真实输出的区间不变量（单调、界内、十六进制、条数上限）、错误/链接/权限位/diff/表头/注释的语义、light/dark 与 serialX 主题切换。
+- 代码优化：`windtermLine` 的六个整行分支抽成 `wholeLineStyle(text, unixPermissions, powershellMode)`，调用方 30 行→5 行，行为不变（19 条为安全网）。
+- 被测试挡下的错误预期：`"- removed"`（短横+空格）本就**不是**删除——YAML/Markdown 列表项；改测试断言这条例外，另用无空格的 `"-removed"` 验证 band。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（580 文件）、typecheck EXIT=0、lint 2 条既有警告、单测 196 文件／1842 用例（+19）、浏览器契约 EXIT=0 290 用例。
+## 本轮：命令偏好登记 + tabRename 偶发的真正原因（2026-11-23 第 54 轮）
+
+- 质量项一（规则违反）：第 46、53 轮加的两个偏好键没有登记进 `persistKeys.ts`，于是「恢复默认设置」不清、设置导出不带、导入不生效。已登记，键常量改为引用登记表；导入后立刻重读进 store，恢复默认时同时清空 store（只删键会留下界面上的幽灵命令）。test: settingsCommands 3 条覆盖导出/导入/恢复。
+- 质量项二（偶发失败定位）：tabRename 全量失败再次出现。先测量（单文件 8 次全绿 → 只在负载下出现），再试守卫（全量两次绿，但单测 5 条红 → 证明守卫破坏了「点标签进 shell」，回退）。真正原因：**用例跳过了「标签栏拥有键盘」这个前置状态**，直接 focus 标签，于是应用按设计把焦点交给 shell。用例先 `setActive("a","strip")`、断言焦点在标签上，再按 F2。
+- 证据：WorkspaceTabFocus 12/12、tabRename 连跑 3 次全绿、全量浏览器连续 2 次全绿（290），最终树再次确认见下。
+## 本轮：连接后自动执行的命令（2026-11-23 第 53 轮）
+
+- 交付：已保存的 ssh/local 连接可设「连接后执行的命令」，连接成功后自动输入并回车；连接期间读者已输入内容时先发读者的输入、登录脚本让位；文件会话不执行；只取首行；清空即删除。
+- 存储取舍：放应用设置（`edgeterm.startupCommands`）而不是 profile 文件——不改 Rust 模型与绑定，旧 profile 仍可读；代价是换机器不跟着走，文档写明。
+- 时序：连接成功后固定延迟 400 ms 再发；定时器复查标签仍在且已连接，关掉的标签收不到迟到的命令。没有等提示符，因为识别错会永远不发。
+- 验证：startupCommands 单测 5 条（首行、畸形输入、200 上限、往返、store 写盘与清空）+ 浏览器 2 条（SSH 后 `write_session` 收到 `cd /srv/app\r`；SFTP 900 ms 后无写入）。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（578 文件）、typecheck EXIT=0、lint 2 条既有警告、单测 194 文件／1820 用例、浏览器契约 290 用例。
+## 本轮：常用命令来到终端右键菜单（2026-11-23 第 52 轮）
+
+- 交付：终端右键菜单新增「发送常用命令 ▸」（最多 15 条），点击走与弹层、命令面板相同的入口（含参数询问）；未连接时禁用；没有保存命令时不显示。
+- 结构：终端面板不拥有对话框，于是加一层极小登记（registerSnippetRunner / requestSnippetRun，未登记时退回直接发送），三条入口不会走出两种行为。
+- 验证：snippetRunner 单测 2 条（登记后收到同一片段；未登记退回直接发送并给出原因）+ 浏览器 1 条（右键 → 子菜单 → 点 Logs → IPC 收到 `tail -f app.log\r`）。
+- 测试层教训：右键模式由组件渲染时读取，夹具必须先设模式、等一帧再派发；否则处理器闭包仍是旧模式。另：`RightClickAction` 的字面量是 `menu`，不是 `contextMenu`（typecheck 抓到，浏览器测试不会）。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（574 文件）、typecheck EXIT=0、lint 2 条既有警告、单测 193 文件／1815 用例、浏览器契约 288 用例。
+## 本轮：标签指针约定 + 一次真实破坏与恢复（2026-11-23 第 51 轮）
+
+- 交付一（用户可见）：中键点击标签页关闭它（活动标签与关闭按钮同一路径：**运行中的会话先询问**，已结束的直接关闭；**固定标签不受中键影响**，连询问都不弹）；标签栏空白处右键新增「重新打开已关闭的标签页」，栈空时禁用。
+- 交付二（事故处理，必须记录）：我把 `src/locales/en.ts` 与 `zhCN.ts` 用「读取→改→整体写回」截短了约 570 条。`read` 对约 80 KB 的文件只返回了前一部分行，我没有核对行数就整体覆盖。
+- 恢复：第 50 轮被取消的 1.8.0 构建留下了 `dist/`（18:41，早于损坏），语言包被编进 bundle。从中提取 2956 个键值对、按语言归类、与残存文件合并，两包各恢复 **1463** 条；另修正 5 条误判（英文值含双引号，在 bundle 里是单引号字面量）。
+- 恢复证据：typecheck 通过（`MessageKey` 由英文包键集定义，任何缺失键都会编译失败）；单测 192 文件／1813 用例、浏览器契约 287 用例（含大量精确文案断言）全部通过。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（573 文件）、typecheck EXIT=0、lint 2 条既有警告、单测 192 文件／1813 用例、浏览器契约 287 用例。
+
+### 流程反思（本轮）
+
+- 事故的根因不是工具，是我没有**核对** `lines.length` 与 `totalLines` 就整体覆盖。已写进规则：大文件不读-改-写。
+- 长构建的产物救回了源码内容：取消构建前先想清楚它是不是唯一副本。
+## 本轮：留在 1.7 线 + 命令面板打开常用命令（2026-11-23 第 50 轮）
+
+- 用户指示：**先别 1.8，继续在 1.7 版本完善**。已把版本从 1.8.0 改回 1.7.8（package.json、Cargo.toml；tauri.conf 用 `../package.json`），并取消正在运行的 1.8.0 构建任务；bundle 目录里没有 1.8.0 产物。
+- 本轮交付：命令面板新增「常用命令」条目 → 打开管理弹层（键盘读者不必经过菜单）。
+- 验证：paletteSnippets 单测 4 条（新条目存在、标签、运行回调、未提供时不出现）+ 片段浏览器用例 10 条（新增：面板输入 Saved Commands → 弹层标题出现）。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（572 文件）、typecheck EXIT=0、lint 2 条既有警告、单测 192 文件／1813 用例、浏览器契约 283 用例。
+
+### 发布边界（事实）
+
+- 已发布的 1.7.8 安装包早于第 41–50 轮的改动；当前工作树是 1.7.8 之上的开发状态，未生成新安装包。
+- 需要新安装包时，按 1.7 线补一个补丁号（例如 1.7.9）再构建；未经用户确认不升到 1.8。
+## 本轮：常用命令通过剪贴板搬家（2026-11-23 第 49 轮）
+
+- 目标：保存的命令只活在这台机器上，换机、给同事、批量整理都没有出口。
+- 交付：`snippetTransfer.ts`（导出/导入的纯函数：格式与版本、无 id、三种拒绝原因、按名去重末条胜出、条数与长度上限、名称清洗）；store 的 `importSnippets` 一次合并一次持久化；弹层底部「复制全部 / 从剪贴板导入」与提示、错误文本。
+- 取舍：走剪贴板而不是文件——不需要原生保存/打开对话框，也不在磁盘上留下需要读者自己管理的文件；要落盘时把剪贴板内容粘进任意编辑器即可。
+- 半途发现：本轮原本打算做「会话日志到文件」，先查了一遍后端，发现**录制已存在**（`session::recording`、profile 的 recording 字段、失败事件与对话框勾选）。没有重复实现，改做真正缺的搬运能力。
+- 验证：单测 6 条（导出无 id/往返/三种拒绝/跳过计数与重名/上限/清洗）+ store 2 条（合并持久化、上限返回 0）+ 浏览器 1 条（复制→剪贴板包 JSON 与提示；导入→多一条；`not json`→错误且列表不变）。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（572 文件）、typecheck EXIT=0、lint 2 条既有警告、单测 192 文件／1812 用例、浏览器契约 282 用例。
+## 本轮：把常用命令界面从 App 搬出来（2026-11-23 第 48 轮）
+
+- 目标：结构收敛。App.tsx 里混着常用命令的三个状态与约 40 行界面。
+- 交付：新 `components/useSnippetRunner.tsx` 自持三个状态、runSnippet、saveLastCommandAsSnippet 与三个对话框；App 只留一行调用、两个入口与 `{snippetsUi.surfaces}`。
+- 规模：App.tsx 1325 行（改动前约 1360），新 hook 约 95 行，其中 45 行来自 App。
+- 性质：纯结构变化，对外行为不变；证据是既有 8 条片段浏览器用例与 13 条菜单用例全部通过，另有全量。
+- 全量（定稿树，均取退出码）：format:check EXIT=0（570 文件）、typecheck EXIT=0、lint 2 条既有警告、单测 191 文件／1804 用例、浏览器契约 281 用例。
+## 本轮：常用命令的编辑与筛选（2026-11-23 第 47 轮）
+
+- 目标：改一条保存过的命令只能删掉重加；列表长了只能滚动。
+- 交付：store 新增 replaceSnippet（原地改名称与命令、拒绝重名、持久化）；弹层表单兼编辑器（铅笔载入、保存修改/取消、重名错误）；筛选框按名称与命令收窄，无匹配有专门提示。
+- 验证：单测 8 条（原地更新并持久化、重名拒绝且原条目不变、空值/未知 id 拒绝）+ 浏览器 8 条（编辑成功后 store 更新、重名出现错误文本、筛选收窄/无匹配/清空恢复）。
+- 一处测试教训：编辑与删除按钮共用 `.snippets-delete` 类，旧用例因此点到了编辑按钮；改为按 aria-label 前缀定位。
+- 验证事故（如实记录）：首次全量时 format:check 实际失败，而我的输出只截了末尾两行、看到空行没看到结论；确认退出码后重跑并修正了一个文件的格式。教训写入 LEARNINGS：**结论看退出码，不看截断的尾部**。
+- 全量（定稿树）：单测 191 文件／1804 用例、浏览器契约 281 用例、typecheck、format:check（569 文件，EXIT=0）、lint（仅生成绑定 2 条既有警告）通过。
+## 本轮：常用命令的参数（2026-11-23 第 46 轮）
+
+- 目标：同一行命令里通常只有一两个词会变（`deploy {{env}} --tag {{tag}}`），保存下来即一条可复用的模板。
+- 交付：snippets.ts 新增 templateNames / expandTemplate（去重、按出现顺序、名称去空白、空值保留占位符）；SnippetArgsDialog（预览 + 每参数一字段 + 填全才可发送）；App 用唯一入口 runSnippet 统一弹层与命令面板两条路径。
+- 分隔符取舍：用 `{{name}}`，因为 `${VAR}` 属于 shell、`{}` 出现在 awk/find/sed 里；靠语法猜哪些花括号是我们的会改坏命令。未闭合的 `{{` 原样保留。
+- 验证：单测 5 条（去重顺序、替换、缺值保留、awk 花括号不动、未闭合原样、名称去空白）+ 浏览器 1 条（缺值时 Send 禁用；填全后 IPC 收到 `deploy prod --tag v9\r`，询问框关闭）。
+- 全量：单测 191 文件／1801 用例、浏览器契约 69 文件／279 用例（带日志）、typecheck、format:check（569 文件）、lint（仅生成绑定 2 条既有警告）通过。
+## 本轮：补上「保存上一条命令」的成功路径（2026-11-23 第 45 轮）
+
+- 背景：第 44 轮把该路径记为已知缺口，理由是「夹具无法稳定驱动命令跟踪器」。
+- 定位方式：写一个断言式探针（把期望值故意写成哨兵字符串，从失败差异里读出真实值），三种驱动方式一次跑出结果——`noteCommandSent` 先于 OSC 133 C 时得到 `echo hi`，其余两种得到空字符串。
+- 根因：**调用顺序**。`noteCommandSent` 开始一次命令；之后 shell 的 `OSC 133 C` 在已运行状态下被忽略。第 44 轮写的是 C → note → D，于是命令以空文本开跑。
+- 交付：浏览器用例改为覆盖完整链路——面板 → 命名框（提示带命令原文）→ 提交 → 存储出现 `{name: "Greeting", command: "echo hi"}`；保留「没有可保存命令」的拒绝路径。片段浏览器用例 5/5。
+- 全量：单测 190 文件／1796 用例、浏览器契约 68 文件／278 用例（带日志）、typecheck、format:check（567 文件）、lint（仅生成绑定 2 条既有警告）通过。
+
+### 流程反思（本轮）
+
+- **哨兵断言比 console.log 好用**：本项目 Vitest 会吞掉测试里的 console 输出，把期望值写成不可能命中的字符串，失败差异就是答案。
+- 「夹具驱动不了」不是放弃的理由：写探针的成本约 2 分钟，本轮一次就拿到三种顺序的真实行为。
+## 本轮：常用命令进入命令面板（2026-11-23 第 44 轮）
+
+- 交付：命令面板新增两类条目——「发送 <名称>」（每个片段一条，按片段名/命令文本/snippet 可搜）与「把上一条命令存为常用命令」（无已完成命令时状态栏说明、不弹空框）；命名框复用 GroupNameDialog。
+- 验证：paletteSnippets 单测 3 条（条目、关键词、回调、调用方不提供时不出现）+ 片段浏览器用例 4 条（新增：面板发送后 IPC 收到 `tail -f app.log\r`；无命令时拒绝且不弹框）。
+- 未覆盖并记录：保存成功路径没有端到端用例（夹具无法稳定把跟踪器驱动到「已完成命令」，两种写法都得到空命令文本）；改用例覆盖拒绝路径，成功路径记为已知缺口，不制造绿灯。
+- 全量：单测 190 文件／1796 用例、浏览器契约 67 文件／277 用例（带日志）、typecheck、format:check（567 文件）、lint（仅生成绑定 2 条既有警告）通过。
+## 本轮：常用命令库 + 自动聚焦让位（2026-11-23 第 42–43 轮）
+
+- 交付一（第 42 轮主体）：常用命令库——snippets.ts（校验/持久化/发送字节）、storeSnippetActions（按名称 upsert、删除、每次持久化）、snippetActions（走输入漏斗，文件/未连接会话拒绝并说明）、SnippetsDialog（列表、Add、删除、Close/Esc）、View 菜单入口。
+- 交付二（第 43 轮）：自动聚焦让位——调度时记下焦点，帧里若焦点已被读者移走则放弃；这修掉的是真实缺陷：迟到的 rAF 会把焦点从标签/菜单抢到终端，F2 等「元素自己的键」随之静默失效，也是前几轮几次未复现浏览器失败的同一机制。
+- 验证：单测 189 文件／1793 用例（片段模型 9 条、存储 5 条）；浏览器契约 66 文件／275 用例（片段端到端 2 条：保存→点击发送→IPC 收到 `tail -f app.log\r`→删除；无会话时拒绝且零写入）；改名用例连跑 3 次全绿。
+- 全量（定稿树）：typecheck、format:check（566 文件）、lint（仅生成绑定 2 条既有警告）、单测与浏览器契约全部通过。
+
+### 流程反思（本轮）
+
+- 这次失败**有日志**才查出根因：`.tmp/browser-run-43.log` 里带行号的断言与截图路径直接指向 F2/焦点。第 40 轮起固定落盘日志的做法第一次真正兑现。
+- 教训：一次「未复现」的失败，如果不能定位，就把它当作仍然存在的问题；本轮它第二次出现时给出了完整现场。
+## 本轮：瞬态标记跟随会话状态（2026-11-23 第 41 轮）
+
+- 缺陷：第 38/39 轮加的两个瞬态指示都不看会话状态——关闭的会话仍显示最后的程序标题，已关闭的标签仍挂铃铛徽标。
