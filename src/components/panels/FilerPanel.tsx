@@ -133,12 +133,13 @@ function FilerPanelBase() {
   // arrows and the virtual rows keep working on exactly what is on screen.
   const [filter, setFilter] = useState("");
   const filterRef = useRef<HTMLInputElement>(null);
-  // A filter belongs to the folder it was typed in: carrying it into the next
-  // folder would show a filtered view of a listing the reader just asked for,
-  // with no memory of why rows are missing.
+  // A filter belongs to the listing it was typed in: carrying it into the next
+  // folder — or into another session's folder that happens to share the path —
+  // would show a filtered view of something the reader just asked for, with no
+  // memory of why rows are missing.
   useEffect(() => {
     setFilter("");
-  }, [path]);
+  }, [path, remoteId]);
   const sortedEntries = useMemo(() => {
     const sorted = sortFileEntries(entries, sort);
     const needle = filter.trim().toLowerCase();
