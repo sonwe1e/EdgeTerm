@@ -1153,6 +1153,9 @@ function FilerPanelBase() {
               role: "listbox" as const,
               "aria-multiselectable": true,
               "aria-activedescendant": activeDescendant ?? undefined,
+              // The arrows and Home/End come with the list pattern; these three
+              // are this app's own and would otherwise go unannounced.
+              "aria-keyshortcuts": "F2 Delete Enter",
             })}
         tabIndex={0}
         onMouseDown={(event) => {

@@ -83,6 +83,15 @@ afterEach(async () => {
 const names = () =>
   [...document.querySelectorAll(".filer-entry .row-label")].map((node) => node.textContent);
 
+it("names its own keys for assistive technology", async () => {
+  mount(h(FilerPanel));
+  await twoFrames();
+  // F2 renames, Delete removes, Enter opens: none of them come with the
+  // listbox pattern, so the list says which keys act on its rows.
+  const list = document.querySelector<HTMLElement>('[role="listbox"]')!;
+  expect(list.getAttribute("aria-keyshortcuts")).toBe("F2 Delete Enter");
+});
+
 it("drops the filter when the reader walks into another folder", async () => {
   await page.viewport(900, 720);
   mount(
