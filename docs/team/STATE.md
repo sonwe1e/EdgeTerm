@@ -1,5 +1,14 @@
 # 项目状态
 
+## 本轮：常用命令列表也声明自己的键（2026-11-24 第 115 轮）
+
+- 延续第 113–114 轮：常用命令对话框里每一行是按钮，F2 把该行载入表单、Delete/Backspace 删除该行，`/` 聚焦筛选——都未声明。
+- 交付：行按钮加 `aria-keyshortcuts="F2 Delete"`，筛选框加 `aria-keyshortcuts="/"`。方向键属于列表约定，不列。
+- 验证：`snippets.browser.test.ts` **26/26**（新增 1 条断言两处属性）。
+- 自纠：新用例最初在 `mountSession()` **之前**写入 snippets，被该函数里的 `...initial` 覆盖（与第 110 轮同一机制）；改为挂载后再写入并等两帧，随即通过。
+- 门（`npm run verify`）：`VERIFY_EXIT=0`；format:check ok 1.0s、typecheck ok 7.3s、lint ok 0.9s、test ok 125.8s（**212 文件／1918 用例**）、test:browser ok 192.7s（**72 文件／329 用例**）。
+
+
 ## 本轮：文件列表也声明自己的三个键（2026-11-24 第 114 轮）
 
 - 延续上一轮：文件列表（Filer）的 `role="listbox"` 只声明了多选与当前行，**F2（重命名）、Delete（删除）、Enter（打开）**都是本应用自己的键，此前没有向辅助技术声明。
