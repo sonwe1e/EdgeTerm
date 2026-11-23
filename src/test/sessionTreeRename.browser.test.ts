@@ -1,6 +1,6 @@
 import { createElement as h } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { userEvent } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { browserAfterEach, mount, twoFrames } from "./browserHarness";
 import { SessionPanel } from "../components/panels/SessionPanel";
 import { useStore } from "../store";
@@ -62,6 +62,30 @@ it("marks the session that was connected to recently", async () => {
   expect(mark()!.closest(".row")?.textContent, "the mark sits on the profile row").toContain(
     "Lab box",
   );
+});
+
+it("keeps the mark visible beside a long name at a narrow width", async () => {
+  await page.viewport(320, 700);
+  const long = {
+    ...profile,
+    name: "A very long session name that would take the whole row if it could",
+  } as SessionProfile;
+  useStore.setState({ ...initial, profiles: [long], groups: [], tabs: [], activeId: null });
+  mount(h(SessionPanel, { onEditProfile: vi.fn(), onNewSession: vi.fn() }));
+  await twoFrames();
+  useStore.setState({ recentProfiles: ["p1"] });
+  await twoFrames();
+
+  const mark = [...document.querySelectorAll<HTMLElement>(".row-meta")].find(
+    (element) => element.textContent === "Recent" || element.textContent === "最近",
+  );
+  expect(mark, "the mark is rendered").toBeTruthy();
+  const row = mark!.closest<HTMLElement>(".row")!;
+  const markBox = mark!.getBoundingClientRect();
+  const rowBox = row.getBoundingClientRect();
+  // A mark squeezed to nothing is not a mark: the name must ellipsize first.
+  expect(markBox.width, "the mark keeps its width").toBeGreaterThan(12);
+  expect(markBox.right, "and stays inside the row").toBeLessThanOrEqual(rowBox.right + 0.5);
 });
 
 it("renames the item the cursor is on with F2", async () => {
