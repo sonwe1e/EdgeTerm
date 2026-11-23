@@ -80,3 +80,44 @@ it("offers the sessions used last as the way back in", async () => {
   await userEvent.click(recent!);
   expect(onOpenProfile).toHaveBeenCalledWith(expect.objectContaining({ id: "p1" }));
 });
+
+it("keeps the recent list reachable at the minimum pane size", async () => {
+  const profile = { id: "p1", name: "Lab box", kind: "ssh", host: "lab.invalid" } as never;
+  useStore.setState({
+    language: "en",
+    tabs: [],
+    activeId: null,
+    profiles: [profile],
+    recentProfiles: ["p1"],
+    panels: { sessions: true, filer: true, sender: true },
+  });
+  // The same measured pane as the first case: the 900×560 desktop minimum with
+  // docks on both sides at the supported 18px panel font.
+  mount(
+    h(
+      "div",
+      {
+        className: "app",
+        style: { width: 378, height: 465, "--panel-font-size": "18px" } as CSSProperties,
+      },
+      h(Workspace, { onNewSession: vi.fn(), onSaveSession: vi.fn(), onOpenProfile: vi.fn() }),
+    ),
+  );
+  await twoFrames();
+
+  const scroller = document.querySelector<HTMLElement>(".term-empty")!;
+  const recent = document.querySelector<HTMLButtonElement>('[aria-label="Open Lab box"]')!;
+  expect(recent, "the recent entry is rendered").toBeTruthy();
+  // The state scrolls as a whole when it does not fit; the entry must be
+  // reachable inside that scroll, not clipped by it.
+  expect(scroller.scrollHeight, "the state is taller than the pane").toBeGreaterThan(
+    scroller.clientHeight,
+  );
+  recent.scrollIntoView({ block: "nearest" });
+  await twoFrames();
+  const pane = document.querySelector<HTMLElement>(".pane-stack")!.getBoundingClientRect();
+  const box = recent.getBoundingClientRect();
+  expect(box.top, "the entry scrolled into view from above").toBeGreaterThanOrEqual(pane.top - 1);
+  // A 2px focus ring and its 2px offset, the same allowance the first case uses.
+  expect(box.bottom, "and does not sit under the bottom edge").toBeLessThanOrEqual(pane.bottom - 3);
+});
