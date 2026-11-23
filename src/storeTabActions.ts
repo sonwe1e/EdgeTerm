@@ -25,6 +25,15 @@ import {
 } from "./sessionConnectionLifecycle";
 
 /** The published grids without `id`; the same record when it holds no entry. */
+/**
+ * Where the zoom goes when another pane becomes active: nowhere if no pane is
+ * zoomed or the zoomed pane is the one being asked for, otherwise to that pane.
+ * Selecting a session is a request to see it: keeping the zoom elsewhere would
+ * make the request a no-op, and dropping it would throw away the layout.
+ */
+const movedZoom = (zoomed: string | null, paneId: string) =>
+  zoomed === null || zoomed === paneId ? zoomed : paneId;
+
 const dropSize = (sizes: Record<string, TerminalSize>, id: string) => {
   if (!(id in sizes)) return sizes;
   const next = { ...sizes };
@@ -222,13 +231,17 @@ export const createTabActions: StateCreator<
   },
 
   setActive(id, focusTarget = "terminal") {
-    const { tabs, panes } = get();
+    const { tabs, panes, zoomedPaneId } = get();
     const tab = tabs.find((item) => item.info.id === id);
     if (!tab) return;
     set({
       activeId: id,
       tabFocusTarget: focusTarget,
       activePaneId: tab.paneId,
+      // Selecting a session is a request to see it. While one pane is zoomed,
+      // leaving the zoom where it was would show the request as a no-op, and
+      // dropping it would throw away the reader's layout: move it instead.
+      zoomedPaneId: movedZoom(zoomedPaneId, tab.paneId),
       panes: patchPane(panes, tab.paneId, { activeTabId: id }),
       // A completion is deliberately persistent on a background tab, but
       // selecting it is the acknowledgement. A still-running command keeps
@@ -260,11 +273,12 @@ export const createTabActions: StateCreator<
   },
 
   setActivePane(paneId) {
-    const { panes, activePaneId, tabs } = get();
+    const { panes, activePaneId, tabs, zoomedPaneId } = get();
     const pane = panes.find((item) => item.id === paneId);
     if (!pane || paneId === activePaneId) return;
     set({
       activePaneId: paneId,
+      zoomedPaneId: movedZoom(zoomedPaneId, paneId),
       activeId: pane.activeTabId,
       tabFocusTarget: "terminal",
       tabs: acknowledgeTab(tabs, pane.activeTabId),

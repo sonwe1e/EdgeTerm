@@ -112,6 +112,30 @@ describe("pane zoom", () => {
     useStore.setState(initial, true);
   });
 
+  it("moves the zoom to the pane whose session was asked for", async () => {
+    await fixture();
+    await userEvent.keyboard("{Control>}{Shift>}z{/Shift}{/Control}");
+    await until(() => useStore.getState().zoomedPaneId !== null);
+    await twoFrames();
+    expect(useStore.getState().zoomedPaneId).toBe("left");
+
+    // Selecting a session in the hidden pane must show it, not move the active
+    // session somewhere the reader cannot see — and must keep a zoom at all.
+    useStore.getState().setActive("db");
+    await twoFrames();
+    expect(useStore.getState().activePaneId, "the active pane follows").toBe("right");
+    expect(useStore.getState().zoomedPaneId, "the zoom follows the request").toBe("right");
+    const visible = slots().filter((slot) => slot.display !== "none");
+    expect(visible.length, "exactly one pane is on screen").toBe(1);
+    expect(visible[0].node.textContent, "the session asked for is the one on screen").toContain(
+      "db",
+    );
+
+    useStore.getState().setActivePane("left");
+    await twoFrames();
+    expect(useStore.getState().zoomedPaneId, "switching panes moves the zoom too").toBe("left");
+  });
+
   it("fills the area with the focused pane and keeps the hidden terminal mounted", async () => {
     await fixture();
     const workspace = document.querySelector<HTMLElement>(".workspace")!;
