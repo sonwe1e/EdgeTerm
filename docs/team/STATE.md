@@ -1,5 +1,13 @@
 # 项目状态
 
+## 本轮：两处 type-ahead 合并到同一次搜索（2026-11-24 第 104 轮）
+
+- 质量评估发现：文件列表的 `fileTypeSelect.typeToSelect` 与会话树的 `sessionTypeAhead` 各自实现了一遍「按前缀找下一行」——前者还多了 NFC 归一、输入法组合判断与重复字母轮转。
+- 交付：`findByPrefix` 放宽为接受任何带 `name` 的行（`readonly Pick<FileEntry, "name">[]`），会话树的 `nextTypeAheadRow` 改为**委托**它，删掉自己那份搜索；树的缓冲区规则补上 `isComposing`（输入法组合期间的按键不再触发跳转）。
+- 策略差异**保留**：文件列表允许空格续写（那里空格不承担动作），会话树排除空格（空格是折叠）。两个上层规则仍各自拥有自己的键位语义，只共用匹配核心。
+- 验证：`sessionTypeAhead.test.ts` 9 条、`fileTypeSelect.test.ts` 与其它相关单测共 30 条通过；`sessionTreeRename.browser.test.ts` 6/6；typecheck EXIT=0。全量见下。
+
+
 ## 本轮：type-ahead 能改错字，也能被 Esc 取消（2026-11-24 第 103 轮）
 
 - 交付：把「缓冲区怎么变」抽成纯函数 `nextTypeAheadBuffer(buffer, key, now)`——可打印字符续写（停顿 600ms 重开）、`Backspace` 缩短（空缓冲时不接管）、`Esc` **只在有搜索时**清空（否则仍可关菜单／退出筛选）、空格与带 Ctrl/⌘/Alt 的键一概不管。树的组件只剩派发，面板里的 600ms 常量下移到该模块。
