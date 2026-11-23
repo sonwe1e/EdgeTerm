@@ -1,5 +1,14 @@
 # 项目状态
 
+## 本轮：连接行说清楚它以谁登录（2026-11-24 第 95 轮）
+
+- 问题：面板的「连接到 …」只列地址；当地址省略用户或端口时，读者看不出实际会用谁、哪个端口。
+- 交付：提示行改由 App 用**与开会话同一段代码**（`quickConnectProfile(target, newSessionProfile())`）解析出的实际取值渲染：`SSH as {user}, port {port}`；「最近连接过」的行同时给出两段（来源 + 参数）。
+- 一次被用例挡下的回退：第一版让记住的行也用同一个解析提示，于是丢掉「最近连接过」，浏览器用例的「从哪来的」断言立刻失败；两段信息各有用途，改为拼接保留。
+- 验证：`commandPalette.browser.test.ts` 3/3（含新增断言：第一行含 `SSH as root, port 2222`）；typecheck EXIT=0。
+- 门（`npm run verify`）：`VERIFY_EXIT=0`；format:check ok 0.9s、typecheck ok 7.1s、lint ok 0.9s、test ok 123.0s（**206 文件／1887 用例**）、test:browser ok 191.3s（**72 文件／317 用例**）。
+- 另外补记 D103–D107（第 89–93 轮的取舍）到 `DECISIONS.md`。
+
 ## 本轮：记住的主机只有一处来源（2026-11-24 第 94 轮）
 
 - 问题：第 91 轮把「最近连接过的目标」放在 App 的局部状态，第 93 轮的终端链接点击在 `actions.ts` 里拿不到它——于是从面板连的会记住，从链接点开的不记。
