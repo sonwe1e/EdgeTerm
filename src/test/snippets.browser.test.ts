@@ -135,6 +135,21 @@ describe("saved commands", () => {
     useStore.setState(initial, true);
   });
 
+  it("names its own keys for assistive technology", async () => {
+    await mountSession();
+    // After mounting: the app loads its own state on start, so a value written
+    // before that load is replaced.
+    useStore.setState({ snippets: [{ id: "s1", name: "Logs", command: "tail -f app.log" }] });
+    await twoFrames();
+    await openSnippets();
+    // F2 loads a row into the form and Delete removes it; the arrows between
+    // rows come with the list, so the row names only these two.
+    const row = document.querySelector<HTMLElement>(".snippets-send")!;
+    expect(row.getAttribute("aria-keyshortcuts")).toBe("F2 Delete");
+    const filter = document.querySelector<HTMLElement>(".snippets-filter")!;
+    expect(filter.getAttribute("aria-keyshortcuts"), "and the filter names /").toBe("/");
+  });
+
   it("saves a command in the dialog and sends it to the shell", async () => {
     await mountSession();
     await openSnippets();

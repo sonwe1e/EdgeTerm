@@ -163,6 +163,7 @@ export function SnippetsDialog({
             className="snippets-filter"
             aria-label={t("snippets.filterLabel")}
             placeholder={t("snippets.filterLabel")}
+            aria-keyshortcuts="/"
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
             onKeyDown={(event) => {
@@ -193,6 +194,9 @@ export function SnippetsDialog({
                   className="snippets-send"
                   title={snippet.command}
                   data-snippet-id={snippet.id}
+                  // F2 loads the row into the form and Delete removes it; the
+                  // arrows between rows come with the list, so they stay out.
+                  aria-keyshortcuts="F2 Delete"
                   onClick={() => onRun(snippet)}
                   onKeyDown={(event) => {
                     // A list that can only be walked with Tab is a list the
