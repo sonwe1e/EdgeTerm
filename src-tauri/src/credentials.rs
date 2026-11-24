@@ -178,11 +178,18 @@ fn machine_key_material() -> &'static [u8] {
             );
             String::new()
         });
-        let user = std::env::var("USER")
-            .or_else(|_| std::env::var("USERNAME"))
-            .unwrap_or_default();
+        let user = local_account();
         format!("EdgeTerm\0{machine}\0{user}").into_bytes()
     })
+}
+
+/// The OS account name, as `USER` or `USERNAME` reports it. OpenSSH fills an
+/// empty user name from this account, so the connection path does too: a bare
+/// host is a legitimate thing to type.
+pub fn local_account() -> String {
+    std::env::var("USER")
+        .or_else(|_| std::env::var("USERNAME"))
+        .unwrap_or_default()
 }
 
 /// `IOPlatformUUID`, set at manufacture and stable across OS reinstalls.

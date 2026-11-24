@@ -433,12 +433,16 @@ impl Dial<'_> {
 /// `direct-tcpip` channel of the previous, and the profile's own handshake
 /// runs through the last. A refused host key anywhere in the chain stops it
 /// there and reports that host, so the user can accept it and try again.
-/// How long one host may take to answer: the dial, the key exchange and
-/// authentication. A peer that accepts the connection and then says nothing —
-/// the wrong port, a proxy that waits for a request, a machine whose sshd is
-/// hung — otherwise leaves the tab connecting for ever, and with auto-reuse on
-/// it also holds that host's single leader slot, so every later attempt waits
-/// behind it.
+/// How long one host may take to answer: the dial and the key exchange. A peer
+/// that accepts the connection and then says nothing — the wrong port, a proxy
+/// that waits for a request, a machine whose sshd is hung — otherwise leaves
+/// the tab connecting for ever, and with auto-reuse on it also holds that
+/// host's single leader slot, so every later attempt waits behind it.
+///
+/// It stops before authentication: a one-time code, a push confirmation or an
+/// account password is answered by a person, and `auth::ANSWER_TIMEOUT` is
+/// that budget. Wrapping the prompts in this window killed the connection while
+/// the reader was still typing, and blamed the server for it.
 pub(super) const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub(super) async fn connect_handle(
@@ -458,7 +462,7 @@ pub(super) async fn connect_handle(
         });
         match handshake(
             jump,
-            connect_hop(jump, via.as_ref(), prompter, dial, request),
+            connect_hop(jump, via.as_ref(), prompter, dial, request, deadline),
             deadline,
         )
         .await?
@@ -482,7 +486,7 @@ pub(super) async fn connect_handle(
     });
     match handshake(
         profile,
-        connect_hop(profile, via.as_ref(), prompter, dial, request),
+        connect_hop(profile, via.as_ref(), prompter, dial, request, deadline),
         deadline,
     )
     .await?
@@ -509,21 +513,13 @@ pub(super) async fn connect_handle(
 /// ever. Dropping the future closes the socket it dialled, so the peer sees the
 /// connection go away instead of an abandoned half-open connection.
 async fn handshake(
-    hop: &SessionProfile,
+    _hop: &SessionProfile,
     attempt: impl std::future::Future<Output = Result<HopOutcome>>,
-    deadline: Duration,
+    _deadline: Duration,
 ) -> Result<HopOutcome> {
-    match tokio::time::timeout(deadline, attempt).await {
-        Ok(outcome) => outcome,
-        Err(_) => Err(AppError::coded(
-            crate::error::ErrorCode::Timeout,
-            format!(
-                "{} did not answer within {} seconds; the address, port or connection path may be wrong",
-                hop.address(),
-                deadline.as_secs_f64().ceil()
-            ),
-        )),
-    }
+    // The caller's own dial already carries the deadline (see `connect_hop`),
+    // and the answer it waits for may be a person typing a code.
+    attempt.await
 }
 
 /// The jump host a hop is opened through: the transport to tunnel over and
@@ -544,6 +540,7 @@ pub(super) async fn connect_hop(
     prompter: &AuthPrompter<'_>,
     dial: Dial<'_>,
     request: &Request,
+    deadline: Duration,
 ) -> Result<HopOutcome> {
     let host = profile
         .host
@@ -551,9 +548,14 @@ pub(super) async fn connect_hop(
         .filter(|h| !h.is_empty())
         .ok_or_else(|| AppError::invalid_input("session is missing a host"))?;
     let port = profile.port.unwrap_or(22);
+    // An empty user name means "the account I am running as", the way OpenSSH
+    // reads it, so typing a bare host into the palette connects instead of
+    // failing before the dial with a message about a missing user name.
     let username = profile
         .username
         .clone()
+        .filter(|u| !u.is_empty())
+        .or_else(|| Some(crate::credentials::local_account()))
         .filter(|u| !u.is_empty())
         .ok_or_else(|| AppError::invalid_input("session is missing a username"))?;
     let address = format!("{host}:{port}");
@@ -576,23 +578,62 @@ pub(super) async fn connect_hop(
         known_hosts: dial.known_hosts.map(Path::to_path_buf),
     };
 
+    // Bounded: a peer that accepts the connection and then says nothing must
+    // not hold the tab in "connecting" for ever. Authentication is not in this
+    // window — the prompts there belong to the person answering them.
+    let silence = || {
+        AppError::coded(
+            crate::error::ErrorCode::Timeout,
+            format!(
+                "{} did not answer within {} seconds; the address, port or connection path may be wrong",
+                address,
+                deadline.as_secs_f64().ceil()
+            ),
+        )
+    };
     let connected = match via {
-        None => client::connect(config, (host.as_str(), port), handler).await,
+        None => match tokio::time::timeout(
+            deadline,
+            client::connect(config, (host.as_str(), port), handler),
+        )
+        .await
+        {
+            Ok(result) => result,
+            Err(_) => return Err(silence()),
+        },
         Some(via) => {
             // What OpenSSH's `-W host:port` asks the jump host for: a plain
             // TCP connection from it to the target, which then carries the
             // target's own SSH handshake.
-            let tunnel = via
-                .handle
-                .channel_open_direct_tcpip(host.as_str(), u32::from(port), "127.0.0.1", 0)
-                .await
-                .map_err(|e| {
-                    AppError::connection_failed(format!(
-                        "jump host {} cannot reach {host}:{port}: {e}",
-                        via.label
-                    ))
-                })?;
-            client::connect_stream(config, tunnel.into_stream(), handler).await
+            let tunnel = match tokio::time::timeout(
+                deadline,
+                via.handle.channel_open_direct_tcpip(
+                    host.as_str(),
+                    u32::from(port),
+                    "127.0.0.1",
+                    0,
+                ),
+            )
+            .await
+            {
+                Ok(result) => result,
+                Err(_) => return Err(silence()),
+            }
+            .map_err(|e| {
+                AppError::connection_failed(format!(
+                    "jump host {} cannot reach {host}:{port}: {e}",
+                    via.label
+                ))
+            })?;
+            match tokio::time::timeout(
+                deadline,
+                client::connect_stream(config, tunnel.into_stream(), handler),
+            )
+            .await
+            {
+                Ok(result) => result,
+                Err(_) => return Err(silence()),
+            }
         }
     };
 

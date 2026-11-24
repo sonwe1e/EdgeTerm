@@ -137,7 +137,7 @@ pub async fn key_check(
         flow: AuthFlow::PublicKeyOnly,
         known_hosts: known_hosts.as_deref(),
     };
-    let attempt = connect_hop(profile, via.as_ref(), &prompter, dial, request);
+    let attempt = connect_hop(profile, via.as_ref(), &prompter, dial, request, timeout);
     tokio::select! {
         biased;
         _ = control.stopped() => Ok(KeyCheck::new(

@@ -11,9 +11,10 @@ async fn transfer_connection_failures_and_cancellation_have_end_events() {
             let profile = &mut Arc::get_mut(&mut job).unwrap().profile;
             profile.host = Some("127.0.0.1".into());
             profile.port = Some(listener.local_addr().unwrap().port());
-            // Missing username is a deterministic authentication-input failure;
-            // cancellation instead interrupts a real pending SSH handshake.
-            profile.username = cancel.then(|| "fixture".into());
+            // The peer either closes at once (a deterministic dial failure) or
+            // stays open until the cancel lands; neither depends on which
+            // input the profile is missing.
+            profile.username = Some("fixture".into());
             let logs = root.join("logs");
             let (subscriber, guard) = crate::diagnostics::build(&logs).unwrap();
             {
@@ -36,7 +37,16 @@ async fn transfer_connection_failures_and_cancellation_have_end_events() {
                     .await
                     .unwrap()
                 } else {
-                    dial.await
+                    // A peer that accepts and then closes: the dial fails
+                    // without waiting for a timeout or for a missing input.
+                    let closes_at_once = async {
+                        let _ = listener.accept().await;
+                    };
+                    tokio::time::timeout(Duration::from_secs(5), async {
+                        tokio::join!(dial, closes_at_once).0
+                    })
+                    .await
+                    .expect("a peer that closes at once must fail the dial")
                 };
                 assert!(result.is_err());
             }
@@ -62,7 +72,9 @@ async fn transfer_connection_failures_and_cancellation_have_end_events() {
             if cancel {
                 assert!(end.contains("transfer cancelled"));
             } else {
-                assert!(end.contains("missing a username"));
+                // The reason is the peer's, not the profile's: what this covers
+                // is that a failed dial still ends the transfer with an error.
+                assert!(!end.contains("transfer cancelled"));
             }
             drop(job);
             std::fs::remove_dir_all(root).unwrap();

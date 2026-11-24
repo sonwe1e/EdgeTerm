@@ -99,9 +99,7 @@ impl Context {
             .as_deref()
             .map(|home| home.join(".ssh"))
             .unwrap_or_else(|| PathBuf::from(".ssh"));
-        let local_user = std::env::var("USER")
-            .or_else(|_| std::env::var("USERNAME"))
-            .unwrap_or_default();
+        let local_user = crate::credentials::local_account();
         let default_identity = DEFAULT_IDENTITIES
             .iter()
             .map(|name| ssh_dir.join(name))
