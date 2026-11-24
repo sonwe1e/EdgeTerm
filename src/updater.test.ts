@@ -2,6 +2,7 @@ import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useUpdater } from "./updater";
+import updaterSource from "./updater.ts?raw";
 import tauriConfig from "../src-tauri/tauri.conf.json";
 import capabilities from "../src-tauri/capabilities/default.json";
 
@@ -11,8 +12,11 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("@tauri-apps/api/app", () => ({ getVersion: async () => "1.2.8" }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: mocks.openUrl }));
-vi.mock("@tauri-apps/plugin-updater", () => ({ check: mocks.check }));
-vi.mock("./api", () => ({ portableMode: async () => false }));
+// No mock for @tauri-apps/plugin-updater: the whole point of this file is
+// that nothing in the graph imports it, and the plugin is not registered in
+// tauri.conf.json ("plugins": {}), so a reintroduced check() would reject
+// loudly instead of passing through a stub. Mocking it made the assertion
+// below pass whether or not the module was ever loaded.
 
 let root: Root;
 let host: HTMLDivElement;
@@ -42,11 +46,21 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
+it("has no path to a signed-update service at all", () => {
+  // A runtime spy cannot prove this one: if nothing imports the plugin, no
+  // mock is ever loaded and the assertion passes whether or not a check was
+  // reintroduced. What discriminates is the source itself - this fork
+  // publishes manual downloads, so the updater module must not reach the
+  // plugin that would phone the feed.
+  expect(updaterSource, "the updater must not use the updater plugin").not.toContain(
+    "plugin-updater",
+  );
+});
+
 it("does not contact a signed-update service on startup", async () => {
   await act(async () => {
     await vi.advanceTimersByTimeAsync(2_000);
   });
-  expect(mocks.check).not.toHaveBeenCalled();
   expect(mocks.openUrl).not.toHaveBeenCalled();
   expect(updater.state.phase).toBe("idle");
 });
