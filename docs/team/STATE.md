@@ -1,5 +1,12 @@
 # 项目状态
 
+## 本轮：命令面板的死路有了出口，页脚说全了关闭键（2026-11-24 第 136 轮）
+
+- 缺陷（第 129 轮审计 P2＋P3，已复核）：① 输入不被识别为目标时只有「没有匹配…的命令」，而 `user@host:port` 这种**可用形状从未在任何地方说出**（只在 `quickConnect.ts` 的注释里）；② **Tab 会关闭整个面板**，页脚却只写「Esc 关闭」。
+- 交付：新增 `palette.noMatchHint`（「要建立连接，直接输入 user@host:port。」／“To connect instead, type user@host:port.”），在无匹配时以第二行渲染（仅当面板支持快速连接）；`palette.footer` 改为「↑↓ 选择 · Enter 执行 · **Tab/Esc** 关闭」。
+- 验证：`commandPalette.browser.test.ts` **6/6**（新增 1 条：输入 `zzzznothing` → 空状态里含 `user@host:port`；页脚同时含 `Tab` 与 `Esc`）。全量门 `VERIFY_EXIT=0`（单测 **212 文件／1918 用例**，浏览器 **72 文件／339 用例**）。
+- **负控制**：删掉渲染提示那行 → 新用例失败；恢复后通过。
+
 ## 本轮：只输入主机名时，快速连接行不再留空账号（2026-11-24 第 135 轮）
 
 - 缺陷（第 129 轮审计 P1，已复核）：`example.com` 是合法目标（`host.includes(".")`），但 `quickConnectProfile` 里账号来自 `target.username ?? base.username`，两者都没有；于是行文案渲染成「SSH as , port 22」——**账号位置是个空洞**，建出来的会话也没有用户名。
