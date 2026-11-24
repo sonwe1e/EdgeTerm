@@ -233,6 +233,16 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
   // scrollbar is hidden and a mouse user otherwise has no cue that the strip
   // scrolls at all.
   const [overflow, setOverflow] = useState({ left: false, right: false });
+  /** True while a keyboard user stands on one of the overflow scroll buttons. */
+  const scrollFocused = useRef(false);
+  useEffect(() => {
+    // The scroll buttons hide or disable themselves the moment the strip fits,
+    // so the control a keyboard user was holding vanishes; hand the strip
+    // itself the keyboard rather than letting focus fall to the document.
+    if (!scrollFocused.current) return;
+    scrollFocused.current = false;
+    stripRef.current?.focus({ preventScroll: true });
+  }, [overflow.left, overflow.right]);
   const updateOverflow = useCallback(() => {
     const strip = stripRef.current;
     if (!strip) return;
@@ -869,6 +879,12 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
               <button
                 className="panel-action"
                 disabled={!overflow.left}
+                onFocus={() => {
+                  scrollFocused.current = true;
+                }}
+                onBlur={() => {
+                  scrollFocused.current = false;
+                }}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => scrollByTab("left")}
                 title={t("tab.scrollLeft")}
@@ -879,6 +895,12 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
               <button
                 className="panel-action"
                 disabled={!overflow.right}
+                onFocus={() => {
+                  scrollFocused.current = true;
+                }}
+                onBlur={() => {
+                  scrollFocused.current = false;
+                }}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => scrollByTab("right")}
                 title={t("tab.scrollRight")}
