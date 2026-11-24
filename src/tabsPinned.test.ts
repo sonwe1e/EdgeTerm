@@ -60,6 +60,23 @@ describe("pinned tabs", () => {
     ).toEqual([true, true, false]);
   });
 
+  it("counts the pinned region of this tab's strip, not of the whole window", () => {
+    useStore.setState({
+      ...initial,
+      tabs: [tab("a"), tab("b"), tab("p", "right"), tab("q", "right")],
+    });
+    // Pin the left strip's two tabs, then the right strip's first one.
+    for (const id of ["b", "a", "p"]) useStore.getState().toggleTabPinned(id);
+    expect(useStore.getState().tabs.map((item) => item.info.id)).toEqual(["a", "b", "p", "q"]);
+
+    // Unpinning P must park it at the first unpinned slot of the right strip
+    // (right after that strip's pinned tabs), not after every pin in the window.
+    useStore.getState().toggleTabPinned("p");
+    const right = useStore.getState().tabs.filter((item) => item.paneId === "right");
+    expect(right.map((item) => item.info.id)).toEqual(["p", "q"]);
+    expect(right.map((item) => item.pinned === true)).toEqual([false, false]);
+  });
+
   it("leaves pinned tabs out of Close Others, and the kept tab too", () => {
     const tabs = [{ ...tab("pinned"), pinned: true }, tab("middle"), tab("right"), tab("keep")];
     expect(closeOthersTargets(tabs, "keep")).toEqual(["middle", "right"]);

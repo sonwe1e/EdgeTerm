@@ -311,7 +311,12 @@ export const createTabActions: StateCreator<
     // unpinned slot: leaving it between the pinned ones opens a hole in that
     // region, and the drop floor for unpinned tabs then blocks the front slots.
     set({
-      tabs: placeTab(tabs, id, tab.paneId, pinned ? 0 : tabs.filter((item) => item.pinned).length),
+      tabs: placeTab(
+        tabs,
+        id,
+        tab.paneId,
+        pinned ? 0 : tabs.filter((item) => item.pinned && item.paneId === tab.paneId).length,
+      ),
     });
   },
 
