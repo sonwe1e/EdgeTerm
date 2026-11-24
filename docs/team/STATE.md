@@ -1,5 +1,13 @@
 # 项目状态
 
+## 本轮：只输入主机名时，快速连接行不再留空账号（2026-11-24 第 135 轮）
+
+- 缺陷（第 129 轮审计 P1，已复核）：`example.com` 是合法目标（`host.includes(".")`），但 `quickConnectProfile` 里账号来自 `target.username ?? base.username`，两者都没有；于是行文案渲染成「SSH as , port 22」——**账号位置是个空洞**，建出来的会话也没有用户名。
+- 交付：`describeQuickConnect` 在 `profile.username` 为空时改返回既有的 `palette.quickConnectHint`（「不保存地打开一个 SSH 会话」），有账号时仍是「SSH as root, port 2222」。没有新文案。
+- 验证：`commandPalette.browser.test.ts` **5/5**（新增 1 条：输入 `example.com` → 首行含 `Connect to example.com`、**不含** `SSH as ,`、含 `without saving`）。全量门 `VERIFY_EXIT=0`（单测 **212 文件／1918 用例**，浏览器 **72 文件／338 用例**）。
+- **负控制**：删掉那个 `if (!profile.username)` 分支 → 新用例失败；恢复后通过。
+- 一次自纠：新用例最初用了不存在的辅助函数 `mountSession`，typecheck 与用例双双失败；照同文件既有写法（`mount(h(StrictMode, null, h(App)))` + `pressPaletteChord()` + `typeQuery()` + `options()`）重写后通过。
+
 ## 本轮：端口超范围时，焦点落到端口框（2026-11-24 第 134 轮）
 
 - 缺陷（第 129 轮审计 P6，已复核）：(S)FTP 表单的端口输入框**没有注册到 `fieldRefs`**（SSH／Telnet 的那个有）。`invalidField` 对超范围端口返回 "port"，`focusField("port")` 去查 `fieldRefs.current.port` 拿到 undefined 就静默返回：提示出现了，但焦点不动、也不标 `aria-invalid`。
