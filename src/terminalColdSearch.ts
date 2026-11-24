@@ -15,24 +15,41 @@ export interface ColdSearchOutcome {
    * so more matches may exist that this count does not include.
    */
   truncated: boolean;
+  /**
+   * Why the store was not asked, when it was not. A zero count with this
+   * set means "not searched", not "nothing there" - and the reader can
+   * usually do something about it.
+   */
+  skipped: "case" | "wholeWord" | "regex" | "off" | null;
 }
 
 /**
  * Counts `needle` in a session's cold history for the find box (roadmap
  * A2-7). Plain, case-sensitive substring queries only: the store searches
  * literal needles, so regex, whole-word, and case-insensitive queries would
- * count against a different rule than the buffer search and mislead. A
- * disabled cold history or a failed request reports zero rather than
- * disturbing the box — the buffer search stands on its own.
+ * count against a different rule than the buffer search and mislead. The
+ * box starts case-insensitive, which is the common case, so the reason a
+ * store was left unasked travels with the zero count - otherwise "no
+ * results" reads as "the history has none" and the hint that older
+ * matches exist never appears. A disabled cold history or a failed request
+ * reports zero rather than disturbing the box.
  */
 export async function searchColdHistory(
   sessionId: string,
   needle: string,
   options: { regex: boolean; wholeWord: boolean; caseSensitive: boolean },
 ): Promise<ColdSearchOutcome> {
-  const none: ColdSearchOutcome = { count: 0, newestAbsLine: null, truncated: false };
-  if (!needle || options.regex || options.wholeWord || !options.caseSensitive) return none;
-  if (!terminalColdHistoryEnabled()) return none;
+  const none = (skipped: ColdSearchOutcome["skipped"] = null): ColdSearchOutcome => ({
+    count: 0,
+    newestAbsLine: null,
+    truncated: false,
+    skipped,
+  });
+  if (!needle) return none();
+  if (options.regex) return none("regex");
+  if (options.wholeWord) return none("wholeWord");
+  if (!options.caseSensitive) return none("case");
+  if (!terminalColdHistoryEnabled()) return none("off");
   try {
     const hits = await commands.historySearch(
       sessionId,
@@ -44,8 +61,9 @@ export async function searchColdHistory(
       count: hits.hits.length,
       newestAbsLine: hits.hits.length > 0 ? hits.hits[0].absLine : null,
       truncated: hits.truncated,
+      skipped: null,
     };
   } catch {
-    return none;
+    return none();
   }
 }

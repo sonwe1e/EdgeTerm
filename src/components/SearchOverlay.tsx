@@ -23,7 +23,7 @@ import {
   type SearchResults,
 } from "../terminalSearch";
 import { getController, subscribeControllers } from "../terminalRegistry";
-import { searchColdHistory } from "../terminalColdSearch";
+import { searchColdHistory, type ColdSearchOutcome } from "../terminalColdSearch";
 import { isFileSession } from "../types";
 import { COLD_SEARCH_LIMIT } from "../terminalColdSearch";
 import { useT } from "../useT";
@@ -317,18 +317,24 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(function Sea
   // A truncated scan means the count is a lower bound: more matches exist
   // that the budget or the hit limit left unchecked.
   const [historyTruncated, setHistoryTruncated] = useState(false);
+  // Why the store was left unasked, when it was. The box opens
+  // case-insensitive, so the default query never reaches the history file:
+  // saying so keeps "no results" from reading as "the history has none".
+  const [historySkipped, setHistorySkipped] = useState<ColdSearchOutcome["skipped"]>(null);
   const historyRequest = useRef(0);
   useEffect(() => {
     const request = ++historyRequest.current;
     const session = activeId;
     setHistoryCount(0);
     setHistoryTruncated(false);
+    setHistorySkipped(null);
     if (!session || !query) return;
     const timer = window.setTimeout(() => {
       void searchColdHistory(session, query, options).then((outcome) => {
         if (historyRequest.current !== request) return;
         setHistoryCount(outcome.count);
         setHistoryTruncated(outcome.truncated);
+        setHistorySkipped(outcome.skipped);
       });
     }, 250);
     return () => window.clearTimeout(timer);
@@ -430,7 +436,9 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(function Sea
   const historySuffix =
     historyCount > 0
       ? ` · ${t("search.historyCount", { count: historyCountLabel(historyCount) })}${historyTruncated ? "+" : ""}${results?.resultCount === 0 ? ` · ${t("search.historyHint")}` : ""}`
-      : "";
+      : historySkipped === "case" && results?.resultCount === 0
+        ? ` · ${t("search.historyNeedsCase")}`
+        : "";
 
   const status = notice
     ? t(notice)

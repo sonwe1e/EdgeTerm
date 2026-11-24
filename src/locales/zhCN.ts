@@ -1499,6 +1499,7 @@ export const zhCN: Catalog = {
   "search.unavailable": "无法启动搜索，请重试或使用普通文本。",
   "search.historyCount": "历史 {count} 条",
   "search.historyHint": "滚动到顶部载入更早的命中",
+  "search.historyNeedsCase": "搜索历史文件需要先开启「区分大小写」",
   "tab.scrollLeft": "向左滚动标签",
   "tab.scrollRight": "向右滚动标签",
   "session.baudRates": "常用波特率",

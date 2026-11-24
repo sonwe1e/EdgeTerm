@@ -35,7 +35,7 @@ describe("searchColdHistory", () => {
       COLD_SEARCH_LIMIT,
       COLD_SEARCH_BUDGET_MS,
     );
-    expect(outcome).toEqual({ count: 2, newestAbsLine: 412, truncated: false });
+    expect(outcome).toEqual({ count: 2, newestAbsLine: 412, truncated: false, skipped: null });
   });
 
   it("carries the store's truncated flag so the count reads as a lower bound", async () => {
@@ -50,6 +50,7 @@ describe("searchColdHistory", () => {
       count: 1,
       newestAbsLine: 90,
       truncated: true,
+      skipped: null,
     });
   });
 
@@ -93,12 +94,66 @@ describe("searchColdHistory", () => {
       count: 0,
       newestAbsLine: null,
       truncated: false,
+      skipped: null,
     });
     historySearch.mockResolvedValue({ hits: [], truncated: false });
     expect(await searchColdHistory("session-1", "needle", plain)).toEqual({
       count: 0,
       newestAbsLine: null,
       truncated: false,
+      skipped: null,
+    });
+  });
+
+  it("says why the store was left unasked, so a zero count is not read as none", async () => {
+    enableColdHistory();
+    // The box opens case-insensitive, which is the default and the common
+    // case: without the reason, "no results" looks like "the history has
+    // none" and the older-matches hint never appears.
+    expect(
+      await searchColdHistory("session-1", "needle", {
+        regex: false,
+        wholeWord: false,
+        caseSensitive: false,
+      }),
+    ).toEqual({
+      count: 0,
+      newestAbsLine: null,
+      truncated: false,
+      skipped: "case",
+    });
+    expect(
+      await searchColdHistory("session-1", "needle", {
+        regex: true,
+        wholeWord: false,
+        caseSensitive: true,
+      }),
+    ).toEqual({
+      count: 0,
+      newestAbsLine: null,
+      truncated: false,
+      skipped: "regex",
+    });
+    expect(
+      await searchColdHistory("session-1", "needle", {
+        regex: false,
+        wholeWord: true,
+        caseSensitive: true,
+      }),
+    ).toEqual({
+      count: 0,
+      newestAbsLine: null,
+      truncated: false,
+      skipped: "wholeWord",
+    });
+  });
+
+  it("reports the preference as the reason while cold history is off", async () => {
+    expect(await searchColdHistory("session-1", "needle", plain)).toEqual({
+      count: 0,
+      newestAbsLine: null,
+      truncated: false,
+      skipped: "off",
     });
   });
 });

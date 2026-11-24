@@ -1568,6 +1568,7 @@ export const en = {
   "search.unavailable": "Search could not start. Retry or use plain text.",
   "search.historyCount": "{count} in history",
   "search.historyHint": "Scroll to the top to load older matches",
+  "search.historyNeedsCase": "Turn on Match Case to search the history file",
   "tab.scrollLeft": "Scroll Left",
   "tab.scrollRight": "Scroll Right",
   "session.baudRates": "Common baud rates",
