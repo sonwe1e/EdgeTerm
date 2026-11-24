@@ -2,13 +2,13 @@
 
 只读审计，范围：单实例与窗口命令（`lib.rs`、`commands/desktop.rs`、`App.tsx` 启动与退出路径、更新检查）、FTP/SFTP 面板与拖放（`FtpPane.tsx`、`useFtpTransfer.ts`、`useFtpDirectory.ts`、`panes/useFilerActions.ts`、`paneDrop*.ts`）。
 
-## 待修（3 条，都是「按钮看起来能用，按下去什么也不发生」）
+## 已全部交付（第 155 轮，3 条都是「按钮看起来能用，按下去什么也不发生」）
 
 | 编号 | 问题 | 位置 | 代价 |
 | --- | --- | --- | --- |
-| FS1 | SFTP／FTP 标签里，本地窗格没有目录（首次列目录失败时 `localPath` 仍是空串）时，远端行的右键「下载」仍是可选状态；选它什么也不发生——没有传输、没有错误、没有进度 | `FtpPane.tsx:241`；静默返回在 `useFtpTransfer.ts:199` | 小（把已有的上传方向守卫对称补上：`uploadSide ? !remotePath : !localPath`） |
-| FS2 | SSH 会话正在连接或已断开时，文件面板空白处的右键菜单「刷新」仍是可选状态，按下去不刷新也不提示；同一个命令在面板自己的「…」菜单里是 `busy || offline` 双条件禁用 | `useFilerActions.ts:438` vs `FilerPanel.tsx:813`；静默返回在 `useFilerDirectory.ts:105` | 极小（改为 `busy || !path`，与相邻的「复制文件夹路径」一致） |
-| FS3 | FTP／SFTP 标签的「新建远端目录」（及其本地孪生）在该窗格没有目录时仍可点击，点了不弹命名框也不报错；处理函数里是静默 `return` | `FtpPane.tsx:335`、`:432`；静默返回在 `:182` | 小（两个 `disabled` 各补一个 `!remotePath` / `!localPath`，复用 `requestName` 的守卫条件） |
+| ~~FS1~~ ✅ | SFTP／FTP 标签里，本地窗格没有目录（首次列目录失败时 `localPath` 仍是空串）时，远端行的右键「下载」仍是可选状态；选它什么也不发生——没有传输、没有错误、没有进度 | `FtpPane.tsx:241`；静默返回在 `useFtpTransfer.ts:199` | 小（把已有的上传方向守卫对称补上：`uploadSide ? !remotePath : !localPath`） |
+| ~~FS2~~ ✅ | SSH 会话正在连接或已断开时，文件面板空白处的右键菜单「刷新」仍是可选状态，按下去不刷新也不提示；同一个命令在面板自己的「…」菜单里是 `busy || offline` 双条件禁用 | `useFilerActions.ts:438` vs `FilerPanel.tsx:813`；静默返回在 `useFilerDirectory.ts:105` | 极小（改为 `busy || !path`，与相邻的「复制文件夹路径」一致） |
+| ~~FS3~~ ✅ | FTP／SFTP 标签的「新建远端目录」（及其本地孪生）在该窗格没有目录时仍可点击，点了不弹命名框也不报错；处理函数里是静默 `return` | `FtpPane.tsx:335`、`:432`；静默返回在 `:182` | 小（两个 `disabled` 各补一个 `!remotePath` / `!localPath`，复用 `requestName` 的守卫条件） |
 
 ## 明确「无缺陷」的部分
 
@@ -16,6 +16,8 @@
 - **单实例唤回**：以 `STARTUP_REVEALED` 为闸，并带 4 s 与 500 ms 两层原生兜底。
 - **版本与更新声明如实**：`updater.ts` 只读版本号并打开仓库发布页；对话框明说「不会自动检查或安装更新」；三处清单都是 1.7.8，没有任何「已是最新」的声明。
 - **拖放不假装可用**：同侧拖放一律拒绝，悬停高亮与松手判定调用同一个 `dropAction`，不存在「亮起来却拒收」的目标。
+
+修复（`895db7c`）：下载项改为按方向检查目的目录；文件面板的刷新与相邻「复制文件夹路径」同用 `!path`；两个「新建文件夹」各补 `!remotePath` / `!localPath`，并新增用例（把两次 home 查询都弄失败后挂载，断言两个按钮禁用；去掉守卫即失败）。
 
 边界：静态读代码得出的判断，没有在真实桌面里复现 FS1／FS3 的空路径状态。
 
