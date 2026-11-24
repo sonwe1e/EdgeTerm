@@ -389,6 +389,20 @@ export const canDuplicateSshChannel = (tab: Tab): boolean =>
   tab.info.kind === "ssh" && tab.state === "connected";
 
 /**
+ * Opens the tab's profile again in the same pane — the generic sibling of
+ * `duplicateSshChannel`. Only SSH has a live transport to share, so a local
+ * shell, telnet, serial or FTP tab is dialled afresh from the profile it
+ * carries. The tab menu offers one of the two, never both.
+ */
+export async function duplicateSession(id: string): Promise<string | null> {
+  const store = useStore.getState();
+  const tab = store.tabs.find((item) => item.info.id === id);
+  if (!tab || canDuplicateSshChannel(tab)) return null;
+  store.setActivePane(tab.paneId);
+  return openSession(tab.profile);
+}
+
+/**
  * Split Right / Split Down: opens another session of the tab's profile in
  * a new pane beside the tab's own — what a terminal's split means (iTerm2,
  * Windows Terminal, VS Code's terminal), since one session cannot show in

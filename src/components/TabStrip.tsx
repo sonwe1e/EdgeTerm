@@ -10,7 +10,12 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 
-import { canDuplicateSshChannel, duplicateSshChannel, splitSession } from "../actions";
+import {
+  canDuplicateSshChannel,
+  duplicateSession,
+  duplicateSshChannel,
+  splitSession,
+} from "../actions";
 import type { Translate } from "../i18n";
 import { closeOthersTargets, tabTitle, useStore, type DropTarget, type Tab } from "../store";
 import { clampStripIndex } from "../storeLayout";
@@ -407,13 +412,16 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
         disabled: !tab || tab.state === "connecting",
         action: () => onSaveSession(id),
       },
-      // Only a live SSH tab has a connection to open another channel on.
-      ...(tab && canDuplicateSshChannel(tab)
+      // One duplicate entry. A live SSH tab shares the connection it already
+      // has, so an MFA code is spent once; anything else is dialled again from
+      // the profile the tab carries, which is what a tab menu elsewhere offers.
+      ...(tab
         ? [
             {
-              label: t("tab.duplicateSsh"),
+              label: canDuplicateSshChannel(tab) ? t("tab.duplicateSsh") : t("tab.duplicate"),
               icon: "copy",
-              action: () => void duplicateSshChannel(id),
+              action: () =>
+                void (canDuplicateSshChannel(tab) ? duplicateSshChannel(id) : duplicateSession(id)),
             } satisfies MenuItem,
           ]
         : []),
