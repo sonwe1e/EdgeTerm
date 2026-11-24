@@ -496,7 +496,12 @@ export class TerminalLineGutter {
       const lineText = written ? String(this.firstLineNumber + index) : "";
       const command = written && commandRows.has(index);
       const failed = written && failedRows.has(index);
-      const watch = written ? (this.watchByLine.get(index) ?? null) : null;
+      // The map is keyed by absolute line (firstLineNumber + row), the same
+      // coordinate lineText uses two lines below. Reading it with the bare
+      // buffer index drew row r's mark on row r+1, and drew nothing at all once
+      // firstLineNumber grew past the visible window - which is exactly when a
+      // reader scrolls back to find the failure.
+      const watch = written ? (this.watchByLine.get(this.firstLineNumber + index) ?? null) : null;
       let painted = this.rowPaint[i];
       if (!painted) {
         painted = {
