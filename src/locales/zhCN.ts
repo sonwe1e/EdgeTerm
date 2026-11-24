@@ -1314,7 +1314,7 @@ export const zhCN: Catalog = {
   "forward.refreshPorts": "刷新",
   "forward.readingListeners": "正在读取端口…",
   "forward.discoveryUnsupported":
-    "端口发现需要 Linux 与 ss/netstat。可直接在上方手动填写目标端口，或不指定端口。",
+    "端口发现需要 SSH 服务器是 Linux 且装有 ss 或 netstat。可直接在上方手动填写目标端口，或不指定端口。",
   "forward.truncated": "已达结果上限。",
   "forward.noListeners": "没有监听的端口。",
   "forward.processUnavailable": "进程不可用",

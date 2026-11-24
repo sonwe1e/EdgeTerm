@@ -1367,7 +1367,7 @@ export const en = {
   "forward.refreshPorts": "Refresh",
   "forward.readingListeners": "Reading ports…",
   "forward.discoveryUnsupported":
-    "Port discovery needs Linux with ss or netstat. Type the target port above instead, or listen on any port.",
+    "Port discovery needs the SSH server to be Linux with ss or netstat. Type the target port above instead, or listen on any port.",
   "forward.truncated": "Result limit reached.",
   "forward.noListeners": "No listening ports.",
   "forward.processUnavailable": "Process unavailable",
