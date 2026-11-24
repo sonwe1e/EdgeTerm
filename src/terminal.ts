@@ -704,6 +704,10 @@ export class TerminalController {
         // The re-inserted rows predate the current first line number.
         this.lineGutter.firstLineNumber -= rows;
         this.lineGutter.invalidateGutter();
+        // The rows went in without a parse, so nothing else tells the find box:
+        // its highlights would paint one line off and the new rows would never
+        // be counted, while its own hint says to scroll up for more matches.
+        this.searchController.bufferChanged();
       },
       onNotice: (text) => this.callbacks.onStatus?.(`cold history: ${text}`),
     });

@@ -29,6 +29,8 @@ export class TerminalColdHistory {
   private readonly options: ColdHistoryOptions;
   private capture: ReturnType<typeof createHistoryCapture> | null = null;
   private loading = false;
+  /** The dropped-line total already reported, so a repeated count stays quiet. */
+  private reportedDrops = 0;
   private exhausted = false;
   private wheelElement: HTMLElement | null = null;
 
@@ -54,10 +56,16 @@ export class TerminalColdHistory {
     try {
       const outcome = await commands.historyAppend(this.options.sessionId, Array.from(bytes));
       if (outcome.droppedLines > 0) {
-        this.options.onNotice?.(`cold history dropped ${outcome.droppedLines} oldest lines`);
+        // `droppedLines` is the session's running total: repeating it on every
+        // batch says the same thing forever. Only the growth is news.
+        const dropped = Math.max(0, outcome.droppedLines - this.reportedDrops);
+        if (dropped > 0) {
+          this.reportedDrops = outcome.droppedLines;
+          this.options.onNotice?.(`dropped ${dropped} oldest lines from the history file`);
+        }
       }
     } catch (error) {
-      this.options.onNotice?.(`cold history append failed: ${String(error)}`);
+      this.options.onNotice?.(`could not add to the history file: ${String(error)}`);
     }
   }
 
@@ -104,7 +112,7 @@ export class TerminalColdHistory {
       // Stay on the top row: the cold block just became the buffer top.
       this.options.terminal.scrollToTop();
     } catch (error) {
-      this.options.onNotice?.(`cold history load failed: ${String(error)}`);
+      this.options.onNotice?.(`could not load older lines: ${String(error)}`);
     } finally {
       this.loading = false;
     }
