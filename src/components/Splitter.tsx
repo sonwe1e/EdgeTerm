@@ -32,6 +32,8 @@ interface Props {
    * every frame while the splitter itself does not re-render.
    */
   readout?: () => number | null;
+  /** Where the boundary sits, as a percentage of the window; announced to AT. */
+  value?: number | null;
   /** A double-click: restore the size this splitter started from. */
   onReset?: () => void;
 }
@@ -43,7 +45,15 @@ interface Drag {
   removeListeners: () => void;
 }
 
-export function Splitter({ orientation, onResize, onDragStart, onEnd, readout, onReset }: Props) {
+export function Splitter({
+  orientation,
+  onResize,
+  onDragStart,
+  onEnd,
+  readout,
+  value,
+  onReset,
+}: Props) {
   const t = useT();
   const [dragging, setDragging] = useState(false);
   const drag = useRef<Drag | null>(null);
@@ -214,6 +224,8 @@ export function Splitter({ orientation, onResize, onDragStart, onEnd, readout, o
         role="separator"
         aria-orientation={orientation}
         aria-label={t("splitter.resize")}
+        aria-valuenow={value ?? undefined}
+        aria-valuetext={value == null ? undefined : t("splitter.percent", { value })}
         tabIndex={0}
         onKeyDown={handleKeyDown}
         onPointerDown={handleDown}

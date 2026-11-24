@@ -92,6 +92,17 @@ function expectStopped() {
   expect(resize.mock.calls).toEqual([[10]]);
 }
 
+it("announces the position it holds when one is given", () => {
+  act(() => root.render(h(Splitter, { orientation: "vertical", onResize: resize, value: 40 })));
+  const element = host.firstElementChild as HTMLDivElement;
+  expect(element.getAttribute("aria-valuenow")).toBe("40");
+  expect(element.getAttribute("aria-valuetext")).toBe("40% of the window");
+
+  act(() => root.render(h(Splitter, { orientation: "vertical", onResize: resize })));
+  const plain = host.firstElementChild as HTMLDivElement;
+  expect(plain.hasAttribute("aria-valuenow"), "no value to announce").toBe(false);
+});
+
 describe("Splitter drag lifecycle", () => {
   it.each(["vertical", "horizontal"] as const)(
     "batches %s movement and flushes the final delta once",

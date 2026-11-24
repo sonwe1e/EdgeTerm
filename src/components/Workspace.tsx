@@ -164,6 +164,19 @@ export function Workspace({ onNewSession, onSaveSession, onOpenProfile, children
     },
   ];
 
+  /** Where a pane boundary sits, as a percentage of the window. */
+  const boundaryShare = (splitter: SplitterRect): number | null => {
+    const box = ref.current?.getBoundingClientRect();
+    if (!box) return null;
+    const total = splitter.direction === "row" ? box.width : box.height;
+    if (total <= 0) return null;
+    const at =
+      splitter.direction === "row"
+        ? splitter.rect.x + splitter.rect.w / 2
+        : splitter.rect.y + splitter.rect.h / 2;
+    return Math.round((at / total) * 100);
+  };
+
   // A splitter drag arrives in pixels; the tree takes fractions of the split
   // the splitter belongs to.
   const resize = (splitter: SplitterRect, deltaPx: number) => {
@@ -289,6 +302,13 @@ export function Workspace({ onNewSession, onSaveSession, onOpenProfile, children
               // The docks' boundaries already reset on double-click; the pane
               // boundaries answer the same gesture the same way.
               onReset={() => resetSplitSizes(splitter.path, splitter.index)}
+              // The docks and the side panel show a size while dragging and
+              // announce one to assistive technology; a pane boundary is the
+              // same control on the same app.
+              value={boundaryShare(splitter)}
+              readout={() =>
+                Math.round(splitter.direction === "row" ? splitter.rect.x : splitter.rect.y)
+              }
             />
           </div>
         ))}
