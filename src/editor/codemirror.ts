@@ -263,6 +263,11 @@ function languageExtension(mods: Modules, path: string): Extension {
   }
 }
 
+// CodeMirror's find panel draws its own labels; they come from the dictionary
+// the editor was opened with, so the panel speaks the same language as the
+// dialog around it.
+let findPhrases: Record<string, string> | undefined;
+
 function buildExtensions(
   mods: Modules,
   options: { path: string; dark: boolean; fontSize: number; readOnly: boolean },
@@ -300,6 +305,7 @@ function buildExtensions(
     crosshairCursor(),
     highlightActiveLine(),
     highlightSelectionMatches(),
+    ...(findPhrases ? [EditorState.phrases.of(findPhrases)] : []),
     search({ top: true }),
     keymap.of([
       {
@@ -331,7 +337,10 @@ export async function createCodeEditor(options: {
   path: string;
   dark: boolean;
   fontSize: number;
+  /** Translations for the editor's own find panel, keyed by its English text. */
+  phrases?: Record<string, string>;
 }): Promise<EditorHandle> {
+  findPhrases = options.phrases;
   const mods = await loadModules();
   const { EditorState } = mods.state;
   const { EditorView } = mods.view;

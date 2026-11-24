@@ -55,6 +55,23 @@ export function CodeEditor({
           path: doc.path,
           dark,
           fontSize,
+          phrases: {
+            Find: t("editor.find"),
+            Replace: t("editor.replace"),
+            next: t("search.next"),
+            previous: t("search.previous"),
+            all: t("editor.selectAllMatches"),
+            "match case": t("search.matchCase"),
+            regexp: t("search.regex"),
+            "by word": t("search.wholeWord"),
+            replace: t("editor.replaceOne"),
+            "replace all": t("editor.replaceAll"),
+            close: t("search.close"),
+            "current match": t("editor.currentMatch"),
+            "on line": t("editor.onLine"),
+            "replaced match on line $": t("editor.replacedOnLine"),
+            "replaced $ matches": t("editor.replacedCount"),
+          },
         }),
       )
       .then((created) => {

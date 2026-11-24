@@ -4,6 +4,7 @@ import * as api from "../api";
 import { transferBytes } from "../fileTransfers";
 import { useActiveTab, useStore } from "../store";
 import { VirtualFileRows } from "./VirtualFileRows";
+import { ask } from "../nativeDialog";
 import { StatusPopover } from "./StatusPopover";
 import { usePopoverDismiss } from "./usePopoverDismiss";
 import { useT } from "../useT";
@@ -337,13 +338,15 @@ export const ForwardCenter = memo(function ForwardCenter() {
                     {!scanning && discovery?.status === "ok" && discovery.truncated && (
                       <span className="forward-discovery-state">{t("forward.truncated")}</span>
                     )}
-                    <button
-                      type="button"
-                      disabled={scanning}
-                      onClick={() => setRefresh((value) => value + 1)}
-                    >
-                      {t("forward.refreshPorts")}
-                    </button>
+                    {discovery?.status !== "unsupported" && (
+                      <button
+                        type="button"
+                        disabled={scanning}
+                        onClick={() => setRefresh((value) => value + 1)}
+                      >
+                        {t("forward.refreshPorts")}
+                      </button>
+                    )}
                   </div>
                   {scanError && (
                     <div role="alert" className="status-popover-error">
@@ -430,11 +433,23 @@ export const ForwardCenter = memo(function ForwardCenter() {
                         className="forward-job-action"
                         disabled={busy || row.status === "stopping"}
                         onClick={() =>
-                          void perform(() =>
-                            active(row)
-                              ? api.stopPortForward(row.id)
-                              : api.removePortForward(row.id),
-                          )
+                          void perform(async () => {
+                            if (active(row)) return api.stopPortForward(row.id);
+                            // A failed tunnel's row is the only place its reason
+                            // is written down; removing it is worth a question.
+                            if (
+                              row.status === "error" &&
+                              !(await ask(t("forward.removeFailedConfirm", { name: row.address }), {
+                                title: t("forward.removeFailedTitle"),
+                                kind: "warning",
+                                okLabel: t("forward.removeTunnel"),
+                                cancelLabel: t("common.cancel"),
+                              }))
+                            ) {
+                              return;
+                            }
+                            return api.removePortForward(row.id);
+                          })
                         }
                       >
                         {active(row) ? t("forward.stopTunnel") : t("forward.removeTunnel")}

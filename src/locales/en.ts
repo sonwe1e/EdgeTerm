@@ -549,6 +549,15 @@ export const en = {
   "search.previous": "Previous match",
   "search.next": "Next match",
   "search.close": "Close search",
+  "editor.find": "Find",
+  "editor.replace": "Replace",
+  "editor.selectAllMatches": "Select all matches",
+  "editor.replaceOne": "Replace",
+  "editor.replaceAll": "Replace all",
+  "editor.currentMatch": "Current match",
+  "editor.onLine": "on line",
+  "editor.replacedOnLine": "Replaced the match on line $",
+  "editor.replacedCount": "Replaced $ matches",
   "update.titleDefault": "Downloads and Updates",
   "update.installed": "Installed: {version}",
   "update.manualHint":
@@ -688,8 +697,10 @@ export const en = {
   "fileEditor.title": "Edit in built-in editor",
   "fileEditor.local": "Local file",
   "fileEditor.remote": "Remote file",
-  "fileEditor.localHint": "Save writes to this file on your computer. Ctrl+S to save.",
-  "fileEditor.remoteHint": "Save writes back to this path on the server. Ctrl+S to save.",
+  "fileEditor.localHint":
+    "Save writes to this file on your computer. Ctrl+S saves, Ctrl+F finds in this file.",
+  "fileEditor.remoteHint":
+    "Save writes back to this path on the server. Ctrl+S saves, Ctrl+F finds in this file.",
   "fileEditor.saveLocal": "Save to local file",
   "fileEditor.saveRemote": "Save to server",
   "fileEditor.discard": "Discard the unsaved file changes and close the editor?",
@@ -1344,7 +1355,8 @@ export const en = {
   "forward.remotePortsToggle": "Choose a remote port",
   "forward.refreshPorts": "Refresh",
   "forward.readingListeners": "Reading ports…",
-  "forward.discoveryUnsupported": "Port discovery needs Linux with ss or netstat.",
+  "forward.discoveryUnsupported":
+    "Port discovery needs Linux with ss or netstat. Type the target port above instead, or listen on any port.",
   "forward.truncated": "Result limit reached.",
   "forward.noListeners": "No listening ports.",
   "forward.processUnavailable": "Process unavailable",
@@ -1359,6 +1371,9 @@ export const en = {
   "forward.connectionOne": "1 connection",
   "forward.trafficTitle": "Sent / received",
   "forward.stopTunnel": "Stop tunnel",
+  "forward.removeFailedTitle": "Remove a failed tunnel?",
+  "forward.removeFailedConfirm":
+    '"{name}" failed, and this row is the only place its reason is shown. Remove it?',
   "forward.removeTunnel": "Remove tunnel",
   "monitor.resourcesOff": "Resources off",
   "monitor.resourcesUnsupported": "Unsupported host",
