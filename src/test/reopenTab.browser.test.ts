@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
 import App from "../App";
+import { reopenClosedTab } from "../actions";
+import { act } from "react";
 import { defaultShortcuts } from "../shortcuts";
 import { useStore, type Tab } from "../store";
 import { disposeController } from "../terminalRegistry";
@@ -134,5 +136,45 @@ describe("reopen closed tab", () => {
     await twoFrames();
     expect(useStore.getState().status).toBe("There is no closed session to reopen");
     expect(useStore.getState().tabs.length, "no phantom tab").toBe(2);
+  });
+  it("reopens into the strip's own pane, with the name the reader gave the tab", async () => {
+    await fixture();
+    useStore.setState({
+      // A tab stays in the other pane, so the pane itself survives the close;
+      // a pane whose last tab closed is dropped with it.
+      tabs: [tab("build", 1, "left"), tab("db", 2, "right"), tab("logs", 3, "right")],
+      panes: [
+        { id: "left", activeTabId: "build" },
+        { id: "right", activeTabId: "db" },
+      ],
+      layout: { kind: "split", direction: "row", sizes: [0.5, 0.5], children: [] } as never,
+      activePaneId: "left",
+      activeId: "build",
+    });
+    // A split layout with two real leaves; the empty tree above is replaced
+    // before anything renders it as a single pane.
+    useStore.setState({
+      layout: {
+        kind: "split",
+        direction: "row",
+        sizes: [0.5, 0.5],
+        children: [
+          { kind: "leaf", paneId: "left" },
+          { kind: "leaf", paneId: "right" },
+        ],
+      },
+    });
+    await twoFrames();
+    useStore.getState().renameTab("db", "prod db");
+    await useStore.getState().closeTab("db");
+    await until(() => useStore.getState().tabs.length === 1);
+
+    // The per-pane menu acts on its own pane, not on whichever pane is active.
+    await act(async () => {
+      await reopenClosedTab("right");
+    });
+    const reopened = useStore.getState().tabs.find((item) => item.profile.name === "db");
+    expect(reopened?.paneId, "the pane whose menu was used").toBe("right");
+    expect(reopened?.title, "the name the reader gave it").toBe("prod db");
   });
 });

@@ -978,7 +978,7 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
               icon: "history",
               shortcut: reopenKey,
               disabled: closedTabs.length === 0,
-              action: () => void reopenClosedTab(),
+              action: () => void reopenClosedTab(paneId),
             },
           ]}
           onClose={closeStripMenu}

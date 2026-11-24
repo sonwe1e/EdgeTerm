@@ -23,6 +23,10 @@ import type {
 export interface ClosedTab {
   info: SessionInfo;
   profile: SessionProfile;
+  /** The name the reader gave the tab, so reopening keeps it. */
+  title?: string;
+  /** The pane it lived in, so a strip's menu reopens it there. */
+  paneId?: string;
 }
 
 /** What a tab's activity treatment stands for; see `Tab.activityKind`. */

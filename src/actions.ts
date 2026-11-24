@@ -355,14 +355,28 @@ export async function openSession(
  * connection and a fresh session id. Reusing the old id would collide with
  * the tab's retired controller, and nothing about the closed session's
  * transport is worth keeping.
+ *
+ * `paneId` is the strip whose menu was used: a per-pane menu that put the tab
+ * in another pane acted on the wrong pane. The name the reader gave the tab
+ * comes back with it.
  */
-export async function reopenClosedTab(): Promise<string | null> {
-  const closed = useStore.getState().takeClosedTab();
+export async function reopenClosedTab(paneId?: string): Promise<string | null> {
+  const store = useStore.getState();
+  const closed = store.takeClosedTab();
   if (!closed) {
-    useStore.getState().setStatus(t("status.nothingToReopen"));
+    store.setStatus(t("status.nothingToReopen"));
     return null;
   }
-  return openSession(closed.profile);
+  const pane = paneId && store.panes.some((item) => item.id === paneId) ? paneId : undefined;
+  if (pane) store.setActivePane(pane);
+  const before = new Set(store.tabs.map((item) => item.info.id));
+  const opened = await openSession(closed.profile);
+  // The id is the caller's answer, but a connect that fails still leaves its
+  // tab: the name has to go on whichever tab this call created.
+  const id =
+    opened ?? useStore.getState().tabs.find((item) => !before.has(item.info.id))?.info.id ?? null;
+  if (id && closed.title) useStore.getState().renameTab(id, closed.title);
+  return id;
 }
 
 /**

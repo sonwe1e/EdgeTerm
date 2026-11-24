@@ -191,6 +191,8 @@ export const createTabActions: StateCreator<
           ? pushClosedTab(current.closedTabs, {
               info: closingTab.info,
               profile: closingTab.profile,
+              title: closingTab.title,
+              paneId: closingTab.paneId,
             })
           : current.closedTabs,
         tabSizes: dropSize(current.tabSizes, id),
