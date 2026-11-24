@@ -129,3 +129,19 @@ it("lists recent commands newest first, one row per text", async () => {
   expect(history.recent().map((entry) => entry.command)).toEqual(["git diff", "git status"]);
   expect(history.recent().length, "no duplicate rows for one text").toBe(2);
 });
+
+it("puts the whole list back when clearing the history cannot be written", async () => {
+  const { history, finish } = await pendingHistory();
+  finish(structuredClone(oldEntries));
+  await Promise.resolve();
+  vi.mocked(api.clearCommandHistory).mockRejectedValueOnce(new Error("disk full"));
+
+  await expect(history.clear()).rejects.toThrow("disk full");
+
+  // The file still holds them, so an empty list here would be undone by the
+  // next launch; what the session shows has to match what is on disk.
+  expect(history.suggest("git", "ssh:first").map((entry) => entry.command)).toEqual([
+    "git diff",
+    "git status",
+  ]);
+});

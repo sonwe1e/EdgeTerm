@@ -153,11 +153,19 @@ class CommandHistory {
     }
   }
 
-  clear(): Promise<void> {
+  async clear(): Promise<void> {
+    const before = this.entries;
     this.change(() => {
       this.entries = [];
     });
-    return api.clearCommandHistory();
+    try {
+      await api.clearCommandHistory();
+    } catch (error) {
+      // The file still holds them, so an empty list here would be undone by the
+      // next launch. Put them back and let the caller report the failure.
+      this.entries = before;
+      throw error;
+    }
   }
 
   private change(update: () => void) {
