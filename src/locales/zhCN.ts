@@ -333,6 +333,8 @@ export const zhCN: Catalog = {
   "about.distribution": "本发行分支 ·",
   "status.ready": "就绪",
   "status.nothingToReopen": "没有可重新打开的已关闭会话",
+  "status.noActiveSession": "请先打开会话——此操作需要一个作用对象",
+  "status.noTerminal": "此会话没有终端可操作",
   "status.fontSize": "终端字号 {size}px",
   "terminal.jumpToLatest": "跳到最新输出",
   "status.commandFailed": "命令退出码 {code}",

@@ -667,6 +667,18 @@ export default function App() {
   // keys this app actually owns.
   const runShortcut = useCallback(
     (shortcut: AppShortcut): boolean => {
+      // A command that needs a session to act on says so instead of doing
+      // nothing: the palette row, the menu entry and the chord all reach this
+      // one dispatcher, and a refusal that looks like success is the worst
+      // outcome of the three.
+      const refuseNoSession = () => {
+        useStore.getState().setStatus(t("status.noActiveSession"));
+        return false;
+      };
+      const refuseNoTerminal = () => {
+        useStore.getState().setStatus(t("status.noTerminal"));
+        return false;
+      };
       switch (shortcut.kind) {
         case "commandPalette":
           openPalette();
@@ -715,7 +727,7 @@ export default function App() {
           newSession();
           return true;
         case "closeSession":
-          if (!activeId) return false;
+          if (!activeId) return refuseNoSession();
           requestCloseTab(activeId);
           return true;
         case "reopenTab":
@@ -740,15 +752,17 @@ export default function App() {
           findNext();
           return true;
         case "clear":
-          if (!activeId || fileMode) return false;
+          if (!activeId) return refuseNoSession();
+          if (fileMode) return refuseNoTerminal();
           getController(activeId)?.clear();
           return true;
         case "revealCwd":
-          if (!activeId || fileMode) return false;
+          if (!activeId) return refuseNoSession();
+          if (fileMode) return refuseNoTerminal();
           void revealCwdInFiler(activeId);
           return true;
         case "splitPane":
-          if (!activeId) return false;
+          if (!activeId) return refuseNoSession();
           void splitSession(activeId, shortcut.side);
           return true;
         case "paneStep":
@@ -782,6 +796,7 @@ export default function App() {
       openSearch,
       requestCloseTab,
       setActive,
+      t,
       toggleBroadcast,
       togglePanel,
       toggleZoomedPane,

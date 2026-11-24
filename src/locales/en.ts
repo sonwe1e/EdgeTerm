@@ -343,6 +343,8 @@ export const en = {
   "about.distribution": "This distribution ·",
   "status.ready": "Ready",
   "status.nothingToReopen": "There is no closed session to reopen",
+  "status.noActiveSession": "Open a session first - this needs one to act on",
+  "status.noTerminal": "This session has no terminal to act on",
   "status.fontSize": "Terminal font {size}px",
   "terminal.jumpToLatest": "Jump to latest output",
   "status.commandFailed": "Command exited with status {code}",
