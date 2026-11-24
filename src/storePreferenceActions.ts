@@ -442,7 +442,10 @@ export const createPreferenceActions: StateCreator<
 
   applySettings(settings) {
     if (!settings || typeof settings !== "object") return;
-    const values = settings as Partial<Record<keyof AppSettings, unknown>>;
+    // Copy first: the caller still reads the object afterwards to say which
+    // protected settings were kept, and deleting from it here made that note
+    // unreachable.
+    const values = { ...settings } as Partial<Record<keyof AppSettings, unknown>>;
     for (const key of IMPORT_PROTECTED_SETTINGS) delete values[key as keyof AppSettings];
     // An imported file is not a place to switch these off: both protect the
     // user from a paste or a remote program doing something they did not ask
