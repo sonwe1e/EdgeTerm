@@ -308,6 +308,7 @@ pub(crate) fn profile(kind: SessionKind) -> SessionProfile {
         password: None,
         private_key_path: None,
         passphrase: None,
+        jump_profile_ids: Vec::new(),
         jump_profile_id: None,
         forwards: Vec::new(),
         port_name: None,
@@ -625,30 +626,30 @@ fn store_resolves_jump_host_chains_and_refuses_loops() {
         .get(&bastion.id)
         .expect("get")
         .expect("bastion")
-        .jump_profile_id
-        .is_none());
+        .jump_ids()
+        .is_empty());
 
     // A jump host must be an existing SSH transport, and only an SSH
     // transport can have one: anything else falls back to a direct
     // connection, like a stale group id.
     let mut stale = profile(SessionKind::Ssh);
     stale.jump_profile_id = Some("no-such-profile".into());
-    assert!(store.save(stale).expect("save").jump_profile_id.is_none());
+    assert!(store.save(stale).expect("save").jump_ids().is_empty());
     let mut plain_ftp = profile(SessionKind::Ftp);
     plain_ftp.name = "ftp".into();
     let plain_ftp = store.save(plain_ftp).expect("save ftp");
     let mut via_ftp = profile(SessionKind::Ssh);
     via_ftp.jump_profile_id = Some(plain_ftp.id.clone());
-    assert!(store.save(via_ftp).expect("save").jump_profile_id.is_none());
+    assert!(store.save(via_ftp).expect("save").jump_ids().is_empty());
     let mut local = profile(SessionKind::Local);
     local.jump_profile_id = Some(bastion.id.clone());
-    assert!(store.save(local).expect("save").jump_profile_id.is_none());
+    assert!(store.save(local).expect("save").jump_ids().is_empty());
 
     // The reference survives a restart, and a deleted jump host is reported
     // when the dependent session is opened rather than silently bypassed.
     let reloaded = Store::load_from_test(dir.join("sessions.json"));
     let node = reloaded.get(&node.id).expect("get").expect("node");
-    assert_eq!(node.jump_profile_id.as_deref(), Some(master.id.as_str()));
+    assert_eq!(node.jump_ids(), vec![master.id.clone()]);
     reloaded.delete(&master.id).expect("delete master");
     let error = reloaded.jump_chain(&node).expect_err("missing jump host");
     assert!(error.to_string().contains("no longer exists"), "{error}");
@@ -3248,11 +3249,11 @@ Host unrelated
     assert_eq!(literal.username.as_deref(), Some("ops"));
     assert_eq!(literal.group_id.as_deref(), Some(group.id.as_str()));
     assert_eq!(
-        api.jump_profile_id.as_deref(),
-        Some(literal.id.as_str()),
+        api.jump_ids(),
+        vec![literal.id.clone()],
         "api tunnels through its one jump host"
     );
-    assert_eq!(literal.jump_profile_id, None);
+    assert!(literal.jump_ids().is_empty());
 
     // Importing again changes nothing: the alias and its jump host match.
     let again = ssh_config::import(&store, &entries, &["api".to_string()], None, &context)
@@ -3266,10 +3267,10 @@ Host unrelated
 }
 
 #[test]
-fn ssh_config_import_drops_a_multi_hop_proxy_jump() {
-    // web reaches bastion directly; db names a two-hop chain. A per-session
-    // jump host cannot hold a chain, and writing db's chain onto bastion would
-    // reroute web too, so db's ProxyJump is dropped rather than guessed at.
+fn ssh_config_import_keeps_every_hop_of_a_proxy_jump_chain() {
+    // web reaches bastion directly; db names a two-hop chain. The chain is
+    // stored on db itself — first hop first — so lengthening bastion's path
+    // for db's sake never reroutes web, which asked only for bastion.
     let dir = temp_dir("ssh-multi-hop");
     let store = Store::load_from_test(dir.join("sessions.json"));
     let context = ssh_context(&dir);
@@ -3294,14 +3295,14 @@ Host db
     )
     .expect("import");
     assert_eq!(
-        (summary.added, summary.jump_hosts, summary.jumps_ignored),
-        (3, 0, 1),
-        "web, db and the pulled-in bastion added; db's multi-hop jump is skipped"
+        (summary.added, summary.jump_hosts),
+        (3, 1),
+        "the three Host entries plus the literal hop entry.example.com: {:?}",
+        summary.warnings
     );
-    assert_eq!(
-        summary.warnings.len(),
-        1,
-        "db's multi-hop jump warns once: {:?}",
+    assert!(
+        summary.warnings.is_empty(),
+        "a two-hop jump imports without a warning: {:?}",
         summary.warnings
     );
 
@@ -3312,24 +3313,30 @@ Host db
             .find(|profile| profile.name == name)
             .unwrap_or_else(|| panic!("profile {name} missing"))
     };
-    assert!(
-        !profiles.iter().any(|p| p.name == "entry.example.com"),
-        "a dropped chain pulls in none of its hosts"
-    );
     let bastion = by_name("bastion");
-    assert_eq!(
-        bastion.jump_profile_id, None,
+    let entry = by_name("entry.example.com");
+    assert!(
+        bastion.jump_ids().is_empty(),
         "bastion keeps its direct path"
     );
     assert_eq!(
-        by_name("web").jump_profile_id.as_deref(),
-        Some(bastion.id.as_str()),
-        "web still reaches its single jump host bastion"
+        by_name("web").jump_ids(),
+        vec![bastion.id.clone()],
+        "web reaches its single jump host bastion"
     );
     assert_eq!(
-        by_name("db").jump_profile_id,
-        None,
-        "db is saved as a plain session; its chain was left off"
+        by_name("db").jump_ids(),
+        vec![entry.id.clone(), bastion.id.clone()],
+        "db keeps both hops, first hop first"
+    );
+    let chain = store.jump_chain(by_name("db")).expect("db's chain");
+    assert_eq!(
+        chain
+            .iter()
+            .map(|hop| hop.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["entry.example.com", "bastion"],
+        "the chain resolves in the order the tunnel is opened"
     );
 }
 

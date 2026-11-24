@@ -186,14 +186,18 @@ const BAUD_RATE_OPTIONS = COMMON_BAUD_RATES.map(String);
  */
 function jumpHostChoices(profile: SessionProfile, profiles: SessionProfile[]): SessionProfile[] {
   const byId = new Map(profiles.map((p) => [p.id, p]));
+  // A candidate whose own chain (in any order) already passes through this
+  // session would close a loop, so it is not offered.
   const leadsBackHere = (candidate: SessionProfile): boolean => {
     const seen = new Set<string>();
-    let current: SessionProfile | undefined = candidate;
-    while (current) {
-      if (current.id === profile.id) return true;
-      if (seen.has(current.id)) return false;
-      seen.add(current.id);
-      current = current.jumpProfileId ? byId.get(current.jumpProfileId) : undefined;
+    const queue: string[] = [candidate.id];
+    while (queue.length > 0) {
+      const id = queue.shift()!;
+      if (id === profile.id) return true;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const hop = byId.get(id);
+      if (hop) queue.push(...(hop.jumpProfileIds ?? []));
     }
     return false;
   };
@@ -306,10 +310,10 @@ export function SessionDialog({
   const profiles = useStore((s) => s.profiles);
   const groupChoices = flattenGroups(groups, profile.kind);
   const jumpChoices = jumpHostChoices(profile, profiles);
-  // The chosen jump session was deleted (or now loops back here): keep it
-  // visible so the user sees what is wrong; saving drops it.
-  const jumpHostMissing =
-    !!profile.jumpProfileId && !jumpChoices.some((p) => p.id === profile.jumpProfileId);
+  // A hop that was deleted (or now loops back here) stays visible so the user
+  // sees what is wrong; saving drops it.
+  const jumpChain = profile.jumpProfileIds ?? [];
+  const jumpNames = new Map(jumpChoices.map((p) => [p.id, describeJumpHost(p)]));
 
   useEffect(() => {
     if (profile.kind !== "serial") return;
@@ -372,9 +376,9 @@ export function SessionDialog({
         }
       : {}),
     name: profile.name.trim() || defaultName(),
-    // A jump host only means something on an SSH transport; drop one left
-    // over from before the protocol was switched.
-    jumpProfileId: isSshTransport(profile.kind) ? profile.jumpProfileId || null : null,
+    // Jump hosts only mean something on an SSH transport; drop any left over
+    // from before the protocol was switched.
+    jumpProfileIds: isSshTransport(profile.kind) ? jumpChain : [],
     // Encoding and locale belong to terminal sessions; UTF-8 and "automatic"
     // are stored as nothing, so an untouched profile stays as it was.
     encoding:
@@ -550,33 +554,62 @@ export function SessionDialog({
     </section>
   );
 
-  // ProxyJump: tunnel this session through another saved SSH session.
+  // ProxyJump: tunnel this session through saved SSH sessions, first hop
+  // first — the order is the path, so it is a list rather than one select.
   // Offered for SSH and SFTP alike, since both ride the same transport.
-  const renderJumpHostField = () => (
-    <>
-      <label className="session-field is-wide">
-        <span className="session-field-label">{t("session.jumpHost")}</span>
-        <select
-          value={profile.jumpProfileId ?? ""}
-          onChange={(event) => patch({ jumpProfileId: event.target.value || null })}
-        >
-          <option value="">{t("session.jumpNone")}</option>
-          {jumpHostMissing && (
-            <option value={profile.jumpProfileId ?? ""}>{t("session.jumpDeleted")}</option>
+  const renderJumpHostField = () => {
+    const unused = jumpChoices.filter((p) => !jumpChain.includes(p.id));
+    return (
+      <>
+        <div className="session-field is-wide">
+          <span className="session-field-label">{t("session.jumpHost")}</span>
+          {jumpChain.length === 0 ? (
+            <p className="session-note">{t("session.jumpNone")}</p>
+          ) : (
+            <ol className="session-jump-chain">
+              {jumpChain.map((id, index) => (
+                <li key={id} className="session-jump-hop">
+                  <span className="session-jump-step">{index + 1}</span>
+                  <span className="session-jump-name">
+                    {jumpNames.get(id) ?? t("session.jumpDeleted")}
+                  </span>
+                  <button
+                    type="button"
+                    className="panel-action"
+                    aria-label={t("session.jumpRemove", {
+                      name: jumpNames.get(id) ?? t("session.jumpDeleted"),
+                    })}
+                    onClick={() => patch({ jumpProfileIds: jumpChain.filter((hop) => hop !== id) })}
+                  >
+                    <Icon name="close" />
+                  </button>
+                </li>
+              ))}
+            </ol>
           )}
-          {jumpChoices.map((p) => (
-            <option key={p.id} value={p.id}>
-              {describeJumpHost(p)}
-            </option>
-          ))}
-        </select>
-      </label>
-      <div className="session-note is-wide">
-        <Icon name="info" />
-        <span>{t("session.jumpNote")}</span>
-      </div>
-    </>
-  );
+          <select
+            value=""
+            aria-label={t("session.jumpAdd")}
+            onChange={(event) => {
+              if (!event.target.value) return;
+              patch({ jumpProfileIds: [...jumpChain, event.target.value] });
+            }}
+          >
+            <option value="">{t("session.jumpAdd")}</option>
+            {unused.map((p) => (
+              <option key={p.id} value={p.id}>
+                {describeJumpHost(p)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="session-note is-wide">
+          <Icon name="info" />
+          <span>{t("session.jumpNote")}</span>
+        </div>
+      </>
+    );
+  };
 
   // Port forwards saved with the profile: the backend starts them when a
   // session opens (`commands/sessions.rs`), so they are listed, added and
@@ -1271,7 +1304,7 @@ export function SessionDialog({
           <details
             className="session-section session-advanced"
             open={Boolean(
-              initial?.jumpProfileId ||
+              initial?.jumpProfileIds?.length ||
                 initial?.forwards?.length ||
                 initial?.locale ||
                 (initial?.encoding && initial.encoding !== "UTF-8") ||

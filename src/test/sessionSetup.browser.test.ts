@@ -85,6 +85,47 @@ it("points at the file transfer port when it is out of range", async () => {
   expect(port.getAttribute("aria-invalid"), "the field is marked too").toBe("true");
 });
 
+it("keeps every hop of a jump chain in the order it was added", async () => {
+  const bastion = {
+    id: "hop-a",
+    name: "bastion",
+    kind: "ssh" as const,
+    host: "10.0.0.1",
+    username: "gate",
+    port: 22,
+  };
+  const gateway = {
+    id: "hop-b",
+    name: "gateway",
+    kind: "ssh" as const,
+    host: "10.0.0.2",
+    username: "gate",
+    port: 22,
+  };
+  useStore.setState({ profiles: [bastion, gateway] });
+  mount(
+    h(SessionDialog, {
+      initial: { id: "", name: "db", kind: "ssh", host: "db.internal", username: "app" },
+      onClose: vi.fn(),
+    }),
+  );
+  await twoFrames();
+  await userEvent.click(document.querySelector<HTMLElement>(".session-advanced > summary")!);
+  const add = () => document.querySelector<HTMLSelectElement>('[aria-label="Add a jump host…"]')!;
+  await userEvent.selectOptions(add(), "hop-a");
+  await twoFrames();
+  await userEvent.selectOptions(add(), "hop-b");
+  await twoFrames();
+  // The order is the path the tunnel is opened in, so it is what the form
+  // shows and what the profile stores.
+  expect(
+    [...document.querySelectorAll(".session-jump-name")].map((node) => node.textContent),
+  ).toEqual(["bastion — gate@10.0.0.1:22", "gateway — gate@10.0.0.2:22"]);
+  await userEvent.click(document.querySelector<HTMLButtonElement>(".dialog-footer .is-primary")!);
+  await expect.poll(() => save.mock.calls.length, { timeout: 4000 }).toBe(1);
+  expect(save.mock.calls[0][0].jumpProfileIds, "both hops, in order").toEqual(["hop-a", "hop-b"]);
+});
+
 afterEach(async () => {
   await browserAfterEach();
   useStore.setState(initial, true);

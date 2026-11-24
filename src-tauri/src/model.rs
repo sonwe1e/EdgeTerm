@@ -138,13 +138,18 @@ pub struct SessionProfile {
     pub private_key_path: Option<String>,
     #[serde(default)]
     pub passphrase: Option<String>,
-    /// Saved SSH / SFTP profile to tunnel through (OpenSSH's `ProxyJump`):
-    /// the transport to that host is opened first and this session's SSH
-    /// handshake runs inside a `direct-tcpip` channel on it, so a host only
-    /// reachable from the jump host's network can be opened directly. The
-    /// jump profile may itself name a jump host, giving a chain; see
-    /// `Store::jump_chain`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Saved SSH / SFTP profiles to tunnel through (OpenSSH's `ProxyJump`),
+    /// **first hop first**: each is opened inside a `direct-tcpip` channel of
+    /// the previous one, and this session's SSH handshake runs through the
+    /// last. An empty list connects directly. The chain lives on the session
+    /// itself — sharing a jump profile never lengthens anyone else's path.
+    /// See `Store::jump_chain`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub jump_profile_ids: Vec<String>,
+    /// The single jump host older files stored. Read for compatibility and
+    /// folded into `jump_profile_ids` by `canonicalize_jumps` before every
+    /// save, so it is never written again.
+    #[serde(default, skip_serializing)]
     pub jump_profile_id: Option<String>,
     /// Port forwards saved with this profile, established when a session
     /// opens. Imported from an OpenSSH config's `LocalForward`,
@@ -181,6 +186,33 @@ impl SessionProfile {
     /// host or use one.
     pub fn is_ssh_transport(&self) -> bool {
         matches!(self.kind, SessionKind::Ssh | SessionKind::Sftp)
+    }
+
+    /// The jump hosts this session is tunnelled through, **first hop first**:
+    /// the stored list, or the single id an older file kept.
+    pub fn jump_ids(&self) -> Vec<String> {
+        if !self.jump_profile_ids.is_empty() {
+            return self
+                .jump_profile_ids
+                .iter()
+                .filter(|id| !id.is_empty())
+                .cloned()
+                .collect();
+        }
+        self.jump_profile_id
+            .as_deref()
+            .filter(|id| !id.is_empty())
+            .map(|id| vec![id.to_string()])
+            .unwrap_or_default()
+    }
+
+    /// Folds a legacy single jump host into the chain and drops blank ids, so
+    /// what is written back has exactly one shape.
+    pub fn canonicalize_jumps(&mut self) {
+        let mut ids = self.jump_ids();
+        ids.retain(|id| !id.is_empty());
+        self.jump_profile_id = None;
+        self.jump_profile_ids = ids;
     }
 
     /// The Shell field with surrounding whitespace removed, or the platform's

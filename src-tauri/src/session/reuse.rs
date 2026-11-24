@@ -45,7 +45,7 @@ impl ReuseKey {
             Ok(
                 serde_json::json!({"host":profile.host,"port":profile.port.unwrap_or(22),"username":profile.username,
                 "auth":profile.auth,"password":profile.password,"privateKeyPath":profile.private_key_path,
-                "passphrase":profile.passphrase,"keyDigest":key_digest,"jumpProfileId":profile.jump_profile_id}),
+                "passphrase":profile.passphrase,"keyDigest":key_digest,"jumpProfileIds":profile.jump_ids()}),
             )
         }
         // Secrets participate in equality but only an ephemeral digest is kept.

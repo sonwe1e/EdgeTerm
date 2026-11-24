@@ -145,13 +145,6 @@ export function SshConfigImportDialog({ preview, onClose }: Props) {
             : t("sshImport.forwardsImportedMany", { count: forwards }),
         );
       }
-      if (summary.jumpsIgnored > 0) {
-        parts.push(
-          summary.jumpsIgnored === 1
-            ? t("sshImport.jumpsIgnoredOne")
-            : t("sshImport.jumpsIgnoredMany", { count: summary.jumpsIgnored }),
-        );
-      }
       let status = t("sshImport.importedFrom", {
         name: basename(preview.path),
         parts: parts.join(", ") || t("sshImport.nothingToDo"),

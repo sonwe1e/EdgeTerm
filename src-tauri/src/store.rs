@@ -176,29 +176,39 @@ impl Store {
     }
 
     /// The jump hosts `profile` is tunnelled through, first hop first, each
-    /// carrying its stored credentials. Follows `jump_profile_id` outward from
-    /// the profile until a session with no jump host is reached. A jump
-    /// session that no longer exists, is not an SSH transport, or leads round
-    /// in a circle is an error: silently connecting directly instead could
-    /// reach a different machine of the same name on another network.
+    /// carrying its stored credentials. The session's own list is the path;
+    /// a hop that itself names jump hosts is expanded **before** it, because
+    /// older files expressed a chain by nesting one session after another. A
+    /// jump session that no longer exists, is not an SSH transport, or leads
+    /// round in a circle is an error: silently connecting directly instead
+    /// could reach a different machine of the same name on another network.
     pub fn jump_chain(&self, profile: &SessionProfile) -> Result<Vec<SessionProfile>> {
         let mut hops = Vec::new();
         let mut visited = HashSet::new();
         if !profile.id.is_empty() {
             visited.insert(profile.id.clone());
         }
-        let mut next = profile.jump_profile_id.clone();
-        while let Some(id) = next {
+        self.collect_jumps(&profile.jump_ids(), &mut hops, &mut visited)?;
+        Ok(hops)
+    }
+
+    fn collect_jumps(
+        &self,
+        ids: &[String],
+        hops: &mut Vec<SessionProfile>,
+        visited: &mut HashSet<String>,
+    ) -> Result<()> {
+        for id in ids {
             if !visited.insert(id.clone()) {
                 return Err(AppError::new("the jump host chain loops back on itself"));
             }
-            if hops.len() == MAX_JUMP_HOPS {
+            if hops.len() >= MAX_JUMP_HOPS {
                 return Err(AppError::new(format!(
                     "the jump host chain is longer than {MAX_JUMP_HOPS} hops"
                 )));
             }
             let hop = self
-                .get(&id)?
+                .get(id)?
                 .ok_or_else(|| AppError::new("the jump host session no longer exists"))?;
             if !hop.is_ssh_transport() {
                 return Err(AppError::new(format!(
@@ -206,11 +216,16 @@ impl Store {
                     hop.name
                 )));
             }
-            next = hop.jump_profile_id.clone();
+            let nested = hop.jump_ids();
             hops.push(hop);
+            if !nested.is_empty() {
+                let mut inner = Vec::new();
+                self.collect_jumps(&nested, &mut inner, visited)?;
+                let position = hops.len() - 1;
+                hops.splice(position..position, inner);
+            }
         }
-        hops.reverse();
-        Ok(hops)
+        Ok(())
     }
 
     pub fn save(&self, mut profile: SessionProfile) -> Result<SessionProfile> {
@@ -241,15 +256,25 @@ impl Store {
         // nowhere (the jump session was deleted, or the kind was switched away
         // from SSH in the editor) is dropped like a stale group id; a chain
         // that would loop back through this profile is refused outright.
-        if let Some(jump_id) = profile.jump_profile_id.clone() {
-            let exists = self
+        profile.canonicalize_jumps();
+        if !profile.jump_profile_ids.is_empty() {
+            let transports: Vec<(String, bool)> = self
                 .profiles
                 .lock()
                 .iter()
-                .any(|p| p.id == jump_id && p.is_ssh_transport());
-            if jump_id.is_empty() || !exists || !profile.is_ssh_transport() {
-                profile.jump_profile_id = None;
+                .map(|p| (p.id.clone(), p.is_ssh_transport()))
+                .collect();
+            let resolves = |id: &String| {
+                transports
+                    .iter()
+                    .any(|(known, transport)| known == id && *transport)
+            };
+            if !profile.is_ssh_transport() {
+                profile.jump_profile_ids.clear();
             } else {
+                profile.jump_profile_ids.retain(resolves);
+            }
+            if !profile.jump_profile_ids.is_empty() {
                 self.jump_chain(&profile)?;
             }
         }
@@ -287,15 +312,17 @@ impl Store {
                 .map(|profile| (profile.id.clone(), profile.is_ssh_transport()))
                 .collect();
             for profile in profiles.iter_mut() {
-                let Some(jump_id) = profile.jump_profile_id.clone() else {
-                    continue;
-                };
-                let resolves = transports
-                    .iter()
-                    .any(|(id, transport)| *id == jump_id && *transport);
-                if jump_id.is_empty() || !resolves || !profile.is_ssh_transport() {
-                    profile.jump_profile_id = None;
+                let mut ids = profile.jump_ids();
+                if !profile.is_ssh_transport() {
+                    ids.clear();
                 }
+                ids.retain(|id| {
+                    transports
+                        .iter()
+                        .any(|(known, transport)| known == id && *transport)
+                });
+                profile.canonicalize_jumps();
+                profile.jump_profile_ids = ids;
             }
         }
         let chains: Vec<SessionProfile> = self.profiles.lock().clone();

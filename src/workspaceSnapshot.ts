@@ -96,7 +96,7 @@ export function workspaceProfile(value: unknown): SessionProfile | null {
     "username",
     "auth",
     "privateKeyPath",
-    "jumpProfileId",
+    "jumpProfileIds",
     "portName",
     "parity",
     "flowControl",

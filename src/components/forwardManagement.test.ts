@@ -17,7 +17,6 @@ vi.mock("../api", async (original) => ({
     added: 2,
     updated: 0,
     jumpHosts: 0,
-    jumpsIgnored: 0,
     warnings: [],
   })),
   listSenderCommands: vi.fn(async () => []),

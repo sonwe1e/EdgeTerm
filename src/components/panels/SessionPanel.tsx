@@ -724,7 +724,9 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
         onContextMenu={(event) => openMenu(event, profileMenu(profile))}
         title={describeProfile(
           profile,
-          profiles.find((p) => p.id && p.id === profile.jumpProfileId),
+          profiles.find(
+            (p) => p.id && p.id === profile.jumpProfileIds?.[profile.jumpProfileIds.length - 1],
+          ),
         )}
       >
         <span

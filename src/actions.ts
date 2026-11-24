@@ -114,7 +114,7 @@ function sameConnectionIdentity(left: SessionProfile, right: SessionProfile): bo
     (left.host ?? "").trim().toLowerCase() === (right.host ?? "").trim().toLowerCase() &&
     port(left) === port(right) &&
     (left.username ?? "") === (right.username ?? "") &&
-    (left.jumpProfileId ?? "") === (right.jumpProfileId ?? "")
+    (left.jumpProfileIds ?? []).join("\n") === (right.jumpProfileIds ?? []).join("\n")
   );
 }
 

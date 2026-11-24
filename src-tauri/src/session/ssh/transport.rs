@@ -33,7 +33,7 @@ pub(super) struct Endpoint {
     pub(super) username: String,
     pub(super) host: String,
     pub(super) port: u16,
-    pub(super) jump_profile_id: Option<String>,
+    pub(super) jump_profile_ids: Vec<String>,
 }
 
 impl Endpoint {
@@ -42,7 +42,7 @@ impl Endpoint {
             username: profile.username.clone().unwrap_or_default(),
             host: profile.host.clone().unwrap_or_default(),
             port: profile.port.unwrap_or(22),
-            jump_profile_id: profile.jump_profile_id.clone().filter(|id| !id.is_empty()),
+            jump_profile_ids: profile.jump_ids(),
         }
     }
 }

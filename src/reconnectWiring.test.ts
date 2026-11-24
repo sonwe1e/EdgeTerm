@@ -516,7 +516,7 @@ describe("reconnect credential identity", () => {
     ["username", { username: "bob" }],
     ["protocol", { kind: "sftp" as const }],
     ["authentication", { auth: "password" as const }],
-    ["jump host", { jumpProfileId: "different-hop" }],
+    ["jump host", { jumpProfileIds: ["different-hop"] }],
   ])("does not forward tab-only secrets after changing the %s", async (label, changes) => {
     const result = await reconnectEdited(`changed-credential-${label}`, changes);
     expect(result.password).toBeUndefined();

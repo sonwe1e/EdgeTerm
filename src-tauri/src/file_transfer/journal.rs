@@ -364,7 +364,7 @@ pub(super) fn endpoint_key(profile: &SessionProfile) -> String {
             .filter(|s| !s.is_empty())
             .unwrap_or(if ftp { "anonymous" } else { "" }),
         profile.port.unwrap_or(if ftp { 21 } else { 22 }),
-        profile.jump_profile_id
+        profile.jump_ids()
     )
 }
 

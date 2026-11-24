@@ -70,9 +70,6 @@ pub struct SshImportSummary {
     /// Profiles created beyond the selection because a selected host
     /// tunnels through them.
     pub jump_hosts: usize,
-    /// Hosts whose multi-hop `ProxyJump` was left unimported; the sessions
-    /// themselves were still saved, just without a jump host.
-    pub jumps_ignored: usize,
     /// Links that could not be made, one line each; the profiles themselves
     /// were still saved.
     #[serde(default)]
@@ -721,6 +718,7 @@ fn new_profile(entry: &SshConfigEntry, group_id: Option<String>) -> SessionProfi
         password: None,
         private_key_path: entry.private_key_path.clone(),
         passphrase: None,
+        jump_profile_ids: Vec::new(),
         jump_profile_id: None,
         forwards: entry.forwards.clone(),
         port_name: None,
@@ -778,15 +776,15 @@ pub fn import(
             needed[index] = true;
         }
     }
-    // Close the selection over the single jump host each host names. A
-    // multi-hop ProxyJump is not imported, so it pulls nothing in.
+    // Close the selection over every jump host each host names, in any order:
+    // importing a session has to bring the chain it is reached through.
     loop {
         let mut changed = false;
         for index in 0..entries.len() {
             if !needed[index] {
                 continue;
             }
-            if let Some(hop) = single_hop(&entries[index]) {
+            for hop in &entries[index].jumps {
                 let (_, host, _) = parse_hop(hop);
                 if let Some(target) = index_of(&host).filter(|target| !needed[*target]) {
                     needed[target] = true;
@@ -834,51 +832,43 @@ pub fn import(
         if !needed[index] {
             continue;
         }
-        if entry.jumps.len() > 1 {
-            summary.jumps_ignored += 1;
-            summary.warnings.push(format!(
-                "{}: its ProxyJump has {} hops; multi-hop jumps are not imported, \
-                 so set a jump host by hand if you need one",
-                entry.alias,
-                entry.jumps.len()
-            ));
+        let Some(id) = &ids[index] else {
+            continue;
+        };
+        // `ProxyJump a,b` reaches b through a, so the hops are stored in that
+        // order on this session and no other profile is touched: shortening
+        // or lengthening someone else's path to make this one work would be a
+        // change the user never asked for.
+        let mut hops = Vec::with_capacity(entry.jumps.len());
+        for hop in &entry.jumps {
+            let (user, host, port) = parse_hop(hop);
+            let hop_id = match index_of(&host).and_then(|target| ids[target].clone()) {
+                Some(id) => id,
+                None => match literal_hop_profile(store, &user, &host, port, &group_id, context) {
+                    Ok((hop_id, created)) => {
+                        if created {
+                            summary.jump_hosts += 1;
+                        }
+                        hop_id
+                    }
+                    Err(error) => {
+                        summary
+                            .warnings
+                            .push(format!("{}: jump host {hop}: {error}", entry.alias));
+                        break;
+                    }
+                },
+            };
+            hops.push(hop_id);
+        }
+        if hops.len() != entry.jumps.len() {
             continue;
         }
-        let (Some(id), Some(hop)) = (&ids[index], single_hop(entry)) else {
-            continue;
-        };
-        let (user, host, port) = parse_hop(hop);
-        let hop_id = match index_of(&host).and_then(|target| ids[target].clone()) {
-            Some(id) => id,
-            None => match literal_hop_profile(store, &user, &host, port, &group_id, context) {
-                Ok((hop_id, created)) => {
-                    if created {
-                        summary.jump_hosts += 1;
-                    }
-                    hop_id
-                }
-                Err(error) => {
-                    summary
-                        .warnings
-                        .push(format!("{}: jump host {hop}: {error}", entry.alias));
-                    continue;
-                }
-            },
-        };
-        if let Err(error) = link_jump(store, id, &hop_id, true) {
+        if let Err(error) = link_jumps(store, id, &hops) {
             summary.warnings.push(format!("{}: {error}", entry.alias));
         }
     }
     Ok(summary)
-}
-
-/// The one `ProxyJump` hop of an entry, or `None` when it has none or names
-/// a chain of several (which is not imported).
-fn single_hop(entry: &SshConfigEntry) -> Option<&String> {
-    match entry.jumps.as_slice() {
-        [hop] => Some(hop),
-        _ => None,
-    }
 }
 
 /// The profile for a hop written as `[user@]host[:port]`: an existing one
@@ -917,18 +907,16 @@ fn literal_hop_profile(
     Ok((saved.id, true))
 }
 
-/// Points `id` at `jump_id`; with `replace` false only where it has no jump
-/// host yet. The store refuses a chain that loops or runs too deep.
-fn link_jump(store: &Store, id: &str, jump_id: &str, replace: bool) -> Result<()> {
+/// Points `id` at the hop list, first hop first. The store refuses a chain
+/// that loops, runs too deep, or names a session that cannot carry a tunnel.
+fn link_jumps(store: &Store, id: &str, hops: &[String]) -> Result<()> {
     let Some(mut profile) = store.get(id)? else {
         return Ok(());
     };
-    if profile.jump_profile_id.as_deref() == Some(jump_id)
-        || (!replace && profile.jump_profile_id.is_some())
-        || id == jump_id
-    {
+    let chain: Vec<String> = hops.iter().filter(|hop| hop.as_str() != id).cloned().collect();
+    if profile.jump_ids() == chain {
         return Ok(());
     }
-    profile.jump_profile_id = Some(jump_id.to_string());
+    profile.jump_profile_ids = chain;
     store.save(profile).map(|_| ())
 }

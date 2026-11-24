@@ -614,6 +614,8 @@ export const en = {
     "The saved-password file cannot be read, so saving a password is refused; the file is kept unchanged for recovery.",
   "session.jumpHost": "Jump host",
   "session.jumpNone": "None — connect directly",
+  "session.jumpAdd": "Add a jump host…",
+  "session.jumpRemove": "Remove {name}",
   "session.jumpDeleted": "(deleted session)",
   "session.jumpNote":
     "Connect through a saved SSH session (ProxyJump) to reach a host that is only visible from its network.",
@@ -1405,8 +1407,6 @@ export const en = {
   "sshImport.updatedMany": "{count} sessions updated",
   "sshImport.jumpHostsAddedOne": "1 jump host added",
   "sshImport.jumpHostsAddedMany": "{count} jump hosts added",
-  "sshImport.jumpsIgnoredOne": "1 multi-hop jump skipped",
-  "sshImport.jumpsIgnoredMany": "{count} multi-hop jumps skipped",
   "sshImport.importedFrom": "Imported from {name}: {parts}",
   "sshImport.nothingToDo": "nothing to do",
   "sshImport.authKey": "key {name}",

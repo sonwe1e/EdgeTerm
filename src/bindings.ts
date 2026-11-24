@@ -1497,12 +1497,18 @@ export type SessionProfile_Deserialize = {
 	privateKeyPath?: string | null,
 	passphrase?: string | null,
 	/**
-	 *  Saved SSH / SFTP profile to tunnel through (OpenSSH's `ProxyJump`):
-	 *  the transport to that host is opened first and this session's SSH
-	 *  handshake runs inside a `direct-tcpip` channel on it, so a host only
-	 *  reachable from the jump host's network can be opened directly. The
-	 *  jump profile may itself name a jump host, giving a chain; see
-	 *  `Store::jump_chain`.
+	 *  Saved SSH / SFTP profiles to tunnel through (OpenSSH's `ProxyJump`),
+	 *  **first hop first**: each is opened inside a `direct-tcpip` channel of
+	 *  the previous one, and this session's SSH handshake runs through the
+	 *  last. An empty list connects directly. The chain lives on the session
+	 *  itself — sharing a jump profile never lengthens anyone else's path.
+	 *  See `Store::jump_chain`.
+	 */
+	jumpProfileIds?: string[],
+	/**
+	 *  The single jump host older files stored. Read for compatibility and
+	 *  folded into `jump_profile_ids` by `canonicalize_jumps` before every
+	 *  save, so it is never written again.
 	 */
 	jumpProfileId?: string | null,
 	/**
@@ -1581,14 +1587,14 @@ export type SessionProfile_Serialize = {
 	privateKeyPath: string | null,
 	passphrase: string | null,
 	/**
-	 *  Saved SSH / SFTP profile to tunnel through (OpenSSH's `ProxyJump`):
-	 *  the transport to that host is opened first and this session's SSH
-	 *  handshake runs inside a `direct-tcpip` channel on it, so a host only
-	 *  reachable from the jump host's network can be opened directly. The
-	 *  jump profile may itself name a jump host, giving a chain; see
-	 *  `Store::jump_chain`.
+	 *  Saved SSH / SFTP profiles to tunnel through (OpenSSH's `ProxyJump`),
+	 *  **first hop first**: each is opened inside a `direct-tcpip` channel of
+	 *  the previous one, and this session's SSH handshake runs through the
+	 *  last. An empty list connects directly. The chain lives on the session
+	 *  itself — sharing a jump profile never lengthens anyone else's path.
+	 *  See `Store::jump_chain`.
 	 */
-	jumpProfileId?: string | null,
+	jumpProfileIds?: string[],
 	/**
 	 *  Port forwards saved with this profile, established when a session
 	 *  opens. Imported from an OpenSSH config's `LocalForward`,
@@ -1689,11 +1695,6 @@ export type SshImportSummary = {
 	 *  tunnels through them.
 	 */
 	jumpHosts: number,
-	/**
-	 *  Hosts whose multi-hop `ProxyJump` was left unimported; the sessions
-	 *  themselves were still saved, just without a jump host.
-	 */
-	jumpsIgnored: number,
 	/**
 	 *  Links that could not be made, one line each; the profiles themselves
 	 *  were still saved.
