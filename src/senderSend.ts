@@ -75,8 +75,11 @@ export async function sendUnits(
   onProgress?: (sent: number, total: number) => void,
 ): Promise<SendOutcome> {
   const { sent, skipped, pending } = startSend(ids, units, ending, stop, onProgress);
-  // Manual sends still report the first failure without releasing busy siblings.
-  await Promise.all(pending);
+  // Settle every session before reporting: rejecting on the first failure left
+  // the panel with no stop signal while the other sessions were still writing.
+  const results = await Promise.allSettled(pending);
+  const failure = results.find((result) => result.status === "rejected");
+  if (failure) throw (failure as PromiseRejectedResult).reason;
   return { sent, skipped };
 }
 
