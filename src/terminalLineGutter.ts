@@ -23,6 +23,25 @@ interface Context {
 /** No command rows to mark; shared so a suppressed gutter allocates nothing. */
 const EMPTY_COMMANDS: ReadonlySet<number> = new Set<number>();
 
+type LogicalGroup = { text: string; rows: { index: number }[] };
+
+/**
+ * How many buffer rows a reflow pushed off the top.
+ *
+ * A reflow re-wraps rows - one logical line can go from one row to two - but
+ * it never merges or splits logical lines, so the buffer afterwards holds a
+ * suffix of the logical lines it held before. The missing ones are therefore
+ * exactly the first `before.length - after.length` groups, and their row
+ * counts add up to the rows that went. Counting rows that failed to match
+ * by text instead does not work: a line that re-wrapped has a different row
+ * count and looks unmatched.
+ */
+const droppedRows = (before: LogicalGroup[], after: LogicalGroup[]): number => {
+  let dropped = 0;
+  for (let i = 0; i < before.length - after.length; i++) dropped += before[i].rows.length;
+  return dropped;
+};
+
 export class TerminalLineGutter {
   rowPool: HTMLElement[] = [];
 
@@ -276,8 +295,30 @@ export class TerminalLineGutter {
       }
     }
     this.setLineTimes(times);
+    this.noteReflowTrim(droppedRows(before, after));
     this.resetOutputTracking();
     this.resetTrimMarker();
+    this.invalidateGutter();
+  }
+
+  /**
+   * A reflow that pushes rows off the top of a full buffer. Nothing reports
+   * it, so the numbering has to notice it here: without this every row is
+   * numbered higher than it is after a width change, and the OSC 7 cwd
+   * attribution built on the same coordinate resolves old output against
+   * whatever directory the session walked into later.
+   *
+   * The line times were just rebuilt indexed by buffer row, so this moves
+   * only the numbering - `dropLeadingLines` would also shift the times.
+   */
+  private noteReflowTrim(dropped: number) {
+    if (dropped <= 0) return;
+    this.firstLineNumber += dropped;
+    // Watch marks are keyed by absolute line, so the dropped ones are stale;
+    // without the sweep the map would grow with the session's whole history.
+    for (const line of this.watchByLine.keys()) {
+      if (line < this.firstLineNumber) this.watchByLine.delete(line);
+    }
     this.invalidateGutter();
   }
 

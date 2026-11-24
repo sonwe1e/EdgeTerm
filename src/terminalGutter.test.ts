@@ -132,6 +132,30 @@ describe("gutter line numbering", () => {
     expect(metadata(controller).times[3]).toBe(20000);
     expect(recordedTimes(controller).get("old")).toBe(10000);
   });
+  it("moves the first line number when a reflow trims the oldest rows", async () => {
+    const controller = createController(6);
+    controller.term.resize(40, 3);
+    const long = "x".repeat(38);
+    const NEWLINE = String.fromCharCode(13, 10);
+    for (let i = 0; i < 12; i++) await write(controller, long + NEWLINE);
+    const before = metadata(controller).first;
+
+    // Every 38-column line needs two rows at 20 columns, so xterm reflows and
+    // pushes older rows off the top. Nothing reports that, so the numbering
+    // has to notice: a stale number also mis-attributes OSC 7 cwd records.
+    controller.term.resize(20, 3);
+    expect(metadata(controller).first).toBeGreaterThan(before);
+  });
+
+  it("keeps the numbering still when a reflow fits the whole buffer", async () => {
+    const controller = createController(200);
+    controller.term.resize(40, 3);
+    await write(controller, "short line\r\n");
+    const before = metadata(controller).first;
+    // Nothing is trimmed, so the top row keeps its number.
+    controller.term.resize(20, 3);
+    expect(metadata(controller).first).toBe(before);
+  });
   it("keeps the newest occurrence of repeated lines when reflow trims old history", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(10000);
