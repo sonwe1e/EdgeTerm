@@ -466,17 +466,53 @@ dialog.dialog-backdrop.is-fallback[open] {
   grid-column: 1 / -1;
 }
 
+/* ProxyJump hops: the order is the path the tunnel is opened in, so the list
+   is numbered and every hop can be dropped on its own. */
+.session-jump-chain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.session-jump-hop {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-8);
+  padding: var(--sp-4) var(--sp-8);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-raised);
+}
+
+.session-jump-step {
+  color: var(--fg-dim);
+  font-variant-numeric: tabular-nums;
+  min-width: 1.5em;
+}
+
+.session-jump-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .session-color-picker {
   display: grid;
-  grid-template-columns: repeat(8, 20px);
+  /* 24px cells: a colour is a hit target like any other, and the audit's
+     minimum is 24 with the neighbours' circles clear of each other. */
+  grid-template-columns: repeat(8, 24px);
   align-items: center;
   gap: var(--sp-6);
   min-height: 30px;
 }
 
 .session-color-option {
-  width: 20px;
-  height: var(--h-control-xs);
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 0;
   border-radius: 50%;
