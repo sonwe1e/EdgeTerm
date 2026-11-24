@@ -1204,7 +1204,7 @@ export const zhCN: Catalog = {
   "data.imported": "已导入 {summary}{andSettings}",
   "data.importSettingsKept": "，但粘贴警告与剪贴板保护保持原样",
   "data.importReplaceWarning":
-    "其中 {count} 条会覆盖你已有的会话，它们当前的主机、名称与转发会被替换。覆盖前会先保存一份当前数据。",
+    "其中 {count} 条会覆盖你已有的会话，它们当前的主机、名称与转发会被替换。覆盖前会把会话、分组与发送命令备份为配置目录下的 import-backup-*.edgeterm；设置不在该备份中。",
   "data.importExportedAt": "该文件的导出时间是 {when}。",
   "data.importSkippedOne": "；跳过 1 条发送命令（库已满）",
   "data.importSkippedMany": "；跳过 {count} 条发送命令（库已满）",

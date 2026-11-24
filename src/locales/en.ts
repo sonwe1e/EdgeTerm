@@ -1255,7 +1255,7 @@ export const en = {
   "data.importSettingsKept":
     ", but the paste warning and clipboard protection were kept as they are",
   "data.importReplaceWarning":
-    "{count} of them replace sessions you already have, and their current hosts, names and forwards are overwritten. A copy of the current data is saved first.",
+    "{count} of them replace sessions you already have, and their current hosts, names and forwards are overwritten. Sessions, groups and Sender commands are copied to import-backup-*.edgeterm beside the configuration first; settings are not part of that copy.",
   "data.importExportedAt": "The file was exported at {when}.",
   "data.importSkippedOne": "; skipped 1 Sender command (library full)",
   "data.importSkippedMany": "; skipped {count} Sender commands (library full)",
