@@ -14,38 +14,94 @@
 //! arrives through `set_close_to_tray`. Neither side holds the other's
 //! state, and the mirrored write is idempotent, so the two cannot loop.
 
+use std::sync::Mutex;
+
 use tauri::AppHandle;
 use tauri::Manager;
 
 /// The tray's check item was flipped; the payload is the new state.
 pub const EVENT_CLOSE_TO_TRAY_CHANGED: &str = "app:close-to-tray-changed";
 
+/// The three entries' text. The front end sends them so the menu speaks the
+/// interface's language: this is the only surface left when the window is
+/// parked in the tray, and it carries the app's only Quit entry.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrayLabels {
+    pub open: String,
+    pub toggle: String,
+    pub quit: String,
+}
+
+impl Default for TrayLabels {
+    fn default() -> Self {
+        Self {
+            open: "Open EdgeTerm".to_string(),
+            toggle: "Minimize to tray".to_string(),
+            quit: "Quit EdgeTerm".to_string(),
+        }
+    }
+}
+
 const MENU_OPEN: &str = "tray-open";
 const MENU_TOGGLE: &str = "tray-toggle";
 const MENU_QUIT: &str = "tray-quit";
 
 /// The check item's handle, kept out of the menu so a click on the entry can
-/// flip it and `set_close_to_tray` can follow the front end's setting.
-struct TrayToggle(tauri::menu::CheckMenuItem<tauri::Wry>);
+/// flip it and `set_close_to_tray` can follow the front end's setting. It is
+/// replaced when the menu is rebuilt in another language.
+struct TrayToggle(Mutex<tauri::menu::CheckMenuItem<tauri::Wry>>);
 
-pub fn install(app: &tauri::App) -> tauri::Result<()> {
+/// Builds the menu from `labels`, returning it with the check item the caller
+/// keeps: a rebuild in another language needs both.
+fn build_menu(
+    handle: &AppHandle,
+    labels: &TrayLabels,
+) -> tauri::Result<(
+    tauri::menu::Menu<tauri::Wry>,
+    tauri::menu::CheckMenuItem<tauri::Wry>,
+)> {
     use tauri::menu::{CheckMenuItem, Menu, MenuItem};
-    use tauri::tray::TrayIconBuilder;
-    use tauri::{Emitter, Manager};
-
-    let handle = app.handle();
-    let open = MenuItem::with_id(handle, MENU_OPEN, "Open EdgeTerm", true, None::<&str>)?;
+    let open = MenuItem::with_id(handle, MENU_OPEN, &labels.open, true, None::<&str>)?;
     let toggle = CheckMenuItem::with_id(
         handle,
         MENU_TOGGLE,
-        "Minimize to tray",
+        &labels.toggle,
         true,
         false,
         None::<&str>,
     )?;
-    let quit = MenuItem::with_id(handle, MENU_QUIT, "Quit EdgeTerm", true, None::<&str>)?;
+    let quit = MenuItem::with_id(handle, MENU_QUIT, &labels.quit, true, None::<&str>)?;
     let menu = Menu::with_items(handle, &[&open, &toggle, &quit])?;
-    app.manage(TrayToggle(toggle));
+    Ok((menu, toggle))
+}
+
+/// Rebuilds the menu with another language's text. The click handler lives on
+/// the tray icon rather than the menu, so replacing the menu keeps it working.
+pub fn set_labels(app: &AppHandle, labels: &TrayLabels) {
+    let Ok((menu, toggle)) = build_menu(app, labels) else {
+        return;
+    };
+    if let Some(tray) = app.tray_by_id("main") {
+        let _ = tray.set_menu(Some(menu));
+    }
+    if let Some(state) = app.try_state::<TrayToggle>() {
+        if let Ok(mut current) = state.0.lock() {
+            *current = toggle;
+        }
+    }
+}
+
+pub fn install(app: &tauri::App) -> tauri::Result<()> {
+    use tauri::tray::TrayIconBuilder;
+    use tauri::{Emitter, Manager};
+
+    let handle = app.handle();
+    // English until the front end says otherwise: it sends the interface's own
+    // words as soon as the window is up (see `set_tray_labels`).
+    let (menu, toggle) = build_menu(handle, &TrayLabels::default())?;
+    app.manage(TrayToggle(Mutex::new(toggle)));
 
     let icon = app
         .default_window_icon()
@@ -60,8 +116,11 @@ pub fn install(app: &tauri::App) -> tauri::Result<()> {
             MENU_OPEN => reveal(handle),
             MENU_TOGGLE => {
                 let state = handle.state::<TrayToggle>();
-                let next = !state.0.is_checked().unwrap_or(false);
-                let _ = state.0.set_checked(next);
+                let Ok(toggle) = state.0.lock() else {
+                    return;
+                };
+                let next = !toggle.is_checked().unwrap_or(false);
+                let _ = toggle.set_checked(next);
                 let _ = handle.emit(EVENT_CLOSE_TO_TRAY_CHANGED, next);
             }
             // Same route as the macOS ⌘Q menu: the front end confirms live
@@ -98,6 +157,8 @@ pub fn reveal(handle: &AppHandle) {
 /// Follows the front end's setting; the flip itself lives in the menu event.
 pub fn set_close_to_tray(app: &AppHandle, enabled: bool) {
     if let Some(state) = app.try_state::<TrayToggle>() {
-        let _ = state.0.set_checked(enabled);
+        if let Ok(toggle) = state.0.lock() {
+            let _ = toggle.set_checked(enabled);
+        }
     }
 }

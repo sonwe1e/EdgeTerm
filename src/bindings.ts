@@ -308,6 +308,12 @@ export const commands = {
 	 */
 	setCloseToTray: (enabled: boolean) => __TAURI_INVOKE<null>("set_close_to_tray", { enabled }),
 	/**
+	 *  Rebuilds the tray menu with the interface's own words. The tray is the only
+	 *  surface left when the window is parked there, so it has to speak the same
+	 *  language as the window it brought back.
+	 */
+	setTrayLabels: (labels: TrayLabels) => __TAURI_INVOKE<null>("set_tray_labels", { labels }),
+	/**
 	 *  The clipboard's text, read by the process rather than the page. On macOS
 	 *  this is the paste path (#47): WebKit lets a page read the pasteboard only
 	 *  from inside its own paste command (⌘V, Edit → Paste on the system menu)
@@ -1815,6 +1821,17 @@ export type TransferOptions = {
 export type TransferProgress = {
 	transferred: number,
 	total: number,
+};
+
+/**
+ *  The three entries' text. The front end sends them so the menu speaks the
+ *  interface's language: this is the only surface left when the window is
+ *  parked in the tray, and it carries the app's only Quit entry.
+ */
+export type TrayLabels = {
+	open: string,
+	toggle: string,
+	quit: string,
 };
 
 export type WriteOutcome = {

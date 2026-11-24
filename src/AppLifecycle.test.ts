@@ -28,6 +28,7 @@ vi.mock("./api", async (original) => ({
   systemMonospaceFamily: async () => null,
   setStartupTheme: async () => {},
   setCloseToTray: async () => {},
+  setTrayLabels: async () => {},
   hideMainWindow: native.hide,
   onSessionState: async (callback: typeof native.state) => {
     native.state = callback;

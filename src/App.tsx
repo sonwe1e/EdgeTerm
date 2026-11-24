@@ -562,6 +562,20 @@ export default function App() {
     });
   }, [closeAction]);
 
+  // The tray is the only surface left once the window is parked there, and it
+  // carries the app's only Quit entry, so it speaks the interface's language.
+  useEffect(() => {
+    api
+      .setTrayLabels({
+        open: t("tray.open"),
+        toggle: t("tray.toggle"),
+        quit: t("tray.quit"),
+      })
+      .catch(() => {
+        // No tray (Linux) or a headless test: nothing to relabel.
+      });
+  }, [t]);
+
   useEffect(() => {
     const unlisten = api.onCloseToTrayChanged((enabled) => {
       // Un-ticking restores what the reader had chosen; writing "ask" here

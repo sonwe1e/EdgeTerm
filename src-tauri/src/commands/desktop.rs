@@ -50,6 +50,25 @@ pub fn hide_main_window(window: tauri::WebviewWindow) -> Result<()> {
     window.hide().map_err(err)
 }
 
+/// Rebuilds the tray menu with the interface's own words. The tray is the only
+/// surface left when the window is parked there, so it has to speak the same
+/// language as the window it brought back.
+#[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
+pub fn set_tray_labels(
+    window: tauri::WebviewWindow,
+    labels: crate::tray::TrayLabels,
+) -> Result<()> {
+    #[cfg(any(windows, target_os = "macos"))]
+    {
+        use tauri::Manager;
+        crate::tray::set_labels(window.app_handle(), &labels);
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    let _ = (window, labels);
+    Ok(())
+}
+
 /// Mirrors the front end's `closeAction` setting onto the tray's check item,
 /// so both sides show one state. The flip from the tray's own side arrives as
 /// the `app:close-to-tray-changed` event instead (see `tray.rs`).

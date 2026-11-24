@@ -114,6 +114,7 @@ fn export_bindings() {
             commands::finish_main_window,
             commands::hide_main_window,
             commands::set_close_to_tray,
+    commands::set_tray_labels,
             commands::read_clipboard_text,
             commands::write_clipboard_text,
             commands::show_pointer,

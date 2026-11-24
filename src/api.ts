@@ -754,6 +754,13 @@ export const finishMainWindow = (): Promise<void> => invoke("finish_main_window"
  */
 export const hideMainWindow = (): Promise<void> => invoke("hide_main_window");
 
+/** The tray menu's three entries, in the interface's language. */
+export const setTrayLabels = (labels: {
+  open: string;
+  toggle: string;
+  quit: string;
+}): Promise<void> => commands.setTrayLabels(labels).then(() => undefined);
+
 /**
  * Mirrors the front end's `closeAction` setting onto the tray's check item.
  * The flip from the tray's own side arrives through `onCloseToTrayChanged`.
