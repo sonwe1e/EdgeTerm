@@ -68,7 +68,10 @@ it("exposes background activity and connection state in tabs and the overflow me
   expect(api.getAttribute("aria-label")).toContain("Connected");
   expect(api.getAttribute("aria-label")).toContain("AI session active");
 
-  const all = page.getByRole("button", { name: /All sessions.*2 sessions need attention/ });
+  // The fallback lists this pane's tabs only, and its label says so.
+  const all = page.getByRole("button", {
+    name: /All tabs in this pane.*2 sessions need attention/,
+  });
   const point = pagePoint(document.querySelector(".tab-list-button")!);
   await mouse.press(point.x, point.y);
   await mouse.release(point.x, point.y);

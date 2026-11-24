@@ -1094,7 +1094,7 @@ export const zhCN: Catalog = {
   "tab.saveSession": "保存会话…",
   "tab.duplicateSsh": "复制 SSH 通道",
   "tab.closeSession": "关闭会话",
-  "tab.allSessions": "所有会话",
+  "tab.allSessions": "此窗格中的所有标签页",
   "tab.attentionOne": "1 个会话需要关注",
   "tab.attentionMany": "{count} 个会话需要关注",
   "tab.strip": "会话标签",

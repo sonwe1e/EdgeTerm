@@ -1142,7 +1142,7 @@ export const en = {
   "tab.saveSession": "Save Session…",
   "tab.duplicateSsh": "Duplicate SSH Channel",
   "tab.closeSession": "Close session",
-  "tab.allSessions": "All sessions",
+  "tab.allSessions": "All tabs in this pane",
   "tab.attentionOne": "1 session needs attention",
   "tab.attentionMany": "{count} sessions need attention",
   "tab.strip": "Sessions",
