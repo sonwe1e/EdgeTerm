@@ -240,7 +240,9 @@ export function quickConnectCommand(
   const label = quickConnectLabel(target);
   return {
     id: "connect:" + label,
-    group: "sessions",
+    // Not a saved session: the row's own promise is that nothing is stored, so
+    // filing it under "Saved sessions" contradicted the feature.
+    group: "actions",
     label: t("palette.quickConnect", { target: label }),
     hint: hint ?? t("palette.quickConnectHint"),
     keywords: [target.host, "ssh", "connect", "quick", "host"],

@@ -9,6 +9,7 @@ import {
   matchRanges,
   normalizeQuery,
   pushRecent,
+  quickConnectCommand,
   rankCommands,
   RECENTS_LIMIT,
   saveRecents,
@@ -378,4 +379,15 @@ describe("the palette itself", () => {
       expect(ids).toContain(shortcutCommandId(id));
     }
   });
+});
+
+it("files the connect row as an action, not as a saved session", () => {
+  const command = quickConnectCommand(
+    { host: "example.com", username: null, port: null },
+    ((key: string) => key) as unknown as Translate,
+    () => {},
+  );
+  // The row's promise is that the session is not saved, so the heading it sits
+  // under must not claim otherwise.
+  expect(command.group).toBe("actions");
 });
