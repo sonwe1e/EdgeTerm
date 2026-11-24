@@ -57,3 +57,32 @@ Git 祖先关系仍停留在 1.0.0；选择性移植不等于已 merge 上游 1.
 性能方面，这批提交没有可测量的改进：排序本分支已用 `useMemo` 并复用 `Intl.Collator`，`a7d0923` 只是把组件状态外提，`1d68458` 的后端瘦身伴随功能删除。借来的两条都是体验修正，不是性能优化。
 
 验证边界：上述提交各自跑过 `npm run typecheck`、`npm run format`、`npm run lint` 与对应 Vitest 文件；完整 `npm test` 与提交检查见本次分支最终校验。浏览器侧新增 `src/test/findBox.browser.test.ts`（查找框落在活动窗格、随焦点移动）并通过，签名改动的 `tabActivity.browser.test.ts` 也重跑通过；其余浏览器用例未运行。真实桌面与真实服务器交互未验证。
+
+## 2026-11-24 复核：v1.0.8 与上游开放 PR #2
+
+核对方式：`git fetch upstream` 后本地 `upstream/main` 为 `0015880`（1.0.8）；`git rev-list --left-right --count HEAD...upstream/main` 为 **743 领先 / 26 落后**，本轮只处理此前未记录的 1.0.8 与上游开放 PR。
+
+### v1.0.8 的 1 个功能提交
+
+| 上游提交 | 内容 | 本分支处置 |
+| --- | --- | --- |
+| [ef45a21](https://github.com/miskin-lee/EdgeTerm/commit/ef45a21) · 1.0.8 · tmux control-mode（`tmux -CC`） | 新增 `src/tmux.ts`（545 行）、`src/tmuxClient.ts`（162）、`src/tmuxProtocol.ts`（195）、`src/components/TmuxWorkspace.tsx`（249）、样式 121 行，并改动 `TerminalPane.tsx`、`actions.ts`、`terminal.ts` 等共 18 个文件；`package.json` 只新增 devDependency `@types/node` | **暂不采用，待评估**：这是一整套子系统，不是补丁。可借鉴的部分已经查清：`tmuxProtocol.ts`／`tmuxClient.ts` 与终端层解耦（客户端只接收 send/output/notify 回调），协议模块无运行时依赖；但 `TmuxWorkspace` 与上游的 `TerminalPane`／样式强耦合，本分支这些文件已大幅分化。真正移植需要先定窗口/窗格与本地标签体系的关系 |
+| 版本提交 `0015880` | 1.0.8 版本号 | 不采纳：本分支使用独立版本序列 |
+
+26 个落后提交中，1.0.1–1.0.7 的处置见上文两节；本轮没有发现漏记的提交。
+
+### 上游开放 PR #2（SSH config import with ProxyJump）
+
+事实：`gh pr list -R miskin-lee/EdgeTerm` 只有这一个开放 PR；`gh pr list -R sonwe1e/EdgeTerm` 返回 `[]`——**本仓库没有待合入的 PR**。该 PR 的 head 基于上游 0.3.2 时代（`git rev-list --left-right --count HEAD...pr/upstream-2` 为 **744 领先 / 46 落后**），改动 1072 行。
+
+对照本分支现状，它的主张大多已存在：
+
+| PR 主张 | 本分支现状 |
+| --- | --- |
+| 解析 `~/.ssh/config`（Host/HostName/Port/User/IdentityFile、通配符、`!` 取反、`Include`、首匹配优先） | 已有：`src-tauri/src/ssh_config.rs`（880 行）+ `tests.rs` 中通配符、取反、`Include`、`%h` 展开、无 HostName 的别名等用例 |
+| 批量导入、逐项选择、跳过重复 | 已有：`src/components/SshConfigImportDialog.tsx`（287 行）带全选与逐项勾选 |
+| ProxyJump | 已有单跳：`SessionProfile.jumpProfileId` → 已保存的 SSH 会话；后端 `connect_handle` 的 `jumps: &[SessionProfile]` **本来就支持多跳链**（逐跳 `direct-tcpip`，每跳独立校验主机密钥） |
+
+结论：**不合并该 PR**。它的全部价值在于两个本分支尚缺的点——多跳 `ProxyJump a,b,c` 的**界面与数据模型**（后端已就绪，`jumpProfileId` 仍是单值）与 `HostKeyAlias`。为这两点去合入一条落后 744 个提交、重写 1072 行的分支不划算；按上面的方向在本地实现更稳，也更符合本仓库的移植规则。
+
+验证边界：本轮只做只读核对与记录，没有运行构建或测试，也没有合并任何提交；上一轮 `npm run verify` 的结果不能当作本节的证据。
