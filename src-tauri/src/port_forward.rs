@@ -247,7 +247,7 @@ impl Forwards {
         let row = job.snapshot();
         if !self.has_room() {
             return Err(AppError::new(
-                "tunnel limit reached; remove finished tunnels first",
+                "tunnel limit reached (256 rows, 64 running); stop a running tunnel first",
             ));
         }
         self.jobs.lock().insert(row.id.clone(), job.clone());
@@ -261,13 +261,24 @@ impl Forwards {
         });
         Ok(row)
     }
-    /// Whether one more tunnel may start, after dropping the records of tunnels
-    /// that already finished. Those rows are only kept so the user can read why;
-    /// they must not be what stops the next tunnel. Without this, enough closed
-    /// sessions reach the 256-row cap and every later tunnel — including the
-    /// forwards a profile restores on login — is refused.
+    /// Whether one more tunnel may start. Finished rows are only kept so the
+    /// user can read why, so they do not count against the running limit — and
+    /// they are not deleted here either: a failure's row is the only place its
+    /// reason is shown, and the remove confirmation says as much.
     fn has_room(&self) -> bool {
+        // Finished rows do not count against the running limit, and a start
+        // must not delete one: a failure's row is the only place its reason is
+        // shown, which is what the remove confirmation says. Only a full
+        // register — the cap that would otherwise refuse every later tunnel,
+        // including the forwards a profile restores on login — forces them out.
+        if self.room_now() {
+            return true;
+        }
         self.prune_finished();
+        self.room_now()
+    }
+
+    fn room_now(&self) -> bool {
         let jobs = self.jobs.lock();
         jobs.len() < 256 && jobs.values().filter(|job| !*job.done.borrow()).count() < 64
     }
@@ -421,7 +432,15 @@ async fn run(
     loop {
         tokio::select! {
             biased;
-            _=job.control.stopped()=>break,
+            _=job.control.stopped()=>{
+                // A session that drops stops its tunnels through the same
+                // control channel a reader's Stop uses, and this branch wins the
+                // race with the tick below. Asking the transport tells them
+                // apart, so a tunnel killed by a lost connection is reported as
+                // a failure with a reason rather than as a deliberate stop.
+                if transport.is_closed(){result=Err(AppError::new("SSH connection closed"));}
+                break;
+            }
             _=closed.tick()=>{if transport.is_closed(){result=Err(AppError::new("SSH connection closed"));break;}},
             Some(_)=flows.join_next(),if !flows.is_empty()=>{},
             accepted=async {listener.as_ref().unwrap().accept().await},if listener.is_some()=>{
@@ -434,15 +453,26 @@ async fn run(
                     let (target_host,target_port)=match (&spec.target_host,spec.target_port) {(Some(host),Some(port))=>(host.as_str(),port),_=>{job.snapshot.lock().error=Some("forward target is missing".into());return;}};
                     let origin_host=origin.ip().to_string();
                     let channel=tokio::select!{_ =job.control.stopped()=>return, result=tokio::time::timeout(Duration::from_secs(5),transport.direct_tcpip(target_host,target_port,&origin_host,origin.port()))=>result};
-                    match channel {Ok(Ok(channel))=>bridge(job,channel,socket).await,Ok(Err(e))=>job.snapshot.lock().error=Some(e.to_string()),Err(_)=>job.snapshot.lock().error=Some("target connection timed out".into())}
+                    match channel {
+                        Ok(Ok(channel))=>bridge(job,channel,socket,&transport).await,
+                        // One client's failure is not the tunnel's: the forward
+                        // is still listening and may be serving others, and an
+                        // error written here is never cleared.
+                        Ok(Err(e))=>note_client_failure(&job,transport.is_closed(),&e),
+                        Err(_)=>note_client_failure(&job,transport.is_closed(),&AppError::new("target connection timed out")),
+                    }
                 });},Err(error)=>{result=Err(error.into());break;}}
             },
             Some(channel)=incoming.recv(),if listener.is_none()=>{
                 let stream=channel.into_stream();
-                if flows.len()>=32{drop(stream);continue;}let job=job.clone();let spec=spec.clone();flows.spawn(async move {
+                if flows.len()>=32{drop(stream);continue;}let job=job.clone();let spec=spec.clone();let transport=transport.clone();flows.spawn(async move {
                     let (target_host,target_port)=match (&spec.target_host,spec.target_port) {(Some(host),Some(port))=>(host.clone(),port),_=>{job.snapshot.lock().error=Some("forward target is missing".into());return;}};
                     let socket=tokio::select!{_=job.control.stopped()=>return,result=tokio::time::timeout(Duration::from_secs(5),TcpStream::connect((target_host.as_str(),target_port)))=>result};
-                    match socket{Ok(Ok(socket))=>bridge(job,stream,socket).await,other=>{job.snapshot.lock().error=Some(format!("cannot connect to local target: {other:?}"));}}
+                    match socket {
+                        Ok(Ok(socket))=>bridge(job,stream,socket,&transport).await,
+                        Ok(Err(error))=>note_client_failure(&job,transport.is_closed(),&AppError::new(format!("cannot connect to local target: {error}"))),
+                        Err(_)=>note_client_failure(&job,transport.is_closed(),&AppError::new("local target did not answer within 5 seconds")),
+                    }
                 });
             }
         }
@@ -509,7 +539,12 @@ impl Drop for Connection {
         self.0.connections.fetch_sub(1, Ordering::Relaxed);
     }
 }
-async fn bridge(job: Arc<Job>, channel: russh::ChannelStream<Msg>, socket: TcpStream) {
+async fn bridge(
+    job: Arc<Job>,
+    channel: russh::ChannelStream<Msg>,
+    socket: TcpStream,
+    transport: &SharedTransport,
+) {
     job.connections.fetch_add(1, Ordering::Relaxed);
     let _connection = Connection(job.clone());
     let mut socket = CountedStream {
@@ -522,7 +557,7 @@ async fn bridge(job: Arc<Job>, channel: russh::ChannelStream<Msg>, socket: TcpSt
         job: job.clone(),
         outgoing: true,
     };
-    tokio::select! {_=job.control.stopped()=>{},result=tokio::io::copy_bidirectional(&mut socket,&mut channel)=>{if let Err(error)=result {job.snapshot.lock().error=Some(error.to_string());}}}
+    tokio::select! {_=job.control.stopped()=>{},result=tokio::io::copy_bidirectional(&mut socket,&mut channel)=>{if let Err(error)=result {note_client_failure(&job,transport.is_closed(),&AppError::new(error.to_string()));}}}
     // russh ChannelStream owns ChannelCloseOnDrop; both halves are closed here.
 }
 
@@ -622,7 +657,7 @@ async fn socks5(job: &Arc<Job>, transport: &SharedTransport, mut socket: TcpStre
         }
     };
     socket.write_all(&socks_reply(0x00)).await?;
-    bridge(job.clone(), channel, socket).await;
+    bridge(job.clone(), channel, socket, transport).await;
     Ok(())
 }
 
@@ -754,6 +789,46 @@ mod tests {
     /// A Dynamic forward serves whoever connects. A client that is not speaking
     /// SOCKS5 says nothing about the tunnel, and reporting it would paint an
     /// error over a forward that is still serving everyone else.
+    #[test]
+    fn a_start_keeps_a_finished_row_while_there_is_room() {
+        let forwards = Forwards::default();
+        let job = Arc::new(job_fixture("finished"));
+        job.done.send_replace(true);
+        forwards.jobs.lock().insert("finished".into(), job);
+
+        assert!(
+            forwards.has_room(),
+            "a finished row does not use the running limit"
+        );
+        assert_eq!(
+            forwards.jobs.lock().len(),
+            1,
+            "the reason must stay readable until the reader removes the row"
+        );
+    }
+
+    #[test]
+    fn a_full_register_still_makes_room() {
+        let forwards = Forwards::default();
+        for index in 0..256 {
+            let job = Arc::new(job_fixture(&format!("finished-{index}")));
+            job.done.send_replace(true);
+            forwards
+                .jobs
+                .lock()
+                .insert(format!("finished-{index}"), job);
+        }
+
+        assert!(
+            forwards.has_room(),
+            "the cap must not refuse every later tunnel"
+        );
+        assert!(
+            forwards.jobs.lock().is_empty(),
+            "a register that is full drops its finished rows"
+        );
+    }
+
     #[test]
     fn a_bad_socks_client_does_not_mark_the_tunnel() {
         let job = job_fixture("dynamic-bad-client");
