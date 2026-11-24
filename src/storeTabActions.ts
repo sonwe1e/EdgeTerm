@@ -305,8 +305,12 @@ export const createTabActions: StateCreator<
     const tabs = current.tabs.map((item) => (item.info.id === id ? { ...item, pinned } : item));
     // Pinning parks the tab at the front of its own strip: the array order is
     // the display order, so no derived ordering is needed and drag-reorder
-    // keeps working on the positions it sees.
-    set({ tabs: pinned ? placeTab(tabs, id, tab.paneId, 0) : tabs });
+    // keeps working on the positions it sees. Unpinning parks it at the first
+    // unpinned slot: leaving it between the pinned ones opens a hole in that
+    // region, and the drop floor for unpinned tabs then blocks the front slots.
+    set({
+      tabs: placeTab(tabs, id, tab.paneId, pinned ? 0 : tabs.filter((item) => item.pinned).length),
+    });
   },
 
   activateAdjacentTab(direction) {

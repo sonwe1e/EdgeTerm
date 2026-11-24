@@ -40,6 +40,26 @@ describe("pinned tabs", () => {
     expect(useStore.getState().tabs[0].pinned).toBe(false);
   });
 
+  it("unpinning keeps the pinned region contiguous", () => {
+    useStore.setState({ ...initial, tabs: [tab("a"), tab("b"), tab("c")] });
+    for (const id of ["c", "b", "a"]) useStore.getState().toggleTabPinned(id);
+    expect(
+      useStore.getState().tabs.map((item) => item.info.id),
+      "pin order",
+    ).toEqual(["a", "b", "c"]);
+
+    // Unpinning the middle one must not leave a hole between pinned tabs: the
+    // drop floor for unpinned tabs is the pinned count, so a hole there made the
+    // front slots unreachable.
+    useStore.getState().toggleTabPinned("b");
+    const tabs = useStore.getState().tabs;
+    expect(tabs.map((item) => item.info.id)).toEqual(["a", "c", "b"]);
+    expect(
+      tabs.map((item) => item.pinned === true),
+      "pinned first, unpinned after",
+    ).toEqual([true, true, false]);
+  });
+
   it("leaves pinned tabs out of Close Others, and the kept tab too", () => {
     const tabs = [{ ...tab("pinned"), pinned: true }, tab("middle"), tab("right"), tab("keep")];
     expect(closeOthersTargets(tabs, "keep")).toEqual(["middle", "right"]);
