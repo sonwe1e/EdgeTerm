@@ -20,3 +20,14 @@ Z1 与 Z3 都位于一次真实的 ZMODEM **接收**会话之后。现有 `zmode
 - **OSC 52 提示可用键盘回答且说得对**：Deny 持初始焦点，Esc 拒绝，Tab 到 Allow；正文点名会话标签；「总是允许」复选框确实改的是它声称的全局偏好。`parseOsc52` 拒绝读请求、清空和非 base64。
 - **剪贴板类键两语言齐全**，占位符一致。
 - 未报项（有意边界）：没有 `zmodem.*` 语言键，所有 ZMODEM 提示都是 `zmodem.ts` 里的英文字面量；相邻的传输面完全一样（「Paste failed:」等），读起来是协议提示的有意边界而非缺陷。
+
+## 第 188 轮：试着补用例，没补上，原因记下来
+
+本轮的目标就是给 Z1/Z3 补用例。**没做成**，过程如下，以免下一轮重走：
+
+- 已有 `zmodem.test.ts` 只驱动**发送**的端到端往返（两个真实控制器经 `writeSessionBytes` 交叉）。要覆盖 Z1/Z3 需要驱动**接收**侧：本地建目标文件、然后取消或让 peer 提前结束。
+- 我在同一文件里加用例时，`String.replace` 的锚点**静默没匹配上**（biome 已重排过文件），我以为改成功了，实际把旧坏代码和新代码叠在一起；连续两次之后文件已坏。两次都靠 `git checkout --` 恢复。
+- 改成**独立文件** `src/zmodemReceive.test.ts`（自带完整夹具）后，类型错误只剩一个，运行时错误是 `zmodemFinishFile` **一次都没被调用**——也就是说取消路径的 `activeWrite.writer.finish()` 没有跑起来。最可能的原因：`zmodemWriteBytes` 在传输完成前从未触发（`BufferedFileWriter` 要攒满 1 MiB 才落盘，而整个往返在少数几次 `consume` 里就跑完了），于是 `receiver.cancel()` 落在会话结束之后，`activeSession` 已为 null。
+- 想加一行诊断时我又一次改坏了文件（`no tests`）。**此时停手**，删掉未完成的文件，保持工作树干净。
+
+结论：Z1/Z3 **仍然没有独立用例**。这是第 186 轮我欠下的债，第 188 轮尝试偿还失败。要接着做，正确入口是**先读 `BufferedFileWriter` 的落盘时机与 `FILE_CHUNK_SIZE`**，确认接收侧在一次 `consume` 里到底落盘几次，再决定取消点——而不是继续猜选择器和猜时机。
