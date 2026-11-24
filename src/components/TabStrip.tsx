@@ -233,16 +233,18 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
   // scrollbar is hidden and a mouse user otherwise has no cue that the strip
   // scrolls at all.
   const [overflow, setOverflow] = useState({ left: false, right: false });
-  /** True while a keyboard user stands on one of the overflow scroll buttons. */
+  /**
+   * True while a keyboard user stands on a control of the actions block. The
+   * whole block — scroll buttons, the tab list and the agent actions — goes
+   * away when the strip fits again, so the strip takes the keyboard back
+   * rather than letting focus fall to the document.
+   */
   const scrollFocused = useRef(false);
   useEffect(() => {
-    // The scroll buttons hide or disable themselves the moment the strip fits,
-    // so the control a keyboard user was holding vanishes; hand the strip
-    // itself the keyboard rather than letting focus fall to the document.
     if (!scrollFocused.current) return;
     scrollFocused.current = false;
     stripRef.current?.focus({ preventScroll: true });
-  }, [overflow.left, overflow.right]);
+  }, [overflow.left, overflow.right, agentTab]);
   const updateOverflow = useCallback(() => {
     const strip = stripRef.current;
     if (!strip) return;
@@ -870,7 +872,17 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
       )}
 
       {(overflow.left || overflow.right || agentTab) && (
-        <div className="tabstrip-actions">
+        <div
+          className="tabstrip-actions"
+          // Every control in this block can vanish when the strip fits again,
+          // so the block as a whole records that the keyboard is in it.
+          onFocus={() => {
+            scrollFocused.current = true;
+          }}
+          onBlur={() => {
+            scrollFocused.current = false;
+          }}
+        >
           {agentTab && <AgentTabActions id={agentTab.info.id} />}
           {(overflow.left || overflow.right) && (
             <>
@@ -917,6 +929,12 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
                   if (listWasOpen.current) return;
                   const rect = event.currentTarget.getBoundingClientRect();
                   setListMenu({ x: rect.right, y: rect.bottom + 2 });
+                }}
+                onFocus={() => {
+                  scrollFocused.current = true;
+                }}
+                onBlur={() => {
+                  scrollFocused.current = false;
                 }}
                 title={listButtonLabel}
                 aria-label={listButtonLabel}
