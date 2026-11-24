@@ -1,3 +1,4 @@
+import { createOutputDecoder } from "./encodings";
 import type { Translate } from "./i18n";
 
 /**
@@ -34,7 +35,7 @@ const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
  * the secondary one (`p`, `q`) is left alone, since the clipboard is not
  * what the program asked for.
  */
-export function parseOsc52(data: string): string | null {
+export function parseOsc52(data: string, encoding?: string | null): string | null {
   const split = data.indexOf(";");
   if (split < 0) return null;
   const targets = data.slice(0, split);
@@ -48,6 +49,10 @@ export function parseOsc52(data: string): string | null {
     return null;
   }
   const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-  const text = new TextDecoder().decode(bytes);
+  // The payload is text in the session's own codec: a vim copy in a GBK
+  // session is GBK bytes, and decoding them as UTF-8 turned them into
+  // replacement characters before the Allow dialog could even show them.
+  const decoder = createOutputDecoder(encoding);
+  const text = decoder ? decoder.decode(bytes) : new TextDecoder().decode(bytes);
   return text || null;
 }

@@ -355,6 +355,8 @@ export class TerminalController {
    * encoding xterm reads itself; null feeds xterm the bytes as they are.
    */
   private decoder: TextDecoder | null = null;
+  /** The label `decoder` was built from; OSC 52 payloads are decoded afresh. */
+  private outputEncoding: string | null = null;
   /** The erase character Backspace sends; see `setBackspace`. */
   private erase = "\x7f";
   private readonly transferNotice: HTMLElement;
@@ -788,7 +790,8 @@ export class TerminalController {
     // so a request that is not written (a `?` read, a denied write) is not
     // passed on to anything else.
     this.term.parser.registerOscHandler(52, (data) => {
-      const text = parseOsc52(data);
+      // A program's copy is text in the session's codec, like its output.
+      const text = parseOsc52(data, this.outputEncoding);
       if (text !== null) this.clipboard.programClipboardWrite(text);
       return true;
     });
@@ -1145,6 +1148,7 @@ export class TerminalController {
    * discards a partial character left over from the previous session.
    */
   setEncoding(label: string | null | undefined) {
+    this.outputEncoding = label ?? null;
     this.decoder = createOutputDecoder(label);
   }
 

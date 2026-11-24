@@ -20,6 +20,15 @@ describe("parseOsc52", () => {
     expect(parseOsc52(`s0;${base64("x")}`)).toBe("x");
   });
 
+  it("decodes a copy from a session in the session's own encoding", () => {
+    // vim with clipboard=unnamed in a GBK session puts GBK bytes on the wire.
+    const gbk = new Uint8Array([0xc4, 0xe3, 0xba, 0xc3]);
+    const payload = btoa(String.fromCharCode(...gbk));
+    expect(parseOsc52(`c;${payload}`, "gbk")).toBe("你好");
+    // The same bytes read as UTF-8 are not the text the user copied.
+    expect(parseOsc52(`c;${payload}`)).not.toBe("你好");
+  });
+
   it("never answers a read and ignores clears and garbage", () => {
     expect(parseOsc52("c;?")).toBeNull();
     expect(parseOsc52("c;")).toBeNull();
