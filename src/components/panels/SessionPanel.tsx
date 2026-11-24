@@ -248,7 +248,10 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
           // query names stays: the field promises to find groups by name, and a
           // just-created (still empty) group must not look like a failed create.
           const named = groupPathMatches(groupPath(groups, group.id), needle);
-          if (needle && sub.count === 0 && !named) continue;
+          // Whether anything survived, not the session count: a subgroup the
+          // query names can hold no sessions of its own, and dropping it on
+          // the count threw away the rows walk had already collected.
+          if (needle && sub.rows.length === 0 && !named) continue;
           const isCollapsed = !needle && !isOpen(open, `group:${group.id}`);
           rows.push({
             type: "group",
@@ -864,7 +867,7 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
               ? `${powerTitles(t)[activeTab.state]} · ${tabTitle(activeTab)}`
               : t("panel.noActiveSession")
           }
-          aria-label={activeTab ? powerTitles(t)[activeTab.state] : t("panel.powerDisconnect")}
+          aria-label={activeTab ? powerTitles(t)[activeTab.state] : t("panel.noActiveSession")}
         >
           {/* Power symbol: an open ring with a bar through the gap. */}
           <Icon name="plug" />
@@ -953,7 +956,10 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
             </div>
           );
         })}
-        {filtering && sections.every((section) => section.count === 0) && (
+        {/* Rows, not the session count: a folder the query names is a match
+            too, and saying "nothing matched" above the thing that matched
+            is the one message this panel must not print. */}
+        {filtering && sections.every((section) => section.rows.length === 0) && (
           <div className="panel-empty">
             <span>{t("panel.noMatches", { filter: filter.trim() })}</span>
             {/* The filter is the reason the list is empty, so the way out of
@@ -1027,7 +1033,12 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
             // Dismiss first so a second Enter cannot re-enter removeProfile
             // while the backend delete is still in flight.
             setPendingDelete(null);
-            void removeProfile(pendingDelete.profile.id);
+            // Like every other mutation in this panel: a backend refusal has to
+            // reach the reader, or the row stays in the tree while they believe it
+            // is gone.
+            removeProfile(pendingDelete.profile.id).catch((error) =>
+              report(t("panel.failedDeleteSession"), error),
+            );
           }}
           onCancel={() => setPendingDelete(null)}
         />
