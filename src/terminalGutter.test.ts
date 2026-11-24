@@ -106,6 +106,29 @@ afterEach(() => {
   for (const controller of controllers.splice(0)) controller.dispose();
 });
 
+it("tells the find box and the gutter when older history is re-inserted", async () => {
+  const controller = createController(100);
+  await write(controller, "one\r\ntwo\r\n");
+  const internals = controller as unknown as {
+    lineGutter: { firstLineNumber: number; invalidateGutter: () => void };
+    searchController: { bufferChanged: () => void };
+    noteColdHistoryPrepended: (rows: number) => void;
+  };
+  const before = internals.lineGutter.firstLineNumber;
+  let invalidated = 0;
+  internals.searchController.bufferChanged = () => {
+    invalidated += 1;
+  };
+
+  internals.noteColdHistoryPrepended(4);
+
+  // The re-inserted rows predate the current first line number, and they
+  // arrived without a parse: without the invalidation the find box's
+  // highlights would paint one line off and the new rows would never be
+  // counted, while its own hint says to scroll up for more matches.
+  expect(internals.lineGutter.firstLineNumber).toBe(before - 4);
+  expect(invalidated, "the find box was told the buffer changed").toBe(1);
+});
 describe("gutter line numbering", () => {
   it("does not match a produced blank line with unused screen padding during reflow", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });

@@ -16,6 +16,8 @@
 - 冷历史文件的读取/追加在存储层有明确上限与写前校验；本次只审到调用方。
 - `.log` 大文本走窗口读取（`local_text.rs`），不会把整文件读进内存。
 
+H3 亦已有用例（第 176 轮，`terminalGutter.test.ts` 断言回填后行号回退且 `bufferChanged` 被调用一次；去掉该调用即红）。
+
 修复：H5 = `c6a4e21`（`searchColdHistory` 返回 `skipped` 原因；冷历史关闭、区分大小写关闭、整词、正则各有其原因；查找框在「无结果」且原因是大小写时追加「搜索历史文件需要先开启区分大小写」）。H2 = `b3f8d19`（`history_read` 增加 `until_abs_line` 排他上界；前端记住已回填的最老行号作游标，每次滚到顶都取更早的一页）。
 
 H4 = `f8c2a4d`（`history_search` 返回 `HistorySearch { hits, truncated }`；

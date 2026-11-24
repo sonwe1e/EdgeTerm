@@ -700,15 +700,7 @@ export class TerminalController {
       terminal: this.term,
       sessionId,
       enabled: () => terminalColdHistoryEnabled(),
-      onPrepended: (rows) => {
-        // The re-inserted rows predate the current first line number.
-        this.lineGutter.firstLineNumber -= rows;
-        this.lineGutter.invalidateGutter();
-        // The rows went in without a parse, so nothing else tells the find box:
-        // its highlights would paint one line off and the new rows would never
-        // be counted, while its own hint says to scroll up for more matches.
-        this.searchController.bufferChanged();
-      },
+      onPrepended: (rows) => this.noteColdHistoryPrepended(rows),
       onNotice: (text) => this.callbacks.onStatus?.(`cold history: ${text}`),
     });
 
@@ -1390,6 +1382,18 @@ export class TerminalController {
     this.lineGutter.invalidateGutter();
   }
 
+  /**
+   * Older history was re-inserted at the top of the buffer. It arrived
+   * without a parse, so both the gutter's numbering and the find box have to
+   * be told: the re-inserted rows predate the current first line number, and
+   * without `bufferChanged` the find box's highlights would paint one line
+   * off while its own hint says to scroll up for more matches.
+   */
+  private noteColdHistoryPrepended(rows: number): void {
+    this.lineGutter.firstLineNumber -= rows;
+    this.lineGutter.invalidateGutter();
+    this.searchController.bufferChanged();
+  }
   private clearBufferAndMetadata() {
     this.commands.dropAnchor();
     this.term.clear();
