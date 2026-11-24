@@ -31,3 +31,19 @@ Z1 与 Z3 都位于一次真实的 ZMODEM **接收**会话之后。现有 `zmode
 - 想加一行诊断时我又一次改坏了文件（`no tests`）。**此时停手**，删掉未完成的文件，保持工作树干净。
 
 结论：Z1/Z3 **仍然没有独立用例**。这是第 186 轮我欠下的债，第 188 轮尝试偿还失败。要接着做，正确入口是**先读 `BufferedFileWriter` 的落盘时机与 `FILE_CHUNK_SIZE`**，确认接收侧在一次 `consume` 里到底落盘几次，再决定取消点——而不是继续猜选择器和猜时机。
+
+## 第 189 轮：读到了真正的阻塞点
+
+按第 188 轮自己留下的入口，先读了 `src/terminalTransfer.ts` 再动手。**阻塞点找到了，而且不是我猜的那个。**
+
+- `BufferedFileWriter.push()` 只在 `buffered === FILE_CHUNK_SIZE`（**1 MiB**）时才 `flushBuffer()`；`finish()` 才会把不足 1 MiB 的余量落盘。所以「下载中取消」要拿到「已落盘一部分」，必须先过 **1 MiB**。
+- 真正的错误是 **`Maximum call stack size exceeded`**：测试夹具的 `writeSessionBytes` 是**同步重入**的——`target.consume(bytes)` 立刻又产生出向字节，再次调用 `writeSessionBytes`，无限递归。现有的发送测试之所以没事，是因为它把出向字节切成 4093 字节的小片，递归深度不同。
+- 把泵改成异步（每次 hop 前 `setTimeout(0)`）后栈溢出消失，但 3 MiB 的文件要跑几千个 hop，20 s 超时先到，`cancelled` 始终没置位。**两种极端都不对。**
+
+### 下一轮的正确做法（这次是读过代码之后的结论）
+
+不要再调「取消时机」。要做的是**换一种驱动方式**：让发送侧一次 `zmodemReadBytes` 就给足 1 MiB 以上（`FILE_CHUNK_SIZE * 2`），并且**只把接收方向的 hop 变成异步**（发送方向的 `writeSessionBytes` 保持同步，避免几千次 hop）。这样一次 flush 就能触发取消点，整个传输在两三个 hop 内结束。
+
+或者更直接：**绕过双控制器往返**，直接用一个最小的假 `Offer` 驱动 `receiveOffer`——但那条路会绕开真实 zmodem.js，判别力弱于往返，列为次选。
+
+Z1/Z3 **仍然没有独立用例**。本轮无产品改动，无新测试。
