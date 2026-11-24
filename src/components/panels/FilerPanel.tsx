@@ -689,6 +689,7 @@ function FilerPanelBase() {
         return;
       }
       case "F2": {
+        if (event.ctrlKey || event.altKey || event.metaKey) return;
         event.preventDefault();
         // The keyboard cursor, or the one selected entry, is what gets
         // renamed; a group cannot be, so a wider selection does nothing.
@@ -700,6 +701,7 @@ function FilerPanelBase() {
         return;
       }
       case "Delete": {
+        if (event.ctrlKey || event.altKey || event.metaKey) return;
         // The key every file manager binds to removing the selection. The
         // confirmation dialog and the drives-root guard are the toolbar's,
         // so the keyboard reaches exactly the same path.
@@ -708,6 +710,7 @@ function FilerPanelBase() {
         return;
       }
       case "Enter": {
+        if (event.ctrlKey || event.altKey || event.metaKey) return;
         event.preventDefault();
         // The row the keyboard cursor is on, or — when the selection is a
         // single entry made without one (a right-click, Ctrl+A) — that entry:

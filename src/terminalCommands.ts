@@ -1,6 +1,7 @@
 import closeIcon from "@vscode/codicons/src/icons/close.svg?raw";
 import { Terminal, type IBufferLine, type IMarker } from "@xterm/xterm";
 import { aiSessionTool } from "./aiTools";
+import { t } from "./i18n";
 import type { CommandSuggestion } from "./history";
 import { IS_MAC } from "./platform";
 import { shellPromptEnd } from "./semanticColors";
@@ -745,7 +746,7 @@ export class TerminalCommands {
 
       const remove = document.createElement("span");
       remove.className = "term-suggest-remove";
-      remove.title = `Remove from History (${IS_MAC ? "⇧⌫" : "Shift+Delete"})`;
+      remove.title = `${t("terminal.removeSuggestion")} (${IS_MAC ? "⇧⌫" : "Shift+Delete"})`;
       remove.innerHTML = closeIcon;
       remove.addEventListener("mousedown", (event) => {
         event.preventDefault();

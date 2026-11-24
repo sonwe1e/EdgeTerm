@@ -21,10 +21,15 @@ export async function chooseAgentReference(
 ): Promise<string | null> {
   const tab = useStore.getState().tabs.find((row) => row.info.id === id);
   if (!tab || !current()) return null;
+  // Checked before the picker: sending someone through a native file dialog
+  // only to refuse the file afterwards is a wasted trip, and the field that
+  // fixes it lives in the Coding Agents dialog rather than this composer.
+  if (tab.info.kind === "ssh" && !directory.startsWith("/")) {
+    throw new Error(t("agent.needDirectory"));
+  }
   const picked = await chooseFile({ multiple: false, directory: false });
   if (!picked || !current()) return null;
   if (tab.info.kind !== "ssh") return picked;
-  if (!directory.startsWith("/")) throw new Error(t("agent.needDirectory"));
   const root = `${directory.replace(/\/$/, "")}/.edgeterm-attachments`;
   try {
     await api.sftpList(id, root);
