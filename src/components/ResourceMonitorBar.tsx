@@ -52,6 +52,11 @@ function stateLabel(t: Translate, status: string): string {
  *  device ("unsupported") and an unknown status are both silence: only a real
  *  access or query failure is worth a row. */
 function acceleratorNote(t: Translate, label: string, status: string): string | null {
+  // Most SSH hosts have no NVIDIA GPU and no NPU, and the reader maps their
+  // absent sensors to "unsupported". Printing a line for each of them reads as
+  // two sensor failures under the Disk I/O row, and it trains the reader to
+  // ignore the row - so a sensor that really was denied looks the same.
+  if (status !== "denied" && status !== "error") return null;
   const state = stateLabel(t, status);
   return state ? `${label} ${state}` : null;
 }

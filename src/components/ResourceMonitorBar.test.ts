@@ -48,6 +48,14 @@ const metrics: ResourceMetrics = {
 };
 const tab = (id = "ssh"): Tab =>
   ({ info: { id, kind: "ssh", address: id }, state: "connected" }) as Tab;
+// The tone classes the component emits, checked against the stylesheet that is
+// supposed to colour them: a class with no rule is a warning that never
+// reaches anyone, and the sparkline beside it is aria-hidden on purpose.
+import monitorStyles from "../styles/monitor.styles.css?raw";
+const styled = (selector: string) =>
+  new RegExp(
+    `\\.${selector.replace(/[.*+?^${}()|[\\]\\]/g, "\\const vitals = (host: HTMLElement) =>")}\\s*\\{`,
+  ).test(monitorStyles);
 const vitals = (host: HTMLElement) =>
   Array.from(host.querySelectorAll(".vital")).map((node) => node.textContent);
 const values = (host: HTMLElement, selector: string) =>
@@ -166,6 +174,41 @@ it("keeps an unavailable accelerator visible as a state, never as a reading", as
   }
 });
 
+it("colours the reading itself, not only the sparkline beside it", () => {
+  // THRESHOLDS already drives the sparkline and the accelerator bars, and
+  // resourceTrend.ts names the numeric text as the accessible source of truth -
+  // but the classes the component puts on that text had no rule at all.
+  expect(styled("metric-warn")).toBe(true);
+  expect(styled("metric-crit")).toBe(true);
+  expect(styled("spark.tone-warn")).toBe(true);
+  expect(styled("spark.tone-crit")).toBe(true);
+});
+it("stays silent about an accelerator the host simply does not have", async () => {
+  // Most SSH hosts have no NVIDIA GPU and no NPU, and the reader maps their
+  // absent sensors to "unsupported". A row for each of them reads as two
+  // sensor failures under Disk I/O, and it trains the reader to ignore the
+  // row - so a sensor that really was denied looks the same.
+  api.sampleResources.mockResolvedValue({
+    ...metrics,
+    gpus: [],
+    gpuStatus: "unsupported",
+    npus: [],
+    npuStatus: "unsupported",
+  });
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(h(ResourceMonitorBar, { tab: tab("ssh") })));
+    expect(vitals(host)).toEqual(["CPU12.4%", "RAM25.0%"]);
+    await act(async () => host.querySelector<HTMLButtonElement>(".resource-summary")!.click());
+    expect(host.querySelectorAll(".monitor-device")).toHaveLength(0);
+    expect(host.textContent).not.toContain("Not available");
+    // A denied sensor still says so: the case above it is the one that proves
+    // this row survives for a real failure.
+  } finally {
+    act(() => root.unmount());
+  }
+});
 it("reports an unsupported host as a state rather than an empty cluster", async () => {
   api.sampleResources.mockResolvedValue({ ...metrics, status: "unsupported", cpuPercent: null });
   const host = document.createElement("div");

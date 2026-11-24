@@ -116,6 +116,17 @@
   color: var(--red);
 }
 
+/* Threshold colouring for the numeric value itself. The sparkline is
+   decorative and deliberately hidden from assistive technology, so the
+   reading beside it is the one channel that has to carry the warning. */
+.metric-warn {
+  color: var(--yellow);
+}
+
+.metric-crit {
+  color: var(--red);
+}
+
 /* A 12px trend: enough to show a direction, thin enough to leave the reading
    the loudest thing in the cluster. */
 .spark-mini {
