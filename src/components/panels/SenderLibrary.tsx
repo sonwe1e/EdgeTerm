@@ -107,6 +107,7 @@ export function SenderLibrary({
         <div className="sender-command-tags">
           {pageCommands.map((command) => (
             <div
+              data-sender-row=""
               className={[
                 "sender-command-tag",
                 senderColor(command.color) ? "has-color" : "",

@@ -35,6 +35,8 @@ interface Options {
   compact: boolean;
   onExpandedChange: (expanded: boolean) => void;
   closeMore: () => void;
+  /** Where focus goes when the row the reader was on has been removed. */
+  focusComposer: () => void;
   setText: Dispatch<SetStateAction<string>>;
 }
 
@@ -50,6 +52,7 @@ export function useSenderLibrary({
   onExpandedChange,
   closeMore,
   setText,
+  focusComposer,
 }: Options) {
   const profiles = useStore((s) => s.profiles);
   const groups = useStore((s) => s.groups);
@@ -294,11 +297,15 @@ export function useSenderLibrary({
     try {
       const removed = savedCommands.find((command) => command.id === id);
       await api.deleteSenderCommand(id);
+      const rowHadFocus = document.activeElement?.closest("[data-sender-row]") != null;
       setSavedCommands((current) => current.filter((command) => command.id !== id));
       setStatus(t("sender.deleted", { name: removed?.name ?? "" }));
       if (selectedCommandId === id) setSelectedCommandId(null);
       if (contextMenu?.commandId === id) setContextMenu(null);
       if (editing?.command.id === id) cancelEdit();
+      // The row's options button held focus and has just been unmounted;
+      // without a target the next Tab restarts at the top of the window.
+      if (rowHadFocus) requestAnimationFrame(focusComposer);
     } catch (error) {
       setStatus(t("sender.deleteFailed", { error: errorText(error) }));
     } finally {

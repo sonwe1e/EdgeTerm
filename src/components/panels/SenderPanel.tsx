@@ -147,6 +147,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
       onExpandedChange(expanded);
     },
     closeMore,
+    focusComposer: () => commandRef.current?.focus(),
     setText,
   });
 
