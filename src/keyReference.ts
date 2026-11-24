@@ -67,9 +67,12 @@ export const KEY_REFERENCE: KeyReferenceGroup[] = [
     titleKey: "keys.group.menus",
     entries: [
       {
-        keys: ["Alt", "F10"],
+        // F10 alone cannot be listed here: xterm claims it inside the terminal
+        // and sends the escape sequence to the program, so the menu never sees
+        // it. Alt works from the terminal because it is tracked on capture.
+        keys: ["Alt"],
         source: MENU_BAR,
-        needles: ['"F10"', '"Alt"'],
+        needles: ['"Alt"'],
         labelKey: "keys.menubar",
       },
     ],
