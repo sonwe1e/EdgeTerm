@@ -1153,8 +1153,11 @@ export default function App() {
           // The same defaults the session itself starts from, so the row says
           // which user and port an omitted part will fall back to.
           const profile = quickConnectProfile(target, newSessionProfile());
+          // A host typed without an account has none to name: the "SSH as …"
+          // sentence would read as a gap, so say what the row does instead.
+          if (!profile.username) return t("palette.quickConnectHint");
           return t("palette.quickConnectAs", {
-            user: profile.username ?? "",
+            user: profile.username,
             port: String(profile.port ?? 22),
           });
         }}

@@ -279,3 +279,16 @@ describe("the command palette in the real app", () => {
     expect(useStore.getState().theme).toBe("dark");
   });
 });
+
+it("does not show a blank account for a host typed without one", async () => {
+  mount(h(StrictMode, null, h(App)));
+  await twoFrames();
+  await pressPaletteChord();
+  await typeQuery("example.com");
+  const first = options()[0];
+  expect(first.textContent, "the target is offered").toContain("Connect to example.com");
+  // No account was typed, so there is none to name: an "SSH as , port 22"
+  // sentence would read as a gap where the user's own name should be.
+  expect(first.textContent, "an untyped account is not a gap").not.toContain("SSH as ,");
+  expect(first.textContent, "the row still says what it does").toContain("without saving");
+});
