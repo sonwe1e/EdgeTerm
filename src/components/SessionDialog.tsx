@@ -963,7 +963,12 @@ export function SessionDialog({
           <button
             className="panel-action"
             type="button"
-            onClick={onClose}
+            // The dialog's own onClose guards this, but the header calls the
+            // prop directly: closing mid-connect hid the form while the attempt
+            // kept running, so a tab could still appear afterwards.
+            onClick={() => {
+              if (!busy) onClose();
+            }}
             aria-label={t("common.close")}
           >
             <Icon name="close" />

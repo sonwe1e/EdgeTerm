@@ -44,6 +44,24 @@ it("retries a failed draft without creating another profile or tab", async () =>
   expect(save.mock.calls[1][0].id).toBe("saved");
   expect(useStore.getState().tabs).toHaveLength(1);
 });
+it("will not close the form while the connection it started is running", async () => {
+  const { openSession } = await import("../api");
+  // A connection that never settles is the state the × used to dismiss.
+  vi.mocked(openSession).mockReturnValue(new Promise(() => {}));
+  const close = vi.fn();
+  mount(
+    h(SessionDialog, {
+      initial: { id: "", name: "", kind: "ftp", host: "fixture.invalid", username: "tester" },
+      onClose: close,
+    }),
+  );
+  const connect = () => document.querySelector<HTMLButtonElement>(".dialog-footer .is-primary")!;
+  await userEvent.click(connect());
+  await expect.poll(() => connect().disabled, { timeout: 3000 }).toBe(true);
+  await userEvent.click(document.querySelector<HTMLButtonElement>('[aria-label="Close"]')!);
+  expect(close, "the × must not dismiss a running connection").not.toHaveBeenCalled();
+});
+
 afterEach(async () => {
   await browserAfterEach();
   useStore.setState(initial, true);
