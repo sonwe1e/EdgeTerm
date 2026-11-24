@@ -315,14 +315,23 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
   // button's click fires the menu is already gone; remember whether it was
   // open so the button toggles instead of reopening.
   const listWasOpen = useRef(false);
-  const attentionCount = tabs.filter(
+  const zoomedPaneId = useStore((s) => s.zoomedPaneId);
+  // While one pane is zoomed the other strips are unmounted, so their bells and
+  // finished commands would be invisible. The zoomed strip's own session list
+  // is labelled "All sessions" and is the one place left to say so, so while a
+  // pane is zoomed it lists every tab; selecting one moves the zoom with it.
+  const listed = useMemo(
+    () => (zoomedPaneId === paneId ? allTabs : tabs),
+    [allTabs, tabs, paneId, zoomedPaneId],
+  );
+  const attentionCount = listed.filter(
     (tab) =>
       tab.info.id !== shownId && (tab.commandActivity === "complete" || tab.state === "error"),
   ).length;
   const listButtonLabel = attentionCount
     ? `${t("tab.allSessions")} · ${t(attentionCount === 1 ? "tab.attentionOne" : "tab.attentionMany", { count: attentionCount })}`
     : t("tab.allSessions");
-  const listItems: MenuItem[] = tabs.map((tab) => {
+  const listItems: MenuItem[] = listed.map((tab) => {
     const details = [
       tab.state === "connected" ? null : t(`tab.state.${tab.state}`),
       activityLabel(tab, t),

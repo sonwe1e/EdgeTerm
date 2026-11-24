@@ -303,6 +303,8 @@ export function MenuBar(props: Props) {
 
   const t = useT();
   const activeId = useStore((s) => s.activeId);
+  const zoomedPaneId = useStore((s) => s.zoomedPaneId);
+  const activePaneId = useStore((s) => s.activePaneId);
   const activeTab = useActiveTab();
   const activeState = activeTab?.state;
   const windowTitle = activeTab
@@ -818,6 +820,9 @@ export function MenuBar(props: Props) {
           label: t("sc.zoomPane.label"),
           icon: "screen-full",
           shortcut: accel("zoomPane"),
+          // Zoom hides the other strips; this entry is the only place that says
+          // the split still exists and one pane is filling it.
+          checked: zoomedPaneId === activePaneId,
           action: () => useStore.getState().toggleZoomedPane(),
         },
         "separator",
