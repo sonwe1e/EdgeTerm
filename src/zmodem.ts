@@ -237,6 +237,14 @@ export class ZmodemController {
 
     const transferred = await writer.finish();
     this.activeWrite = null;
+    // The bytes that were already in flight when the reader cancelled keep
+    // arriving, and the peer's file can still complete - which used to print
+    // "received" straight after the cancellation said the file was
+    // incomplete. A cancelled session does not get a success line.
+    if (this.failed || session.has_ended()) {
+      if (this.failed) return true;
+      throw new Error(`${name} did not finish`);
+    }
     // zmodem.js only checks that its own byte counter matches the ZEOF
     // header's offset, so a peer that ends a file early still resolves the
     // accept. Comparing against the advertised size is what catches it:
