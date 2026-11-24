@@ -358,7 +358,8 @@ export const en = {
     "The saved workspace could not be read; starting with a clean layout.",
   "status.dismissError": "Dismiss error",
   "status.connectionCancelled": "Connection cancelled",
-  "status.recordingStopped": "Recording stopped: {error} ({path})",
+  "status.recordingStopped":
+    "Recording stopped: {error} ({path}). This session keeps running without a recording; reconnect to record again.",
   "status.connecting": "Connecting to {name}…",
   "status.connected": "Connected to {name}",
   "status.connectedShared": "Connected to {name} on the same connection",
@@ -688,7 +689,9 @@ export const en = {
   "session.recordingFolderTitle": "Recording folder",
   "session.recordNameHint": "Each connection starts a new file, named {name}.",
   "session.recordNote":
-    "The file is the raw output the terminal received, escape sequences included, so it replays in a terminal with cat. What you type appears only as the far end echoes it, so a password entered without echo is not recorded.",
+    "The file is the raw output the terminal received, escape sequences included, so it replays in a terminal with {command}. What you type appears only as the far end echoes it, so a password entered without echo is not recorded.",
+  "session.recordFolderBlamed":
+    "The recording folder is {path}. A recording folder that cannot be created stops the connection before the transport starts, so an unusable path would show up here.",
   "session.connecting": "Connecting…",
   "session.saving": "Saving…",
   "session.connect": "Connect",

@@ -345,7 +345,8 @@ export const zhCN: Catalog = {
   "status.workspaceUnreadable": "保存的工作区无法读取，已按空白布局启动。",
   "status.dismissError": "关闭错误提示",
   "status.connectionCancelled": "已取消连接",
-  "status.recordingStopped": "录制已停止：{error}（{path}）",
+  "status.recordingStopped":
+    "录制已停止：{error}（{path}）。该会话会继续运行但不再录制；断开重连即可重新录制。",
   "status.connecting": "正在连接 {name}…",
   "status.connected": "已连接到 {name}",
   "status.connectedShared": "已通过同一连接连接到 {name}",
@@ -654,7 +655,9 @@ export const zhCN: Catalog = {
   "session.recordingFolderTitle": "录制文件夹",
   "session.recordNameHint": "每次连接都会新建一个文件，命名为 {name}。",
   "session.recordNote":
-    "文件是终端收到的原始输出（含转义序列），可用 cat 在终端中回放。你输入的内容只以对端回显的形式出现，因此不回显的密码不会被记录。",
+    "文件是终端收到的原始输出（含转义序列），可用 {command} 在终端中回放。你输入的内容只以对端回显的形式出现，因此不回显的密码不会被记录。",
+  "session.recordFolderBlamed":
+    "录制目录是 {path}。无法创建的录制目录会在传输层启动之前就让连接失败，所以路径不可用会在这里显示出来。",
   "session.connecting": "连接中…",
   "session.saving": "保存中…",
   "session.connect": "连接",
