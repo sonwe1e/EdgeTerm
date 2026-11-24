@@ -3406,7 +3406,9 @@ fn ssh_config_import_rolls_back_when_a_write_fails() {
     let mut kept = profile(SessionKind::Ssh);
     kept.name = "kept".into();
     kept.host = Some("kept.internal".into());
-    let kept = store.save(kept).expect("save the session that must survive");
+    let kept = store
+        .save(kept)
+        .expect("save the session that must survive");
 
     std::fs::remove_file(&path).expect("remove the profiles file");
     std::fs::create_dir(&path).expect("put a directory in its place");
