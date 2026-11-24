@@ -15,7 +15,7 @@
 
 | 编号 | 问题 | 建议改法 | 代价 |
 | --- | --- | --- | --- |
-| **E1** | **保存冲突是死路**：文件在打开后被改动，Save 一直可用但每次都以同样理由失败，界面只让人「复制草稿再重载」（等于丢掉草稿），而后端**早就支持** `force` 覆盖，前端从未发送 | `saveFileEditor` 加可选 `force` 透传给 `api.writeText`；冲突时在 Save 旁出现「覆盖」按钮（后端覆盖会把旧内容留成 `.bak`，可恢复） | 中（TS + 对话框 + 测试） |
+| ~~E1~~ ✅ | ~~保存冲突是死路~~ **已修（第 143 轮）**：`saveFileEditor(force)` 透传 `api.writeText` 的 `force`；冲突时页脚出现「覆盖文件」按钮并说明旧版本会留成 `.bak`；普通 Save 永不声明覆盖。`fileEditor.test.ts` 断言普通保存不带 `force`、覆盖调用带 `force: true` 且冲突清除；去掉该字段即失败 | — | 已交付 |
 | S2 | 「全部会话」广播中第一个失败就 `Promise.all` 拒绝：面板清掉 running 和停止信号，而其他会话仍在收行（最长 30s），无 Stop 可点 | 改为 `await Promise.allSettled(...)`，全部结算后再抛第一个失败 | 小 |
 | S5 | 失败的隧道记录（唯一的错误文案）一键「移除隧道」即销毁，无确认无撤销 | 复用 `nativeDialog` 的 `ask`（`SenderPanel` 删除保存命令时已这样做），仅在 `status === "error"` 时确认 | 小 |
 | E2 | 内置编辑器 Ctrl+F 可搜，但界面上没有任何地方说过；应用自己的查找在模态框内又被禁用 | 在已有的 `fileEditor.localHint` / `remoteHint` 里补一句可用的快捷键 | 极小 |
