@@ -145,6 +145,19 @@ describe("workspace tab focus", () => {
     react.IS_REACT_ACT_ENVIRONMENT = false;
   });
 
+  it("hands the keyboard back to the terminal when a background tab closes", async () => {
+    await mount();
+    // The tab's close control had focus; closing removes it, so focus falls to
+    // the document unless something claims it. The shown session keeps the
+    // keyboard, and the next keystroke must not vanish.
+    labels[1].focus();
+    await act(async () => {
+      await useStore.getState().closeTab(ids[1]);
+    });
+    await nextFrame();
+    expect(document.activeElement).toBe(terminals[0].input);
+  });
+
   it("keeps focus on roving labels across terminal frames and repeated End/Home", async () => {
     await mount();
     selectByArrow();

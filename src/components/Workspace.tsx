@@ -86,16 +86,23 @@ export function Workspace({ onNewSession, onSaveSession, onOpenProfile, children
   const layout = useStore((s) => s.layout);
   const panes = useStore((s) => s.panes);
   const tabs = useStore((s) => s.tabs);
-  // Closing the last session unmounts the control that had focus, which leaves
-  // focus on the document body: the empty state is the only thing left to act
-  // on, so hand it the keyboard — but never take focus from a control the
-  // reader chose (the guard the terminal's own autofocus uses).
+  // Closing a tab unmounts the control that had focus — the last session leaves
+  // the empty state, and any tab leaves the pane it was closed from — so focus
+  // falls to the document and the next keystroke would go nowhere. Hand it to the
+  // surface that survived, but never take focus from a control the reader chose
+  // (the guard the terminal's own autofocus uses).
   const emptyPrimary = useRef<HTMLButtonElement>(null);
   const tabCount = tabs.length;
   useEffect(() => {
-    if (tabCount !== 0 || document.activeElement !== document.body) return;
-    emptyPrimary.current?.focus({ preventScroll: true });
-  }, [tabCount]);
+    if (document.activeElement !== document.body) return;
+    if (tabCount === 0) {
+      emptyPrimary.current?.focus({ preventScroll: true });
+      return;
+    }
+    document
+      .querySelector<HTMLElement>('[data-focus-region="terminal"] .xterm-helper-textarea')
+      ?.focus({ preventScroll: true });
+  }, [tabCount, tabs, panes]);
   const activeId = useStore((s) => s.activeId);
   const activePaneId = useStore((s) => s.activePaneId);
   const dropTarget = useStore((s) => s.dropTarget);
