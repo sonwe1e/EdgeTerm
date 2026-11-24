@@ -118,7 +118,12 @@ const slotIndex = (strip: HTMLElement, x: number): number => {
  * `elementsFromPoint` looks through the session covering a pane, since the
  * session is placed over the pane rather than inside it (see Workspace).
  */
-const dropTargetAt = (x: number, y: number, ownPaneId: string): DropTarget | null => {
+const dropTargetAt = (
+  x: number,
+  y: number,
+  ownPaneId: string,
+  ownTabCount: number,
+): DropTarget | null => {
   for (const element of document.elementsFromPoint(x, y)) {
     const strip = element.closest<HTMLElement>(".tabstrip");
     if (strip) {
@@ -138,6 +143,10 @@ const dropTargetAt = (x: number, y: number, ownPaneId: string): DropTarget | nul
       if (nearest > SPLIT_ZONE) {
         return paneId === ownPaneId ? null : { paneId, zone: "center" };
       }
+      // The store refuses to leave a pane empty, so a strip's only tab cannot be
+      // split out of it: drawing the half-pane preview for that drop promises a
+      // split releasing would not make.
+      if (paneId === ownPaneId && ownTabCount <= 1) return null;
       const zone =
         nearest === px ? "left" : nearest === 1 - px ? "right" : nearest === py ? "up" : "down";
       return { paneId, zone };
@@ -639,7 +648,7 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
     };
     const end = (e: PointerEvent) => {
       if (e.pointerId !== drag.current?.pointerId) return;
-      finishDrag(e.type === "pointerup", dropTargetAt(e.clientX, e.clientY, paneId));
+      finishDrag(e.type === "pointerup", dropTargetAt(e.clientX, e.clientY, paneId, tabs.length));
     };
     drag.current = {
       id,
@@ -685,7 +694,7 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
       setTabDrag(state.id);
       state.scrollFrame = requestAnimationFrame(edgeScroll);
     }
-    const target = dropTargetAt(event.clientX, event.clientY, paneId);
+    const target = dropTargetAt(event.clientX, event.clientY, paneId, tabs.length);
     if (target) {
       const tab = tabs.find((item) => item.info.id === state.id);
       showGhost(state, tab ? tabTitle(tab) : "");
