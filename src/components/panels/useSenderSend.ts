@@ -23,6 +23,24 @@ interface Options {
   activeTab: Tab | undefined;
 }
 
+/**
+ * The sessions a send may reach. Only a connected terminal takes a line: a tab
+ * mid-handshake would receive it inside the login prompt, and a closed one
+ * answers with the backend's own error, so both fall to the panel's "no
+ * session" message instead. File sessions are never targets — the Sender
+ * writes to terminals.
+ */
+export function senderTargetIds(
+  tabs: readonly Tab[],
+  activeId: string | null,
+  target: Target,
+): string[] {
+  const eligible = (tab: Tab) => !isFileSession(tab.info.kind) && tab.state === "connected";
+  if (target === "all") return tabs.filter(eligible).map((tab) => tab.info.id);
+  if (!activeId) return [];
+  return tabs.some((tab) => tab.info.id === activeId && eligible(tab)) ? [activeId] : [];
+}
+
 export function useSenderSend({ tabs, activeId, setStatus, t, activeTab }: Options) {
   const [target, setTarget] = useState<Target>("current");
   const [running, setRunning] = useState(false);
@@ -58,18 +76,9 @@ export function useSenderSend({ tabs, activeId, setStatus, t, activeTab }: Optio
 
   // Use one eligible-target list for both the actual send and its UI count.
   // The repeating Sender follows the same connected-terminal contract.
-  const allTargetIds = tabs
-    .filter((tab) => !isFileSession(tab.info.kind) && tab.state === "connected")
-    .map((tab) => tab.info.id);
+  const allTargetIds = senderTargetIds(tabs, activeId, "all");
 
-  const targets = (): string[] => {
-    if (target === "all") {
-      return allTargetIds;
-    }
-    return tabs.some((tab) => tab.info.id === activeId && !isFileSession(tab.info.kind)) && activeId
-      ? [activeId]
-      : [];
-  };
+  const targets = (): string[] => senderTargetIds(tabs, activeId, target);
 
   /**
    * Sends `commandText`. `commandId` names the saved command it came from, so
