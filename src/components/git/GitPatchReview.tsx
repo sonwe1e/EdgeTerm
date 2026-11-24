@@ -22,13 +22,33 @@ interface PatchFile {
   hunks: Hunk[];
 }
 
-const HUNK_HEADER = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
+/**
+ * A hunk header. An ordinary diff heads one with `@@` and one `-` range per
+ * side; a combined diff - what `git diff --cc` prints for an unmerged path -
+ * heads it with `@@@` and carries one `-` range per parent before the result
+ * range, so there can be up to three of them.
+ */
+const HUNK_HEADER = /^@{1,3} (?:-(\d+)(?:,\d+)? )+\+(\d+)(?:,\d+)? @@/;
 
-function parsePatch(text: string) {
+/**
+ * How a body line reads in a hunk whose header carried `columns` leading `@`
+ * - that is, how many parents the combined diff has. Each column describes
+ * one parent: `+` the line is in the result, `-` the parent had it and the
+ * result does not, ` ` the two agree. A line in the result is an addition
+ * unless every parent agreed on it.
+ */
+function bodyKind(columns: number, line: string): "+" | "-" | " " {
+  if (columns < 2) return line[0] as "+" | "-" | " ";
+  return line.includes("+") ? "+" : line.includes("-") ? "-" : " ";
+}
+
+export function parsePatch(text: string) {
   const files: PatchFile[] = [];
   const hunks: Hunk[] = [];
   let file: PatchFile | null = null;
   let hunk: Hunk | null = null;
+  /** Prefix columns each body line of the current hunk carries. */
+  let columns = 1;
   let before = 0;
   let after = 0;
   let added = 0;
@@ -44,12 +64,15 @@ function parsePatch(text: string) {
       if (range) {
         before = Number(range[1]);
         after = Number(range[2]);
+        // One prefix column per parent, and a combined diff heads its hunk
+        // with one more `@` than it has parents.
+        columns = line.match(/^@+/)![0].length - 1;
         hunk = { index: hunks.length, heading: line, lines: [] };
         hunks.push(hunk);
         file.hunks.push(hunk);
       } else if (hunk) {
-        const text = line.slice(1);
-        switch (line[0]) {
+        const text = line.slice(columns);
+        switch (bodyKind(columns, line)) {
           case "+":
             added++;
             hunk.lines.push({ kind: "add", before: null, after: after++, text });
