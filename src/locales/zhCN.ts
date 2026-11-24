@@ -1357,7 +1357,7 @@ export const zhCN: Catalog = {
   "monitor.resources": "资源",
   "monitor.sshHostResources": "SSH 主机资源",
   "monitor.closeResources": "关闭资源",
-  "monitor.monitorCurrentHost": "监控当前 SSH 主机",
+  "monitor.monitorCurrentHost": "监控 SSH 主机",
   "monitor.sampleEvery": "采样间隔",
   "monitor.sampleIntervalAria": "资源采样间隔（秒）",
   "monitor.refreshResources": "刷新资源",

@@ -1411,7 +1411,7 @@ export const en = {
   "monitor.resources": "Resources",
   "monitor.sshHostResources": "SSH host resources",
   "monitor.closeResources": "Close resources",
-  "monitor.monitorCurrentHost": "Monitor current SSH host",
+  "monitor.monitorCurrentHost": "Monitor SSH hosts",
   "monitor.sampleEvery": "Sample every",
   "monitor.sampleIntervalAria": "Resource sample interval in seconds",
   "monitor.refreshResources": "Refresh resources",

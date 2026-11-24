@@ -435,6 +435,12 @@ export const ResourceMonitorBar = memo(function ResourceMonitorBar({
           {sample?.status === "unsupported" && (
             <p className="status-popover-note">{t("monitor.samplingLinux")}</p>
           )}
+          {/* A sample in flight, a refresh, or monitoring switched off all
+            leave the body with nothing to draw. Saying so is the difference
+            between "a reading is coming" and a panel that looks broken. */}
+          {!sample && !error && (
+            <p className="status-popover-note">{t("monitor.readingResources")}</p>
+          )}
           {sample?.status === "ok" && (
             <>
               <div className="monitor-grid">

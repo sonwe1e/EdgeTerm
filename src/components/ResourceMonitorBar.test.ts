@@ -122,14 +122,14 @@ it("monitors only SSH and turns one sample into a vitals cluster plus a real pop
       }),
     );
     expect(interval().value).toBe("7");
-    expect(
-      host.querySelector<HTMLInputElement>('[aria-label="Monitor current SSH host"]')!.checked,
-    ).toBe(false);
+    expect(host.querySelector<HTMLInputElement>('[aria-label="Monitor SSH hosts"]')!.checked).toBe(
+      false,
+    );
     await act(async () => useStore.getState().resetSettings());
     expect(interval().value).toBe("2");
-    expect(
-      host.querySelector<HTMLInputElement>('[aria-label="Monitor current SSH host"]')!.checked,
-    ).toBe(true);
+    expect(host.querySelector<HTMLInputElement>('[aria-label="Monitor SSH hosts"]')!.checked).toBe(
+      true,
+    );
   } finally {
     act(() => root.unmount());
   }
