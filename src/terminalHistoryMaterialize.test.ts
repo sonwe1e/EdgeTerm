@@ -196,7 +196,11 @@ describe("prependRecords", () => {
       expect(reassembled[index].text).toBe(records[index].text);
       expect(reassembled[index].runs).toEqual(records[index].runs);
     }
-  }, 30000);
+  }, 90000);
+
+  // Materialising a full buffer measures ~7.5 s on an idle machine and has
+  // been seen past 30 s while two workers share four cores, so the budget here
+  // is about load, not about the assertion being wrong.
 
   it("re-wraps records at the target's columns", async () => {
     const records = await capturedRecords();
@@ -214,7 +218,7 @@ describe("prependRecords", () => {
       expect(reassembled[index].text).toBe(records[index].text);
       expect(reassembled[index].runs).toEqual(records[index].runs);
     }
-  }, 30000);
+  }, 90000);
 
   it("resolves 0 for empty records without touching the terminal", async () => {
     const target = new Terminal({ cols: 40, rows: 24, scrollback: 100 });
@@ -245,5 +249,5 @@ describe("prependRecords", () => {
     await write(target, "tail\r\n");
     const tail = target.buffer.active.getLine(target.buffer.active.length - 1);
     expect(tail?.translateToString(true)).toBe("");
-  }, 30000);
+  }, 90000);
 });
