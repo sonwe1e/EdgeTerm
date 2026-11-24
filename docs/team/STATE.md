@@ -5,6 +5,20 @@
 
 ---
 
+## 本轮：ZMODEM 两条 + 更新守卫一条 + 日志拆分 + 分支核查（2026-11-25 第 186 轮）
+
+两个新审计面（ZMODEM/剪贴板、诊断/更新）。**修 3 条，2 条待办，1 条被负控制抓回。**
+
+- **Z3（已修，无用例）**：比发送方声明的大小**短**的下载被报成已接收。zmodem.js 只校验自己的字节计数与 ZEOF 头部偏移一致，提前结束文件的 peer 照样让 accept 兑现。改为与 `reportedSize` 比较，失败走既有的 `offerQueue.catch` → `failSession`。
+- **Z1（已修，无用例）**：取消或失败一个下载，会在用户选定的路径留下**截断的文件**——`zmodemCreateFile` 会先截断目标，而 `BufferedFileWriter` 只在整块写满或 `finish()` 时才落盘；两者在取消时都不发生，而提示是绿色的「transfer canceled」。控制器改为持有在飞写入器，取消时仍 `finish()` 并报出文件名与字节数，提示改 error 级。
+- **Z2（未修）**：传输占用字节流期间每个按键都被丢弃，而提示框的 Cancel 只能鼠标点，卡住的传输没有键盘出口。属终端提示层的改动，单独立项。
+- **D2（已修，且第一次修法是错的）**：「启动时不联系签名更新服务」那条测试 mock 了代码早已不导入的模块，断言因此空转。审计建议删掉 mock——我照做后**跑了负控制：重新 `import { check }` 测试依然全绿**。原因是运行时 spy 区分不了「导入了没调用」和「没导入」。真正有判别力的是断言源码本身（`?raw` 导入 + `not.toContain("plugin-updater")`），同一个负控制验证：加上 import 立刻红。
+- **D1（未修）**：诊断导出在目录或分段读不了时宣称 `complete`，读者据此判定「这个构建什么都没记」。需让 `log_files` 把 `read_dir` 的错误经既有的 `unavailable` 参数 surfaced。Rust 侧，单独立项。
+- **流程（日志拆分）**：`STATE.md` 涨到 876 行／138 条，每轮前置导致旧记录被反复带进每次读取。拆成 `STATE.md`（最近 10 轮）+ `STATE-archive.md`（128 条原样保留）。门禁要求补 `Scope:`，已补。
+- **流程（一次 rebase 事故）**：用 `rebase --exec 'git commit --amend'` 批量改消息，`--exec` 对每个 replayed commit 都执行，把文档消息盖到了别的提交上，还复制出三份相同提交。**已从 `88cb9e3` 重建**：三次 `cherry-pick` + 紧跟在各自 pick 之后的 `--amend`。教训：批量改消息不要用 `--exec`，要么 `rebase -i` 的 reword，要么 pick 完立刻 amend HEAD。
+- **验证**：`npm run test:rust` 548 通过；`npm run verify` `VERIFY_EXIT=0`——单测 223 文件／**1998** 用例、浏览器 75 文件／**351** 用例；门禁 3 commits 0 errors 0 warnings；已推送 `88cb9e3..936f8de`。
+- **分支核查（应用户要求）**：远端只有 `main` 一个 head，无过期跟踪引用；本地只有 `main` 与 7 个 `archive/*`。**没有可删的陈旧或多余分支。** `upstream`/`upstream/main` 是上游远端与其跟踪引用，不是本 fork 的多余副本。7 个 `archive/*` 各持 1–154 条**未推送的独有提交**，是 AGENTS.md 规定的归档机制，删掉即毁掉唯一副本——没有删。
+
 ## 本轮：Filer 核心 3 条 + 传输中心 3 条（2026-11-25 第 181 轮）
 
 两个新审计面。共 6 条，本轮全部修完。
