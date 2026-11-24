@@ -221,6 +221,7 @@ function StatusBarBase() {
             <button
               type="button"
               className="status-item status-recording"
+              data-recording-chip=""
               title={t("status.recordingTitle", { path: recording })}
               onClick={() => void revealLocalPath(parentDir(recording))}
             >

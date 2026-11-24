@@ -494,7 +494,15 @@ export default function App() {
       const store = useStore.getState();
       store.setError(t("status.recordingStopped", { error: message, path }), id);
       const tab = store.tabs.find((item) => item.info.id === id);
+      // The REC chip is a button and can hold focus; clearing it unmounts the
+      // control, which would otherwise drop focus onto the document.
+      const chipHadFocus = document.activeElement?.closest("[data-recording-chip]") != null;
       if (tab) store.updateTabInfo(id, { ...tab.info, recording: null });
+      if (chipHadFocus) {
+        requestAnimationFrame(() => {
+          document.querySelector<HTMLElement>("[data-focus-region='status']")?.focus();
+        });
+      }
     });
     return () => {
       void unlisten.then((off) => off());
