@@ -171,4 +171,51 @@ describe("file editor surface", () => {
     // And the chord never reaches the document itself.
     expect(useFileEditor.getState().content).toBe("workers = 8\n");
   });
+  it("saves from a footer button too, not only from the text", async () => {
+    // The dialog's own hint prints "Ctrl+S saves", but CodeMirror's keydown
+    // listener sits on the editor's content alone: after pressing Reload - the
+    // button a reader reaches for precisely when about to save - the advertised
+    // chord did nothing at all.
+    await page.viewport(1100, 720);
+    mount(h(FileEditorDialog));
+    await openFileEditor("server-id", "/etc/example.conf");
+    await expect.poll(() => document.querySelector(".cm-content")).not.toBeNull();
+    await userEvent.fill(document.querySelector<HTMLElement>(".cm-content")!, "workers = 8\n");
+    await userEvent.click(page.getByRole("button", { name: "Reload from file" }));
+    await twoFrames();
+    // Focus is on the footer button the reader just pressed.
+    expect(document.activeElement?.textContent).toBe("Reload from file");
+
+    await userEvent.keyboard("{Control>}s{/Control}");
+    await expect.poll(() => vi.mocked(api.writeText).mock.calls.length).toBe(1);
+  });
+
+  it("hands the keyboard back to the text when the overwrite button leaves", async () => {
+    // The overwrite button is the one the reader just pressed, and it goes away
+    // with the conflict it resolves. Without a handoff the browser moves focus
+    // to the document body and the next keystrokes go nowhere.
+    await page.viewport(1100, 720);
+    mount(h(FileEditorDialog));
+    await openFileEditor("server-id", "/etc/example.conf");
+    await expect.poll(() => document.querySelector(".cm-content")).not.toBeNull();
+    await userEvent.fill(document.querySelector<HTMLElement>(".cm-content")!, "workers = 8\n");
+    // The file changed on disk, so the save is refused and the overwrite
+    // button appears.
+    vi.mocked(api.writeText).mockRejectedValueOnce(
+      Object.assign(new Error("file changed on disk"), { code: "conflict" }),
+    );
+    await userEvent.click(page.getByRole("button", { name: "Save to server", exact: true }));
+    await expect
+      .poll(() => page.getByRole("button", { name: "Overwrite the file" }))
+      .toBeInTheDocument();
+
+    await userEvent.click(page.getByRole("button", { name: "Overwrite the file" }));
+    await expect.poll(() => vi.mocked(api.writeText).mock.calls.length).toBe(2);
+    await expect
+      .poll(() => page.getByRole("button", { name: "Overwrite the file" }))
+      .not.toBeInTheDocument();
+    await twoFrames();
+    // The text has the keyboard again, not the document body.
+    expect(document.activeElement?.closest(".cm-content")).not.toBeNull();
+  });
 });

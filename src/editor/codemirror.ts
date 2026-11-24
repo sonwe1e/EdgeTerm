@@ -310,11 +310,6 @@ function buildExtensions(
     keymap.of([
       {
         key: "Mod-s",
-        // The same scope the find field uses: CodeMirror attaches its keydown
-        // listener to the editor's content, so without it the chord stops
-        // working the moment focus is anywhere else in the dialog - the find
-        // input, or a footer button the reader just pressed.
-        scope: "editor search-panel",
         preventDefault: true,
         run: () => {
           active?.onSave();
