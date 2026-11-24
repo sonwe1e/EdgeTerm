@@ -556,6 +556,8 @@ export const en = {
   "tray.quit": "Quit EdgeTerm",
   "terminal.removeSuggestion": "Remove from History",
   "editor.find": "Find",
+  "editor.go": "Go",
+  "editor.goToLine": "Go to line",
   "editor.replace": "Replace",
   "editor.selectAllMatches": "Select all matches",
   "editor.replaceOne": "Replace",
@@ -721,7 +723,7 @@ export const en = {
   "fileEditor.conflict": "The file changed outside this editor. Your draft is kept.",
   "fileEditor.overwrite": "Overwrite the file",
   "fileEditor.overwriteHint":
-    "Write your draft over the version on disk. The version being replaced is kept as a .bak copy.",
+    "Write your draft over the version on disk. A backup copy is kept only when the save cannot be verified.",
   "fileEditor.uncertain": "The save could not be verified. Your draft is kept.",
   "fileEditor.backupKept": "The previous content is kept at {path}.",
   "fileEditor.textOnly":

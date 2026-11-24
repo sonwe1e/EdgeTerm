@@ -15,6 +15,7 @@ export function CodeEditor({
   onSave,
   onRevealed,
   remember = true,
+  refocus = 0,
 }: {
   doc: Pick<EditorDoc, "id" | "path" | "content" | "revealLine">;
   dark: boolean;
@@ -23,6 +24,13 @@ export function CodeEditor({
   onSave: () => void;
   onRevealed: () => void;
   remember?: boolean;
+  /**
+   * Counts the moments a control the reader was on went away - the overwrite
+   * button leaves with the conflict it resolves. The text takes the keyboard
+   * back, so the next keystroke lands where the reader was working instead of
+   * on the document body.
+   */
+  refocus?: number;
 }) {
   const t = useT();
   const host = useRef<HTMLDivElement>(null);
@@ -67,6 +75,8 @@ export function CodeEditor({
             replace: t("editor.replaceOne"),
             "replace all": t("editor.replaceAll"),
             close: t("search.close"),
+            "Go to line": t("editor.goToLine"),
+            go: t("editor.go"),
             "current match": t("editor.currentMatch"),
             "on line": t("editor.onLine"),
             "replaced match on line $": t("editor.replacedOnLine"),
@@ -132,6 +142,11 @@ export function CodeEditor({
     handle.current?.revealLine(doc.revealLine);
     onRevealed();
   }, [doc.revealLine, ready, onRevealed]);
+
+  useEffect(() => {
+    if (!ready || !refocus) return;
+    handle.current?.focus();
+  }, [refocus, ready]);
 
   return (
     <div className="editor-host">

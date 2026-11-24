@@ -164,7 +164,11 @@ pub fn write(request: TextWrite) -> Result<WriteOutcome> {
     let path = fs::canonicalize(&request.path)?;
     let previous = bytes(&path)?;
     let hash = sha256_hex(&previous);
-    if request.expected_hash.as_deref() != Some(&hash) {
+    // `force` is the editor's explicit overwrite, which the remote path has
+    // always honoured. Ignoring it here left the button re-sending the same
+    // request into the same refusal, so a local draft whose file changed on
+    // disk had no way to land at all.
+    if !request.force && request.expected_hash.as_deref() != Some(&hash) {
         return Err(AppError::coded(
             ErrorCode::Conflict,
             "file changed on disk; reload or save your draft elsewhere",
@@ -361,6 +365,38 @@ mod tests {
         );
     }
 
+    /// The editor's explicit overwrite. The remote path has always honoured
+    /// it; the local path did not, so the button re-sent the same request into
+    /// the same refusal and a local draft whose file changed on disk had no
+    /// way to land.
+    #[test]
+    fn an_explicit_overwrite_writes_over_a_changed_local_file() {
+        let dir = std::env::temp_dir().join(format!("edgeterm-edit-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let path = dir.join("config.txt");
+        fs::write(&path, b"as opened").unwrap();
+        let file = read(path.to_str().unwrap()).unwrap();
+        // Something else changed the file while it was open.
+        fs::write(&path, b"written by a build step").unwrap();
+
+        let mut request = TextWrite {
+            path: file.path,
+            content: "my draft".into(),
+            expected_hash: Some(file.hash),
+            eol: file.eol,
+            bom: file.bom,
+            force: true,
+            encoding: Some(file.encoding),
+        };
+        let outcome = write(request.clone()).expect("the overwrite must land");
+        assert_eq!(fs::read(&path).unwrap(), b"my draft");
+        assert_eq!(outcome.hash, sha256_hex(b"my draft"));
+
+        // Without the flag the same request is still refused.
+        request.force = false;
+        assert_eq!(write(request).unwrap_err().code, ErrorCode::Conflict);
+        fs::remove_dir_all(&dir).unwrap();
+    }
     #[test]
     fn roundtrip_preserves_bom_crlf_and_refuses_external_change() {
         let dir = std::env::temp_dir().join(format!("edgeterm-edit-{}", uuid::Uuid::new_v4()));

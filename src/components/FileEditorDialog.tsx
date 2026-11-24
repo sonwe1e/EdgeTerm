@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import {
   clearRevealLine,
   closeFileEditor,
@@ -6,6 +7,7 @@ import {
   saveFileEditor,
   useFileEditor,
 } from "../fileEditor";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { CodeEditor } from "../editor/CodeEditor";
 import { useStore } from "../store";
 import { isLightTheme } from "../types";
@@ -17,12 +19,33 @@ export function FileEditorDialog() {
   const { target, file, content, busy, error, conflict, saved } = useFileEditor();
   const theme = useStore((state) => state.theme);
   const fontSize = useStore((state) => state.bufferFontSize);
+  // The overwrite button is the one the reader just pressed, and it goes away
+  // with the conflict it resolves: without this the browser moves focus to the
+  // document body and the next keystrokes go nowhere.
+  const [refocus, setRefocus] = useState(0);
+  const wasConflicted = useRef(conflict);
+  useEffect(() => {
+    if (wasConflicted.current && !conflict) setRefocus((count) => count + 1);
+    wasConflicted.current = conflict;
+  }, [conflict]);
   if (!target) return null;
   const dirty = isFileEditorDirty(file, content);
   const storedPath = file?.path ?? target.path;
   const displayPath = target.sessionId
     ? storedPath
     : storedPath.replace(/^\\\\\?\\UNC\\/, "\\\\").replace(/^\\\\\?\\/, "");
+  /**
+   * The editor's hint promises Ctrl+S saves. CodeMirror answers the chord from
+   * the text alone, so a reader who just pressed Reload - or moved to the find
+   * field - was pressing a key that did nothing. The dialog takes the chord
+   * from everywhere the editor cannot.
+   */
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLDialogElement>) => {
+    if (event.key.toLowerCase() !== "s" || !(event.ctrlKey || event.metaKey)) return;
+    if ((event.target as Element).closest(".cm-content")) return;
+    event.preventDefault();
+    void saveFileEditor();
+  };
   return (
     <ModalDialog
       open
@@ -30,6 +53,7 @@ export function FileEditorDialog() {
       onClose={() => void closeFileEditor()}
       title={t("fileEditor.title")}
       contentClassName="file-editor-dialog"
+      onKeyDown={onKeyDown}
     >
       <div className="file-editor-destination">
         <strong>{target.label}</strong>
@@ -46,6 +70,7 @@ export function FileEditorDialog() {
           onChange={(content) => useFileEditor.setState({ content, saved: false })}
           onSave={() => void saveFileEditor()}
           onRevealed={clearRevealLine}
+          refocus={refocus}
         />
       )}
       {!file && (
