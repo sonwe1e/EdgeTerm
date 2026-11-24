@@ -176,11 +176,16 @@ export function useFilerActions({
       const target = await api.remoteEditPath(remoteId, entry.path, entry.name);
       if (!stillAvailable()) return null;
       // Reopening an external editor must preserve the existing local draft,
-      // including saves waiting for a failed/offline upload to be retried.
-      if (!target.reused) {
+      // including saves waiting for a failed/offline upload to be retried. A
+      // copy with nothing pending is a different story: the file on the server
+      // may have changed since it was downloaded, and opening it in its old
+      // state is the "I edited it on the server and still see the old bytes"
+      // report. Such a copy is refreshed in place before it is opened.
+      const refresh = target.reused && !target.unsaved;
+      if (!target.reused || refresh) {
         await api.sftpDownload(remoteId, entry.path, target.path, progressFor(transfer), transfer);
         if (!stillAvailable()) return null;
-        await api.watchRemoteEdit(remoteId, target.path, entry.path);
+        await api.watchRemoteEdit(remoteId, target.path, entry.path, refresh);
         if (!stillAvailable()) return null;
       }
       finishTransfer("complete", transfer);

@@ -391,7 +391,7 @@ export const commands = {
 	 *  Starts sending `local` back to `remote` on session `id` whenever it
 	 *  changes. Called right after the download, so the copy is the baseline.
 	 */
-	watchRemoteEdit: (id: string, local: string, remote: string) => __TAURI_INVOKE<null>("watch_remote_edit", { id, local, remote }),
+	watchRemoteEdit: (id: string, local: string, remote: string, refreshed: boolean) => __TAURI_INVOKE<null>("watch_remote_edit", { id, local, remote, refreshed }),
 	/**
 	 *  Stops watching every file opened from session `id` and removes the synced
 	 *  copies; for when its tab is closed for good (a disconnect keeps the
@@ -1349,6 +1349,12 @@ export type RemoteEditEvent = {
 export type RemoteEditPath = {
 	path: string,
 	reused: boolean,
+	/**
+	 *  Whether the reused copy holds a save the server has not received. A
+	 *  copy with nothing pending may be older than the file on the server, so
+	 *  the caller refreshes it instead of opening yesterday's bytes.
+	 */
+	unsaved: boolean,
 };
 
 export type RowKind = "equal" | "modified" | "deleted" | "added";

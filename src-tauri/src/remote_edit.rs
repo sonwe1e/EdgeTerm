@@ -38,6 +38,10 @@ const ACTIVE_MARKER: &str = ".active";
 pub struct RemoteEditPath {
     pub path: String,
     pub reused: bool,
+    /// Whether the reused copy holds a save the server has not received. A
+    /// copy with nothing pending may be older than the file on the server, so
+    /// the caller refreshes it instead of opening yesterday's bytes.
+    pub unsaved: bool,
 }
 
 type Snapshot = (SystemTime, u64);
@@ -232,9 +236,18 @@ impl RemoteEdits {
     ) -> Result<RemoteEditPath> {
         let key = (session_id.to_string(), remote.to_string());
         if let Some(watched) = self.watchers.lock().get(&key) {
+            // The same predicate the crash cleanup uses: a copy is worth keeping
+            // when it differs from what was last uploaded.
+            let baseline = *watched.baseline.lock();
+            let unsaved = retain_copy(
+                &watched.local,
+                watched.dirty.load(Ordering::Relaxed),
+                baseline,
+            );
             return Ok(RemoteEditPath {
                 path: watched.local.to_string_lossy().into_owned(),
                 reused: true,
+                unsaved,
             });
         }
         let dir = root.join(uuid::Uuid::new_v4().to_string());
@@ -249,6 +262,7 @@ impl RemoteEdits {
         Ok(RemoteEditPath {
             path: path.to_string_lossy().into_owned(),
             reused: false,
+            unsaved: false,
         })
     }
 
@@ -262,14 +276,23 @@ impl RemoteEdits {
         session_id: String,
         local: PathBuf,
         remote: String,
+        refreshed: bool,
     ) -> Result<()> {
         let key = (session_id.clone(), remote.clone());
         let state = app.state::<AppState>();
         let mut watchers = self.watchers_for_session(&state.sessions, &session_id)?;
-        if watchers
-            .get(&key)
-            .is_some_and(|watched| watched.local == local)
-        {
+        if let Some(previous) = watchers.get(&key).filter(|watched| watched.local == local) {
+            if refreshed {
+                // The caller re-downloaded this copy because the file on the
+                // server changed, so its bytes are the server's now: take them
+                // as the baseline rather than let the old one turn them into a
+                // local edit that would be uploaded straight back.
+                let current = snapshot(&local).ok_or_else(|| {
+                    AppError::new("the downloaded copy is not a readable regular file")
+                })?;
+                *previous.baseline.lock() = Some(current);
+                previous.dirty.store(false, Ordering::Relaxed);
+            }
             return Ok(());
         }
         let dir = local
@@ -549,6 +572,54 @@ mod tests {
             owner_thread: None,
         });
         (sessions, rx)
+    }
+
+    #[test]
+    fn a_reopened_copy_reports_whether_it_holds_a_draft() {
+        let root = TempRoot::new();
+        let edits = RemoteEdits::default();
+        let prepared = edits
+            .local_path_in(&root.0, "s1", "/notes.txt", "notes.txt")
+            .unwrap();
+        assert!(!prepared.reused);
+        let local = PathBuf::from(&prepared.path);
+        std::fs::write(&local, b"on the server").unwrap();
+        let baseline = Arc::new(Mutex::new(snapshot(&local)));
+        let dirty = Arc::new(AtomicBool::new(false));
+        let task = tauri::async_runtime::spawn(std::future::pending::<()>());
+        let watcher = RecommendedWatcher::new(|_| {}, notify::Config::default()).unwrap();
+        edits.watchers.lock().insert(
+            ("s1".to_string(), "/notes.txt".to_string()),
+            Watched {
+                local: local.clone(),
+                task,
+                dirty: Arc::clone(&dirty),
+                baseline,
+                _watcher: watcher,
+            },
+        );
+
+        // Nothing pending: the caller may refresh the copy from the server.
+        let clean = edits
+            .local_path_in(&root.0, "s1", "/notes.txt", "notes.txt")
+            .unwrap();
+        assert!(clean.reused);
+        assert!(
+            !clean.unsaved,
+            "a copy that matches the baseline is not a draft"
+        );
+
+        // A local save waiting for upload must be kept as it is.
+        std::fs::write(&local, b"my own edit").unwrap();
+        let draft = edits
+            .local_path_in(&root.0, "s1", "/notes.txt", "notes.txt")
+            .unwrap();
+        assert!(
+            draft.unsaved,
+            "a copy that differs from the baseline is a draft"
+        );
+        assert_eq!(std::fs::read(&local).unwrap(), b"my own edit");
+        edits.watchers.lock().clear();
     }
 
     #[test]

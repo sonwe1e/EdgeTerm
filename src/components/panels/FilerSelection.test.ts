@@ -238,7 +238,11 @@ beforeEach(() => {
   vi.mocked(api.cancelTransfer).mockResolvedValue(true);
   vi.mocked(api.controlFileTransfer).mockResolvedValue();
   vi.mocked(api.previewImageFile).mockResolvedValue(Uint8Array.of(1, 2, 3));
-  vi.mocked(api.remoteEditPath).mockResolvedValue({ path: "/tmp/remote-edit.png", reused: false });
+  vi.mocked(api.remoteEditPath).mockResolvedValue({
+    path: "/tmp/remote-edit.png",
+    reused: false,
+    unsaved: false,
+  });
   vi.mocked(api.watchRemoteEdit).mockResolvedValue();
   vi.mocked(api.closeSession).mockResolvedValue();
   vi.mocked(api.stopRemoteEdits).mockResolvedValue();
@@ -528,6 +532,8 @@ describe("Filer multiple selection at the real panel entry", () => {
     vi.mocked(api.remoteEditPath).mockResolvedValueOnce({
       path: "/tmp/unsent-draft.txt",
       reused: true,
+      // A save the server has not received: kept as it is, not re-downloaded.
+      unsaved: true,
     });
     await mount();
     await doubleClick("file10.txt");
@@ -539,6 +545,32 @@ describe("Filer multiple selection at the real panel entry", () => {
     expect(api.sftpDownload).not.toHaveBeenCalled();
     expect(api.watchRemoteEdit).not.toHaveBeenCalled();
     expect(api.openLocalPath).toHaveBeenCalledWith("/tmp/unsent-draft.txt", undefined);
+  });
+
+  it("downloads over a reused copy so a file changed on the server opens in its new state", async () => {
+    useRemote();
+    vi.mocked(api.remoteEditPath).mockResolvedValueOnce({
+      path: "/tmp/stale.txt",
+      reused: true,
+      // Nothing pending: the copy is just older than the file on the server.
+      unsaved: false,
+    });
+    await mount();
+    await doubleClick("file10.txt");
+    // Downloading over it is the report's fix: it used to open the old bytes.
+    expect(api.sftpDownload).toHaveBeenCalledWith(
+      "selection-ssh",
+      "/selection/file10.txt",
+      "/tmp/stale.txt",
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(api.watchRemoteEdit).toHaveBeenCalledWith(
+      "selection-ssh",
+      "/tmp/stale.txt",
+      "/selection/file10.txt",
+      true,
+    );
   });
 
   it("does not prepare two editable downloads from rapid duplicate activation", async () => {
@@ -556,7 +588,7 @@ describe("Filer multiple selection at the real panel entry", () => {
       }
     });
     expect(api.remoteEditPath).toHaveBeenCalledTimes(1);
-    await act(async () => prepare({ path: "/tmp/existing.txt", reused: true }));
+    await act(async () => prepare({ path: "/tmp/existing.txt", reused: true, unsaved: true }));
     expect(api.openLocalPath).toHaveBeenCalledTimes(1);
   });
 
@@ -568,7 +600,7 @@ describe("Filer multiple selection at the real panel entry", () => {
       if (stage === "prepare") {
         vi.mocked(api.remoteEditPath).mockReturnValueOnce(
           new Promise((resolve) => {
-            resume = () => resolve({ path: "/tmp/closed-tab.txt", reused: false });
+            resume = () => resolve({ path: "/tmp/closed-tab.txt", reused: false, unsaved: false });
           }),
         );
       } else {
@@ -601,7 +633,7 @@ describe("Filer multiple selection at the real panel entry", () => {
       if (stage === "prepare") {
         vi.mocked(api.remoteEditPath).mockReturnValueOnce(
           new Promise((resolve) => {
-            resume = () => resolve({ path: "/tmp/closing-tab.txt", reused: false });
+            resume = () => resolve({ path: "/tmp/closing-tab.txt", reused: false, unsaved: false });
           }),
         );
       } else {
@@ -652,7 +684,7 @@ describe("Filer multiple selection at the real panel entry", () => {
     context("file10.txt");
     await act(async () => menuItem("Open With…").click());
     await act(async () => useStore.getState().closeTab("selection-ssh"));
-    await act(async () => resume({ path: "/tmp/unsent-draft.txt", reused: true }));
+    await act(async () => resume({ path: "/tmp/unsent-draft.txt", reused: true, unsaved: true }));
     expect(api.sftpDownload).not.toHaveBeenCalled();
     expect(api.watchRemoteEdit).not.toHaveBeenCalled();
     expect(api.openWithDialog).not.toHaveBeenCalled();
@@ -699,6 +731,7 @@ describe("Filer multiple selection at the real panel entry", () => {
       "selection-ssh",
       "/tmp/remote-edit.png",
       "/selection/file10.txt",
+      false,
     );
     expect(api.openLocalPath).toHaveBeenCalledWith("/tmp/remote-edit.png", undefined);
   });

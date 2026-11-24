@@ -23,10 +23,11 @@ pub fn watch_remote_edit(
     id: String,
     local: String,
     remote: String,
+    refreshed: bool,
 ) -> Result<()> {
     state
         .remote_edits
-        .watch(app, id, std::path::PathBuf::from(local), remote)
+        .watch(app, id, std::path::PathBuf::from(local), remote, refreshed)
 }
 
 /// Stops watching every file opened from session `id` and removes the synced

@@ -651,8 +651,9 @@ export const finishPromisedFile = (token: string, error: string | null) =>
 // --- remote files edited locally -------------------------------------------
 
 /**
- * Prepares a local copy for an external editor. A reused copy may contain
- * unsent edits, so callers must not download over it or restart its watcher.
+ * Prepares a local copy for an external editor. A reused copy that holds
+ * unsent edits must not be downloaded over; one with nothing pending may be
+ * older than the file on the server, so it is refreshed in place first.
  */
 export type RemoteEditPath = Wire.RemoteEditPath;
 
@@ -663,8 +664,8 @@ export const remoteEditPath = (id: string, remote: string, name: string) =>
  * From now on, every change to `local` is uploaded back to `remote`. Call it
  * right after the download so the fresh copy is the baseline.
  */
-export const watchRemoteEdit = (id: string, local: string, remote: string) =>
-  invoke<void>("watch_remote_edit", { id, local, remote });
+export const watchRemoteEdit = (id: string, local: string, remote: string, refreshed = false) =>
+  invoke<void>("watch_remote_edit", { id, local, remote, refreshed });
 
 /** Stops watching every file opened from a session; for a tab closed for good. */
 export const stopRemoteEdits = (id: string) => invoke<void>("stop_remote_edits", { id });
