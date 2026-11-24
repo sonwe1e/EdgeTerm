@@ -206,6 +206,31 @@ describe("the command palette in the real app", () => {
     );
   });
 
+  it("keeps the typed target selected when it was also remembered", async () => {
+    await page.viewport(1280, 800);
+    applyFixture();
+    mount(h(StrictMode, null, h(App)));
+    await twoFrames();
+    await twoFrames();
+    // Connected to from here before, and now typed again: the field's own row
+    // and the remembered one carry the same id, so the palette's id→index map
+    // pointed at the second copy and the row Enter would run looked unselected.
+    useStore.getState().rememberQuickTarget("root@10.0.0.5:2222");
+    expect(useStore.getState().quickConnectRecents).toContain("root@10.0.0.5:2222");
+    await pressPaletteChord();
+    await typeQuery("root@10.0.0.5:2222");
+    const rows = options().filter((item) =>
+      item.textContent?.includes("Connect to root@10.0.0.5:2222"),
+    );
+    expect(useStore.getState().quickConnectRecents, "the target is remembered").toContain(
+      "root@10.0.0.5:2222",
+    );
+    expect(rows.length, "one row per target").toBe(1);
+    expect(rows[0].getAttribute("aria-selected"), "the row Enter runs is the selected one").toBe(
+      "true",
+    );
+  });
+
   it("opens from the real chord, is readable, and filters what is typed", async () => {
     await page.viewport(1280, 800);
     applyFixture();

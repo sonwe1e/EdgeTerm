@@ -19,7 +19,8 @@ import {
   saveRecents,
   type PaletteCommand,
 } from "../commandPalette";
-import { parseQuickConnect, type QuickTarget } from "../quickConnect";
+import { parseQuickConnect, quickConnectLabel, type QuickTarget } from "../quickConnect";
+import { withoutTypedTarget } from "../commandPalette";
 import { useT } from "../useT";
 import { Icon } from "./icons";
 import { ModalDialog } from "./ModalDialog";
@@ -105,21 +106,27 @@ export function CommandPalette({
     // the ranking decides where they belong, and each one is still a target, so
     // Enter reconnects. The row says it is a recent one rather than a fresh
     // reading of the field.
-    const recent = recentTargets
-      .map((label) => parseQuickConnect(label))
-      .flatMap((entry) => (entry ? [entry] : []))
-      .map((entry) =>
-        // A remembered row says both where it came from and what it will use:
-        // only the first part tells it apart from the row the field makes.
-        quickConnectCommand(
-          entry,
-          t,
-          () => onQuickConnect(entry),
-          [t("palette.quickConnectRecent"), describeQuickConnect?.(entry)]
-            .filter((part): part is string => Boolean(part))
-            .join(" · "),
-        ),
-      );
+    // The remembered rows are ranked like any other command, but the row the
+    // field itself makes comes first, so a target that was connected to before
+    // and is typed again would otherwise appear twice — with one id, one
+    // aria-activedescendant and no row looking selected.
+    const recent = withoutTypedTarget(
+      recentTargets
+        .map((label) => parseQuickConnect(label))
+        .flatMap((entry) => (entry ? [entry] : [])),
+      target ? quickConnectLabel(target) : null,
+    ).map((entry) =>
+      // A remembered row says both where it came from and what it will use:
+      // only the first part tells it apart from the row the field makes.
+      quickConnectCommand(
+        entry,
+        t,
+        () => onQuickConnect(entry),
+        [t("palette.quickConnectRecent"), describeQuickConnect?.(entry)]
+          .filter((part): part is string => Boolean(part))
+          .join(" · "),
+      ),
+    );
     // The remembered targets are ranked like everything else, so a query they
     // do not match drops them and the "no match" exit stays reachable.
     return [...base, ...rankCommands(recent, query)];

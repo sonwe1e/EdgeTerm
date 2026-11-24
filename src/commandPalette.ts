@@ -256,6 +256,19 @@ export function quickConnectCommand(
   };
 }
 
+/**
+ * Drops remembered targets that the field's own row already offers. Both rows
+ * would be built from the same label and so the same id, which makes React keys
+ * and the option ids collide; the field's row is the one Enter runs, so it stays.
+ */
+export function withoutTypedTarget(
+  recent: readonly QuickTarget[],
+  typed: string | null,
+): QuickTarget[] {
+  if (!typed) return [...recent];
+  return recent.filter((target) => quickConnectLabel(target) !== typed);
+}
+
 export interface PaletteSources {
   /** Profile ids connected to on this machine, newest first. */
   recentProfiles?: readonly string[];
@@ -434,11 +447,27 @@ export function buildPaletteCommands(sources: PaletteSources): PaletteCommand[] 
     });
   }
 
-  const settings: { id: string; label: MessageKey; keywords: string[]; run: () => void }[] = [
+  const settings: {
+    id: string;
+    label: MessageKey;
+    keywords: string[];
+    /** Other words on that surface, in the interface's own language. */
+    localized?: MessageKey[];
+    run: () => void;
+  }[] = [
     {
       id: "settings:all",
       label: "menu.allSettings",
       keywords: ["settings", "preferences", "language", "restore", "defaults", "export", "import"],
+      // Language, restore-defaults and export/import live only on that surface.
+      // In a translated interface their English keywords find nothing, so the
+      // row carries the words the controls themselves use.
+      localized: [
+        "menu.language",
+        "menu.restoreDefaultSettings",
+        "menu.exportData",
+        "menu.importData",
+      ],
       run: actions.openSettings,
     },
     {
@@ -479,7 +508,11 @@ export function buildPaletteCommands(sources: PaletteSources): PaletteCommand[] 
       id: entry.id,
       group: "settings",
       label: t(entry.label),
-      keywords: [englishLabel(entry.label), ...entry.keywords],
+      keywords: [
+        englishLabel(entry.label),
+        ...entry.keywords,
+        ...(entry.localized ?? []).map((key) => t(key)),
+      ],
       run: entry.run,
     });
   }

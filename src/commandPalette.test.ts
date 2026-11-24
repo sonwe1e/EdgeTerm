@@ -10,6 +10,7 @@ import {
   normalizeQuery,
   pushRecent,
   quickConnectCommand,
+  withoutTypedTarget,
   rankCommands,
   RECENTS_LIMIT,
   saveRecents,
@@ -18,6 +19,7 @@ import {
   type PaletteSources,
 } from "./commandPalette";
 import { translate, type Translate } from "./i18n";
+import { quickConnectLabel, type QuickTarget } from "./quickConnect";
 import { COMMAND_RECENTS_KEY } from "./persistKeys";
 import { defaultShortcuts, type KeyChord } from "./shortcuts";
 
@@ -406,5 +408,29 @@ describe("the settings group", () => {
     expect(found).toContain("settings:all");
     row!.run();
     expect(fixture.actions.openSettings).toHaveBeenCalled();
+  });
+
+  it("finds that surface by the words its controls use in a translated interface", () => {
+    // A Chinese reader searches the words on the controls — 语言, 恢复默认,
+    // 导出 — not the English keywords, so the row carries those too.
+    const catalogue = buildPaletteCommands(sources({ t: chinese }));
+    for (const query of ["语言", "恢复默认", "导出"]) {
+      expect(rankCommands(catalogue, query).map((item) => item.id)).toContain("settings:all");
+    }
+  });
+});
+
+describe("remembered quick targets", () => {
+  it("drops a remembered target the field already offers, and nothing else", () => {
+    // Both rows are built from the same label, so keeping both means one id for
+    // two rows: React keys collide and the row Enter runs is not the selected one.
+    const typed: QuickTarget = { host: "10.0.0.5", username: "root", port: 2222 };
+    const other: QuickTarget = { host: "db.internal", username: "ops", port: 22 };
+    expect(withoutTypedTarget([typed, other], quickConnectLabel(typed))).toEqual([other]);
+    expect(withoutTypedTarget([typed, other], null), "no typed row, nothing dropped").toEqual([
+      typed,
+      other,
+    ]);
+    expect(withoutTypedTarget([typed], quickConnectLabel(other))).toEqual([typed]);
   });
 });
