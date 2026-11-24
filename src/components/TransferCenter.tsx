@@ -242,9 +242,10 @@ export function TransferCenter() {
       if (!alive.current) return;
       ++recoveryRequest.current;
       setRecoverable((found) => found.filter((entry) => entry.id !== id));
-      // This row held the Clear that was just pressed; hand the keyboard on
-      // rather than let it fall to the document (the bulk path does the same).
-      focusAfterClear();
+      // This row held the Clear that was just pressed. Back to the section's
+      // own action, so a reader working down the list stays in it; the
+      // job-queue chain is only the fallback once the list is empty.
+      focusAfterInterruptedClear();
     } catch (e) {
       if (alive.current) setRecoveryError(errorText(e));
     }
@@ -273,7 +274,9 @@ export function TransferCenter() {
     if (!alive.current) return;
     ++recoveryRequest.current;
     setRecoverable((found) => found.filter((entry) => !removed.has(entry.id)));
-    focusAfterClear();
+    // The section is gone once the last one is cleared, so the chain's own
+    // fallback is what is left.
+    focusAfterInterruptedClear();
   };
   const jobs = useMemo(
     () => Object.values(records).sort((a, b) => b.id.localeCompare(a.id)),
@@ -362,6 +365,24 @@ export function TransferCenter() {
         scope?.querySelector<HTMLButtonElement>(".transfer-head-action") ??
         scope?.querySelector<HTMLButtonElement>(".status-popover-close");
       next?.focus();
+    });
+  };
+  /**
+   * After clearing an interrupted record. The list the reader was working
+   * down is still there, so its own section action is where the keyboard
+   * belongs; the job-queue chain is only the fallback once that list is
+   * empty and the section has unmounted.
+   */
+  const focusAfterInterruptedClear = () => {
+    requestAnimationFrame(() => {
+      const interrupted = panelScope()?.querySelector<HTMLButtonElement>(
+        "[data-clear-interrupted]",
+      );
+      if (interrupted) {
+        interrupted.focus();
+        return;
+      }
+      focusAfterClear();
     });
   };
   const control = async (id: string, action: Parameters<typeof api.controlFileTransfer>[1]) => {
@@ -662,7 +683,9 @@ export function TransferCenter() {
                           aria-expanded={failureJob === job.id}
                           onClick={() => setFailureJob(failureJob === job.id ? null : job.id)}
                         >
-                          {t("transfer.failedFilesCount", { count: job.failedFiles.length })}
+                          {job.failedFiles.length === 1
+                            ? t("transfer.failedFilesCountOne")
+                            : t("transfer.failedFilesCount", { count: job.failedFiles.length })}
                         </button>
                       )}
                     </div>
@@ -679,7 +702,9 @@ export function TransferCenter() {
             <strong title={records[failureJob].name}>
               {records[failureJob].name}
               {" · "}
-              {t("transfer.failedFilesCount", { count: failureRows.length })}
+              {failureRows.length === 1
+                ? t("transfer.failedFilesCountOne")
+                : t("transfer.failedFilesCount", { count: failureRows.length })}
             </strong>
             <button
               type="button"
@@ -761,6 +786,7 @@ export function TransferCenter() {
               <button
                 type="button"
                 className="transfer-head-action"
+                data-clear-interrupted=""
                 onClick={() => {
                   setBulkForget(true);
                   setBulkClear(false);
@@ -784,7 +810,21 @@ export function TransferCenter() {
                 <button type="button" onClick={() => void forgetAll()}>
                   {t("transfer.dismiss")}
                 </button>
-                <button type="button" onClick={() => setBulkForget(false)}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBulkForget(false);
+                    // The band is about to unmount, so the keyboard it held has
+                    // to go back to the action that opened it - not to the
+                    // first head action in document order, which is the header's
+                    // Pin button.
+                    requestAnimationFrame(() =>
+                      panelScope()
+                        ?.querySelector<HTMLButtonElement>("[data-clear-interrupted]")
+                        ?.focus(),
+                    );
+                  }}
+                >
                   {t("common.cancel")}
                 </button>
               </div>

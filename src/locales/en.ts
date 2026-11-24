@@ -1352,6 +1352,7 @@ export const en = {
   "filer.showMoreColumns": "More columns",
   "filer.showNames": "Names",
   "transfer.failedFilesCount": "{count} failed files",
+  "transfer.failedFilesCountOne": "1 failed file",
   "transfer.closeFailedFiles": "Close failed files",
   "forward.tunnels": "Tunnels",
   "forward.failedCount": "{count} failed",

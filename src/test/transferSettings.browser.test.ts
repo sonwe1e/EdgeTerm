@@ -110,7 +110,7 @@ it("reveals complete transfer routes and failure messages to keyboard users", as
   expect(detail.selectionEnd - detail.selectionStart).toBe(detail.value.length);
   await userEvent.click(page.getByRole("button", { name: "Close details" }));
   await expect.poll(() => document.activeElement).toBe(route.element());
-  await userEvent.click(page.getByRole("button", { name: "1 failed files" }));
+  await userEvent.click(page.getByRole("button", { name: "1 failed file" }));
   await userEvent.click(page.getByRole("button", { name: `View failure details: ${failure}` }));
   expect(document.querySelector<HTMLTextAreaElement>(".transfer-detail-text")?.value).toBe(failure);
 });

@@ -1299,6 +1299,7 @@ export const zhCN: Catalog = {
   "filer.showMoreColumns": "更多列",
   "filer.showNames": "文件名",
   "transfer.failedFilesCount": "{count} 个失败文件",
+  "transfer.failedFilesCountOne": "1 个失败文件",
   "transfer.closeFailedFiles": "关闭失败文件",
   "forward.tunnels": "隧道",
   "forward.failedCount": "{count} 个失败",
