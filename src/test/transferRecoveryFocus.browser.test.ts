@@ -77,3 +77,20 @@ it("returns the keyboard to the action that opened the bulk question", async () 
   // header's Pin button, which is the first head action in document order.
   expect(document.activeElement).toBe(trigger);
 });
+
+it("keeps the reader in the interrupted list after clearing one record", async () => {
+  await openWith([record("a"), record("b"), record("c")]);
+  // The row's own Clear is plain text, so the row is found by its name first.
+  const row = [...document.querySelectorAll<HTMLElement>(".transfer-recovery-row")].find(
+    (element) => element.querySelector("strong")?.textContent === "a.part",
+  );
+  expect(row, "the interrupted row").toBeTruthy();
+  // [resume, forget] - the last one, again matched by position.
+  const actions = row!.querySelectorAll<HTMLButtonElement>(".transfer-job-actions button");
+  const clearOne = actions[actions.length - 1];
+  expect(clearOne, "a row's own Clear").toBeTruthy();
+  await userEvent.click(clearOne!);
+  await twoFrames();
+
+  expect(document.activeElement).toBe(document.querySelector("[data-clear-interrupted]"));
+});
