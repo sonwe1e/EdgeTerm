@@ -45,6 +45,12 @@ interface Props {
   draggable?: boolean;
   role?: "dialog" | "alertdialog";
   labelledBy?: string;
+  /**
+   * The id of the dialog's own title text, when the caller renders one. The
+   * header also holds the close control, so naming the dialog after the header
+   * made a screen reader read "… Close, dialog".
+   */
+  titleId?: string;
   ariaLabel?: string;
   headerClassName?: string;
   /** Explicit initial focus for security-sensitive choices. */
@@ -95,6 +101,7 @@ export function ModalDialog({
   draggable = false,
   role = "dialog",
   labelledBy,
+  titleId,
   ariaLabel,
   headerClassName,
   initialFocus,
@@ -305,7 +312,12 @@ export function ModalDialog({
   const containTab = useStableCallback((event: KeyboardEvent, dialog: HTMLDialogElement) => {
     const focusables = Array.from(
       dialog.querySelectorAll<HTMLElement>(
-        "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])",
+        // `summary` is natively focusable but matches none of the others: a
+        // session dialog's collapsible section heading was outside this list,
+        // so focus landing on one made the trap treat it as "outside" and jump
+        // to the first control — the footer below the headings became
+        // unreachable by Tab.
+        "button, [href], input, select, textarea, summary, [tabindex]:not([tabindex='-1'])",
       ),
     ).filter(
       (element) =>
@@ -413,7 +425,7 @@ export function ModalDialog({
       ref={attachDialogRef}
       className="dialog-backdrop"
       role={role}
-      aria-labelledby={labelledBy}
+      aria-labelledby={titleId ?? labelledBy}
       aria-label={ariaLabel}
       aria-modal="true"
       onKeyDown={handleKeyDown}
@@ -432,7 +444,7 @@ export function ModalDialog({
         {title !== undefined && (
           <div
             className={`dialog-header${headerClassName ? ` ${headerClassName}` : ""}${draggable ? " is-drag-handle" : ""}`}
-            id={labelledBy}
+            id={titleId ? undefined : labelledBy}
             {...(draggable ? handleProps : undefined)}
           >
             {title}

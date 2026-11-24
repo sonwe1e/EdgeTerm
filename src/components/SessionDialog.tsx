@@ -299,6 +299,8 @@ export function SessionDialog({
     invalidFieldRef.current = null;
   }, [error]);
   const [busy, setBusy] = useState(false);
+  /** Which handler is running, so only its own button reports the wait. */
+  const [busyAction, setBusyAction] = useState<"save" | "connect" | null>(null);
   // The note to show where a password is typed when it will not survive a
   // restart (portable mode, an unreachable OS credential store) or cannot be
   // saved at all (an unreadable stored file); null shows nothing.
@@ -883,6 +885,7 @@ export function SessionDialog({
       return;
     }
 
+    setBusyAction("save");
     setBusy(true);
     setError(null);
     try {
@@ -896,6 +899,7 @@ export function SessionDialog({
       setError(errorText(e));
     } finally {
       setBusy(false);
+      setBusyAction(null);
     }
   };
 
@@ -912,6 +916,7 @@ export function SessionDialog({
       return;
     }
 
+    setBusyAction("connect");
     setBusy(true);
     setError(null);
     try {
@@ -944,6 +949,7 @@ export function SessionDialog({
       setError(errorText(e));
     } finally {
       setBusy(false);
+      setBusyAction(null);
     }
   };
 
@@ -967,7 +973,7 @@ export function SessionDialog({
             ? '[data-field="serialPort"]'
             : '[data-field="host"]'
       }
-      labelledBy="session-dialog-title"
+      titleId="session-dialog-title"
       title={
         <>
           {/* The badge carries the session colour picked below, so the
@@ -984,7 +990,7 @@ export function SessionDialog({
             <Icon name={protocolIcon(profile.kind)} />
           </span>
           <div className="session-dialog-heading">
-            <div className="session-dialog-title">
+            <div className="session-dialog-title" id="session-dialog-title">
               {saveSessionId
                 ? t("session.saveTitle")
                 : initial?.id
@@ -1640,17 +1646,19 @@ export function SessionDialog({
           disabled={busy}
         >
           <Icon name="save" />
-          {saveSessionId && busy ? t("session.saving") : t("common.save")}
+          {busyAction === "save" || (saveSessionId && busy)
+            ? t("session.saving")
+            : t("common.save")}
         </button>
         {!sshOnly && !saveSessionId && (
           <button
             type="button"
-            className={`btn is-primary${busy ? " is-loading" : ""}`}
+            className={`btn is-primary${busyAction === "connect" ? " is-loading" : ""}`}
             onClick={connect}
             disabled={busy}
           >
             <Icon name="plug" />
-            {busy
+            {busyAction === "connect"
               ? t("session.connecting")
               : t(
                   profile.kind === "local" && !initial?.id

@@ -264,8 +264,8 @@ export function SettingsDialog({ onClose, onDisplaySettings }: Props) {
       onClose={onClose}
       dismissable={false}
     >
-      <div className="dialog-header" id="settings-title">
-        <span>{t("settings.title")}</span>
+      <div className="dialog-header">
+        <span id="settings-title">{t("settings.title")}</span>
         <button
           className="panel-action"
           type="button"
