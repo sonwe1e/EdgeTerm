@@ -170,7 +170,10 @@ export function createHistoryCapture(
   const rememberExported = (text: string) => {
     exportedTexts.add(text);
     exportedOrder.push(text);
-    if (exportedOrder.length > RECENT_TEXTS_CAP) {
+    // Trimmed in batches: rebuilding the set costs one entry per export, so
+    // doing it per line once the cap was reached made a flood — the case this
+    // feature exists for — the slowest thing on the UI thread.
+    if (exportedOrder.length > RECENT_TEXTS_CAP * 2) {
       exportedOrder.splice(0, exportedOrder.length - RECENT_TEXTS_CAP);
       exportedTexts.clear();
       for (const recent of exportedOrder) exportedTexts.add(recent);

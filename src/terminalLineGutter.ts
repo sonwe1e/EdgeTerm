@@ -206,6 +206,9 @@ export class TerminalLineGutter {
   watchLines(severity?: WatchSeverity): number[] {
     const lines: number[] = [];
     for (const [line, mark] of this.watchByLine) {
+      // A stale key waits here until the batched sweep above collects it; it
+      // is no longer a row of this buffer, so it must not be a jump target.
+      if (line < this.firstLineNumber) continue;
       if (severity === undefined || mark === severity) lines.push(line);
     }
     return lines.sort((a, b) => a - b);
@@ -288,10 +291,16 @@ export class TerminalLineGutter {
     if (count <= 0) return;
     this.lineTimesStart = Math.min(this.lineTimes.length, this.lineTimesStart + count);
     this.firstLineNumber += count;
-    // Watch marks are keyed by absolute line, so the dropped ones are gone;
-    // without this the map would grow with the session's whole history.
-    for (const line of this.watchByLine.keys()) {
-      if (line < this.firstLineNumber) this.watchByLine.delete(line);
+    // Watch marks are keyed by absolute line, so the dropped ones are stale;
+    // without a sweep the map would grow with the session's whole history. The
+    // sweep runs only once at least LINE_TIME_SLACK marks have expired: at the
+    // bottom of a full scrollback every line feed drops one, and scanning the
+    // whole map per line would make a flood of warnings quadratically slow.
+    // `watchLines` filters the not-yet-swept ones out by number.
+    if (this.watchByLine.size > this.lineCount + LINE_TIME_SLACK) {
+      for (const line of this.watchByLine.keys()) {
+        if (line < this.firstLineNumber) this.watchByLine.delete(line);
+      }
     }
     // Compact in batches so the copy costs a few elements per dropped line.
     if (this.lineTimesStart >= LINE_TIME_SLACK) {
