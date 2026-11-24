@@ -120,7 +120,9 @@ export function CommandPalette({
             .join(" · "),
         ),
       );
-    return [...base, ...recent];
+    // The remembered targets are ranked like everything else, so a query they
+    // do not match drops them and the "no match" exit stays reachable.
+    return [...base, ...rankCommands(recent, query)];
   }, [commands, query, recents, recentTargets, onQuickConnect, describeQuickConnect, t]);
 
   // One heading per group, rows of the same group kept together. The flattened
