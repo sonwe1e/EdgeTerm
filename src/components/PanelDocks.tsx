@@ -255,6 +255,14 @@ export function DockArea({ dock, panels, size, render }: DockAreaProps) {
   // dock: a panel moved to another dock brings its share with it, and the
   // split a user settled on is still there at the next launch.
   const [weights, setWeights] = useState<DockWeights>(() => loadDockWeights(dock, panels));
+  // An import or a reset rewrites the stored arrangement, and the status bar
+  // says so - but this state was only ever read once, in the initialiser. The
+  // split then stayed where it was until the next launch, and the next drag
+  // wrote the stale arrangement back over what had just been imported.
+  const preferencesRevision = useStore((s) => s.panelPreferencesRevision);
+  useEffect(() => {
+    setWeights(loadDockWeights(dock, panels));
+  }, [preferencesRevision, dock, panels]);
 
   // A splitter drag previews; the panels take their new shares on release.
   // Re-rendering both panels per frame would rebuild two lists for a gesture

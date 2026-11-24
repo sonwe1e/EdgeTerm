@@ -1474,7 +1474,8 @@ export const zhCN: Catalog = {
   "settings.groupData": "数据",
   "settings.open": "打开",
   "settings.reset": "重置",
-  "settings.displaySettingsHint": "面板与终端的字号、字体、回滚行数、光标样式与 GPU 渲染器。",
+  "settings.displaySettingsHint":
+    "面板与终端的字号、字体、行距、回滚行数、光标样式与闪烁、GPU 渲染器与无缝冷历史。",
   "settings.transferHint": "请求数、分块大小、并发文件数、限速、fsync 与 tar 打包。",
   "settings.transferSettings": "传输设置",
   "settings.transferLocation": "这些设置位于状态栏「传输」浮层内的「设置」折叠区。",

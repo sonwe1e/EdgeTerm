@@ -1535,7 +1535,7 @@ export const en = {
   "settings.open": "Open",
   "settings.reset": "Reset",
   "settings.displaySettingsHint":
-    "Panel and terminal font size and family, scrollback lines, cursor style and the GPU renderer.",
+    "Panel and terminal font size, family and line spacing, scrollback lines, cursor style and blink, the GPU renderer and seamless cold history.",
   "settings.transferHint":
     "Request count, chunk size, concurrent files, rate limit, fsync and tar packing.",
   "settings.transferSettings": "Transfer Settings",

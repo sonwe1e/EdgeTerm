@@ -314,6 +314,40 @@ describe("layout regressions (Wave B)", () => {
     },
   );
 
+  it("re-reads a dock's split arrangement after an import or a reset", async () => {
+    // `edgeterm.dockSplits` is a registered preference: an import writes it and
+    // publishes the revision token, and the status bar says so. DockArea read its
+    // weights once, in a useState initialiser, so the split stayed where it was
+    // until the next launch - and the next drag wrote the stale arrangement back
+    // over what had just been imported.
+    await page.viewport(1200, 800);
+    localStorage.clear();
+    useStore.setState(
+      {
+        ...initialState,
+        tabs: [],
+        activeId: null,
+        panels: { sessions: false, filer: true, sender: true },
+        panelDocks: { left: [], right: ["filer", "sender"], bottom: [] },
+      },
+      true,
+    );
+    mount(h(App));
+    await twoFrames();
+    const slot = (panel: string) =>
+      document.querySelector<HTMLElement>(`.dock-slot[data-panel="${panel}"]`)!;
+    const grow = (panel: string) => slot(panel).style.flexGrow;
+    expect(grow("filer")).toBe("1");
+
+    // The arrangement the import is about to publish.
+    localStorage.setItem("edgeterm.dockSplits", JSON.stringify({ right: { filer: 3, sender: 1 } }));
+    useStore.setState({
+      panelPreferencesRevision: useStore.getState().panelPreferencesRevision + 1,
+    });
+    await twoFrames();
+    expect(grow("filer")).toBe("3");
+    expect(grow("sender")).toBe("1");
+  });
   it("keeps a pointer preview when the opposite dock receives a keyboard resize", async () => {
     await page.viewport(1200, 800);
     localStorage.clear();
