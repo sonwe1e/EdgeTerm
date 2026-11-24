@@ -1,5 +1,12 @@
 # 项目状态
 
+## 本轮：端口超范围时，焦点落到端口框（2026-11-24 第 134 轮）
+
+- 缺陷（第 129 轮审计 P6，已复核）：(S)FTP 表单的端口输入框**没有注册到 `fieldRefs`**（SSH／Telnet 的那个有）。`invalidField` 对超范围端口返回 "port"，`focusField("port")` 去查 `fieldRefs.current.port` 拿到 undefined 就静默返回：提示出现了，但焦点不动、也不标 `aria-invalid`。
+- 交付：给 (S)FTP 端口框补 `data-field="port"` 与 ref，与 SSH／Telnet 那块完全对称。
+- 验证：`sessionSetup.browser.test.ts` **6/6**（新增 1 条：`port: 70000` 的 FTP 草稿 → 点连接 → 焦点落在 `[data-field="port"]` 且该框 `aria-invalid="true"`）。全量门 `VERIFY_EXIT=0`（单测 **212 文件／1918 用例**，浏览器 **72 文件／337 用例**）。
+- **负控制**：去掉 ref 注册（保留 `data-field`）→ 新用例失败；恢复后通过。
+
 ## 本轮：连接进行中，表单的 × 不再假装取消（2026-11-24 第 133 轮）
 
 - 缺陷（第 129 轮审计 P4，已复核）：`ModalDialog` 的 `onClose` 已经带 `if (!busy)` 守卫，底部取消按钮也 `disabled={busy}`，但**标题栏的 × 直接调用裸的 `onClose`**。连接中点 × 表单消失，读者以为取消了，实际 `openSession` 仍在跑，标签随后出现。
