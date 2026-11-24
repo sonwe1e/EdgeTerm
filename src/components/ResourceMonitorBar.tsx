@@ -221,10 +221,17 @@ export const ResourceMonitorBar = memo(function ResourceMonitorBar({
     return () => document.removeEventListener("visibilitychange", update);
   }, []);
   useEffect(() => setOpen(false), [id]);
+  // Clearing is keyed on identity only. A refresh (attempt) or a new interval
+  // restarts the poll but must not throw away the last sample and the bounded
+  // trend: the reader pressed refresh to check a spike, and on a slow host the
+  // panel would otherwise stay blank - every tile back to the dashed warming-up
+  // baseline - for as long as the request takes.
   useEffect(() => {
     setSample(null);
     setError(null);
     setHistory([]);
+  }, [id, eligible, visible, settings.enabled]);
+  useEffect(() => {
     if (!id || !eligible || !visible || !settings.enabled) return;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
