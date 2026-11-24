@@ -42,3 +42,23 @@
 - **监视词词表与语言键**：`watchSeverity` 与其单测一致（含复数排除）；`menu.prevWatch`/`nextWatch`/`status.noWatchMark` 与 `sc.*Watch*` 两语言齐全；监视状态不在会话间共享（每个控制器一个 `TerminalLineGutter`）。
 
 证据边界：T1/T2/W1 是代码验证的；仓库自己的构建记录（`build-1.7.8-r153-20261124.md`:37）记载托盘菜单重建没有自动化测试。M3–M5 由组件源码与样式表验证，未运行应用，因此没有观察到渲染出的空白浮层或屏幕上的 Windows 托盘菜单。
+
+## 第 196 轮：W2 的坐标关系推对了，测试断言错了
+
+前两轮我改了两版产品代码都没能让新用例通过，就回了退。本轮**先读代码再动手**，找到了真正的原因：**我写的那条用例断言了一个跳转根本不改变的字段。**
+
+三个坐标的事实（`src/terminal.ts`）：
+
+- `jumpToLines` 的 `lines` 与 `commandJumpLine` 都是**绝对行**（`watchLines()` 绝对，`marker.line` 也绝对）。
+- `scrollToLine(absoluteLine)` 自己做 `Math.max(0, absoluteLine - firstLineNumber)`——它要的就是绝对行。
+- `flashCommandLine(absoluteLine)` 注册 marker 时也做 `absoluteLine - (baseY + cursorY)`——同样要绝对行。
+
+所以整条链路本来就是绝对坐标，**唯一相对的值就是 `reference`**（`baseY + cursorY`）。第 194 轮把 reference 抬升 `firstLineNumber` 的方向是对的。
+
+那为什么用例还是红？因为我断言的是 `buffer.baseY + buffer.cursorY`——**而跳转从不移动游标**，它只滚动视口并挂一个闪烁装饰。第 194 轮实测：`marks[0] = 45`（绝对）、`firstLineNumber = 23`、跳转后 `baseY + cursorY` 仍是 45。我期望 `landed === marks[0] - offset`（即 22），当然不成立。
+
+### 下一轮的正确做法
+
+断言 **`buffer.viewportY`**（`scrollToLine` 滚动后的视口顶部）等于 `marks[0] - firstLineNumber`。这才是判别性的：旧实现下 reference 少一个 `firstLineNumber`，「上一个」会找不到标记（`jumpToWatchMark(-1)` 返回 false，状态栏报「没有标记」），用例直接红。
+
+产品改动（把 reference 抬升为绝对）第 194 轮已验证方向正确但仍未提交——因为它没有一条能判别它的用例。下一轮按上面的断言补上用例，再一起提交。
