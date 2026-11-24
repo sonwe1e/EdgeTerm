@@ -785,6 +785,13 @@ pub async fn read_text(
     let (bytes, size, modified_at, permissions) = sftp.read(path, TEXT_LIMIT).await?;
     let bom = bytes.starts_with(&[0xef, 0xbb, 0xbf]);
     let content = &bytes[if bom { 3 } else { 0 }..];
+    // UTF-16 text is full of NUL bytes, but it is text: naming the encoding and
+    // the way out beats calling a file binary that every Windows editor writes.
+    if content.starts_with(&[0xff, 0xfe]) || content.starts_with(&[0xfe, 0xff]) {
+        return Err(AppError::invalid_input(
+            "this file is UTF-16; convert it to UTF-8 or edit it externally",
+        ));
+    }
     if content.contains(&0) {
         return Err(AppError::invalid_input(
             "the file looks binary; the built-in editor only opens text",

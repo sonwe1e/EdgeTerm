@@ -62,6 +62,14 @@ fn bytes(path: &Path) -> Result<Vec<u8>> {
 pub fn read(path: &str) -> Result<TextFile> {
     let path = fs::canonicalize(path)?;
     let bytes = bytes(&path)?;
+    // Checked before the UTF-8 conversion, which would refuse it as garbage: a
+    // UTF-16 file is text, written by Notepad or PowerShell 5.1, and the reader
+    // deserves the encoding's name and a way out rather than "not UTF-8".
+    if bytes.starts_with(&[0xff, 0xfe]) || bytes.starts_with(&[0xfe, 0xff]) {
+        return Err(AppError::invalid_input(
+            "this file is UTF-16; convert it to UTF-8 or edit it externally",
+        ));
+    }
     let bom = bytes.starts_with(&[0xef, 0xbb, 0xbf]);
     let text = std::str::from_utf8(&bytes[if bom { 3 } else { 0 }..]).map_err(|_| {
         AppError::invalid_input("this local file is not UTF-8; open it in an external editor")
@@ -280,6 +288,24 @@ fn replace(from: &Path, to: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_utf16_file_is_named_rather_than_called_binary() {
+        // Notepad's "Unicode" and PowerShell 5.1's `>` write this encoding, and
+        // its ASCII halves are valid UTF-8, so it used to read as binary.
+        let dir = std::env::temp_dir().join(format!("edgeterm-utf16-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let path = dir.join("notes.txt");
+        let mut bytes = vec![0xff, 0xfe];
+        bytes.extend("hi".encode_utf16().flat_map(|unit| unit.to_le_bytes()));
+        fs::write(&path, &bytes).unwrap();
+
+        let error = read(path.to_str().unwrap()).expect_err("UTF-16 is not edited here");
+        let reason = error.to_string();
+        assert!(reason.contains("UTF-16"), "names the encoding: {reason}");
+        assert!(reason.contains("externally"), "names a way out: {reason}");
+        fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[cfg(unix)]
     #[test]
