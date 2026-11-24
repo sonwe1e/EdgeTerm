@@ -110,4 +110,56 @@ describe("ZMODEM receive cancellation", () => {
     // guard in receiveOffer is for.
     expect(notices).not.toContain("ZMODEM received big.bin (1.50 MiB)");
   }, 20000);
+
+  it("does not report a download that arrived shorter than advertised", async () => {
+    // zmodem.js only checks that its own byte counter matches the ZEOF
+    // header's offset, so a peer that ends a file early still resolves the
+    // accept. Without comparing against the advertised size the file is
+    // finalized and announced as received, leaving the user with a silently
+    // truncated file and no hint that it is short of what was offered.
+    //
+    // The peer here is a real controller told the file is bigger than it is:
+    // the offer carries the larger size and the reads run out early.
+    const advertised = FILE_CHUNK_SIZE + 512 * 1024;
+    const content = Uint8Array.from({ length: FILE_CHUNK_SIZE }, (_, i) => (i * 7) & 255);
+    const notices: string[] = [];
+    const errors: string[] = [];
+    let receiver!: ZmodemController;
+    vi.mocked(dialog.open).mockResolvedValue(["short.bin"]);
+    vi.mocked(dialog.save).mockImplementation(async (o) => o!.defaultPath!);
+    vi.mocked(api.zmodemFileInfo).mockImplementation(async (target) => ({
+      name: target,
+      size: advertised,
+      modified: null,
+    }));
+    vi.mocked(api.zmodemReadBytes).mockImplementation(async (_t, offset, length) =>
+      content.subarray(offset, offset + length),
+    );
+    vi.mocked(api.zmodemCreateFile).mockImplementation(async () => {});
+    vi.mocked(api.zmodemWriteBytes).mockImplementation(async () => {});
+    const sender = new ZmodemController("sender", {
+      toTerminal() {},
+      onStatus() {},
+      onNotice() {},
+    });
+    receiver = new ZmodemController("receiver", {
+      toTerminal() {},
+      onStatus() {},
+      onNotice: (message, kind) => {
+        if (kind === "error") errors.push(message);
+        notices.push(message);
+      },
+    });
+    controllers.push(sender, receiver);
+    vi.mocked(api.writeSessionBytes).mockImplementation(async (id, bytes) => {
+      const target = id === "sender" ? receiver : sender;
+      await new Promise((r) => setTimeout(r, 0));
+      for (let start = 0; start < bytes.length; start += 4093)
+        target.consume(bytes.subarray(start, start + 4093));
+    });
+    receiver.consume(header());
+    for (let i = 0; i < 3000 && notices.length < 4; i++) await new Promise((r) => setTimeout(r, 1));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(notices.some((n) => n.includes("received short.bin"))).toBe(false);
+  });
 });
