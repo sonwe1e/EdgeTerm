@@ -750,12 +750,10 @@ fn update_profile(profile: &mut SessionProfile, entry: &SshConfigEntry, named_ke
 
 /// Saves the selected aliases of `entries` as SSH profiles: a matching
 /// saved session is updated in place, anything else is added under
-/// `group_id`. Only a single-hop `ProxyJump` is imported as a jump host: the
-/// hop comes along (a named alias, or a `user@host:port` literal given its
-/// own profile) and the session is linked to it. A `ProxyJump` with more
-/// than one hop is dropped with a warning — EdgeTerm's per-session jump host
-/// cannot hold a chain, and one host's chain must not reshape the jump hosts
-/// other sessions share (see `jumps_ignored`).
+/// `group_id`. Every hop of a `ProxyJump` comes along in order — a named
+/// alias, or a `user@host:port` literal given its own profile — and the whole
+/// chain is stored on that session, so one host's chain never reshapes the jump
+/// hosts other sessions share.
 pub fn import(
     store: &Store,
     entries: &[SshConfigEntry],
