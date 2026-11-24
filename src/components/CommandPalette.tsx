@@ -164,7 +164,10 @@ export function CommandPalette({
       // and the focus ModalDialog returns should land on the app, not on a
       // dialog that is about to open.
       onClose();
-      command.run();
+      // The close hands focus back to the opener, so a command that moves
+      // focus must run after that handback rather than in the same tick.
+      if (command.runsAfterClose) requestAnimationFrame(() => command.run());
+      else command.run();
     },
     [onClose],
   );

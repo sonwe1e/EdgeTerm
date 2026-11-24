@@ -56,6 +56,12 @@ export const paletteGroupLabels = (t: Translate): Record<PaletteGroupId, string>
 export interface PaletteCommand {
   /** Stable across sessions: recents and tests key on it. */
   id: string;
+  /**
+   * Run one frame after the palette closes. The close hands focus back to
+   * whatever opened the palette, so a command whose whole job is to move focus
+   * would be undone by that handback if it ran in the same tick.
+   */
+  runsAfterClose?: boolean;
   group: PaletteGroupId;
   label: string;
   /** A second line: what the command does, or where it goes. */
@@ -380,6 +386,8 @@ export function buildPaletteCommands(sources: PaletteSources): PaletteCommand[] 
       hint: hints[id],
       keywords: [englishLabel(keys.label), idWords(id)],
       chord: shortcutChord(shortcuts, id),
+      // Moving focus is undone if it runs before the close returns focus.
+      runsAfterClose: id === "focusRegion",
       run: () => actions.runShortcut(action),
     });
   }
