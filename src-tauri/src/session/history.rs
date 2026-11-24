@@ -466,13 +466,18 @@ impl HistoryStore {
         }
     }
 
-    /// Newest-first page of lines with `abs_line >= from_abs`, at most
-    /// `max_lines` of them. Pending lines come first because they are the
-    /// newest.
+    /// Newest-first page of lines with `abs_line >= from_abs` and, when
+    /// `until_abs` is non-zero, `abs_line < until_abs`, at most `max_lines`
+    /// of them. Pending lines come first because they are the newest.
+    ///
+    /// The upper bound is what makes paging backwards possible: without it
+    /// every call answers with the same newest page, and scrolling to the
+    /// top repeatedly re-inserts the lines already there.
     pub(crate) fn read(
         &self,
         session_id: &str,
         from_abs: u64,
+        until_abs: u64,
         max_lines: usize,
     ) -> Result<Vec<HistoryLine>, HistoryError> {
         let inner = self.lock();
@@ -480,12 +485,15 @@ impl HistoryStore {
             .sessions
             .get(session_id)
             .ok_or(HistoryError::UnknownSession)?;
+        let wanted = |line: &HistoryLine| {
+            line.abs_line >= from_abs && (until_abs == 0 || line.abs_line < until_abs)
+        };
         let mut out = Vec::new();
         for line in session.pending.iter().rev() {
             if out.len() >= max_lines {
                 return Ok(out);
             }
-            if line.abs_line >= from_abs {
+            if wanted(line) {
                 out.push(line.clone());
             }
         }
@@ -496,11 +504,16 @@ impl HistoryStore {
             if block.last_abs < from_abs {
                 break;
             }
+            // Blocks run oldest-first inside, so a block entirely at or
+            // above the bound holds nothing wanted.
+            if until_abs != 0 && block.first_abs >= until_abs {
+                continue;
+            }
             for line in block.lines().into_iter().rev() {
                 if out.len() >= max_lines {
                     break;
                 }
-                if line.abs_line >= from_abs {
+                if wanted(&line) {
                     out.push(line);
                 }
             }
@@ -766,25 +779,66 @@ mod tests {
         assert_eq!(store.stats("s").unwrap().total_records, 8292);
         assert_eq!(store.stats("s").unwrap().dropped_lines, 0);
 
-        let top = store.read("s", 1, 3).unwrap();
+        let top = store.read("s", 1, 0, 3).unwrap();
         assert_eq!(
             top.iter().map(|l| l.abs_line).collect::<Vec<_>>(),
             vec![8292, 8291, 8290]
         );
 
         // A page long enough to cross the pending/newest-block boundary.
-        let page = store.read("s", 1, 150).unwrap();
+        let page = store.read("s", 1, 0, 150).unwrap();
         let abs_list: Vec<u64> = page.iter().map(|l| l.abs_line).collect();
         assert!(
             abs_list.contains(&8193) && abs_list.contains(&8192),
             "{abs_list:?}"
         );
         assert_eq!(abs_list.len(), 150);
-        let filtered = store.read("s", 4090, 7).unwrap();
+        let filtered = store.read("s", 4090, 0, 7).unwrap();
         assert!(filtered.iter().all(|l| l.abs_line >= 4090));
         assert_eq!(filtered.len(), 7);
     }
 
+    /// Paging backwards needs a cursor: without an upper bound every call
+    /// answers with the same newest page, and scrolling to the top keeps
+    /// re-inserting lines that are already there.
+    #[test]
+    fn read_pages_backwards_through_the_upper_bound() {
+        let store = HistoryStore::new();
+        let sealed: Vec<_> = (1..=600u32)
+            .map(|i| line(u64::from(i), u64::from(i), "x"))
+            .collect();
+        store.append("s", &batch(&sealed)).unwrap();
+
+        let first = store.read("s", 1, 0, 100).unwrap();
+        assert_eq!(first.len(), 100);
+        assert_eq!(first[0].abs_line, 600);
+        // The oldest line of the page is the cursor for the next one.
+        let cursor = first.last().unwrap().abs_line;
+        assert_eq!(cursor, 501);
+
+        let second = store.read("s", 1, cursor, 100).unwrap();
+        assert_eq!(second.len(), 100);
+        assert_eq!(second[0].abs_line, 500);
+        assert_eq!(second.last().unwrap().abs_line, 401);
+        assert!(
+            second.iter().all(|l| l.abs_line < cursor),
+            "the page must not repeat what was already pulled"
+        );
+
+        // A page shorter than the cap means the store ran out.
+        let tail = store.read("s", 1, 401, 100).unwrap();
+        assert_eq!(tail.len(), 100);
+        let end = store.read("s", 1, 301, 100).unwrap();
+        assert_eq!(end.len(), 100);
+        let empty = store.read("s", 1, 201, 100).unwrap();
+        assert_eq!(empty.len(), 100);
+        assert_eq!(empty.last().unwrap().abs_line, 101);
+        let past = store.read("s", 1, 101, 100).unwrap();
+        assert_eq!(past.len(), 100, "everything older than the cursor");
+        assert_eq!(past.last().unwrap().abs_line, 1);
+        // Nothing left below the oldest line: the caller stops paging.
+        assert_eq!(store.read("s", 1, 1, 100).unwrap().len(), 0);
+    }
     /// A panic inside the store must not disable history for the whole process.
     /// Before this, every later call panicked on the poisoned mutex: one bad
     /// writer took the store away from every session until a restart.
@@ -804,7 +858,7 @@ mod tests {
         assert_eq!(store.stats("s").unwrap().total_records, 1);
         store.append("s", &batch(&[line(2, 2, "after")])).unwrap();
         assert_eq!(store.stats("s").unwrap().total_records, 2);
-        assert_eq!(store.read("s", 1, 2).unwrap().len(), 2);
+        assert_eq!(store.read("s", 1, 0, 2).unwrap().len(), 2);
     }
 
     #[test]
@@ -836,7 +890,7 @@ mod tests {
         assert_eq!(stats.dropped_lines, 4096);
         assert_eq!(stats.first_abs_line, 4097);
         // The newest line survives: only the oldest block gave way.
-        assert_eq!(store.read("s", 4097, 1).unwrap()[0].abs_line, 12288);
+        assert_eq!(store.read("s", 4097, 0, 1).unwrap()[0].abs_line, 12288);
     }
 
     #[test]
@@ -950,7 +1004,7 @@ mod tests {
             Err(HistoryError::UnknownSession)
         ));
         assert!(matches!(
-            store.read("s", 1, 1),
+            store.read("s", 1, 0, 1),
             Err(HistoryError::UnknownSession)
         ));
     }

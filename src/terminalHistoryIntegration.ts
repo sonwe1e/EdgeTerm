@@ -32,6 +32,13 @@ export class TerminalColdHistory {
   /** The dropped-line total already reported, so a repeated count stays quiet. */
   private reportedDrops = 0;
   private exhausted = false;
+  /**
+   * Exclusive upper bound for the next pull: the oldest line already
+   * re-inserted. Zero means "start at the newest end". The store pages
+   * newest-first, so without this cursor every scroll to the top answered
+   * with the same 500 lines and the older history stayed out of reach.
+   */
+  private cursor = 0;
   private wheelElement: HTMLElement | null = null;
 
   constructor(options: ColdHistoryOptions) {
@@ -92,9 +99,11 @@ export class TerminalColdHistory {
     this.loading = true;
     try {
       // history_read pages newest-first; the prepend wants oldest-first.
+      // The cursor keeps the next pull strictly older than this one.
       const records: HistoryRecord[] = await commands.historyRead(
         this.options.sessionId,
         1,
+        this.cursor,
         LOAD_CHUNK_RECORDS,
       );
       if (records.length === 0) {
@@ -106,6 +115,8 @@ export class TerminalColdHistory {
         this.exhausted = true;
         return;
       }
+      // Newest-first, so the last record is the oldest line of the page.
+      this.cursor = records[records.length - 1].absLine;
       this.capture?.notePrepended(prepended);
       this.options.onPrepended?.(prepended);
       if (records.length < LOAD_CHUNK_RECORDS) this.exhausted = true;

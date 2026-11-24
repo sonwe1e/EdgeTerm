@@ -27,11 +27,17 @@ pub fn history_read(
     state: State<'_, AppState>,
     session_id: String,
     from_abs_line: u64,
+    until_abs_line: u64,
     max_lines: u32,
 ) -> Result<Vec<HistoryLine>> {
     state
         .history
-        .read(&session_id, from_abs_line, max_lines.max(1) as usize)
+        .read(
+            &session_id,
+            from_abs_line,
+            until_abs_line,
+            max_lines.max(1) as usize,
+        )
         .map_err(err)
 }
 
