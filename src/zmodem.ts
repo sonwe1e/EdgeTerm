@@ -36,6 +36,12 @@ export class ZmodemController {
   private failed = false;
   private activeSession: Session | null = null;
   private suppressInitialTerminalBytes = false;
+  /**
+   * The file the current download is writing, so a cancel or a failure can
+   * still land what already arrived instead of leaving a truncated file that
+   * looks finished.
+   */
+  private activeWrite: { name: string; writer: BufferedFileWriter } | null = null;
 
   private outboundParts: Uint8Array[] = [];
   private outboundLength = 0;
@@ -82,6 +88,23 @@ export class ZmodemController {
     if (!session) return false;
 
     this.failed = true;
+    // Whatever arrived is flushed and sized before the session goes, so the
+    // file at the path the reader chose is a whole file of what got through
+    // rather than a truncated copy that reads as finished.
+    const partial = this.activeWrite;
+    this.activeWrite = null;
+    if (partial) {
+      void partial.writer
+        .finish()
+        .then((bytes) => {
+          this.report(
+            `ZMODEM: canceled - ${partial.name} is incomplete (${formatBytes(bytes)})`,
+            "error",
+          );
+        })
+        .catch(() => undefined);
+      return true;
+    }
     this.report("ZMODEM: transfer canceled", "success");
     try {
       session.abort();
@@ -202,6 +225,7 @@ export class ZmodemController {
       },
     );
 
+    this.activeWrite = { name, writer };
     const accepted = offer.accept({
       on_input: (bytes) => writer.push(bytes),
     });
@@ -212,6 +236,17 @@ export class ZmodemController {
     if (result === "failed") throw writer.error;
 
     const transferred = await writer.finish();
+    this.activeWrite = null;
+    // zmodem.js only checks that its own byte counter matches the ZEOF
+    // header's offset, so a peer that ends a file early still resolves the
+    // accept. Comparing against the advertised size is what catches it:
+    // otherwise a short download is announced as received and the user is
+    // left with a silently truncated file.
+    if (reportedSize !== null && transferred < reportedSize) {
+      throw new Error(
+        `${name} arrived short: ${formatBytes(transferred)} of ${formatBytes(reportedSize)}`,
+      );
+    }
     this.report(`ZMODEM received ${name} (${formatBytes(transferred)})`);
     return true;
   }
