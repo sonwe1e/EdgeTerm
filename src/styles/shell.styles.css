@@ -232,6 +232,12 @@
   min-width: 224px;
   width: max-content;
   max-width: min(440px, calc(100vw - 24px));
+  /* A menu taller than the window scrolls rather than paints outside it: at a
+     560px window height, or on a 768p screen, the View menu's last rows —
+     Settings…, Keyboard Shortcuts… — were below the window and unreachable by
+     pointer and by keyboard alike. */
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
 }
 
 @keyframes menu-in {
