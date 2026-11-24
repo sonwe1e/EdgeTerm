@@ -196,7 +196,7 @@ function FilerPanelBase() {
     transferLabel,
     transferPercent,
     backgroundTransfer,
-  } = useFilerTransfer({ setError, error, t });
+  } = useFilerTransfer({ setError, error, t, source: remoteId ?? "" });
   const { download: downloadEntries, choosing: choosingDownload } = useFilerDownloads(
     remoteId,
     reportError,

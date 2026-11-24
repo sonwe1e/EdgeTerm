@@ -3,6 +3,7 @@ import { errorText, isCancelled } from "../../errorInfo";
 import { useEffect, useRef, useState } from "react";
 import * as api from "../../api";
 import { useFileTransfers } from "../../fileTransfers";
+import { useStore } from "../../store";
 import type { Translate } from "../../i18n";
 import { useStableCallback } from "../../useStableCallback";
 import { transferLabels } from "./filerPresentation";
@@ -14,9 +15,11 @@ interface Options {
   /** The line the panel is showing, so a functional update can be resolved. */
   error: string | null;
   t: Translate;
+  /** The session this panel shows, or "" for the local filesystem. */
+  source: string;
 }
 
-export function useFilerTransfer({ setError, error, t }: Options) {
+export function useFilerTransfer({ setError, error, t, source }: Options) {
   const [transfer, setTransfer] = useState<TransferState | null>(null);
   const remoteEditRef = useRef<(event: api.RemoteEditEvent) => void>(() => {});
   const transferClearTimer = useRef<number | null>(null);
@@ -33,7 +36,47 @@ export function useFilerTransfer({ setError, error, t }: Options) {
    * operation that produced it.
    */
   const retryRef = useRef<(() => void) | null>(null);
+  const sourceRef = useRef(source);
   const ownsTransfer = (id: string | undefined) => visibleTransferId.current === id;
+
+  /**
+   * Drops the footer's transfer without pretending it finished. Used when the
+   * panel switches to another source and when the connection behind a running
+   * copy goes away: the bar belonged to that source, and leaving it up would
+   * offer Cancel for a socket that is already gone (or worse, keep showing
+   * another session's progress here).
+   */
+  const takeDownTransfer = useStableCallback((message?: string) => {
+    if (transferClearTimer.current !== null) {
+      window.clearTimeout(transferClearTimer.current);
+      transferClearTimer.current = null;
+    }
+    activeTransfer.current = null;
+    visibleTransferId.current = undefined;
+    cancelledTransferId.current = undefined;
+    retryRef.current = null;
+    transferRateSamples.current = [];
+    setTransfer(null);
+    if (message) setError(message);
+  });
+
+  // A switched panel must not keep describing the previous source's copy.
+  useEffect(() => {
+    if (sourceRef.current === source) return;
+    sourceRef.current = source;
+    takeDownTransfer();
+  }, [source, takeDownTransfer]);
+
+  // The connection behind a running copy can drop while the backend's job
+  // lives on. This footer's Cancel would then point at a dead socket, so the
+  // bar comes down and the error line says why.
+  const connected = useStore(
+    (s) => !source || s.tabs.some((tab) => tab.info.id === source && tab.state === "connected"),
+  );
+  useEffect(() => {
+    if (connected || !transfer || transfer.status !== "running") return;
+    takeDownTransfer(t("filer.transferConnectionLost"));
+  }, [connected, transfer, takeDownTransfer, t]);
   const backgroundTransfer = useFileTransfers((s) => s.jobs[activeTransfer.current?.id ?? ""]);
 
   /**

@@ -17,6 +17,7 @@ vi.mock("../../api", async (original) => ({
 
 import * as api from "../../api";
 import type { Translate } from "../../i18n";
+import { useStore } from "../../store";
 import { useFilerTransfer } from "./useFilerTransfer";
 
 type Hook = ReturnType<typeof useFilerTransfer>;
@@ -39,6 +40,23 @@ function Harness() {
     },
     error,
     t,
+    source: "",
+  });
+  hook = transfer;
+  return h("div", { "data-status": transfer.transfer?.status ?? "idle" });
+}
+
+/** The same hook for a panel showing one session, which can switch or drop. */
+function SourceHarness({ source }: { source: string }) {
+  const [error, setLocalError] = useState<string | null>(null);
+  const transfer = useFilerTransfer({
+    setError: (next) => {
+      setError(next);
+      setLocalError(typeof next === "function" ? next(error) : next);
+    },
+    error,
+    t,
+    source,
   });
   hook = transfer;
   return h("div", { "data-status": transfer.transfer?.status ?? "idle" });
@@ -57,6 +75,43 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   host.remove();
+});
+
+const tabsOf = (source: string, state: string) =>
+  [{ info: { id: source, kind: "ssh" }, state }] as never;
+
+describe("a Filer transfer belongs to the panel's own source", () => {
+  it("takes the bar down when the connection behind it ends", () => {
+    act(() => useStore.setState({ tabs: tabsOf("s1", "connected") }));
+    act(() => root.render(h(SourceHarness, { source: "s1" })));
+    act(() => {
+      hook.beginTransfer("upload", "big.iso", true);
+    });
+    expect(status()).toBe("running");
+
+    // The session dropped while the copy ran: its Cancel pointed at a dead
+    // socket, so the bar goes and the error line says why.
+    act(() => useStore.setState({ tabs: tabsOf("s1", "closed") }));
+    expect(status()).toBe("idle");
+    expect(setError).toHaveBeenCalledWith("filer.transferConnectionLost");
+  });
+
+  it("takes the bar with it when the panel switches session", () => {
+    act(() =>
+      useStore.setState({
+        tabs: [...(tabsOf("a", "connected") as never[]), ...(tabsOf("b", "connected") as never[])],
+      }),
+    );
+    act(() => root.render(h(SourceHarness, { source: "a" })));
+    act(() => {
+      hook.beginTransfer("upload", "notes.txt", true);
+    });
+    expect(status()).toBe("running");
+
+    act(() => root.render(h(SourceHarness, { source: "b" })));
+    expect(status()).toBe("idle");
+    expect(setError).not.toHaveBeenCalled();
+  });
 });
 
 describe("cancelling a Filer transfer", () => {
