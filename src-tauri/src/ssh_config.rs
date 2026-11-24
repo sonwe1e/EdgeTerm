@@ -768,12 +768,15 @@ pub fn import(
             .position(|entry| entry.alias.eq_ignore_ascii_case(alias))
     };
 
-    let mut needed = vec![false; entries.len()];
+    // What the reader ticked, as opposed to what the closure below drags in
+    // because some ticked host is reached through it.
+    let mut chosen = vec![false; entries.len()];
     for alias in selected {
         if let Some(index) = index_of(alias) {
-            needed[index] = true;
+            chosen[index] = true;
         }
     }
+    let mut needed = chosen.clone();
     // Close the selection over every jump host each host names, in any order:
     // importing a session has to bring the chain it is reached through.
     loop {
@@ -810,6 +813,11 @@ pub fn import(
             &entry.username,
         );
         let saved = match existing {
+            // Brought in only as someone's jump host: reuse the saved session
+            // untouched. Rewriting a target the reader configured by hand —
+            // even its forwards — because another host's ProxyJump names it is
+            // a change nobody asked for.
+            Some(existing) if !chosen[index] => existing.clone(),
             Some(existing) => {
                 let mut profile = store.get(&existing.id)?.unwrap_or_else(|| existing.clone());
                 let named_key = entry.private_key_path.is_some()

@@ -3394,6 +3394,68 @@ Host lab
 }
 
 #[test]
+fn ssh_config_import_leaves_an_unticked_jump_host_session_alone() {
+    // The reader keeps a "bastion" session configured by hand: another port,
+    // another account, a tunnel. Importing "web", whose file only names bastion
+    // as its jump host, must reuse that session as it is — the tick list is what
+    // authorises a rewrite, and bastion was never ticked.
+    let dir = temp_dir("ssh-jump-untouched");
+    let store = Store::load_from_test(dir.join("sessions.json"));
+    let context = ssh_context(&dir);
+
+    let mut by_hand = profile(SessionKind::Ssh);
+    by_hand.name = "bastion".into();
+    by_hand.host = Some("bastion.internal".into());
+    by_hand.username = Some("hand".into());
+    by_hand.port = Some(2022);
+    by_hand.forwards = vec![];
+    let mut saved = store.save(by_hand).expect("save bastion by hand");
+    saved.forwards.push(crate::port_forward::Spec {
+        direction: crate::port_forward::Direction::Local,
+        listen_host: "127.0.0.1".into(),
+        listen_port: 8888,
+        target_host: Some("localhost".into()),
+        target_port: Some(8888),
+    });
+    let saved = store.save(saved).expect("save bastion's tunnel");
+
+    let text = "\
+Host bastion
+  HostName 10.0.0.1
+  User gate
+  Port 2200
+Host web
+  HostName web.internal
+  ProxyJump bastion
+";
+    let entries = ssh_config::parse_text(text, &context);
+    let summary = ssh_config::import(&store, &entries, &["web".to_string()], None, &context)
+        .expect("import");
+    assert_eq!(summary.added, 1, "only web is added");
+    assert_eq!(
+        summary.updated, 0,
+        "nothing ticked was updated, so nothing is counted as updated"
+    );
+
+    let profiles = store.list();
+    let bastion = profiles
+        .iter()
+        .find(|profile| profile.name == "bastion")
+        .expect("bastion still saved");
+    assert_eq!(bastion.id, saved.id, "the same profile, not a replacement");
+    assert_eq!(bastion.host.as_deref(), Some("bastion.internal"));
+    assert_eq!(bastion.username.as_deref(), Some("hand"));
+    assert_eq!(bastion.port, Some(2022), "its own port survives the import");
+    assert_eq!(bastion.forwards.len(), 1, "and its tunnel too");
+
+    let web = profiles
+        .iter()
+        .find(|profile| profile.name == "web")
+        .expect("web added");
+    assert_eq!(web.jump_ids(), vec![bastion.id.clone()], "web reaches bastion");
+}
+
+#[test]
 fn ssh_config_import_carries_forwards_into_the_profile_and_replaces_them() {
     let dir = temp_dir("ssh-forward-import");
     let store = Store::load_from_test(dir.join("sessions.json"));
