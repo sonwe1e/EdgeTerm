@@ -677,6 +677,19 @@ export class TerminalController {
     // notice is the only surface it owns. It carries the cancel control: a
     // peer that never finishes would otherwise hold the byte stream until
     // the session ends.
+    // A running transfer owns the byte stream, and the terminal swallows every
+    // keystroke while it does (isTransferActive). So the notice has to be
+    // reachable by keyboard itself: focusable while a transfer runs, with Esc
+    // wired to the same cancel the button uses. Without this a stalled peer
+    // leaves a keyboard-only reader with no way out but closing the tab.
+    this.transferNotice.tabIndex = -1;
+    this.transferNotice.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && this.transferCancel.hidden === false) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.cancelTransfer();
+      }
+    });
     this.transferNoticeText = document.createElement("span");
     this.transferNoticeText.className = "transfer-notice-text";
     this.transferCancel = document.createElement("button");
@@ -1559,6 +1572,18 @@ export class TerminalController {
     // Only a transfer that is still running can be cancelled; a result line
     // never offers the control.
     this.transferCancel.hidden = kind !== "active";
+    this.transferNotice.tabIndex = kind === "active" ? 0 : -1;
+    if (kind === "active") {
+      // The notice just became the one surface that can act. Move the keyboard
+      // to it so the next Tab or Esc reaches it instead of being swallowed by
+      // the terminal's own textarea.
+      if (document.activeElement !== this.transferNotice) this.transferNotice.focus();
+    } else if (document.activeElement === this.transferNotice) {
+      // The transfer is over and the byte stream belongs to the session again,
+      // so the keyboard goes back where it was rather than staying on a notice
+      // that is about to disappear.
+      this.term.focus();
+    }
     if (kind !== "active") {
       this.transferNoticeTimer = window.setTimeout(
         () => {

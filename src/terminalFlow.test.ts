@@ -74,6 +74,44 @@ describe("terminal output and resize scheduling", () => {
     expect(c.term.buffer.active.getLine(0)?.translateToString(true)).toBe("");
   });
 
+  it("keeps the notice reachable by keyboard while a transfer runs", () => {
+    const c = createController();
+    const internals = c as unknown as {
+      zmodem: { cancel(): boolean };
+      transferNotice: HTMLElement;
+      showTransferNotice(message: string, kind: "active" | "success" | "error"): void;
+    };
+    const cancel = vi.spyOn(internals.zmodem, "cancel").mockReturnValue(true);
+    const notice = internals.transferNotice;
+    // The controller builds the notice but does not mount it; the harness
+    // owns that. Without a mount, focus() is a no-op on a detached node.
+    document.body.append(notice);
+
+    internals.showTransferNotice("ZMODEM: waiting for a file offer…", "active");
+    // While a transfer owns the byte stream the terminal swallows every
+    // keystroke, so the notice is the only surface that can act: it has to be
+    // in the tab order and hold the keyboard, or a stalled peer leaves a
+    // keyboard-only reader with no way out.
+    expect(notice.tabIndex).toBe(0);
+    expect(document.activeElement).toBe(notice);
+
+    // Esc is the keyboard form of the Cancel button, and it must not also
+    // reach the terminal's own key handler.
+    const escape = new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
+    notice.dispatchEvent(escape);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(escape.defaultPrevented).toBe(true);
+
+    // A result line is not a transfer, so the notice leaves the tab order and
+    // hands the keyboard back to the session.
+    internals.showTransferNotice("ZMODEM: transfer canceled", "success");
+    expect(notice.tabIndex).toBe(-1);
+    notice.remove();
+  });
   it("offers a cancel control on the notice while an automatic transfer runs", () => {
     const c = createController();
     const internals = c as unknown as {
