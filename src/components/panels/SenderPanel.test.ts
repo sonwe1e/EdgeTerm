@@ -12,6 +12,12 @@ vi.mock("../../senderSend", async (original) => ({
   ...(await original<typeof import("../../senderSend")>()),
   sendUnits: vi.fn(async () => ({ sent: ["sender-session"], skipped: [] })),
 }));
+const confirmDelete = vi.fn(async () => true);
+vi.mock("../../nativeDialog", () => ({
+  ask: (...args: unknown[]) => confirmDelete(...(args as [])),
+  open: vi.fn(),
+  save: vi.fn(),
+}));
 
 import * as api from "../../api";
 import { sendUnits } from "../../senderSend";
@@ -295,6 +301,25 @@ it("previews a focused saved command and provides a keyboard-reachable options b
   expect(document.querySelector('[role="menuitem"]')?.textContent).toContain("Edit");
 });
 
+it("hands the keyboard to the compose box when the focused command is deleted", async () => {
+  await render();
+  const options = host.querySelector<HTMLButtonElement>('[aria-label="Options for Check status"]');
+  await act(async () => {
+    options!.focus();
+  });
+  await click(options!);
+  const remove = [...document.querySelectorAll('[role="menuitem"]')].find(
+    (e) => e.textContent?.trim() === "Delete",
+  );
+  await click(remove!);
+  // The row's options button held focus and the row is gone with it; the next
+  // keystroke must not land on the document body.
+  await act(async () => {
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+  });
+  expect(host.querySelector(".sender-command-tag")).toBeNull();
+  expect(document.activeElement).toBe(host.querySelector(".sender-command-input"));
+});
 it("localizes the expanded command's accessible name", async () => {
   useStore.setState({ language: "zh-CN" });
   await render();

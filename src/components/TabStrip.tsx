@@ -155,6 +155,22 @@ const dropTargetAt = (
   return null;
 };
 
+/**
+ * The sessions a strip's list should draw attention to: everything that has
+ * finished a command or errored, except the one already on screen.
+ *
+ * `listed` is the scope the strip covers - its own pane's tabs, or every tab
+ * while that pane is zoomed and the other strips are unmounted.
+ */
+export function attentionSessions(
+  listed: readonly { info: { id: string }; commandActivity: string; state: string }[],
+  shownId: string | null,
+): readonly { info: { id: string }; commandActivity: string; state: string }[] {
+  return listed.filter(
+    (tab) =>
+      tab.info.id !== shownId && (tab.commandActivity === "complete" || tab.state === "error"),
+  );
+}
 export function TabStrip({ paneId, onSaveSession }: Props) {
   const t = useT();
   const allTabs = useStore((s) => s.tabs);
@@ -324,10 +340,10 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
     () => (zoomedPaneId === paneId ? allTabs : tabs),
     [allTabs, tabs, paneId, zoomedPaneId],
   );
-  const attentionCount = listed.filter(
-    (tab) =>
-      tab.info.id !== shownId && (tab.commandActivity === "complete" || tab.state === "error"),
-  ).length;
+  const attentionCount = useMemo(
+    () => attentionSessions(listed, shownId).length,
+    [listed, shownId],
+  );
   const listButtonLabel = attentionCount
     ? `${t("tab.allSessions")} · ${t(attentionCount === 1 ? "tab.attentionOne" : "tab.attentionMany", { count: attentionCount })}`
     : t("tab.allSessions");
