@@ -170,6 +170,35 @@ it("moves nothing when the file is dropped on the folder it is already in", asyn
   expect(useStore.getState().status, "a no-op says nothing").toBe(before);
 });
 
+it("moves nothing when a folder is dropped back onto its own row", async () => {
+  await page.viewport(900, 720);
+  mount(
+    h(
+      "div",
+      { style: { width: 440, height: 650, display: "flex", margin: "24px auto" } },
+      h(FilerPanel),
+    ),
+  );
+  await expect.poll(() => Boolean(row("folder"))).toBe(true);
+  await twoFrames();
+
+  // Press on the folder and jiggle: the pointer is still over that row, and a
+  // geometric hit test resolves it to itself. Releasing used to ask for a
+  // rename of the folder onto its own path, which every platform refuses, so
+  // the reader got an error line for a gesture that should be a no-op.
+  const before = useStore.getState().status;
+  const from = pagePoint(row("folder"));
+  await mouse.press(from.x, from.y);
+  await mouse.moveTo(from.x + 24, from.y);
+  await twoFrames();
+  await mouse.release(from.x + 24, from.y);
+  await twoFrames();
+
+  expect(vi.mocked(api.localRename)).not.toHaveBeenCalled();
+  expect(vi.mocked(api.startFileDrag)).not.toHaveBeenCalled();
+  expect(document.querySelector('.filer-panel [role="alert"]')).toBeNull();
+  expect(useStore.getState().status, "a no-op says nothing").toBe(before);
+});
 it("cancels quietly when released where no folder accepts the rows", async () => {
   await page.viewport(900, 720);
   mount(
