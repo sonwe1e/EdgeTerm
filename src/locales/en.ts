@@ -404,7 +404,7 @@ export const en = {
   "confirm.clearCommandHistoryTitle": "Clear Command History",
   "confirm.clear": "Clear",
   "confirm.restoreDefaults":
-    "Restore panel visibility, layout and widths, timestamp and line display, theme, fonts, scrollback, command suggestions, keyboard shortcuts, mouse and clipboard preferences, transfer and monitoring settings, interface language, and saved Workbench state to their defaults?",
+    "Restore panel visibility, layout and widths, timestamp and line display, theme, fonts, scrollback, command suggestions, keyboard shortcuts, mouse and clipboard preferences, transfer and monitoring settings and interface language to their defaults, and erase the saved Sender commands and every session's startup command?",
   "confirm.restoreDefaultsTitle": "Restore Default Settings",
   "confirm.restore": "Restore",
   "common.quit": "Quit",
@@ -1536,7 +1536,8 @@ export const en = {
     "These live in the Settings disclosure inside the status bar's Transfers popover.",
   "settings.panelsVisible": "Panel visibility",
   "settings.panelDock": "{panel} on",
-  "settings.restoreNote": "After a restore the Filer and Sender panels are hidden again.",
+  "settings.restoreNote":
+    "The Filer and Sender panels are hidden again, and saved commands are erased.",
   "forward.letterLocal": "L",
   "forward.letterRemote": "R",
   "forward.letterDynamic": "D",

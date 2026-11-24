@@ -388,7 +388,7 @@ export const zhCN: Catalog = {
   "confirm.clearCommandHistoryTitle": "清除命令历史",
   "confirm.clear": "清除",
   "confirm.restoreDefaults":
-    "要将面板显示、布局与宽度，时间戳与行号显示，主题、字体、回滚行数、命令建议、快捷键、鼠标与剪贴板偏好、传输与监控设置、界面语言以及工作台状态全部恢复为默认值吗？",
+    "要将面板显示、布局与宽度，时间戳与行号显示，主题、字体、回滚行数、命令建议、快捷键、鼠标与剪贴板偏好、传输与监控设置以及界面语言恢复为默认值，并清空已保存的发送命令和每个会话的启动命令吗？",
   "confirm.restoreDefaultsTitle": "恢复默认设置",
   "confirm.restore": "恢复",
   "common.quit": "退出",
@@ -1473,7 +1473,7 @@ export const zhCN: Catalog = {
   "settings.transferLocation": "这些设置位于状态栏「传输」浮层内的「设置」折叠区。",
   "settings.panelsVisible": "面板显隐",
   "settings.panelDock": "{panel}停靠到",
-  "settings.restoreNote": "恢复后文件面板与发送器会重新隐藏，工作台状态也会重置。",
+  "settings.restoreNote": "恢复后文件面板与发送器会重新隐藏，已保存的发送命令会被清空。",
   "sshImport.forwardsColumn": "转发",
   "sshImport.forwardAutoStart":
     "所选主机带入的端口转发会在连接时自动启动；远程转发（R）会把服务器侧的端口开放出去。",
