@@ -238,7 +238,7 @@ export function FtpPane({ tab, active, focused = false }: Props & { focused?: bo
       {
         label: menuLabel(uploadSide ? t("ftp.upload") : t("ftp.download"), count),
         icon: uploadSide ? "cloud-upload" : "cloud-download",
-        disabled: transferring,
+        disabled: transferring || (uploadSide && !remotePath),
         action: () => (uploadSide ? uploadEntries(targets) : downloadEntries(targets)),
       },
       ...(count === 1 && entry.isDir
@@ -378,7 +378,10 @@ export function FtpPane({ tab, active, focused = false }: Props & { focused?: bo
               <button
                 className="ftp-transfer-button"
                 onClick={() => upload()}
-                disabled={selectedLocal.length === 0 || transferring}
+                // Without a remote directory there is nowhere to put the file,
+                // and the transfer code silently returns — the button would do
+                // nothing at all, which reads as broken rather than unready.
+                disabled={selectedLocal.length === 0 || transferring || !remotePath}
                 title={t("ftp.uploadTitle")}
               >
                 <span>←</span>

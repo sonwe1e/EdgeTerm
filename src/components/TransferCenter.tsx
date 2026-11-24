@@ -290,9 +290,11 @@ export function TransferCenter() {
       transferred += job.transferred;
       bytes += job.total;
       if (job.status === "running") rate += job.bytesPerSecond;
-      // Only work that will still move counts toward the estimate: a paused
-      // or finished job's remainder would never arrive.
-      if (transferActive(job.status)) remaining += Math.max(0, job.total - job.transferred);
+      // Only work that will still move counts toward the estimate: a paused,
+      // cancelling or finished job's remainder would never arrive.
+      if (job.status === "running" || job.status === "queued" || job.status === "retrying") {
+        remaining += Math.max(0, job.total - job.transferred);
+      }
     }
     return { done, total, transferred, bytes, rate, remaining };
   }, [jobs]);
@@ -335,12 +337,16 @@ export function TransferCenter() {
    * only then to the close control. Keyboard users never fall back to the
    * document.
    */
+  // Pinned, the panel is portalled into the dock, so the controls are not
+  // inside `container` and every query there would miss.
+  const panelScope = () => (pinned && dock ? dock : container.current);
   const focusAfterClear = () => {
     requestAnimationFrame(() => {
+      const scope = panelScope();
       const next =
-        container.current?.querySelector<HTMLButtonElement>("[data-clear-failed]") ??
-        container.current?.querySelector<HTMLButtonElement>(".transfer-head-action") ??
-        container.current?.querySelector<HTMLButtonElement>(".status-popover-close");
+        scope?.querySelector<HTMLButtonElement>("[data-clear-failed]") ??
+        scope?.querySelector<HTMLButtonElement>(".transfer-head-action") ??
+        scope?.querySelector<HTMLButtonElement>(".status-popover-close");
       next?.focus();
     });
   };
@@ -375,7 +381,7 @@ export function TransferCenter() {
     setConfirming(null);
     // The Clear button that opened the band returns with the row.
     requestAnimationFrame(() => {
-      container.current?.querySelector<HTMLButtonElement>(`[data-clear-failed="${id}"]`)?.focus();
+      panelScope()?.querySelector<HTMLButtonElement>(`[data-clear-failed="${id}"]`)?.focus();
     });
   };
   /**
