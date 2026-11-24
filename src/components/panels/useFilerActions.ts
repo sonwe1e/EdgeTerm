@@ -569,6 +569,10 @@ export function useFilerActions({
    * must not produce is a file silently replaced by whatever landed on it.
    */
   const moveEntries = async (chosen: readonly FileEntry[], folder: string) => {
+    // "This PC" is a virtual listing: its rows are whole drives, and a
+    // rename of one volume into a folder on another is not a move. The
+    // neighbouring gestures already refuse here (see useFilerDrag).
+    if (atDrivesRoot) return;
     const sessionId = remoteId;
     const destination = path;
     const separator = remoteId ? "/" : "\\";
@@ -584,8 +588,13 @@ export function useFilerActions({
     };
     const destinationPath = withoutTrailing(folder);
     const moving = chosen.filter((entry) => {
-      if (parentOf(entry.path) === destinationPath) return false;
       const ownPath = withoutTrailing(entry.path);
+      // Onto itself is the same refusal as already being there: a folder
+      // dragged a few pixels inside its own row resolves to itself, and
+      // renaming it onto its own path is an error on every platform. The
+      // parent crumb already behaves this way (see filerDragMove's case).
+      if (ownPath === destinationPath) return false;
+      if (parentOf(entry.path) === destinationPath) return false;
       return (
         !destinationPath.startsWith(`${ownPath}/`) && !destinationPath.startsWith(`${ownPath}\\`)
       );

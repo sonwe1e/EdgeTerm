@@ -188,4 +188,15 @@ describe("pathSegments", () => {
     expect(pathSegments("")).toEqual([]);
     expect(pathSegments("This PC")).toEqual([]);
   });
+
+  it("roots a UNC trail at the share, not at the server alone", () => {
+    // `server` on its own is not a path anything can list, so the first stop
+    // has to be the share; the trail then continues underneath it. The
+    // backend accepts these paths - strip_verbatim_prefix turns
+    // `\\\\?\\UNC\\server\\share` back into `\\\\server\\share`.
+    expect(pathSegments("\\\\server\\share\\dir")).toEqual([
+      { label: "\\\\server\\share", target: "\\\\server\\share" },
+      { label: "dir", target: "\\\\server\\share\\dir" },
+    ]);
+  });
 });

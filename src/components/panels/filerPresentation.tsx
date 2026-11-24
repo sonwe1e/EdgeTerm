@@ -302,8 +302,16 @@ export function pathSegments(path: string): PathSegment[] {
   // A POSIX root is a segment of its own, the way every breadcrumb bar draws
   // it; a Windows drive already carries its own root inside the first part.
   if (!windows && path.startsWith("/")) segments.push({ label: "/", target: "/" });
-  let target = windows ? "" : "/";
-  for (const part of parts) {
+  // A UNC path's own root is the share, not the server on its own: `server`
+  // is not a path anything can list, so the first stop has to be the share
+  // itself and the trail continues underneath it.
+  const unc = windows && path.startsWith("\\\\") && parts.length >= 2;
+  const share = unc ? `\\\\${parts[0]}\\${parts[1]}` : "";
+  if (unc) segments.push({ label: share, target: share });
+  // The join continues from the share, so the stops below it hang underneath
+  // it rather than off a POSIX-shaped root.
+  let target = unc ? share : windows ? "" : "/";
+  for (const part of unc ? parts.slice(2) : parts) {
     target = windows
       ? target === ""
         ? // `C:\\` and not `C:`: Windows reads a drive letter with no root as
