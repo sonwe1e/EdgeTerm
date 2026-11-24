@@ -112,7 +112,12 @@ fn report_with(dir: &Path, unavailable: Option<&str>) -> String {
     if let Some(reason) = unavailable {
         report.push_str(&format!("logging: disabled ({reason})\n"));
     }
-    let files = log_files(dir);
+    let (files, unreadable) = log_files(dir);
+    // A folder that cannot be listed is not a folder with nothing in it, and
+    // the reader has to be able to tell the two apart.
+    if let Some(reason) = &unreadable {
+        report.push_str(&format!("log directory unreadable: {reason}\n"));
+    }
     if files.is_empty() {
         report.push_str("log files: none\n");
     }
@@ -125,24 +130,33 @@ fn report_with(dir: &Path, unavailable: Option<&str>) -> String {
     let (tail, truncated) = log_tail(&files);
     report.push_str(&format!(
         "\n--- log tail ({}) ---\n",
-        match (unavailable, truncated) {
+        match (unavailable, truncated, unreadable.is_some()) {
             // What is here was written before logging stopped; nothing since.
-            (Some(_), _) =>
+            (Some(_), _, _) =>
                 "logging was disabled; nothing was written after the failure".to_string(),
-            (None, true) => format!("newest {EXPORT_TAIL_BYTES} bytes; older lines omitted"),
-            (None, false) => "complete".to_string(),
+            // Nothing here means the folder could not be read, not that the
+            // build logged nothing.
+            (None, _, true) => "the log directory could not be read".to_string(),
+            (None, true, false) => format!("newest {EXPORT_TAIL_BYTES} bytes; older lines omitted"),
+            (None, false, false) => "complete".to_string(),
         }
     ));
     report.push_str(&tail);
     report
 }
 
-/// The log files with their sizes, oldest first. Only the app's own
-/// `edgeterm.log*` files count; anything else in the directory is left out of
-/// both the listing and the tail.
-fn log_files(dir: &Path) -> Vec<(PathBuf, u64)> {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return Vec::new();
+/// The log files with their sizes, oldest first, plus why the directory could
+/// not be listed when it could not. Only the app's own `edgeterm.log*` files
+/// count; anything else in the directory is left out of both the listing and
+/// the tail.
+///
+/// The error is returned rather than swallowed: a caller that sees an empty
+/// list cannot tell "nothing was logged" from "the folder is gone", and the
+/// report has to say which.
+fn log_files(dir: &Path) -> (Vec<(PathBuf, u64)>, Option<std::io::Error>) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) => return (Vec::new(), Some(error)),
     };
     let mut files: Vec<(PathBuf, u64)> = entries
         .flatten()
@@ -153,7 +167,7 @@ fn log_files(dir: &Path) -> Vec<(PathBuf, u64)> {
         })
         .collect();
     files.sort();
-    files
+    (files, None)
 }
 
 /// The newest [`EXPORT_TAIL_BYTES`] of log text, oldest line first, plus
@@ -168,10 +182,15 @@ fn log_tail(files: &[(PathBuf, u64)]) -> (String, bool) {
             truncated = true;
             break;
         }
+        // A file that cannot be opened or read contributes nothing, so the
+        // tail is not the newest bytes it claims to be. Say so instead of
+        // letting "complete" cover the gap.
         let Ok(mut file) = std::fs::File::open(path) else {
+            truncated = true;
             continue;
         };
         let Ok((content, omitted)) = read_tail(&mut file, remaining) else {
+            truncated = true;
             continue;
         };
         let slice = &content[..];
@@ -291,7 +310,12 @@ fn prune(dir: &Path) -> std::io::Result<()> {
 }
 
 fn prune_for(dir: &Path, reserve_bytes: u64, reserve_files: usize) -> std::io::Result<()> {
-    let mut files = log_files(dir);
+    let (mut files, unreadable) = log_files(dir);
+    // Housekeeping that cannot list the directory must say so, not silently
+    // prune nothing and report success.
+    if let Some(error) = unreadable {
+        return Err(error);
+    }
     let mut total: u64 = files.iter().map(|(_, size)| size).sum();
     while !files.is_empty()
         && (files.len() + reserve_files > MAX_LOG_FILES || total + reserve_bytes > MAX_LOG_BYTES)
@@ -613,7 +637,8 @@ mod tests {
             .set_len(9 * 1024 * 1024)
             .unwrap();
         prune(&dir).unwrap();
-        assert!(super::log_files(&dir).iter().map(|(_, n)| n).sum::<u64>() <= 8 * 1024 * 1024);
+        let (files, _) = super::log_files(&dir);
+        assert!(files.iter().map(|(_, n)| n).sum::<u64>() <= 8 * 1024 * 1024);
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -630,7 +655,7 @@ mod tests {
             tracing::info!("latest-event-survives");
         }
         drop(guard);
-        let files = super::log_files(&dir);
+        let (files, _) = super::log_files(&dir);
         assert!(files.len() <= 5);
         assert!(files.iter().all(|(_, n)| *n <= 2 * 1024 * 1024));
         assert!(files.iter().map(|(_, n)| n).sum::<u64>() <= 8 * 1024 * 1024);
@@ -783,6 +808,24 @@ mod tests {
         let healthy = report_with(&dir, None);
         assert!(healthy.contains("complete"), "{healthy}");
         std::fs::remove_dir_all(dir).ok();
+    }
+
+    /// The other way a tail ends up empty: the directory itself cannot be
+    /// listed. A reader handed that file has to see "could not be read" and
+    /// not "complete", or they conclude this build logged nothing and close
+    /// the ticket.
+    #[test]
+    fn the_report_says_when_the_log_directory_is_unreadable() {
+        let dir = scratch_dir();
+        std::fs::remove_dir_all(&dir).ok();
+        let report = report_with(&dir, None);
+        assert!(report.contains("log directory unreadable"), "{report}");
+        assert!(report.contains("log files: none"), "{report}");
+        assert!(
+            report.contains("the log directory could not be read"),
+            "{report}"
+        );
+        assert!(!report.contains("complete"), "{report}");
     }
 
     /// Pressing Cancel is not a fault. At error level a normal stop is
