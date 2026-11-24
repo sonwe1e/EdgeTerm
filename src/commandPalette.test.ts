@@ -149,8 +149,21 @@ describe("ranking", () => {
   });
 
   it("lifts a recently run command to the front among equally good matches", () => {
-    const ranked = rankCommands(commands, "session", ["b"]);
-    expect(ranked.map((item) => item.id)).toEqual(["b", "a"]);
+    // Same shape, so the same score: recency is the only thing left to say.
+    const tied = [
+      command({ id: "x", label: "Run Tests" }),
+      command({ id: "y", label: "Run Build" }),
+    ];
+    expect(rankCommands(tied, "run").map((item) => item.id)).toEqual(["x", "y"]);
+    expect(rankCommands(tied, "run", ["y"]).map((item) => item.id)).toEqual(["y", "x"]);
+  });
+
+  it("never lets recency outrank a strictly better match", () => {
+    // Folding the bonus into the score made a prefix match (at most 899) beat
+    // an exact label (1000) once the bonus was added, so Enter ran the command
+    // whose label merely started with what was typed.
+    const ranked = rankCommands(commands, "find", ["d"]);
+    expect(ranked.map((item) => item.id)).toEqual(["c", "d"]);
   });
 
   it("keeps catalogue order for ties, so the list never twitches between runs", () => {
@@ -160,6 +173,58 @@ describe("ranking", () => {
   });
 });
 
+describe("terminal commands", () => {
+  // The three the keyboard deliberately leaves to the terminal's own key
+  // filter. Through the palette there is no filter to answer them, so the row
+  // used to close the palette and do nothing at all.
+  const actions = () => ({
+    runShortcut: vi.fn(),
+    runTerminalCommand: vi.fn(),
+    activateTab: vi.fn(),
+    connectProfile: vi.fn(),
+    setTheme: vi.fn(),
+    openDisplaySettings: vi.fn(),
+    openShortcutSettings: vi.fn(),
+    openSettings: vi.fn(),
+    openAbout: vi.fn(),
+    checkForUpdates: vi.fn(),
+  });
+
+  it.each(["copy", "paste", "selectAll"] as const)(
+    "runs %s against the terminal rather than through the shortcut dispatcher",
+    (id) => {
+      const wired = actions();
+      const built = buildPaletteCommands({
+        t: ((key) => key) as Translate,
+        shortcuts: defaultShortcuts(),
+        tabs: [],
+        profiles: [],
+        theme: "dark",
+        actions: wired,
+      });
+      const row = built.find((item) => item.id === shortcutCommandId(id));
+      expect(row, id + " is listed").toBeTruthy();
+      row!.run();
+      expect(wired.runTerminalCommand).toHaveBeenCalledWith(id);
+      expect(wired.runShortcut).not.toHaveBeenCalled();
+    },
+  );
+
+  it("still routes every other command through the dispatcher", () => {
+    const wired = actions();
+    const built = buildPaletteCommands({
+      t: ((key) => key) as Translate,
+      shortcuts: defaultShortcuts(),
+      tabs: [],
+      profiles: [],
+      theme: "dark",
+      actions: wired,
+    });
+    built.find((item) => item.id === shortcutCommandId("newSession"))!.run();
+    expect(wired.runShortcut).toHaveBeenCalledTimes(1);
+    expect(wired.runTerminalCommand).not.toHaveBeenCalled();
+  });
+});
 describe("match ranges", () => {
   it("marks the substring when there is one", () => {
     expect(matchRanges("New Session", "session")).toEqual([[4, 11]]);

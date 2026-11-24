@@ -193,13 +193,27 @@ export function rankCommands(
 ): PaletteCommand[] {
   const normalized = normalizeQuery(query);
   if (!normalized) return [...commands];
-  const scored: { command: PaletteCommand; score: number; order: number }[] = [];
+  const scored: {
+    command: PaletteCommand;
+    score: number;
+    /** A recently-run command wins a tie, never a strictly better match. */
+    recent: boolean;
+    order: number;
+  }[] = [];
   for (const [order, command] of commands.entries()) {
     const score = commandScore(command, normalized);
     if (score < 0) continue;
-    scored.push({ command, score: score + (recents.includes(command.id) ? 120 : 0), order });
+    scored.push({ command, score, recent: recents.includes(command.id), order });
   }
-  scored.sort((a, b) => (b.score === a.score ? a.order - b.order : b.score - a.score));
+  scored.sort(
+    (a, b) =>
+      b.score - a.score ||
+      // Recency lifts a command among equally good matches; folding it into
+      // the score let a prefix match overtake an exact one, and Enter then
+      // ran the command whose label merely started with what was typed.
+      Number(b.recent) - Number(a.recent) ||
+      a.order - b.order,
+  );
   return scored.map(({ command }) => command);
 }
 
@@ -283,6 +297,12 @@ export interface PaletteSources {
   theme: ThemeMode;
   actions: {
     runShortcut: (action: AppShortcut) => void;
+    /** Answers a clipboard or selection command against the active terminal.
+     *  `runShortcut` deliberately refuses these three - the terminal's own key
+     *  filter answers them while it has focus, and the browser keeps its native
+     *  editing keys elsewhere - so the palette rows need a way in of their own.
+     */
+    runTerminalCommand?: (command: "copy" | "paste" | "selectAll") => void;
     activateTab: (id: string) => void;
     connectProfile: (id: string) => void;
     setTheme: (theme: ThemeMode) => void;
@@ -394,6 +414,11 @@ export function buildPaletteCommands(sources: PaletteSources): PaletteCommand[] 
     // above, so the shortcut is not listed a second time.
     if (id === "commandPalette" || id === "snippets") continue;
     const keys = shortcutKeys(id);
+    // The three the keyboard deliberately leaves to the terminal's own key
+    // filter: through the palette there is no filter to answer them, so the
+    // row goes straight to the terminal the way the Edit menu does. Without
+    // it the row closes the palette and does nothing at all.
+    const terminalCommand = id === "copy" || id === "paste" || id === "selectAll" ? id : null;
     commands.push({
       id: shortcutCommandId(id),
       group: GROUP_BY_COMMAND[id] ?? "actions",
@@ -403,7 +428,10 @@ export function buildPaletteCommands(sources: PaletteSources): PaletteCommand[] 
       chord: shortcutChord(shortcuts, id),
       // Moving focus is undone if it runs before the close returns focus.
       runsAfterClose: id === "focusRegion",
-      run: () => actions.runShortcut(action),
+      run: () =>
+        terminalCommand
+          ? actions.runTerminalCommand?.(terminalCommand)
+          : actions.runShortcut(action),
     });
   }
 
@@ -520,9 +548,13 @@ export function buildPaletteCommands(sources: PaletteSources): PaletteCommand[] 
   // History comes last so the unfiltered catalogue keeps the shape readers
   // know: the fixed actions first, then their own recent commands. Searching a
   // command's text still finds its row wherever it sits.
-  for (const [index, entry] of (sources.history ?? []).entries()) {
+  for (const entry of sources.history ?? []) {
     commands.push({
-      id: "history:" + index,
+      // Keyed by the command text, not by its position: the list re-sorts by
+      // lastUsed on every read, so an index is a different command each time
+      // - and the recency boost is persisted against the id, which would land
+      // on whatever command had since slid into that slot.
+      id: "history:" + entry.command,
       group: "actions",
       label: entry.command,
       hint: entry.host,

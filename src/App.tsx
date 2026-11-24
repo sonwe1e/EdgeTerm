@@ -865,6 +865,21 @@ export default function App() {
           runShortcut: (action) => {
             runShortcut(action);
           },
+          // The three the keyboard leaves to the terminal's own key filter.
+          // From the palette there is no filter to answer them, so the row
+          // goes to the terminal directly and reports a refusal the same way
+          // the two copy chords do.
+          runTerminalCommand: (command) => {
+            if (command === "copy") {
+              copyFromTerminal((controller) => controller.copySelection());
+              return;
+            }
+            if (command === "paste") {
+              void getController(useStore.getState().activeId ?? "")?.pasteFromClipboard();
+              return;
+            }
+            getController(useStore.getState().activeId ?? "")?.selectAll();
+          },
           sendSnippet: (id) => {
             const snippet = useStore.getState().snippets.find((item) => item.id === id);
             if (snippet) snippetsUi.runSnippet(snippet);
