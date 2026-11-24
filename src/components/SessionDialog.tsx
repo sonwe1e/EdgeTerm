@@ -17,7 +17,9 @@ import {
 import type { MessageKey, Translate } from "../i18n";
 import { ask, open as openDialog } from "../nativeDialog";
 import { IS_WINDOWS } from "../platform";
+import { blamedRecordingFolder } from "../recordingFolder";
 import { recordingStem } from "../recordingName";
+import { keepsConnectProfile } from "../sessionConnectPlan";
 import { defaultSessionPort, newSessionProfile } from "../sessionDefaults";
 
 // Kept here for the callers that already import it from the dialog.
@@ -925,12 +927,14 @@ export function SessionDialog({
       // in the operating system's secure credential vault. A one-off local
       // shell is the exception: the tree already has its built-in row, and
       // saving "shell" on every Connect left a pile of identical profiles.
-      const quickLocal = candidate.kind === "local" && !initial?.id;
-      // A typed startup command is remembered against the profile, so the
-      // one-off local shell has to become a profile after all: otherwise the
-      // command is dropped on the floor and nothing says so.
-      const keepProfile = candidate.name && !quickLocal;
-      const saved = keepProfile || startupDraft.trim() ? await upsertProfile(candidate) : candidate;
+      const saved = keepsConnectProfile({
+        kind: candidate.kind,
+        name: candidate.name,
+        existingId: initial?.id,
+        startup: startupDraft,
+      })
+        ? await upsertProfile(candidate)
+        : candidate;
       commitStartup(saved);
       setProfile((current) => ({ ...current, id: saved.id }));
       attemptTabId.current ??= crypto.randomUUID();
@@ -1629,13 +1633,13 @@ export function SessionDialog({
                 {t(profile.kind === "local" ? "session.localStartHelp" : "session.connectionHelp")}
               </strong>
               <div>{t("session.retryHint")}</div>
-              {profile.record && (
+              {blamedRecordingFolder(profile, defaultRecordDir) && (
                 // The recording folder is created before the transport starts,
                 // so an unusable one is the failure's whole cause; without this
                 // line the headline blames the address, network and credentials.
                 <div>
                   {t("session.recordFolderBlamed", {
-                    path: profile.recordDir?.trim() || defaultRecordDir,
+                    path: blamedRecordingFolder(profile, defaultRecordDir) ?? "",
                   })}
                 </div>
               )}

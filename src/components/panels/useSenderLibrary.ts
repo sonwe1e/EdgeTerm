@@ -40,6 +40,15 @@ interface Options {
   setText: Dispatch<SetStateAction<string>>;
 }
 
+/**
+ * Whether the row whose options button held focus is about to be unmounted.
+ * Its removal has to hand focus somewhere named, or the next Tab restarts at the
+ * top of the window.
+ */
+export function senderRowHadFocus(): boolean {
+  return document.activeElement?.closest("[data-sender-row]") != null;
+}
+
 export function useSenderLibrary({
   t,
   activeTab,
@@ -297,7 +306,7 @@ export function useSenderLibrary({
     try {
       const removed = savedCommands.find((command) => command.id === id);
       await api.deleteSenderCommand(id);
-      const rowHadFocus = document.activeElement?.closest("[data-sender-row]") != null;
+      const rowHadFocus = senderRowHadFocus();
       setSavedCommands((current) => current.filter((command) => command.id !== id));
       setStatus(t("sender.deleted", { name: removed?.name ?? "" }));
       if (selectedCommandId === id) setSelectedCommandId(null);
