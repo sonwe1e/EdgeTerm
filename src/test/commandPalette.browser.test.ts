@@ -189,17 +189,21 @@ describe("the command palette in the real app", () => {
     expect(tab, "a session opened for the typed target").toBeTruthy();
     expect(tab!.profile).toMatchObject({ host: "10.0.0.5", username: "root", port: 2222 });
     expect(paletteOpen(), "the palette closed on connect").toBe(false);
+    await twoFrames();
 
-    // Second visit: the machine just reached is offered again. `10.0.` is not
-    // a target (a host cannot end in a dot), so this row can only be the
-    // remembered one.
+    // Remembered only once a session is actually up. This fixture's backend
+    // refuses the connection, so the target must not be offered back as one
+    // that was reached — a mistyped host would otherwise live in the list
+    // forever, since there is no way to forget one.
     await pressPaletteChord();
     await typeQuery("10.0.");
     const remembered = options().find((item) =>
       item.textContent?.startsWith("Connect to root@10.0.0.5:2222"),
     );
-    expect(remembered, "the recent target is offered").toBeTruthy();
-    expect(remembered!.textContent, "and says where it came from").toContain("Connected recently");
+    expect(remembered, "an attempt that failed is not remembered").toBeFalsy();
+    expect(useStore.getState().quickConnectRecents, "and not stored either").not.toContain(
+      "root@10.0.0.5:2222",
+    );
   });
 
   it("opens from the real chord, is readable, and filters what is typed", async () => {

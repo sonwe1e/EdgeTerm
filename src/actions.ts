@@ -194,9 +194,8 @@ export async function ensureController(id: string): Promise<TerminalController> 
       onSshLink: (uri) => {
         const target = parseQuickConnect(uri);
         if (!target) return;
-        // The palette offers this list back, so a host reached from a link is
-        // one keystroke away next time, exactly like a typed one.
-        useStore.getState().rememberQuickTarget(quickConnectLabel(target));
+        // The connection path remembers it once it is up, so a link that never
+        // reaches a host is not offered back as one that did.
         void openSession(quickConnectProfile(target, newSessionProfile()));
       },
       onCommand: (command) => commandHistory.record(command, historyHost(id)),
@@ -640,8 +639,18 @@ export async function connectSession(
     connectedStore.applyState(id, "connected");
     // A profile the reader saved is one they keep coming back to; remembering
     // it here is what lets the palette mark it later. An unsaved quick-connect
-    // target has no id and is remembered by its label instead.
+    // target has no id and is remembered by its label instead — here, after it
+    // connected, so a mistyped host is never offered as "connected recently".
     if (profile.id) connectedStore.rememberRecentProfile(profile.id);
+    else if (profile.host) {
+      connectedStore.rememberQuickTarget(
+        quickConnectLabel({
+          username: profile.username ?? null,
+          host: profile.host,
+          port: profile.port ?? null,
+        }),
+      );
+    }
     const name = tabTitle({ ...tab, info });
     connectedStore.setStatus(
       info.sharedConnection
