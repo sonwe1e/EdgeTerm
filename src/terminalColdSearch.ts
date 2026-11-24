@@ -10,6 +10,11 @@ export interface ColdSearchOutcome {
   count: number;
   /** The newest hit's absolute line, kept for a future jump-to-hit. */
   newestAbsLine: number | null;
+  /**
+   * Whether the scan stopped early - at the hit limit or the time budget -
+   * so more matches may exist that this count does not include.
+   */
+  truncated: boolean;
 }
 
 /**
@@ -25,7 +30,7 @@ export async function searchColdHistory(
   needle: string,
   options: { regex: boolean; wholeWord: boolean; caseSensitive: boolean },
 ): Promise<ColdSearchOutcome> {
-  const none: ColdSearchOutcome = { count: 0, newestAbsLine: null };
+  const none: ColdSearchOutcome = { count: 0, newestAbsLine: null, truncated: false };
   if (!needle || options.regex || options.wholeWord || !options.caseSensitive) return none;
   if (!terminalColdHistoryEnabled()) return none;
   try {
@@ -35,7 +40,11 @@ export async function searchColdHistory(
       COLD_SEARCH_LIMIT,
       COLD_SEARCH_BUDGET_MS,
     );
-    return { count: hits.length, newestAbsLine: hits.length > 0 ? hits[0].absLine : null };
+    return {
+      count: hits.hits.length,
+      newestAbsLine: hits.hits.length > 0 ? hits.hits[0].absLine : null,
+      truncated: hits.truncated,
+    };
   } catch {
     return none;
   }

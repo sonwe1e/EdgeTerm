@@ -314,15 +314,21 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(function Sea
   // box back. Regex and whole-word queries skip it — the store searches
   // literal needles (see terminalColdSearch).
   const [historyCount, setHistoryCount] = useState(0);
+  // A truncated scan means the count is a lower bound: more matches exist
+  // that the budget or the hit limit left unchecked.
+  const [historyTruncated, setHistoryTruncated] = useState(false);
   const historyRequest = useRef(0);
   useEffect(() => {
     const request = ++historyRequest.current;
     const session = activeId;
     setHistoryCount(0);
+    setHistoryTruncated(false);
     if (!session || !query) return;
     const timer = window.setTimeout(() => {
       void searchColdHistory(session, query, options).then((outcome) => {
-        if (historyRequest.current === request) setHistoryCount(outcome.count);
+        if (historyRequest.current !== request) return;
+        setHistoryCount(outcome.count);
+        setHistoryTruncated(outcome.truncated);
       });
     }, 250);
     return () => window.clearTimeout(timer);
@@ -423,7 +429,7 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(function Sea
   // the reader scrolling for hits that do exist.
   const historySuffix =
     historyCount > 0
-      ? ` · ${t("search.historyCount", { count: historyCountLabel(historyCount) })}${results?.resultCount === 0 ? ` · ${t("search.historyHint")}` : ""}`
+      ? ` · ${t("search.historyCount", { count: historyCountLabel(historyCount) })}${historyTruncated ? "+" : ""}${results?.resultCount === 0 ? ` · ${t("search.historyHint")}` : ""}`
       : "";
 
   const status = notice

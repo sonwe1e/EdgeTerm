@@ -113,7 +113,7 @@ export const commands = {
 	closeSession: (id: string) => __TAURI_INVOKE<null>("close_session", { id }),
 	historyAppend: (sessionId: string, batch: number[]) => __TAURI_INVOKE<AppendOutcome>("history_append", { sessionId, batch }),
 	historyRead: (sessionId: string, fromAbsLine: number, maxLines: number) => __TAURI_INVOKE<HistoryLine[]>("history_read", { sessionId, fromAbsLine, maxLines }),
-	historySearch: (sessionId: string, needle: string, limit: number, budgetMs: number) => __TAURI_INVOKE<HistorySearchHit[]>("history_search", { sessionId, needle, limit, budgetMs }),
+	historySearch: (sessionId: string, needle: string, limit: number, budgetMs: number) => __TAURI_INVOKE<HistorySearch>("history_search", { sessionId, needle, limit, budgetMs }),
 	historyStats: (sessionId: string) => __TAURI_INVOKE<HistoryStats>("history_stats", { sessionId }),
 	historyClear: (sessionId: string) => __TAURI_INVOKE<null>("history_clear", { sessionId }),
 	/**
@@ -949,6 +949,16 @@ export type HistoryRun = {
 	fg: number,
 	bg: number,
 	flags: number,
+};
+
+/**
+ *  What a search actually saw. `truncated` says the hits stop short of
+ *  everything that matches - the limit was reached or the budget ran out -
+ *  so the caller must present the count as a lower bound rather than a total.
+ */
+export type HistorySearch = {
+	hits: HistorySearchHit[],
+	truncated: boolean,
 };
 
 export type HistorySearchHit = {

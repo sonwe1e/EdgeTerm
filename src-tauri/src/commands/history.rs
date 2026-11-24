@@ -9,7 +9,7 @@ use tauri::State;
 
 use crate::commands::AppState;
 use crate::error::{err, Result};
-use crate::session::history::{AppendOutcome, HistoryLine, HistorySearchHit, HistoryStats};
+use crate::session::history::{AppendOutcome, HistoryLine, HistorySearch, HistoryStats};
 
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
@@ -43,7 +43,7 @@ pub fn history_search(
     needle: String,
     limit: u32,
     budget_ms: u32,
-) -> Result<Vec<HistorySearchHit>> {
+) -> Result<HistorySearch> {
     state
         .history
         .search(

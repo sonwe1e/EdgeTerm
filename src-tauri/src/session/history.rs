@@ -509,17 +509,21 @@ impl HistoryStore {
     }
 
     /// Newest-first substring search over stored text. `budget` bounds the
-    /// whole call; blocks checked after it expires are skipped, which the
-    /// caller reports alongside the hits.
+    /// whole call; blocks left unchecked after it expires are reported as
+    /// `truncated`, so the caller can say "this is a lower bound" instead of
+    /// printing a count that looks exact.
     pub(crate) fn search(
         &self,
         session_id: &str,
         needle: &str,
         limit: usize,
         budget: Duration,
-    ) -> Result<Vec<HistorySearchHit>, HistoryError> {
+    ) -> Result<HistorySearch, HistoryError> {
         if needle.is_empty() {
-            return Ok(Vec::new());
+            return Ok(HistorySearch {
+                hits: Vec::new(),
+                truncated: false,
+            });
         }
         let deadline = Instant::now() + budget;
         let inner = self.lock();
@@ -548,15 +552,23 @@ impl HistoryStore {
             }
         };
         push_hits(session.pending.clone(), &mut hits);
-        if hits.len() < limit {
+        // Either stop means there may be hits the caller will not see: the limit
+        // was reached, or the budget ran out with blocks unchecked.
+        let mut truncated = hits.len() >= limit;
+        if !truncated {
             for block in session.blocks.iter().rev() {
-                if hits.len() >= limit || Instant::now() > deadline {
+                if Instant::now() > deadline {
+                    truncated = true;
                     break;
                 }
                 push_hits(block.lines(), &mut hits);
+                if hits.len() >= limit {
+                    truncated = true;
+                    break;
+                }
             }
         }
-        Ok(hits)
+        Ok(HistorySearch { hits, truncated })
     }
 
     pub(crate) fn clear(&self, session_id: &str) {
@@ -592,6 +604,16 @@ pub(crate) struct HistorySearchHit {
     #[serde(rename = "absLine")]
     pub abs_line: u64,
     pub column: u32,
+}
+
+/// What a search actually saw. `truncated` says the hits stop short of
+/// everything that matches - the limit was reached or the budget ran out -
+/// so the caller must present the count as a lower bound rather than a total.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
+pub(crate) struct HistorySearch {
+    pub hits: Vec<HistorySearchHit>,
+    pub truncated: bool,
 }
 
 fn pending_count(session: &SessionHistory) -> u64 {
@@ -888,25 +910,29 @@ mod tests {
         let all = store
             .search("s", "hit", 10_000, Duration::from_secs(10))
             .unwrap();
-        assert_eq!(all.first().unwrap().abs_line, 4097);
-        assert_eq!(all.len(), 2048 + 1);
+        assert_eq!(all.hits.first().unwrap().abs_line, 4097);
+        assert_eq!(all.hits.len(), 2048 + 1);
+        assert!(!all.truncated, "everything was checked");
         let limited = store
             .search("s", "hit", 3, Duration::from_secs(10))
             .unwrap();
-        assert_eq!(limited.len(), 3);
-        assert_eq!(limited[0].abs_line, 4097);
-        assert_eq!(limited[1].abs_line, 4096);
+        assert_eq!(limited.hits.len(), 3);
+        assert_eq!(limited.hits[0].abs_line, 4097);
+        assert_eq!(limited.hits[1].abs_line, 4096);
+        assert!(limited.truncated, "the limit stopped the scan");
 
-        // A spent budget returns only what the pending scan already found.
+        // A spent budget returns only what the pending scan already found,
+        // and says so: the count is a lower bound, not a total.
         let spent = store.search("s", "hit", 10_000, Duration::ZERO).unwrap();
-        assert_eq!(spent.len(), 1);
-        assert_eq!(spent[0].abs_line, 4097);
+        assert_eq!(spent.hits.len(), 1);
+        assert_eq!(spent.hits[0].abs_line, 4097);
+        assert!(spent.truncated, "the budget stopped the scan");
 
         // Column is 1-based on characters, not bytes.
         let columned = store
             .search("s", "pending", 10, Duration::from_secs(10))
             .unwrap();
-        assert_eq!(columned[0].column, 5);
+        assert_eq!(columned.hits[0].column, 5);
     }
 
     #[test]

@@ -20,10 +20,13 @@ afterEach(() => {
 describe("searchColdHistory", () => {
   it("queries the cold store with the contract shape, newest hit first", async () => {
     enableColdHistory();
-    historySearch.mockResolvedValue([
-      { absLine: 412, column: 8 },
-      { absLine: 407, column: 0 },
-    ]);
+    historySearch.mockResolvedValue({
+      hits: [
+        { absLine: 412, column: 8 },
+        { absLine: 407, column: 0 },
+      ],
+      truncated: false,
+    });
     const outcome = await searchColdHistory("session-1", "needle", plain);
     expect(historySearch).toHaveBeenCalledTimes(1);
     expect(historySearch).toHaveBeenCalledWith(
@@ -32,7 +35,22 @@ describe("searchColdHistory", () => {
       COLD_SEARCH_LIMIT,
       COLD_SEARCH_BUDGET_MS,
     );
-    expect(outcome).toEqual({ count: 2, newestAbsLine: 412 });
+    expect(outcome).toEqual({ count: 2, newestAbsLine: 412, truncated: false });
+  });
+
+  it("carries the store's truncated flag so the count reads as a lower bound", async () => {
+    enableColdHistory();
+    // A spent budget leaves blocks unchecked: the count is not a total, and
+    // printing it as one would stop the reader looking for more.
+    historySearch.mockResolvedValue({
+      hits: [{ absLine: 90, column: 1 }],
+      truncated: true,
+    });
+    expect(await searchColdHistory("session-1", "needle", plain)).toEqual({
+      count: 1,
+      newestAbsLine: 90,
+      truncated: true,
+    });
   });
 
   it("skips regex and whole-word queries rather than miscounting them", async () => {
@@ -74,11 +92,13 @@ describe("searchColdHistory", () => {
     expect(await searchColdHistory("session-1", "needle", plain)).toEqual({
       count: 0,
       newestAbsLine: null,
+      truncated: false,
     });
-    historySearch.mockResolvedValue([]);
+    historySearch.mockResolvedValue({ hits: [], truncated: false });
     expect(await searchColdHistory("session-1", "needle", plain)).toEqual({
       count: 0,
       newestAbsLine: null,
+      truncated: false,
     });
   });
 });
