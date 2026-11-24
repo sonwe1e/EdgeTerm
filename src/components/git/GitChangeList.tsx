@@ -75,9 +75,12 @@ export function GitChangeList({ groups, current, filter, disabled, onSelect, onA
         if (!files.length) return null;
         const kind = scope === "staged" ? "unstage" : "stage";
         const selected = files.findIndex((file) => selectionId(file) === id);
-        const limit = limits[scope];
+        // The selected file is part of what the reader is looking at, so the
+        // page covers it rather than appending it after the rows that sort
+        // earlier: appended it reads out of order, and the arrow walk stops
+        // on it because no button follows.
+        const limit = Math.max(limits[scope], selected + 1);
         const shown = files.slice(0, limit);
-        if (selected >= limit) shown.push(files[selected]);
         return (
           <section
             key={scope}
@@ -164,7 +167,18 @@ export function GitChangeList({ groups, current, filter, disabled, onSelect, onA
               <button
                 type="button"
                 className="git-text-button git-show-more"
-                onClick={() => setLimits({ ...limits, [scope]: limit + PAGE_SIZE })}
+                onClick={(event) => {
+                  const row = event.currentTarget.closest(".git-change-group");
+                  setLimits({ ...limits, [scope]: limit + PAGE_SIZE });
+                  // This button disappears once the raised limit covers every
+                  // file, so the keyboard it held has to go somewhere: the
+                  // selected row, which is the one the reader was paging for.
+                  requestAnimationFrame(() =>
+                    row
+                      ?.querySelector<HTMLButtonElement>("[data-git-select][aria-pressed=true]")
+                      ?.focus(),
+                  );
+                }}
               >
                 {t("git.showMoreFiles", { count: files.length - limit })}
               </button>
