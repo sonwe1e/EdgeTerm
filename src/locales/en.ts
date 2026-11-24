@@ -786,9 +786,11 @@ export const en = {
   "panel.create": "Create",
   "panel.rename": "Rename",
   "panel.rightClickOptions": "right-click for options",
-  "panel.groupEmpty": "It contains no sessions.",
+  "panel.groupEmpty": "It is empty.",
   "panel.groupDeleteConsequence":
-    "Its subgroups, {contents} will be deleted with it. This cannot be undone.",
+    "Everything inside goes with it: {contents}. This cannot be undone.",
+  "panel.oneSubgroup": "1 subgroup",
+  "panel.manySubgroups": "{count} subgroups",
   "panel.deleteGroupTitle": "Delete Group",
   "panel.failedDeleteGroup": "Failed to delete group",
   "panel.failedMoveSession": "Failed to move session",

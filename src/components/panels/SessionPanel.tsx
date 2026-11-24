@@ -244,7 +244,11 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
         let count = 0;
         for (const group of childGroups(groups, section.kind, parentId)) {
           const sub = walk(group.id, depth + 1);
-          if (needle && sub.count === 0) continue;
+          // An empty folder is normally dropped while filtering, but one the
+          // query names stays: the field promises to find groups by name, and a
+          // just-created (still empty) group must not look like a failed create.
+          const named = groupPathMatches(groupPath(groups, group.id), needle);
+          if (needle && sub.count === 0 && !named) continue;
           const isCollapsed = !needle && !isOpen(open, `group:${group.id}`);
           rows.push({
             type: "group",
@@ -545,9 +549,19 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
         : scopedCommands === 1
           ? t("panel.oneSavedCommand")
           : t("panel.manySavedCommands", { count: scopedCommands });
+    // A folder can hold nothing but folders, and deleting it takes them too:
+    // naming them is what makes the prompt describe the whole deletion.
+    const nestedGroups = groups.filter(
+      (candidate) => candidate.id !== group.id && inSubtree(candidate.id),
+    ).length;
+    const subgroups =
+      nestedGroups === 1
+        ? t("panel.oneSubgroup")
+        : t("panel.manySubgroups", { count: nestedGroups });
     const contents = [
       insideProfiles.length > 0 && sessions,
       (scopedCommands === null || scopedCommands > 0) && commands,
+      nestedGroups > 0 && subgroups,
     ].filter((part): part is string => typeof part === "string");
     const consequence =
       contents.length === 0
@@ -660,9 +674,16 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
     const nodes = flattenGroups(groups, profile.kind);
     if (nodes.length > 0) {
       choices.push("separator");
+      // Two folders may share a name — nothing rejects it — and a bare name
+      // would then file the session into whichever one the reader guessed.
+      const nameCounts = new Map<string, number>();
+      for (const { group } of nodes) {
+        nameCounts.set(group.name, (nameCounts.get(group.name) ?? 0) + 1);
+      }
       for (const { group, depth } of nodes) {
+        const repeated = (nameCounts.get(group.name) ?? 0) > 1;
         choices.push({
-          label: group.name,
+          label: repeated ? groupPath(groups, group.id).join(" / ") : group.name,
           indent: depth,
           checked: current === group.id,
           mark: "radio",
