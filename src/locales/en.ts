@@ -549,6 +549,7 @@ export const en = {
   "search.previous": "Previous match",
   "search.next": "Next match",
   "search.close": "Close search",
+  "terminal.removeSuggestion": "Remove from History",
   "editor.find": "Find",
   "editor.replace": "Replace",
   "editor.selectAllMatches": "Select all matches",
@@ -1186,6 +1187,9 @@ export const en = {
   "sc.reservedContextMenu": "The context menu uses {chord}; pick another shortcut.",
   "sc.reserved": "{chord} is already {owner}.",
   "sc.reservedFocusRegion": "{chord} moves focus between regions.",
+  "sc.focusRegionFixed": "Move focus between regions",
+  "sc.focusRegionLocked":
+    "F6 and Shift+F6 are reserved for moving focus between regions and cannot be freed.",
   "sc.switchesToTab": "{chord} switches to tab {number}.",
   "sc.ownerCut": "Cut",
   "sc.ownerQuit": "Quit EdgeTerm",

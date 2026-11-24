@@ -14,6 +14,7 @@ import {
   type ShortcutBindings,
   type ShortcutCommand,
 } from "../shortcuts";
+import type { MessageKey } from "../i18n";
 import { useT } from "../useT";
 import { Icon } from "./icons";
 import { ModalDialog } from "./ModalDialog";
@@ -25,9 +26,12 @@ interface Props {
 }
 
 /** The shortcuts this dialog cannot change, shown so they are not hunted for. */
-const FIXED_SHORTCUTS: { keys: string }[] = IS_MAC
-  ? [{ keys: "⌘1–⌘9" }]
-  : [{ keys: "Alt+1–Alt+9" }];
+const FIXED_SHORTCUTS: { keys: string; labelKey?: MessageKey }[] = [
+  { keys: IS_MAC ? "⌘1–⌘9" : "Alt+1–Alt+9" },
+  // Answered before the table is consulted and refused to every other command,
+  // so it cannot be rebound — listing it here is how a reader learns that.
+  { keys: IS_MAC ? "F6 / ⇧F6" : "F6 / Shift+F6", labelKey: "sc.focusRegionFixed" },
+];
 
 /**
  * Rebinds the application's keyboard shortcuts. A row records the next chord
@@ -127,10 +131,23 @@ export function ShortcutsDialog({ bindings, onApply, onClose }: Props) {
                   <button
                     type="button"
                     className="shortcut-clear"
-                    title={t("sc.removeShortcut")}
+                    title={
+                      id === "focusRegion" ? t("sc.focusRegionLocked") : t("sc.removeShortcut")
+                    }
                     aria-label={t("sc.removeAria", { label: labels[id] })}
-                    disabled={!chord}
-                    onClick={() => unassign(id)}
+                    // F6 and Shift+F6 are answered by App itself and refused to
+                    // every other command, so clearing this row would only look
+                    // like it worked.
+                    disabled={!chord || id === "focusRegion"}
+                    onClick={(event) => {
+                      // This button is about to disable itself; hand the keyboard
+                      // to the row's chord button rather than the document.
+                      const row = event.currentTarget.closest(".shortcut-row");
+                      unassign(id);
+                      requestAnimationFrame(() => {
+                        row?.querySelector<HTMLButtonElement>(".shortcut-key")?.focus();
+                      });
+                    }}
                   >
                     <Icon name="close" />
                   </button>
@@ -145,9 +162,9 @@ export function ShortcutsDialog({ bindings, onApply, onClose }: Props) {
 
           <div className="shortcuts-fixed">
             <strong>{t("sc.fixed")}</strong>
-            {FIXED_SHORTCUTS.map(({ keys }) => (
+            {FIXED_SHORTCUTS.map(({ keys, labelKey }) => (
               <span key={keys}>
-                <kbd>{keys}</kbd> {t("sc.switchTab")}
+                <kbd>{keys}</kbd> {t(labelKey ?? "sc.switchTab")}
               </span>
             ))}
           </div>
