@@ -449,6 +449,23 @@ impl Store {
     /// commands scoped to any of those groups or profiles.
     pub fn delete_group(&self, id: &str) -> Result<()> {
         self.require_readable_profiles()?;
+        // The delete spans three files, and a write can fail between them. The
+        // reader is told it failed, so the in-memory store must match: a delete
+        // left half applied strands Sender commands in a group no screen lists,
+        // still counted against the limit and exported in backups.
+        let groups_before = self.groups.lock().clone();
+        let profiles_before = self.profiles.lock().clone();
+        let commands_before = self.sender_commands.lock().clone();
+        let result = self.delete_group_files(id);
+        if result.is_err() {
+            *self.groups.lock() = groups_before;
+            *self.profiles.lock() = profiles_before;
+            *self.sender_commands.lock() = commands_before;
+        }
+        result
+    }
+
+    fn delete_group_files(&self, id: &str) -> Result<()> {
         let removed_groups = {
             let mut groups = self.groups.lock();
             if !groups.iter().any(|g| g.id == id) {
@@ -475,9 +492,6 @@ impl Store {
             removed
         };
         if !removed_profiles.is_empty() {
-            for profile_id in &removed_profiles {
-                self.credentials.remove(profile_id);
-            }
             self.persist()?;
         }
 
@@ -493,6 +507,11 @@ impl Store {
         };
         if removed_commands {
             self.persist_sender_commands()?;
+        }
+        // Secrets go last: dropping them is not part of the write, and doing it
+        // first would lose a password for a profile a failed delete kept.
+        for profile_id in &removed_profiles {
+            self.credentials.remove(profile_id);
         }
         Ok(())
     }

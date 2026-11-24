@@ -1286,6 +1286,44 @@ fn a_failed_sender_save_leaves_the_list_alone() {
 
     std::fs::remove_dir_all(&dir).ok();
 }
+/// The dialog says the delete failed; the library must not disagree with it.
+#[test]
+fn a_failed_group_delete_leaves_the_library_alone() {
+    let dir = temp_dir("group-delete-rollback");
+    let store = Store::load_from_test(dir.join("sessions.json"));
+    let group = store
+        .save_group(group("Doomed", SessionKind::Ssh, None))
+        .expect("group");
+    let mut member = profile(SessionKind::Ssh);
+    member.group_id = Some(group.id.clone());
+    store.save(member).expect("profile");
+    let mut scoped = command("Inside", "ls");
+    scoped.scope = CommandScope::Group {
+        id: group.id.clone(),
+    };
+    store.save_sender_command(scoped).expect("command");
+
+    // The groups and profiles files are written first and succeed; the commands
+    // file then cannot be written, with the group already gone from memory.
+    let commands = dir.join("sender_commands.json");
+    std::fs::remove_file(&commands).ok();
+    std::fs::create_dir(&commands).unwrap();
+
+    assert!(
+        store.delete_group(&group.id).is_err(),
+        "the write failure must be reported"
+    );
+    assert_eq!(store.list_groups().len(), 1, "the group stays");
+    assert_eq!(store.list().len(), 1, "its profile stays");
+    assert_eq!(
+        store.list_sender_commands().len(),
+        1,
+        "its command stays listable"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 #[test]
 fn an_import_says_how_many_profiles_it_replaced() {
     let dir = temp_dir("import-count");
