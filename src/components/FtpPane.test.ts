@@ -35,6 +35,7 @@ vi.mock("../api", async (original) => ({
   onRemoteEditState: async () => () => {},
 }));
 
+import { translate } from "../i18n";
 import * as api from "../api";
 import * as nativeDialog from "../nativeDialog";
 import { useFileTransfers } from "../fileTransfers";
@@ -211,6 +212,17 @@ afterEach(() => {
   useStore.setState(initialState, true);
   useStore.getState().setLanguage(initialState.language);
   vi.restoreAllMocks();
+});
+
+it("offers no folder creation in a pane that has no directory", async () => {
+  // A first listing that fails leaves the pane's path empty. Both folder
+  // buttons used to stay enabled and pressing one opened no name prompt at
+  // all, which reads as a dead control rather than a refusal.
+  vi.mocked(api.localHome).mockRejectedValue(new Error("offline"));
+  vi.mocked(api.sftpHome).mockRejectedValue(new Error("offline"));
+  await mount();
+  expect(toolbarButton(translate("en", "ftp.newRemoteFolder")).disabled).toBe(true);
+  expect(toolbarButton(translate("en", "ftp.newLocalFolder")).disabled).toBe(true);
 });
 
 describe("FTP/SFTP dual-pane multi-selection and batch transfers", () => {

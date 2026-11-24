@@ -238,7 +238,9 @@ export function FtpPane({ tab, active, focused = false }: Props & { focused?: bo
       {
         label: menuLabel(uploadSide ? t("ftp.upload") : t("ftp.download"), count),
         icon: uploadSide ? "cloud-upload" : "cloud-download",
-        disabled: transferring || (uploadSide && !remotePath),
+        // Either direction needs a directory to land in; without one the
+        // transfer code returns silently and the item would do nothing.
+        disabled: transferring || (uploadSide ? !remotePath : !localPath),
         action: () => (uploadSide ? uploadEntries(targets) : downloadEntries(targets)),
       },
       ...(count === 1 && entry.isDir
@@ -332,7 +334,9 @@ export function FtpPane({ tab, active, focused = false }: Props & { focused?: bo
                   <ToolButton
                     label={t("ftp.newRemoteFolder")}
                     onClick={() => requestName("remote", "create")}
-                    disabled={remoteLoading || transferring}
+                    // No directory means no place to create one: the handler
+                    // returns without a prompt, which reads as a dead button.
+                    disabled={remoteLoading || transferring || !remotePath}
                   >
                     <Icon name="new-folder" />
                   </ToolButton>
@@ -429,7 +433,7 @@ export function FtpPane({ tab, active, focused = false }: Props & { focused?: bo
                   <ToolButton
                     label={t("ftp.newLocalFolder")}
                     onClick={() => requestName("local", "create")}
-                    disabled={localLoading || transferring}
+                    disabled={localLoading || transferring || !localPath}
                   >
                     <Icon name="new-folder" />
                   </ToolButton>

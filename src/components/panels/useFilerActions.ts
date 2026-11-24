@@ -435,7 +435,10 @@ export function useFilerActions({
     {
       label: t("filer.refresh"),
       icon: "refresh",
-      disabled: busy,
+      // Refreshing needs a directory to reload: while the session is offline
+      // `path` is cleared and `load` returns without a word. The panel's own
+      // menu disables the same command on `busy || offline`.
+      disabled: busy || !path,
       action: () => void load(path),
     },
   ];
