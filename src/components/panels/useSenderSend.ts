@@ -163,7 +163,9 @@ export function useSenderSend({ tabs, activeId, setStatus, t, activeTab }: Optio
       times: settings.times,
     });
     if (problem) {
-      setStatus(t("sender.scheduleProblem", { problem }));
+      setStatus(
+        t("sender.scheduleProblem", { problem: "key" in problem ? t(problem.key) : problem.text }),
+      );
       return;
     }
     setRepeatOpen(true);

@@ -894,6 +894,7 @@ export const en = {
   "sender.deleteConfirmTitle": "Delete Saved Command",
   "sender.deleted": "Sender: deleted “{name}”",
   "sender.noSession": "Sender: no session selected",
+  "sender.emptyRepeat": "enter a command before repeating it",
   "sender.noConnectedTerminals": "Sender: no connected terminal sessions",
   "sender.blocked": "Sender: blocked while a file transfer or another send is running",
   "sender.stopped": "Sender: stopped",

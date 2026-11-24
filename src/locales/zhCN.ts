@@ -854,6 +854,7 @@ export const zhCN: Catalog = {
   "sender.deleteConfirmTitle": "删除已保存的命令",
   "sender.deleted": "发送器：已删除“{name}”",
   "sender.noSession": "发送器：未选择会话",
+  "sender.emptyRepeat": "请先填写要重复发送的命令",
   "sender.noConnectedTerminals": "发送器：没有已连接的终端会话",
   "sender.blocked": "发送器：文件传输或其他发送进行时已阻塞",
   "sender.stopped": "发送器：已停止",

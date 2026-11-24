@@ -194,9 +194,11 @@ describe("Sender repeat schedule", () => {
 
     // An empty box has no line to send; whitespace is a real command (a bare
     // Enter for a here-document, #115) and is allowed on purpose.
-    expect(startSchedule(everySecond({ text: "" }))).toContain("command");
+    expect(startSchedule(everySecond({ text: "" }))).toEqual({ key: "sender.emptyRepeat" });
     expect(getSchedule(), "the running plan is untouched").not.toBeNull();
-    expect(startSchedule(everySecond({ target: "current", sessionId: null }))).toContain("session");
+    expect(startSchedule(everySecond({ target: "current", sessionId: null }))).toEqual({
+      key: "sender.noSession",
+    });
     await vi.advanceTimersByTimeAsync(1000);
     expect(api.writeSession).toHaveBeenCalledTimes(2);
   });

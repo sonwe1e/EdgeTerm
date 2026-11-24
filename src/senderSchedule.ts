@@ -131,18 +131,24 @@ function targetsOf(spec: ScheduleSpec): { ids: string[]; gone: boolean } {
 }
 
 /**
+ * Why a repeat could not start: a sentence the reader's language supplies, or
+ * text from a parser that already says what is wrong.
+ */
+export type ScheduleProblem = { key: "sender.emptyRepeat" | "sender.noSession" } | { text: string };
+
+/**
  * Starts sending `spec` on its timer, replacing any schedule running. The
  * first send is immediate. Returns a problem with the command, or null.
  */
-export function startSchedule(spec: ScheduleSpec): string | null {
+export function startSchedule(spec: ScheduleSpec): ScheduleProblem | null {
   let units: SendUnit[];
   try {
     units = buildUnits(spec.text, spec.ending);
   } catch (error) {
-    return errorText(error);
+    return { text: errorText(error) };
   }
-  if (units.length === 0) return "enter a command before repeating it";
-  if (spec.target === "current" && !spec.sessionId) return "no session selected";
+  if (units.length === 0) return { key: "sender.emptyRepeat" };
+  if (spec.target === "current" && !spec.sessionId) return { key: "sender.noSession" };
 
   stopSchedule();
   const entry: Active = {

@@ -542,7 +542,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
                 onClick={() => {
                   closeMore();
                   setSelectedCommandId(command.id);
-                  void sendCommand(command.text, command.ending);
+                  void sendCommand(command.text, command.ending, command.id);
                   if (activeId) getController(activeId)?.focus();
                 }}
               >
