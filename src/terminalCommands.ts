@@ -418,17 +418,26 @@ export class TerminalCommands {
     const previous = this.aiReportedActivity ?? (this.aiTurn ? "running" : "idle");
     const tool = aiSessionTool(this.aiProgramStatus.app ?? "");
     const discoveredAgent = tool !== null && !this.aiSession;
+    // Adopting a report nobody tracked is what lets the prompt that follows
+    // release the tab: a run started from a shell profile, from a background
+    // job, or with its echo missed otherwise read "command running" for the
+    // rest of the session, and only submitting a command cleared it.
+    const adopt = () => {
+      this.commandRunning = true;
+      this.commandOutputAdvanced = true;
+      this.commandPromptRecognized = true;
+    };
     if (discoveredAgent) {
       this.aiTool = tool;
       this.aiSession = true;
       this.context.callbacks.onAiSession?.(tool);
-      if (!this.commandRunning) {
-        // Auto-started tools and commands whose echo was missed still need
-        // to release AI tracking when the terminal returns to a shell prompt.
-        this.commandRunning = true;
-        this.commandOutputAdvanced = true;
-        this.commandPromptRecognized = true;
-      }
+      if (!this.commandRunning) adopt();
+    } else if (activity === "running" && !this.commandRunning) {
+      // A program that has not introduced itself is adopted only once its
+      // output has covered the prompt: a tool reporting from its own prompt
+      // keeps the behaviour it had.
+      const current = this.cursorLine();
+      if (current && !isInputPrompt(current.text)) adopt();
     }
     this.stopAiQuiet();
     this.aiTurn = false;

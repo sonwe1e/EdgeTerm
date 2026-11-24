@@ -201,6 +201,20 @@ describe("agentic CLI sessions", () => {
     expect(events[events.length - 1]).toBe("idle:command");
   });
 
+  it("releases a program that reported a run nobody tracked when the prompt returns", async () => {
+    const events: string[] = [];
+    const controller = createController(events);
+    await write(controller, PROMPT);
+    // A background job, or a launch from a shell profile, reports a run this
+    // shell never echoed a command for. Its output covers the prompt line.
+    await write(controller, "compiling...\r\n\x1b]7501;state=working:app=compiler\x07");
+    expect(events[events.length - 1]).toBe("running:command");
+    await write(controller, PROMPT);
+    // The prompt that follows the exit ends it. Before this the tab kept
+    // saying "command running" until the next command was submitted.
+    expect(events[events.length - 1], "the returned prompt ends the run").toBe("complete:command");
+  });
+
   it("does not report the session itself as a running command", async () => {
     const events: string[] = [];
     const controller = createController(events);
