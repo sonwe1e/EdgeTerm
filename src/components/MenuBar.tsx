@@ -12,6 +12,7 @@ import { GUIDE_URL } from "../distribution";
 import { getCurrentWindow, type Window as TauriWindow } from "@tauri-apps/api/window";
 
 import { translate } from "../i18n";
+import { surfaceOwnsKeyboard } from "../menuKeyboard";
 import { runWindowAction } from "../menuWindowAction";
 import { openExternalLink } from "../openExternal";
 
@@ -1045,8 +1046,7 @@ export function MenuBar(props: Props) {
   useEffect(() => {
     let altDown = false;
     let altChord = false;
-    const ownsKeyboard = (target: EventTarget | null) =>
-      target instanceof Element && target.closest("dialog[open], .context-menu") !== null;
+    const ownsKeyboard = (target: EventTarget | null) => surfaceOwnsKeyboard(target);
     const toggle = () => {
       const current = openRef.current;
       if (current) {

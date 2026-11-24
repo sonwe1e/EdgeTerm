@@ -65,6 +65,7 @@ import type { PanelDock } from "./panelDock";
 import { HAS_TRAY, IS_WINDOWS } from "./platform";
 import { broadcastTargets } from "./broadcast";
 import { buildPaletteCommands } from "./commandPalette";
+import { surfaceOwnsKeyboard } from "./menuKeyboard";
 import { importSshConfig } from "./dataTransfer";
 import { matchAppShortcut, type AppShortcut } from "./shortcuts";
 import {
@@ -805,9 +806,13 @@ export default function App() {
       const inTerminal = Boolean(target?.closest(".xterm"));
       if (!inTerminal && target?.closest("input, textarea, select")) return;
 
-      // A native modal is open: the top layer keeps focus inside it, the
-      // dialog answers its own keys, and shortcuts must not fire underneath.
-      if (target?.closest("dialog[open]")) return;
+      // A surface that owns the keyboard is open - a native modal, a context
+      // menu, or a menu-bar dropdown. Both menu surfaces are plain divs in a
+      // portal, so the dialog test above does not catch them: without this a
+      // chord pressed with a menu on screen runs the command and leaves the
+      // menu standing over the result, its entries still describing the state
+      // it was opened with.
+      if (surfaceOwnsKeyboard(target)) return;
 
       // The modifier scheme is platform-specific (⌘ on macOS, Alt elsewhere)
       // and lives in shortcuts.ts; only the dispatch happens here.

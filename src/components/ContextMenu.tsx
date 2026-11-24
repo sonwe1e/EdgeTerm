@@ -410,15 +410,26 @@ export function ContextMenu({ x, y, items, onClose, align = "left", className }:
         schedulePosition();
       }
     };
+    // A key the menu does not itself handle means the reader has moved on: a
+    // chord answered elsewhere, or a plain character aimed at whatever is now
+    // underneath. The menu's anchor and its entry states were computed when it
+    // opened, so leaving it standing over a window that has since changed lets
+    // a reader click a row that describes something else.
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" || owns(event.target as Node)) return;
+      onClose();
+    };
     document.addEventListener("mousedown", onMouseDown, true);
     document.addEventListener("scroll", onScroll, true);
     document.addEventListener("focusin", onFocus);
+    document.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("blur", onClose);
     window.addEventListener("resize", onClose);
     return () => {
       document.removeEventListener("mousedown", onMouseDown, true);
       document.removeEventListener("scroll", onScroll, true);
       document.removeEventListener("focusin", onFocus);
+      document.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("blur", onClose);
       window.removeEventListener("resize", onClose);
     };
