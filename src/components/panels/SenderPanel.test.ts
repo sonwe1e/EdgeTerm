@@ -209,6 +209,23 @@ it("keeps the existing no-session feedback when targeting only the current sessi
   expect(useStore.getState().status).toBe("Sender: no session selected");
 });
 
+it.each([
+  ["closed", "ssh-closed", "Sender: no connected terminal sessions"],
+  ["file-connected", "sftp", "Open a connected shell first"],
+])("names why the selected %s tab cannot take a command", async (_label, kindOrState, expected) => {
+  // The reader did select a session; it is simply not one a command can be
+  // written to. "No session selected" sends them looking for a selection they
+  // already made.
+  const state = kindOrState === "ssh-closed" ? "closed" : "connected";
+  const kind = kindOrState === "sftp" ? "sftp" : "ssh";
+  useStore.setState({ tabs: [senderTab(kindOrState, state, kind)], activeId: kindOrState });
+  await render();
+  type("whoami");
+  await click(host.querySelector<HTMLButtonElement>(".sender-send:not(.is-stop)")!);
+  expect(sendUnits).not.toHaveBeenCalled();
+  expect(useStore.getState().status).toContain(expected);
+});
+
 it("explains zero connected terminals in Chinese when all sessions are selected", async () => {
   useStore.setState({ language: "zh-CN", tabs: [], activeId: null });
   await render();

@@ -93,7 +93,14 @@ export function useSenderSend({ tabs, activeId, setStatus, t, activeTab }: Optio
     if (running) return;
     const targetIds = targets();
     if (targetIds.length === 0) {
-      setStatus(t(target === "all" ? "sender.noConnectedTerminals" : "sender.noSession"));
+      // The reader has a session selected; it is simply not one a command can
+      // be written to. Saying "no session selected" leaves them looking for a
+      // selection they already made.
+      const tab = tabs.find((item) => item.info.id === activeId);
+      if (target === "all") setStatus(t("sender.noConnectedTerminals"));
+      else if (!tab) setStatus(t("sender.noSession"));
+      else if (isFileSession(tab.info.kind)) setStatus(t("snippets.needsShell"));
+      else setStatus(t("sender.noConnectedTerminals"));
       return;
     }
 
