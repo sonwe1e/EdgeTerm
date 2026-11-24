@@ -120,13 +120,24 @@ export function TransferCenter() {
   const pinButton = useRef<HTMLButtonElement>(null);
   const dock = document.getElementById("transfer-dock");
   usePopoverDismiss(open && !pinned, () => setOpen(false), container);
+  // Focus goes into the panel when it opens. It must not move again when the
+  // reader toggles one of its sections: collapsing Settings used to steal the
+  // caret to the pin button, an unrelated control.
+  const focusedOnOpen = useRef(false);
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      focusedOnOpen.current = false;
+      return;
+    }
     if (settingsOpen) {
       settings.current?.querySelector("summary")?.focus();
       settings.current?.scrollIntoView({ block: "nearest" });
-    } else pinButton.current?.focus();
-  }, [pinned, open, settingsOpen]);
+      focusedOnOpen.current = true;
+    } else if (!focusedOnOpen.current) {
+      pinButton.current?.focus();
+      focusedOnOpen.current = true;
+    }
+  }, [open, settingsOpen]);
   const [error, setError] = useState<string | null>(null);
   const [options, setOptions] = useState(readTransferOptions);
   const preferencesRevision = useStore((s) => s.panelPreferencesRevision);
@@ -231,6 +242,9 @@ export function TransferCenter() {
       if (!alive.current) return;
       ++recoveryRequest.current;
       setRecoverable((found) => found.filter((entry) => entry.id !== id));
+      // This row held the Clear that was just pressed; hand the keyboard on
+      // rather than let it fall to the document (the bulk path does the same).
+      focusAfterClear();
     } catch (e) {
       if (alive.current) setRecoveryError(errorText(e));
     }
@@ -357,6 +371,16 @@ export function TransferCenter() {
     setConfirming((current) => (current === id ? null : current));
     try {
       await api.controlFileTransfer(id, action);
+      if (action === "pause" || action === "resume") {
+        // Pause and Resume are the same control in two states, and the row
+        // stops rendering it the moment the backend reports "pausing". Cancel
+        // stays for every non-terminal status, so it is where focus goes.
+        requestAnimationFrame(() => {
+          panelScope()
+            ?.querySelector<HTMLButtonElement>(`[data-job-actions="${id}"] button`)
+            ?.focus();
+        });
+      }
       if (action === "dismiss") {
         useFileTransfers.getState().remove(id);
         setFailureJob((current) => (current === id ? null : current));
@@ -376,6 +400,12 @@ export function TransferCenter() {
   const clearFailed = async (id: string) => {
     setConfirming(null);
     await control(id, "dismiss");
+  };
+  /** The header action a bulk question was opened from, once its band closes. */
+  const focusHeadAction = () => {
+    requestAnimationFrame(() => {
+      panelScope()?.querySelector<HTMLButtonElement>(".transfer-head-action")?.focus();
+    });
   };
   const cancelConfirm = (id: string) => {
     setConfirming(null);
@@ -491,7 +521,13 @@ export function TransferCenter() {
             <button type="button" onClick={() => void clearJobs(failedJobs.map((job) => job.id))}>
               {t("transfer.dismiss")}
             </button>
-            <button type="button" onClick={() => setBulkClear(false)}>
+            <button
+              type="button"
+              onClick={() => {
+                setBulkClear(false);
+                focusHeadAction();
+              }}
+            >
               {t("common.cancel")}
             </button>
           </div>
@@ -534,7 +570,7 @@ export function TransferCenter() {
                       <strong className="transfer-job-name" title={job.name}>
                         {job.name}
                       </strong>
-                      <div className="transfer-job-actions">
+                      <div className="transfer-job-actions" data-job-actions={job.id}>
                         {["queued", "running", "retrying"].includes(job.status) && (
                           <button type="button" onClick={() => void control(job.id, "pause")}>
                             {t("transfer.pause")}
@@ -622,6 +658,7 @@ export function TransferCenter() {
                         <button
                           type="button"
                           className="transfer-job-failures"
+                          data-failures-of={job.id}
                           aria-expanded={failureJob === job.id}
                           onClick={() => setFailureJob(failureJob === job.id ? null : job.id)}
                         >
@@ -648,7 +685,17 @@ export function TransferCenter() {
               type="button"
               className="transfer-icon-button"
               aria-label={t("transfer.closeFailedFiles")}
-              onClick={() => setFailureJob(null)}
+              onClick={() => {
+                const jobId = failureJob;
+                setFailureJob(null);
+                // The list, and this button with it, disappear; the switch
+                // that opened it carries aria-expanded and is the way back.
+                requestAnimationFrame(() => {
+                  panelScope()
+                    ?.querySelector<HTMLButtonElement>(`[data-failures-of="${jobId}"]`)
+                    ?.focus();
+                });
+              }}
             >
               <Icon name="close" />
             </button>
