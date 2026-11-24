@@ -926,7 +926,11 @@ export function SessionDialog({
       // shell is the exception: the tree already has its built-in row, and
       // saving "shell" on every Connect left a pile of identical profiles.
       const quickLocal = candidate.kind === "local" && !initial?.id;
-      const saved = candidate.name && !quickLocal ? await upsertProfile(candidate) : candidate;
+      // A typed startup command is remembered against the profile, so the
+      // one-off local shell has to become a profile after all: otherwise the
+      // command is dropped on the floor and nothing says so.
+      const keepProfile = candidate.name && !quickLocal;
+      const saved = keepProfile || startupDraft.trim() ? await upsertProfile(candidate) : candidate;
       commitStartup(saved);
       setProfile((current) => ({ ...current, id: saved.id }));
       attemptTabId.current ??= crypto.randomUUID();
