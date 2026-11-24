@@ -1215,6 +1215,10 @@ export function SessionDialog({
                   type="number"
                   min={1}
                   max={65535}
+                  data-field="port"
+                  ref={(element) => {
+                    fieldRefs.current.port = element;
+                  }}
                   value={profile.port ?? (profile.kind === "sftp" ? 22 : 21)}
                   onChange={(event) =>
                     patch({

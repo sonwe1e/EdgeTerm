@@ -62,6 +62,29 @@ it("will not close the form while the connection it started is running", async (
   expect(close, "the × must not dismiss a running connection").not.toHaveBeenCalled();
 });
 
+it("points at the file transfer port when it is out of range", async () => {
+  mount(
+    h(SessionDialog, {
+      initial: {
+        id: "",
+        name: "",
+        kind: "ftp",
+        host: "fixture.invalid",
+        username: "tester",
+        port: 70000,
+      },
+      onClose: vi.fn(),
+    }),
+  );
+  const connect = () => document.querySelector<HTMLButtonElement>(".dialog-footer .is-primary")!;
+  await userEvent.click(connect());
+  const port = document.querySelector<HTMLInputElement>('[data-field="port"]')!;
+  // The message names the port; the caret has to land on the field it is about,
+  // the way host, locale and baud already do.
+  await expect.poll(() => document.activeElement === port, { timeout: 3000 }).toBe(true);
+  expect(port.getAttribute("aria-invalid"), "the field is marked too").toBe("true");
+});
+
 afterEach(async () => {
   await browserAfterEach();
   useStore.setState(initial, true);
