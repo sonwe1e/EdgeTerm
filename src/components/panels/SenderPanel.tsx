@@ -23,7 +23,6 @@ import {
   senderColorValue,
 } from "../../senderColors";
 import { describeScope, sameScope, scopeForLevel } from "../../senderScope";
-import { endingLabel } from "../../senderUnits";
 import { useStore } from "../../store";
 import { getController } from "../../terminalRegistry";
 import { type LineEnding, type SavedCommand } from "../../types";
@@ -303,7 +302,9 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
                 autoCorrect="off"
                 spellCheck={false}
                 value={text}
-                placeholder={t("sender.typeCommand", { ending: endingLabel(ending) })}
+                placeholder={t("sender.typeCommand", {
+                  ending: lineEndings(t).find(([value]) => value === ending)?.[1] ?? "",
+                })}
                 onChange={(event) => {
                   if (!editing) setSelectedCommandId(null);
                   setText(event.target.value);
@@ -326,7 +327,10 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
                 <button
                   type="button"
                   className="sender-clear"
-                  onClick={() => setText("")}
+                  onClick={() => {
+                    setText("");
+                    commandRef.current?.focus();
+                  }}
                   title={t("sender.clear")}
                   aria-label={t("sender.clearCommand")}
                 >
