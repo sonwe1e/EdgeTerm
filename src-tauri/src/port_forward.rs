@@ -435,10 +435,8 @@ async fn run(
             _=job.control.stopped()=>{
                 // A session that drops stops its tunnels through the same
                 // control channel a reader's Stop uses, and this branch wins the
-                // race with the tick below. Asking the transport tells them
-                // apart, so a tunnel killed by a lost connection is reported as
-                // a failure with a reason rather than as a deliberate stop.
-                if transport.is_closed(){result=Err(AppError::new("SSH connection closed"));}
+                // race with the tick below; asking the transport tells them apart.
+                if let Err(error)=stop_result(transport.is_closed()){result=Err(error);}
                 break;
             }
             _=closed.tick()=>{if transport.is_closed(){result=Err(AppError::new("SSH connection closed"));break;}},
@@ -569,6 +567,17 @@ async fn bridge(
 async fn serve_socks5(job: Arc<Job>, transport: Arc<SharedTransport>, socket: TcpStream) {
     if let Err(error) = socks5(&job, &transport, socket).await {
         note_client_failure(&job, transport.is_closed(), &error);
+    }
+}
+
+/// What stopping a tunnel through its control channel means. A deliberate stop
+/// is the reader's own action and leaves the row saying so; the same channel is
+/// what a session that went away uses, and that is a failure with a reason.
+fn stop_result(transport_closed: bool) -> Result<()> {
+    if transport_closed {
+        Err(AppError::new("SSH connection closed"))
+    } else {
+        Ok(())
     }
 }
 
@@ -789,6 +798,20 @@ mod tests {
     /// A Dynamic forward serves whoever connects. A client that is not speaking
     /// SOCKS5 says nothing about the tunnel, and reporting it would paint an
     /// error over a forward that is still serving everyone else.
+    #[test]
+    fn a_stop_after_the_connection_was_lost_says_why() {
+        assert!(
+            stop_result(false).is_ok(),
+            "a deliberate stop is the reader's own action, not a failure"
+        );
+        assert_eq!(
+            stop_result(true)
+                .expect_err("a lost connection is a failure")
+                .to_string(),
+            "SSH connection closed"
+        );
+    }
+
     #[test]
     fn a_start_keeps_a_finished_row_while_there_is_room() {
         let forwards = Forwards::default();
