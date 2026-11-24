@@ -9,6 +9,8 @@ import {
 } from "../fileEditor";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { CodeEditor } from "../editor/CodeEditor";
+import { IS_MAC } from "../platform";
+import { chordLabel } from "../shortcuts";
 import { useStore } from "../store";
 import { isLightTheme } from "../types";
 import { useT } from "../useT";
@@ -58,7 +60,27 @@ export function FileEditorDialog() {
       <div className="file-editor-destination">
         <strong>{target.label}</strong>
         <code title={displayPath}>{displayPath}</code>
-        <small>{t(target.sessionId ? "fileEditor.remoteHint" : "fileEditor.localHint")}</small>
+        {/* CodeMirror binds the platform modifier, not Ctrl, so the hint names
+          the keys through the same formatter the menus use rather than a
+          hardcoded "Ctrl+" that is wrong on a Mac build. */}
+        <small>
+          {t(target.sessionId ? "fileEditor.remoteHint" : "fileEditor.localHint", {
+            save: chordLabel({
+              ctrl: !IS_MAC,
+              meta: IS_MAC,
+              alt: false,
+              shift: false,
+              code: "KeyS",
+            }),
+            find: chordLabel({
+              ctrl: !IS_MAC,
+              meta: IS_MAC,
+              alt: false,
+              shift: false,
+              code: "KeyF",
+            }),
+          })}
+        </small>
       </div>
       {file && (
         <CodeEditor

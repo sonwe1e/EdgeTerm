@@ -37,7 +37,7 @@ it("lists the keys the dialog cannot rebind", () => {
   expect(text).toContain("F2");
   expect(text).toContain("Shift+F10");
   expect(text).toContain("Alt");
-  expect(text).toContain("File list");
+  expect(text).toContain("Filer panel keys");
 });
 
 it.each([false, true])("keeps F6 out of another command in the recorder (shift: %s)", (shift) => {
