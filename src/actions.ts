@@ -457,6 +457,12 @@ export async function disconnectSession(id: string): Promise<void> {
     store.applyState(id, "closed", message);
     store.setStatus(message);
     getController(id)?.writeText(`\r\n\x1b[33m${message}\x1b[0m\r\n`);
+    // Both branches end on the same closed tab state, but only the one below
+    // named the way out. The power button is deliberately kept live while
+    // connecting so it reads "Cancel connection" - it is the documented escape
+    // for a stuck handshake - and the reader who uses it gets the same Enter
+    // hint a peer-initiated close gets.
+    getController(id)?.writeText(sessionClosedNotice());
     const closing = closeConnection(id).catch(() => undefined);
     holdConnectionCleanup(id, closing);
     await closing;

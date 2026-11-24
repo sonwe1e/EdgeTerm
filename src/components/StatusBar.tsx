@@ -158,7 +158,21 @@ function StatusBarBase() {
               className="status-dismiss"
               title={t("status.dismissError")}
               aria-label={t("status.dismissError")}
-              onClick={() => setError(null)}
+              onClick={() => {
+                // Clearing the error unmounts this whole fragment, and the
+                // button that had focus goes with it - the browser then drops
+                // focus to the body, so the next Tab restarts the document from
+                // the top and F6 re-enters the cycle at its first region. Every
+                // failure the app raises is dismissed here, so hand the keyboard
+                // back to the region the reader was already in.
+                const wasInside = document.activeElement?.closest(".status-dismiss") != null;
+                setError(null);
+                if (wasInside) {
+                  requestAnimationFrame(() =>
+                    document.querySelector<HTMLElement>("[data-focus-region='status']")?.focus(),
+                  );
+                }
+              }}
             >
               <Icon name="close" />
             </button>
