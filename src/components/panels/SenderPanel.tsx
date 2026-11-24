@@ -106,6 +106,8 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
     visibleCommands,
     labelOf,
     emptyMessage,
+    loadError,
+    retryLibrary,
     setSelectedCommandId,
     setContextMenu,
     editing,
@@ -495,6 +497,8 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
             setPage={setPage}
             pageCommands={pageCommands}
             emptyMessage={emptyMessage}
+            loadError={loadError}
+            retryLibrary={retryLibrary}
             openComposer={openComposer}
             selectedCommandId={selectedCommandId}
             editing={editing}

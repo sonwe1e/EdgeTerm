@@ -66,6 +66,10 @@ export function useSenderLibrary({
   };
   const [page, setPage] = useState(1);
   const [commandsLoading, setCommandsLoading] = useState(true);
+  // A failed load is not an empty library: saying "save one to add it here"
+  // to someone whose commands exist but could not be read is a lie the status
+  // bar can only correct for three seconds.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [libraryBusy, setLibraryBusy] = useState(false);
   // Save / Update open a picker for the scope; the last choice's level is
   // preselected in it.
@@ -81,6 +85,7 @@ export function useSenderLibrary({
   useEffect(() => {
     let cancelled = false;
     setCommandsLoading(true);
+    setLoadError(null);
     void api
       .listSenderCommands()
       .then((commands) => {
@@ -94,7 +99,9 @@ export function useSenderLibrary({
         );
       })
       .catch((error) => {
-        if (!cancelled) setStatus(t("sender.loadFailed", { error: errorText(error) }));
+        if (cancelled) return;
+        setLoadError(errorText(error));
+        setStatus(t("sender.loadFailed", { error: errorText(error) }));
       })
       .finally(() => {
         if (!cancelled) setCommandsLoading(false);
@@ -301,12 +308,16 @@ export function useSenderLibrary({
 
   const emptyMessage = commandsLoading
     ? t("sender.loadingCommands")
-    : savedCommands.length === 0
-      ? t("sender.saveToAdd")
-      : t("sender.noneApply");
+    : loadError
+      ? t("sender.loadFailed", { error: loadError })
+      : savedCommands.length === 0
+        ? t("sender.saveToAdd")
+        : t("sender.noneApply");
 
   return {
     setStatus,
+    loadError,
+    retryLibrary: () => useStore.getState().bumpSenderLibrary(),
     visibleCommands,
     labelOf,
     emptyMessage,

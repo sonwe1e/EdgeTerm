@@ -14,6 +14,9 @@ interface Props {
   setPage: Dispatch<SetStateAction<number>>;
   pageCommands: SavedCommand[];
   emptyMessage: string;
+  /** Set when the library could not be read; the empty state offers Retry. */
+  loadError: string | null;
+  retryLibrary: () => void;
   /** Opens the composer, for the empty state's call to action. */
   openComposer: () => void;
   selectedCommandId: string | null;
@@ -38,6 +41,8 @@ export function SenderLibrary({
   setPage,
   pageCommands,
   emptyMessage,
+  loadError,
+  retryLibrary,
   openComposer,
   selectedCommandId,
   editing,
@@ -84,10 +89,18 @@ export function SenderLibrary({
            the active session's scope only gets the explanation. */
         <div className="sender-library-empty">
           <p>{emptyMessage}</p>
-          {visibleCommands.length === 0 && (
-            <button type="button" className="sender-save-btn" onClick={openComposer}>
-              {t("sender.createFirst")}
+          {/* A failed load keeps its commands; offering "create the first one"
+              there would invite a duplicate. Retry is the way out. */}
+          {loadError ? (
+            <button type="button" className="sender-save-btn" onClick={retryLibrary}>
+              {t("common.retry")}
             </button>
+          ) : (
+            visibleCommands.length === 0 && (
+              <button type="button" className="sender-save-btn" onClick={openComposer}>
+                {t("sender.createFirst")}
+              </button>
+            )
           )}
         </div>
       ) : (
