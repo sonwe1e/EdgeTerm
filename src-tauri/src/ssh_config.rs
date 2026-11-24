@@ -799,39 +799,52 @@ pub fn import(
     }
 
     // First every profile, so each has an id; then the single jump link.
+    // A write that fails part-way leaves the profiles already saved behind, so
+    // the list is captured first and put back if the loop gives up.
+    let before = store.list();
     let mut ids: Vec<Option<String>> = vec![None; entries.len()];
-    for (index, entry) in entries.iter().enumerate() {
-        if !needed[index] {
-            continue;
+    let written: Result<()> = (|| {
+        for (index, entry) in entries.iter().enumerate() {
+            if !needed[index] {
+                continue;
+            }
+            let profiles = store.list();
+            let existing = matching_profile(
+                &profiles,
+                &entry.alias,
+                &entry.host,
+                entry.port,
+                &entry.username,
+            );
+            let saved = match existing {
+                // Brought in only as someone's jump host: reuse the saved session
+                // untouched. Rewriting a target the reader configured by hand —
+                // even its forwards — because another host's ProxyJump names it is
+                // a change nobody asked for.
+                Some(existing) if !chosen[index] => existing.clone(),
+                Some(existing) => {
+                    let mut profile = store.get(&existing.id)?.unwrap_or_else(|| existing.clone());
+                    let named_key = entry.private_key_path.is_some()
+                        && entry.private_key_path != context.default_identity;
+                    update_profile(&mut profile, entry, named_key);
+                    summary.updated += 1;
+                    store.save(profile)?
+                }
+                None => {
+                    summary.added += 1;
+                    store.save(new_profile(entry, group_id.clone()))?
+                }
+            };
+            ids[index] = Some(saved.id);
         }
-        let profiles = store.list();
-        let existing = matching_profile(
-            &profiles,
-            &entry.alias,
-            &entry.host,
-            entry.port,
-            &entry.username,
-        );
-        let saved = match existing {
-            // Brought in only as someone's jump host: reuse the saved session
-            // untouched. Rewriting a target the reader configured by hand —
-            // even its forwards — because another host's ProxyJump names it is
-            // a change nobody asked for.
-            Some(existing) if !chosen[index] => existing.clone(),
-            Some(existing) => {
-                let mut profile = store.get(&existing.id)?.unwrap_or_else(|| existing.clone());
-                let named_key = entry.private_key_path.is_some()
-                    && entry.private_key_path != context.default_identity;
-                update_profile(&mut profile, entry, named_key);
-                summary.updated += 1;
-                store.save(profile)?
-            }
-            None => {
-                summary.added += 1;
-                store.save(new_profile(entry, group_id.clone()))?
-            }
-        };
-        ids[index] = Some(saved.id);
+        Ok(())
+    })();
+    if let Err(error) = written {
+        // `save` changes the list before it persists, so a profile written
+        // before the failure would be carried to disk by the next unrelated
+        // save. Put the list back the way the import found it.
+        store.restore_profiles(before);
+        return Err(error);
     }
 
     for (index, entry) in entries.iter().enumerate() {
@@ -919,7 +932,11 @@ fn link_jumps(store: &Store, id: &str, hops: &[String]) -> Result<()> {
     let Some(mut profile) = store.get(id)? else {
         return Ok(());
     };
-    let chain: Vec<String> = hops.iter().filter(|hop| hop.as_str() != id).cloned().collect();
+    let chain: Vec<String> = hops
+        .iter()
+        .filter(|hop| hop.as_str() != id)
+        .cloned()
+        .collect();
     if profile.jump_ids() == chain {
         return Ok(());
     }

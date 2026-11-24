@@ -359,6 +359,17 @@ impl Store {
 
     /// Removes a profile together with everything that belongs to it: its
     /// stored credentials and the Sender commands scoped to it alone.
+    /// Puts the profile list back the way it was, without writing anything.
+    ///
+    /// `save` changes the list and only then persists, so a failed write
+    /// leaves memory holding a change the disk never took — and the next
+    /// successful save of an unrelated profile would carry it out. A caller
+    /// that knows its write failed (an import part-way through, say) restores
+    /// the list it captured first, so the two agree again.
+    pub fn restore_profiles(&self, profiles: Vec<SessionProfile>) {
+        *self.profiles.lock() = profiles;
+    }
+
     pub fn delete(&self, id: &str) -> Result<()> {
         self.require_readable_profiles()?;
         self.credentials.remove(id);

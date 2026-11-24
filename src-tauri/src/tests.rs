@@ -3394,6 +3394,48 @@ Host lab
 }
 
 #[test]
+fn ssh_config_import_rolls_back_when_a_write_fails() {
+    // A directory where the profiles file belongs makes every write fail: the
+    // import cannot finish, and the sessions it already wrote must not stay in
+    // memory to be carried to disk by the next unrelated save.
+    let dir = temp_dir("ssh-import-rolls-back");
+    let path = dir.join("sessions.json");
+    let store = Store::load_from_test(path.clone());
+    let context = ssh_context(&dir);
+
+    let mut kept = profile(SessionKind::Ssh);
+    kept.name = "kept".into();
+    kept.host = Some("kept.internal".into());
+    let kept = store.save(kept).expect("save the session that must survive");
+
+    std::fs::remove_file(&path).expect("remove the profiles file");
+    std::fs::create_dir(&path).expect("put a directory in its place");
+
+    let text = "\
+Host one
+  HostName one.internal
+Host two
+  HostName two.internal
+";
+    let entries = ssh_config::parse_text(text, &context);
+    let result = ssh_config::import(
+        &store,
+        &entries,
+        &["one".to_string(), "two".to_string()],
+        None,
+        &context,
+    );
+    assert!(result.is_err(), "the failing write aborts the import");
+
+    let names: Vec<String> = store.list().into_iter().map(|saved| saved.name).collect();
+    assert_eq!(
+        names,
+        vec![kept.name.clone()],
+        "the list is back to what the import found"
+    );
+}
+
+#[test]
 fn ssh_config_import_leaves_an_unticked_jump_host_session_alone() {
     // The reader keeps a "bastion" session configured by hand: another port,
     // another account, a tunnel. Importing "web", whose file only names bastion
@@ -3429,8 +3471,8 @@ Host web
   ProxyJump bastion
 ";
     let entries = ssh_config::parse_text(text, &context);
-    let summary = ssh_config::import(&store, &entries, &["web".to_string()], None, &context)
-        .expect("import");
+    let summary =
+        ssh_config::import(&store, &entries, &["web".to_string()], None, &context).expect("import");
     assert_eq!(summary.added, 1, "only web is added");
     assert_eq!(
         summary.updated, 0,
@@ -3452,7 +3494,11 @@ Host web
         .iter()
         .find(|profile| profile.name == "web")
         .expect("web added");
-    assert_eq!(web.jump_ids(), vec![bastion.id.clone()], "web reaches bastion");
+    assert_eq!(
+        web.jump_ids(),
+        vec![bastion.id.clone()],
+        "web reaches bastion"
+    );
 }
 
 #[test]
