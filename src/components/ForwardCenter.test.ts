@@ -128,6 +128,47 @@ it("discovers listeners on demand and only creates a tab-owned tunnel after expl
     host.remove();
   }
 });
+it("uses a discovered port without rewriting the tunnel the reader was building", async () => {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(h(ForwardCenter)));
+    await act(async () => host.querySelector("button")!.click());
+    // A remote tunnel onto a chosen port: the form's defaults are not what this
+    // reader asked for, so pressing Use must not put them back.
+    await act(async () =>
+      host
+        .querySelector<HTMLInputElement>('input[name="forward-direction"][value="remote"]')!
+        .click(),
+    );
+    const listen = host.querySelector<HTMLInputElement>('[aria-label="Tunnel listener port"]')!;
+    await act(async () => {
+      const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+      set.call(listen, "9000");
+      listen.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await choosePort(host);
+    await act(async () =>
+      host.querySelector<HTMLButtonElement>('button[aria-label="Use port 8080"]')!.click(),
+    );
+    expect(host.querySelector<HTMLInputElement>('[aria-label="Tunnel listener port"]')!.value).toBe(
+      "9000",
+    );
+    await act(async () =>
+      host
+        .querySelector("form")!
+        .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
+    );
+    expect(api.startPortForward).toHaveBeenCalledWith(
+      "ssh",
+      expect.objectContaining({ direction: "remote", listenPort: 9000, targetPort: 8080 }),
+    );
+  } finally {
+    act(() => root.unmount());
+    host.remove();
+  }
+});
 it("creates a dynamic SOCKS5 tunnel without naming a target", async () => {
   const host = document.createElement("div");
   document.body.append(host);
