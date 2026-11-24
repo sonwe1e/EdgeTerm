@@ -1,5 +1,12 @@
 # 项目状态
 
+## 本轮：连接进行中，表单的 × 不再假装取消（2026-11-24 第 133 轮）
+
+- 缺陷（第 129 轮审计 P4，已复核）：`ModalDialog` 的 `onClose` 已经带 `if (!busy)` 守卫，底部取消按钮也 `disabled={busy}`，但**标题栏的 × 直接调用裸的 `onClose`**。连接中点 × 表单消失，读者以为取消了，实际 `openSession` 仍在跑，标签随后出现。
+- 交付：× 的点击走同一个守卫。
+- 验证：`sessionSetup.browser.test.ts` **5/5**（新增 1 条：把 `openSession` 换成永不落定的 Promise → 连接按钮进入禁用 → 点 × → `onClose` 未被调用）。全量门 `VERIFY_EXIT=0`（单测 **212 文件／1918 用例**，浏览器 **72 文件／336 用例**）。
+- **负控制**：把 × 改回裸的 `onClick={onClose}` → 新用例失败；恢复后通过。
+
 ## 本轮：会话断开时不再永久「Working…」（2026-11-24 第 132 轮）
 
 - 缺陷（第 129 轮审计 F2，已复核）：列目录进行中切到已断开的 SSH 标签时，`useFilerDirectory` 的离线重置分支清空了 path／entries／选择／错误，**却没有清 busy**；在飞的那次 load 的收尾守卫（源已变）又会跳过它自己的 `setBusy(false)`。于是底部永久停在「Working…」，`busy` 也一直挡住列表按键。
