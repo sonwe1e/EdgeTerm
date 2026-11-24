@@ -84,6 +84,8 @@ export const SUGGESTIONS_KEY = "edgeterm.suggestions";
 export const RIGHT_CLICK_KEY = "edgeterm.rightClick";
 
 export const CLOSE_ACTION_KEY = "edgeterm.closeAction";
+/** What closing did before the tray checkbox was ticked. */
+export const CLOSE_ACTION_BEFORE_TRAY_KEY = "edgeterm.closeActionBeforeTray";
 
 export const SHORTCUTS_KEY = "edgeterm.shortcuts";
 
@@ -219,6 +221,20 @@ export const loadCloseAction = (): CloseAction => {
     return parseCloseAction(localStorage.getItem(CLOSE_ACTION_KEY)) ?? "ask";
   } catch {
     // Use the default when storage is unavailable.
+    return "ask";
+  }
+};
+
+/**
+ * The two-state tray checkbox mirrors a three-valued setting, so un-ticking it
+ * has to restore what the reader had picked rather than overwrite it with
+ * "ask" — a reader who suppressed the close prompt would get it back.
+ */
+export const loadCloseActionBeforeTray = (): CloseAction => {
+  try {
+    const stored = parseCloseAction(localStorage.getItem(CLOSE_ACTION_BEFORE_TRAY_KEY));
+    return stored && stored !== "tray" ? stored : "ask";
+  } catch {
     return "ask";
   }
 };

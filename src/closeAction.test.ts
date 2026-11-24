@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { HAS_TRAY } from "./platform";
 import { useStore } from "./store";
+import { loadCloseActionBeforeTray } from "./storePreferences";
 
 beforeEach(() => {
   localStorage.clear();
@@ -43,5 +44,21 @@ describe("closeAction", () => {
     useStore.getState().resetSettings();
     expect(useStore.getState().closeAction).toBe("ask");
     expect(localStorage.getItem("edgeterm.closeAction")).toBeNull();
+  });
+
+  it("restores what the reader had picked when the tray checkbox goes unticked", () => {
+    if (!HAS_TRAY) return;
+    useStore.getState().setCloseAction("exit");
+    // Ticking the tray item, then un-ticking it, is the two-state mirror of a
+    // three-valued setting: "exit" must come back, not "ask".
+    useStore.getState().setCloseAction("tray");
+    useStore.getState().setCloseAction(loadCloseActionBeforeTray());
+    expect(useStore.getState().closeAction).toBe("exit");
+  });
+
+  it("falls back to asking when nothing was picked before the tray", () => {
+    if (!HAS_TRAY) return;
+    useStore.getState().setCloseAction("tray");
+    expect(loadCloseActionBeforeTray()).toBe("ask");
   });
 });

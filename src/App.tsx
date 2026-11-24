@@ -78,7 +78,7 @@ import {
 } from "./panelSizing";
 import { type PanelName, tabTitle, useStore, type Tab } from "./store";
 import { zoomFontSize } from "./fontZoom";
-import { BUFFER_FONT_SIZE } from "./storePreferences";
+import { BUFFER_FONT_SIZE, loadCloseActionBeforeTray } from "./storePreferences";
 import { allControllers, getController, setWebglEnabled } from "./terminalRegistry";
 import { isFileSession, type SessionGroup, type SessionProfile, type SessionState } from "./types";
 import { useT } from "./useT";
@@ -564,7 +564,9 @@ export default function App() {
 
   useEffect(() => {
     const unlisten = api.onCloseToTrayChanged((enabled) => {
-      useStore.getState().setCloseAction(enabled ? "tray" : "ask");
+      // Un-ticking restores what the reader had chosen; writing "ask" here
+      // would bring back a prompt they had deliberately turned off.
+      useStore.getState().setCloseAction(enabled ? "tray" : loadCloseActionBeforeTray());
     });
     return () => {
       void unlisten.then((off) => off());

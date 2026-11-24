@@ -31,6 +31,7 @@ import {
   BUFFER_FONT_FAMILY_KEY,
   BUFFER_FONT_SIZE,
   BUFFER_FONT_SIZE_KEY,
+  CLOSE_ACTION_BEFORE_TRAY_KEY,
   CLOSE_ACTION_KEY,
   COPY_ON_SELECT_KEY,
   CURSOR_BLINK_KEY,
@@ -309,6 +310,8 @@ export const createPreferenceActions: StateCreator<
     set({ closeAction: next });
     try {
       localStorage.setItem(CLOSE_ACTION_KEY, next);
+      // Remembered so un-ticking the tray checkbox can put this back.
+      if (next !== "tray") localStorage.setItem(CLOSE_ACTION_BEFORE_TRAY_KEY, next);
     } catch {
       // The setting still applies for this run when storage is unavailable.
     }
@@ -375,6 +378,7 @@ export const createPreferenceActions: StateCreator<
       localStorage.removeItem(PROGRAM_CLIPBOARD_KEY);
       localStorage.removeItem(RIGHT_CLICK_KEY);
       localStorage.removeItem(CLOSE_ACTION_KEY);
+      localStorage.removeItem(CLOSE_ACTION_BEFORE_TRAY_KEY);
       localStorage.removeItem(LANGUAGE_KEY);
       localStorage.removeItem(SHORTCUTS_KEY);
     } catch {
