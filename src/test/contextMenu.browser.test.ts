@@ -49,6 +49,7 @@ function Fixture({
         broadcast: false,
         onBroadcast() {},
         onFontSettings() {},
+        onSettings() {},
         onKeyboardShortcuts() {},
         onCheckForUpdates() {},
         onAbout() {},

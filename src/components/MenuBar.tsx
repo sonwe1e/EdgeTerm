@@ -43,7 +43,6 @@ import { THEME_MODES, themeLabels, type ThemeMode } from "../types";
 import { useT } from "../useT";
 import { hasLeading, MenuLeading, menuRole, type MenuMark } from "./ContextMenu";
 import { Icon, type IconName } from "./icons";
-import { SettingsDialog } from "./SettingsDialog";
 import { submenuKey, useSubmenuHover } from "./submenuHover";
 
 // The menubar is also the title bar: it is the window drag region and shares
@@ -273,6 +272,8 @@ interface Props {
   broadcast: boolean;
   onBroadcast: () => void;
   onFontSettings: () => void;
+  /** Opens the settings surface, which App owns so the palette can share it. */
+  onSettings: () => void;
   onKeyboardShortcuts: () => void;
   onCheckForUpdates: () => void;
   onAbout: () => void;
@@ -283,7 +284,6 @@ export function MenuBar(props: Props) {
   // The settings dialog, opened from the View menu and from Help's index
   // entry (PD-06). It lives here rather than in App because every surface it
   // reaches is already reachable from this component's props and stores.
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
   // Stops the pending drag-threshold watch of the last drag-region press.
   const dragWatch = useRef<(() => void) | null>(null);
@@ -854,7 +854,7 @@ export function MenuBar(props: Props) {
           // used to be scattered, gathered in one dialog.
           label: t("menu.settings"),
           icon: "settings-gear",
-          action: () => setSettingsOpen(true),
+          action: () => props.onSettings(),
         },
       ],
     },
@@ -888,7 +888,7 @@ export function MenuBar(props: Props) {
           // entry that opens it.
           label: t("menu.allSettings"),
           icon: "settings-gear",
-          action: () => setSettingsOpen(true),
+          action: () => props.onSettings(),
         },
         {
           label: t("menu.language"),
@@ -1286,12 +1286,6 @@ export function MenuBar(props: Props) {
         </div>
         {!IS_MAC && <WindowControls maximized={maximized} />}
       </div>
-      {settingsOpen && (
-        <SettingsDialog
-          onClose={() => setSettingsOpen(false)}
-          onDisplaySettings={props.onFontSettings}
-        />
-      )}
     </div>
   );
 }

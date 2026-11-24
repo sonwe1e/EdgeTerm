@@ -275,6 +275,8 @@ export interface PaletteSources {
     setTheme: (theme: ThemeMode) => void;
     openDisplaySettings: () => void;
     openShortcutSettings: () => void;
+    /** Opens the settings surface; the palette's "Settings" group is the way in. */
+    openSettings: () => void;
 
     openAbout: () => void;
     checkForUpdates: () => void;
@@ -433,6 +435,12 @@ export function buildPaletteCommands(sources: PaletteSources): PaletteCommand[] 
   }
 
   const settings: { id: string; label: MessageKey; keywords: string[]; run: () => void }[] = [
+    {
+      id: "settings:all",
+      label: "menu.allSettings",
+      keywords: ["settings", "preferences", "language", "restore", "defaults", "export", "import"],
+      run: actions.openSettings,
+    },
     {
       id: "settings:display",
       label: "menu.displaySettings",

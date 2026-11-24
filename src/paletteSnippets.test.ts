@@ -17,6 +17,7 @@ const sources = (overrides: Partial<PaletteSources> = {}): PaletteSources => ({
     setTheme: () => {},
     openDisplaySettings: () => {},
     openShortcutSettings: () => {},
+    openSettings: () => {},
     openAbout: () => {},
     checkForUpdates: () => {},
   },

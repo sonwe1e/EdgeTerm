@@ -61,6 +61,7 @@ const sources = (over: Partial<PaletteSources> = {}): PaletteSources => ({
     setTheme: vi.fn(),
     openDisplaySettings: vi.fn(),
     openShortcutSettings: vi.fn(),
+    openSettings: vi.fn(),
     openAbout: vi.fn(),
     checkForUpdates: vi.fn(),
     importSshConfig: vi.fn(),
@@ -390,4 +391,20 @@ it("files the connect row as an action, not as a saved session", () => {
   // The row's promise is that the session is not saved, so the heading it sits
   // under must not claim otherwise.
   expect(command.group).toBe("actions");
+});
+
+describe("the settings group", () => {
+  it("opens the settings surface itself, not just its sub-dialogs", () => {
+    const fixture = sources();
+    const catalogue = buildPaletteCommands(fixture);
+    const row = catalogue.find((item) => item.id === "settings:all");
+    expect(row, "the palette can reach the settings surface").toBeTruthy();
+    expect(row!.group).toBe("settings");
+    // Language, restore-defaults and export/import live only on that surface,
+    // so a palette-first reader needs this row to find them at all.
+    const found = rankCommands(catalogue, "language").map((item) => item.id);
+    expect(found).toContain("settings:all");
+    row!.run();
+    expect(fixture.actions.openSettings).toHaveBeenCalled();
+  });
 });

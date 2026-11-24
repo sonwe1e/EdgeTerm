@@ -40,6 +40,7 @@ function Fixture() {
       broadcast: false,
       onBroadcast: noop,
       onFontSettings: noop,
+      onSettings: noop,
       onKeyboardShortcuts: noop,
       onCheckForUpdates: noop,
       onAbout: noop,

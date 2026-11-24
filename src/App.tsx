@@ -42,6 +42,7 @@ import { MenuBar } from "./components/MenuBar";
 import { DockArea, PanelDropOverlay } from "./components/PanelDocks";
 import { PasteWarningDialog } from "./components/PasteWarningDialog";
 import { SearchOverlay, type SearchOverlayHandle } from "./components/SearchOverlay";
+import { SettingsDialog } from "./components/SettingsDialog";
 import { ShortcutsDialog } from "./components/ShortcutsDialog";
 import { SshConfigImportDialog } from "./components/SshConfigImportDialog";
 import { Splitter } from "./components/Splitter";
@@ -287,6 +288,9 @@ export default function App() {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [fontSettingsOpen, setFontSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  // The settings surface lives here rather than in the menu bar so the command
+  // palette can open it too: its "Settings" group is the palette's own way in.
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   // Hosts connected from the palette's field or an ssh:// link, newest first:
   // the palette offers them back so the same machine is one keystroke away.
@@ -851,6 +855,7 @@ export default function App() {
           setTheme,
           openDisplaySettings: () => setFontSettingsOpen(true),
           openShortcutSettings: () => setShortcutsOpen(true),
+          openSettings: () => setSettingsOpen(true),
           openAbout: () => setAboutOpen(true),
           checkForUpdates: () => void updater.checkForUpdates(),
           importSshConfig: () => void importSshConfig(),
@@ -1048,6 +1053,7 @@ export default function App() {
         broadcast={broadcastInput}
         onBroadcast={toggleBroadcast}
         onFontSettings={() => setFontSettingsOpen(true)}
+        onSettings={() => setSettingsOpen(true)}
         onKeyboardShortcuts={() => setShortcutsOpen(true)}
         onCheckForUpdates={() => void updater.checkForUpdates()}
         onAbout={() => setAboutOpen(true)}
@@ -1319,6 +1325,13 @@ export default function App() {
             setFontSettingsOpen(false);
           }}
           onClose={() => setFontSettingsOpen(false)}
+        />
+      )}
+
+      {settingsOpen && (
+        <SettingsDialog
+          onClose={() => setSettingsOpen(false)}
+          onDisplaySettings={() => setFontSettingsOpen(true)}
         />
       )}
 
