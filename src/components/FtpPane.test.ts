@@ -225,6 +225,16 @@ it("offers no folder creation in a pane that has no directory", async () => {
   expect(toolbarButton(translate("en", "ftp.newLocalFolder")).disabled).toBe(true);
 });
 
+it("refuses the download rail while the local pane has no directory", async () => {
+  // The mirror of the upload guard: a local listing that failed used to leave
+  // the download button live with a remote selection, and pressing it started
+  // no job and said nothing - which reads as a dead control, not a refusal.
+  vi.mocked(api.localHome).mockRejectedValue(new Error("offline"));
+  await mount();
+  clickRow(0, "app.log");
+  expect(selectedNames(0)).toEqual(["app.log"]);
+  expect(railButton("Download selected SFTP file or folder").disabled).toBe(true);
+});
 describe("FTP/SFTP dual-pane multi-selection and batch transfers", () => {
   it("uploads every selected local entry in one queue job, then reloads", async () => {
     await mount();

@@ -394,7 +394,11 @@ export function FtpPane({ tab, active, focused = false }: Props & { focused?: bo
               <button
                 className="ftp-transfer-button"
                 onClick={() => download()}
-                disabled={selectedRemote.length === 0 || transferring}
+                // The mirror of the upload guard: without a local directory
+                // there is nowhere to put the file, and the transfer code
+                // silently returns - the button would do nothing at all,
+                // which reads as broken rather than unready.
+                disabled={selectedRemote.length === 0 || transferring || !localPath}
                 title={t("ftp.downloadTitle", { protocol: protocolLabel })}
               >
                 {t("ftp.download")}

@@ -1396,6 +1396,14 @@ export function SessionDialog({
                     onChange={(event) => patch({ portName: event.target.value })}
                   >
                     <option value="">{t("session.selectPort")}</option>
+                    {/* A saved port this machine no longer lists - the
+                      adapter is gone, or a refresh dropped it. Without an
+                      entry for it the box reads blank while the subtitle and
+                      Connect still name it, so the field would contradict the
+                      dialog's own header. */}
+                    {profile.portName && !selectedPort && (
+                      <option value={profile.portName}>{profile.portName}</option>
+                    )}
                     {ports.map((port) => (
                       <option key={port.portName} value={port.portName}>
                         {port.portName}
