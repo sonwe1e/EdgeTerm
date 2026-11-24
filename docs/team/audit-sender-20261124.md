@@ -1,12 +1,12 @@
 # 审计：发送命令库（2026-11-24 第 163 轮）
 
-只读审计，范围：发送面板、发送路径、定时重复、命令库与 Rust 存储、两语言文字。5 条；**SD1／SD4／SD5 已交付**，SD2／SD3 待修。
+只读审计，范围：发送面板、发送路径、定时重复、命令库与 Rust 存储、两语言文字。5 条；**5 条全部交付**。
 
 | 编号 | 问题 | 位置 | 代价 |
 | --- | --- | --- | --- |
 | ~~SD1~~ ✅ | 删除分组时写盘失败：分组已经删了、命令已从内存移除，却报「删除失败」；重启后这些命令从文件恢复，指向已不存在的分组，任何界面都列不出、也删不掉，还占用 `MAX_SAVED_COMMANDS` 并进入备份 | `store.rs:495`（对比 `import_data` 的 before/restore 写法 `:707`、`:846-849`） | 中（照 import 的回滚模式先改内存、最后写盘，失败则三张表一起还原） |
-| **SD2** | 键盘删除一条命令后焦点掉到 document | `useSenderLibrary.ts:297` | 小（删除后把焦点交给 `commandRef` 或下一条的 `.sender-command-load`） |
-| **SD3** | 当前标签是文件浏览器、或终端未连接时，按「运行」提示「未选择会话」，却没说明真实原因与出路 | `useSenderSend.ts:96` | 小（无活动标签才用 `sender.noSession`，其余复用 `sender.noConnectedTerminals` 与 `snippets.needsShell`） |
+| ~~SD2~~ ✅ | 键盘删除一条命令后焦点掉到 document | `useSenderLibrary.ts:297` | 小（删除后把焦点交给 `commandRef` 或下一条的 `.sender-command-load`） |
+| ~~SD3~~ ✅ | 当前标签是文件浏览器、或终端未连接时，按「运行」提示「未选择会话」，却没说明真实原因与出路 | `useSenderSend.ts:96` | 小（无活动标签才用 `sender.noSession`，其余复用 `sender.noConnectedTerminals` 与 `snippets.needsShell`） |
 | ~~SD4~~ ✅ | 中文界面里，拒绝开始重复发送会混出一句英文「no session selected」 | `senderSchedule.ts:145` | 小（返回 `MessageKey` 由调用方翻译） |
 | ~~SD5~~ ✅ | 从紧凑发送栏的「更多」列表启动命令时，标签不显示「正在发送」 | `SenderPanel.tsx:545`（对比 `SenderQuickbar.tsx:124`） | 极小（把 `command.id` 作为第三个参数传进去） |
 
@@ -19,7 +19,7 @@
 
 修复：SD1 = `f23f425`（删除分组前快照三个列表，任一写盘失败就整体还原；密钥放到所有写入成功之后再删）。SD4／SD5 = `3c66c79`（拒绝开始重复返回目录键，由调用方按语言翻译；紧凑发送栏的「更多」也传命令 id）。
 
-用例：`a_failed_group_delete_leaves_the_library_alone`（拿掉还原即红，`left: 0`）；`senderSchedule.test.ts` 的两条拒绝改成断言键而不是英文单词，正是这层改动才暴露出混语言的状态。SD2／SD3 仍无独立用例。
+用例：`a_failed_group_delete_leaves_the_library_alone`（拿掉还原即红，`left: 0`）；`senderSchedule.test.ts` 的两条拒绝改成断言键而不是英文单词，正是这层改动才暴露出混语言的状态。SD2／SD3 的修复在 `03426a1`；SD3 改用例覆盖（同一句话回复所有情形即两条全红），SD2 的焦点交接仍无独立用例。
 
 边界：静态读源码，未制造真实写盘失败。
 

@@ -1,10 +1,10 @@
 # 审计：标签生命周期（2026-11-24 第 163 轮）
 
-只读审计，范围：连接、重连、复制、关闭、重启恢复。5 条；**TF2／TF3／TF5 已交付**，TF1／TF4 待修。
+只读审计，范围：连接、重连、复制、关闭、重启恢复。5 条；**TF1／TF2／TF3／TF5 已交付**，TF4 待修。
 
 | 编号 | 问题 | 位置 | 状态 |
 | --- | --- | --- | --- |
-| **TF1** | 在「新建会话」里给本地 shell 填了「连接后执行的命令」，连接时被**静默丢弃**：`quickLocal` 跳过保存，命令既没执行也没记住 | `SessionDialog.tsx:929`（`const saved = candidate.name && !quickLocal`）、`actions.ts:684` | 待修 |
+| ~~TF1~~ ✅ | 在「新建会话」里给本地 shell 填了「连接后执行的命令」，连接时被**静默丢弃**：`quickLocal` 跳过保存，命令既没执行也没记住 | `SessionDialog.tsx:929`（`const saved = candidate.name && !quickLocal`）、`actions.ts:684` | `6860da6` |
 | ~~TF2~~ ✅ | 固定的标签重启后**不再固定**：快照不保存 `pinned`，恢复出的标签丢掉图标与「固定即承诺」的保护 | `workspaceSnapshot.ts:310`、`workspace.ts:88` | `6c1de3b` |
 | ~~TF3~~ ✅ | 用户**主动断开**的标签在下次启动被重新拨号——于是 MFA/密码主机会在启动时静默登录 | `workspace.ts:209` | 同一提交 |
 | **TF4** | 「重新打开关闭的标签」开在当前活动窗格而不是菜单所在窗格；用户改的标签名也丢了 | `actions.ts:365`、`storeTypes.ts:23-26` | 待修 |
