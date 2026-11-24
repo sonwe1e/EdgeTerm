@@ -364,6 +364,35 @@ it("keeps the snapshot it could not restore because a session was already open",
   expect(localStorage.getItem(WORKSPACE_SUPERSEDED_KEY)).toBe(raw);
 });
 
+describe("a tab's pin and its deliberate disconnect survive a restart", () => {
+  it("saves a pin and restores it, and carries none for unpinned tabs", () => {
+    const tabs = restoreWorkspace(parseWorkspace(JSON.stringify(fixture()))!);
+    useStore.getState().toggleTabPinned(tabs[0].info.id);
+    const raw = JSON.stringify(snapshotWorkspace(useStore.getState()));
+    const parsed = parseWorkspace(raw)!;
+    expect(parsed.tabs[0].pinned, "the pinned tab keeps its promise").toBe(true);
+    expect(parsed.tabs[1].pinned, "an unpinned tab adds no field").toBeUndefined();
+    expect(restoreWorkspace(parsed)[0].pinned).toBe(true);
+  });
+
+  it("comes back disconnected when the reader had disconnected it", () => {
+    const value = fixture();
+    value.tabs[0] = { ...value.tabs[0], paused: true } as never;
+    const parsed = parseWorkspace(JSON.stringify(value))!;
+    const [paused, live] = restoreWorkspace(parsed);
+    expect(paused.state, "a parked tab is not dialled again").toBe("closed");
+    expect(live.state, "the other tab still reconnects").toBe("connecting");
+  });
+
+  it("refuses a hand-edited pin or pause that is not a boolean", () => {
+    const value = fixture();
+    value.tabs[0] = { ...value.tabs[0], pinned: "yes", paused: 1 } as never;
+    const parsed = parseWorkspace(JSON.stringify(value))!;
+    expect(parsed.tabs[0].pinned).toBeUndefined();
+    expect(parsed.tabs[0].paused).toBeUndefined();
+  });
+});
+
 describe("tab titles in the workspace", () => {
   it("keeps a renamed tab's title across a save and a restore, and only that one", () => {
     const tabs = restoreWorkspace(parseWorkspace(JSON.stringify(fixture()))!);

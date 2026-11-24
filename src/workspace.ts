@@ -85,7 +85,13 @@ export function restoreWorkspace(snapshot: WorkspaceSnapshot): Tab[] {
       title: saved.title,
       paneId: paneMap.get(saved.paneId)!,
       directories: saved.directories,
-      state: "connecting",
+      // A pin survives the window, or the strip's promise about closing and
+      // reordering would hold only until the next launch.
+      pinned: saved.pinned,
+      // A tab the reader had disconnected comes back disconnected: dialling it
+      // again logs in — and may ask for a password or an MFA code — without
+      // being asked.
+      state: saved.paused ? "closed" : "connecting",
       commandActivity: "idle",
       activityKind: "command",
     };
@@ -203,6 +209,7 @@ export function startWorkspace(eventsReady: Promise<unknown>): () => void {
     // other tabs. The tabs and their selection are already in place.
     await Promise.allSettled(
       restored.map(async (tab) => {
+        if (tab.state === "closed") return;
         if (!isFileSession(tab.info.kind)) await ensureController(tab.info.id);
         if (stopped || !useStore.getState().tabs.some((item) => item.info.id === tab.info.id))
           return;

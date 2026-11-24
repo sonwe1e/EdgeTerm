@@ -48,6 +48,17 @@ export interface SavedTab {
   ordinal: number;
   /** The name the user gave the tab, when they gave it one. */
   title?: string;
+  /**
+   * Pinning is a promise the tab survives closing and reordering, so it has to
+   * outlive the window. Omitted when the tab is not pinned, so payloads without
+   * a pin keep the shape they had.
+   */
+  pinned?: boolean;
+  /**
+   * True when the reader had disconnected this tab before quitting. Restoring
+   * such a tab must not dial again: they closed that connection on purpose.
+   */
+  paused?: boolean;
   paneId: string;
   directories: WorkspaceDirectories;
 }
@@ -250,6 +261,8 @@ export function parseWorkspace(raw: string | null): WorkspaceSnapshot | null {
         number,
         ordinal,
         title: workspaceTitle(item.title),
+        pinned: item.pinned === true ? true : undefined,
+        paused: item.paused === true ? true : undefined,
         paneId: id(item.paneId) ? item.paneId : "root",
         directories: directories(item.directories),
       });
@@ -315,6 +328,8 @@ export function snapshotWorkspace(state: PaneState, localFilerPath?: string): Wo
       // Omitted entirely when unset, so workspaces without renamed tabs keep
       // the payload they had.
       title: workspaceTitle(tab.title),
+      pinned: tab.pinned === true ? true : undefined,
+      paused: tab.state === "closed" ? true : undefined,
       paneId: tab.paneId,
       directories: directories(tab.directories),
     })),
