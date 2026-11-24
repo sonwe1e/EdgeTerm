@@ -187,7 +187,12 @@ export async function reloadFileEditor() {
   }
 }
 
-export async function saveFileEditor() {
+/**
+ * Writes the draft. A save that failed because the file changed underneath can
+ * be repeated with `force`, which the backend accepts as an explicit
+ * overwrite (it keeps the previous content in a `.bak` beside the file).
+ */
+export async function saveFileEditor(force = false) {
   const { target, file, content, busy } = useFileEditor.getState();
   if (!target || !file || busy || confirming || !isFileEditorDirty(file, content)) return;
   const ownsTarget = () => useFileEditor.getState().target?.id === target.id;
@@ -200,6 +205,7 @@ export async function saveFileEditor() {
       encoding: file.encoding,
       eol: file.eol,
       bom: file.bom,
+      ...(force ? { force: true } : {}),
     });
     if (!ownsTarget()) return;
     if (result.uncertain) {

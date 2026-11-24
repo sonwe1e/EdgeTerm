@@ -664,7 +664,9 @@ export const zhCN: Catalog = {
     "读取期间你继续修改了草稿，已保留这些新修改。如需丢弃，请再次重新读取。",
   "fileEditor.unsaved": "有未保存的修改",
   "fileEditor.saved": "已保存",
-  "fileEditor.conflict": "文件已被其他操作修改。草稿已保留，请先复制需要的内容再重新读取。",
+  "fileEditor.conflict": "文件已被其他操作修改。草稿已保留。",
+  "fileEditor.overwrite": "覆盖文件",
+  "fileEditor.overwriteHint": "用当前草稿覆盖磁盘上的版本；被替换的版本会另存为 .bak 备份。",
   "fileEditor.uncertain": "无法确认是否保存成功，草稿已保留。",
   "fileEditor.backupKept": "上次内容已保留在 {path}。",
   "fileEditor.textOnly":

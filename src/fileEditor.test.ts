@@ -148,6 +148,25 @@ it("retains the draft after a conflict and after declining close", async () => {
   expect(useFileEditor.getState().target).toBeNull();
 });
 
+it("overwrites only when asked, after the file changed underneath", async () => {
+  await openFileEditor(null, "C:/config.txt");
+  useFileEditor.setState({ content: "my draft" });
+  vi.mocked(api.writeText).mockRejectedValueOnce({ code: "conflict", message: "changed outside" });
+  await saveFileEditor();
+  expect(useFileEditor.getState().conflict).toBe(true);
+  // The ordinary Save never claims an overwrite.
+  expect(vi.mocked(api.writeText).mock.calls[0][1]).not.toHaveProperty("force");
+
+  vi.mocked(api.writeText).mockClear();
+  await saveFileEditor(true);
+
+  expect(api.writeText).toHaveBeenCalledWith(
+    null,
+    expect.objectContaining({ expectedHash: "original", content: "my draft", force: true }),
+  );
+  expect(useFileEditor.getState()).toMatchObject({ conflict: false, saved: true, busy: false });
+});
+
 it("opens a file link at the line it printed, reading it before showing the editor", async () => {
   const opened = await openFileEditor("server-1", "/srv/train.py", { line: 238 });
   expect(opened).toBe(true);

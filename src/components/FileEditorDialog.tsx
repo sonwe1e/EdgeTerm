@@ -75,6 +75,16 @@ export function FileEditorDialog() {
         <button className="btn" disabled={busy} onClick={() => void closeFileEditor()}>
           {t("common.close")}
         </button>
+        {conflict && (
+          <button
+            className="btn is-warning"
+            disabled={busy}
+            onClick={() => void saveFileEditor(true)}
+            title={t("fileEditor.overwriteHint")}
+          >
+            {t("fileEditor.overwrite")}
+          </button>
+        )}
         <button
           className="btn is-primary"
           disabled={busy || !dirty}

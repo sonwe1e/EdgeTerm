@@ -699,8 +699,10 @@ export const en = {
     "You edited the draft while the file was loading. Your newer edits were kept; reload again when ready.",
   "fileEditor.unsaved": "Unsaved changes",
   "fileEditor.saved": "Saved",
-  "fileEditor.conflict":
-    "The file changed outside this editor. Your draft is kept; copy it before reloading.",
+  "fileEditor.conflict": "The file changed outside this editor. Your draft is kept.",
+  "fileEditor.overwrite": "Overwrite the file",
+  "fileEditor.overwriteHint":
+    "Write your draft over the version on disk. The version being replaced is kept as a .bak copy.",
   "fileEditor.uncertain": "The save could not be verified. Your draft is kept.",
   "fileEditor.backupKept": "The previous content is kept at {path}.",
   "fileEditor.textOnly":
