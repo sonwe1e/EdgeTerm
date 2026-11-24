@@ -999,7 +999,7 @@ export const en = {
   "filer.transferQueuePaused": " · {count} paused",
   "filer.transferQueueFailed": " · {count} failed",
   "filer.newFile": "New File…",
-  "filer.moveExists": "「{name}」 already exists in that folder, so nothing was moved.",
+  "filer.moveExists": "“{name}” already exists in that folder, so nothing was moved.",
   "filer.newFolder": "New Folder…",
   "filer.uploadFiles": "Upload Files…",
   "filer.uploadFolder": "Upload Folder…",
@@ -1574,5 +1574,5 @@ export const en = {
   "panel.groupDeleted": 'Group "{name}" deleted',
   "sender.updateTitle": 'Update "{name}" — asks where to list it',
   "filer.invalidName": '"{name}" is not a valid {kind} name',
-  "filer.alreadyExists": '"{name}" already exists in this folder',
+  "filer.alreadyExists": "“{name}” already exists in this folder",
 } as const;
