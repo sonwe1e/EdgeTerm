@@ -88,6 +88,12 @@ pub fn set_labels(app: &AppHandle, labels: &TrayLabels) {
     }
     if let Some(state) = app.try_state::<TrayToggle>() {
         if let Ok(mut current) = state.0.lock() {
+            // Carry the state across the rebuild. A fresh CheckMenuItem starts
+            // unchecked, so without this the tray reports the feature as off
+            // on every start and every language switch while the app still
+            // hides to tray on close.
+            let previous = current.is_checked().unwrap_or(false);
+            let _ = toggle.set_checked(previous);
             *current = toggle;
         }
     }
@@ -126,6 +132,11 @@ pub fn install(app: &tauri::App) -> tauri::Result<()> {
             // Same route as the macOS ⌘Q menu: the front end confirms live
             // sessions and exits itself (see `onQuitRequested`).
             MENU_QUIT => {
+                // Reveal first. With close-to-tray on, the window is parked and
+                // this entry is the app's only exit; the quit guard opens a
+                // confirmation when work is live, and that dialog has to be
+                // somewhere the reader can see it.
+                reveal(handle);
                 let _ = handle.emit("app:quit-requested", ());
             }
             _ => {}
