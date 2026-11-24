@@ -16,7 +16,7 @@ vi.mock("./components/icons", () => ({ Icon: () => null }));
 vi.mock("./platform", () => ({ HAS_TRAY: true, IS_MAC: true, IS_WINDOWS: false }));
 import { useStore } from "./store";
 import type { FileTransfer } from "./api";
-import { startTransferSubscription, useFileTransfers } from "./fileTransfers";
+import { startTransferSubscription, transferBytes, useFileTransfers } from "./fileTransfers";
 import { TransferCenter } from "./components/TransferCenter";
 import { readTransferOptions, saveTransferOptions } from "./transferSettings";
 
@@ -815,5 +815,22 @@ describe("background transfer state", () => {
       act(() => root.unmount());
       host.remove();
     }
+  });
+});
+
+describe("transferBytes", () => {
+  it("carries a value that would round up to the next unit", () => {
+    // 1 048 575 B is 1023.999 KiB, which toFixed(1) turns into "1024.0";
+    // printing that beside "KiB" contradicts the unit.
+    expect(transferBytes(1024 * 1024 - 1)).toBe("1.0 MiB");
+    expect(transferBytes(1024 * 1024 * 1024 - 1)).toBe("1.0 GiB");
+  });
+
+  it("keeps ordinary sizes as they are", () => {
+    expect(transferBytes(0)).toBe("0 B");
+    expect(transferBytes(1023)).toBe("1023 B");
+    expect(transferBytes(1024)).toBe("1.0 KiB");
+    expect(transferBytes(1536)).toBe("1.5 KiB");
+    expect(transferBytes(5 * 1024 * 1024)).toBe("5.0 MiB");
   });
 });

@@ -98,5 +98,11 @@ export function transferBytes(bytes: number): string {
     value /= 1024;
     unit++;
   }
+  // A count just under the next unit rounds up to "1024.0 KiB", which reads as
+  // a unit error; carry it so the number never contradicts its own unit.
+  if (Number(value.toFixed(1)) >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
   return `${value.toFixed(1)} ${units[unit]}`;
 }
