@@ -25,6 +25,7 @@ import {
 import { getController, subscribeControllers } from "../terminalRegistry";
 import { searchColdHistory } from "../terminalColdSearch";
 import { isFileSession } from "../types";
+import { COLD_SEARCH_LIMIT } from "../terminalColdSearch";
 import { useT } from "../useT";
 import { Icon, type IconName } from "./icons";
 
@@ -131,6 +132,14 @@ const formatResults = ({ resultIndex, resultCount }: SearchResults) => {
  * opening starts from the terminal selection (or empty) rather than from
  * the previous query.
  */
+/**
+ * The cold search stops at a fixed number of hits, so a full count is a lower
+ * bound. Saying "200" when there may be thousands stops the reader scrolling
+ * for hits that do exist.
+ */
+export const historyCountLabel = (count: number): number | string =>
+  count >= COLD_SEARCH_LIMIT ? `${COLD_SEARCH_LIMIT}+` : count;
+
 export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(function SearchOverlay(
   { onClose },
   ref,
@@ -409,11 +418,12 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(function Sea
     );
   };
 
+  // The cold search stops at a fixed number of hits, so a full count is a
+  // lower bound, not a total. Saying "200" when there may be thousands stops
+  // the reader scrolling for hits that do exist.
   const historySuffix =
     historyCount > 0
-      ? ` · ${t("search.historyCount", { count: historyCount })}${
-          results?.resultCount === 0 ? ` · ${t("search.historyHint")}` : ""
-        }`
+      ? ` · ${t("search.historyCount", { count: historyCountLabel(historyCount) })}${results?.resultCount === 0 ? ` · ${t("search.historyHint")}` : ""}`
       : "";
 
   const status = notice
