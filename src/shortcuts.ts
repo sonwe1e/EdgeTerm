@@ -219,9 +219,11 @@ export const shortcutHints = (t: Translate): Record<ShortcutCommand, string> => 
   findNext: t("sc.findNext.hint"),
   clear: t("sc.clear.hint"),
   revealCwd: t("sc.revealCwd.hint"),
-  panelSessions: t("sc.panelSessions.hint"),
-  panelFiler: t("sc.panelFiler.hint"),
-  panelSender: t("sc.panelSender.hint"),
+  // The dock a panel sits in is the reader's to change, so the hint names the
+  // panel rather than a dock that may no longer hold it.
+  panelSessions: t("sc.panelSessions.hint", { panel: t("panel.sessions") }),
+  panelFiler: t("sc.panelFiler.hint", { panel: t("panel.filer") }),
+  panelSender: t("sc.panelSender.hint", { panel: t("panel.sender") }),
   focusRegion: t("sc.focusRegion.hint"),
 });
 
@@ -513,7 +515,17 @@ const RESERVED_CHORDS: { chord: KeyChord; owner: MessageKey }[] = IS_MAC
       { chord: chord("KeyH", { meta: true }), owner: "sc.ownerHide" },
       { chord: chord("KeyM", { meta: true }), owner: "sc.ownerMinimize" },
     ]
-  : [];
+  : [
+      // Windows answers these before the app's window listener ever sees them,
+      // so a command bound to one is silently dead while the settings dialog,
+      // the menus and the palette keep advertising it.
+      { chord: chord("Tab", { alt: true }), owner: "sc.ownerWindowsSwitch" },
+      { chord: chord("F4", { alt: true }), owner: "sc.ownerWindowsClose" },
+      { chord: chord("Space", { alt: true }), owner: "sc.ownerWindowsMenu" },
+      { chord: chord("Escape", { ctrl: true }), owner: "sc.ownerWindowsStart" },
+      { chord: chord("Delete", { ctrl: true, alt: true }), owner: "sc.ownerWindowsSecurity" },
+      { chord: chord("KeyR", { meta: true }), owner: "sc.ownerWindowsRun" },
+    ];
 
 /** The modifiers that switch to tab N; the digits themselves stay fixed. */
 const tabDigitModifiers = (event: ShortcutKeyEvent): boolean =>
