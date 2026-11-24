@@ -1,8 +1,26 @@
 # 上游移植记录
 
-核对日期：2026-10-23。本分支共同祖先为上游 `v1.0.0`（`3e6e35738439a078de11abfd315c7160ca6b8ad4`）。本记录覆盖上游 `v1.0.0..v1.0.4` 的 14 个提交：10 个功能/修复提交与 4 个版本提交。上游 HEAD 核对为 `051f94e`，本地审查基线为 `c013923`，公开发行边界为本分支 `v1.2.8 / e3e920a`。
+核对日期：2026-10-23（1.0.0..1.0.4）；2026-11-24 追加 1.0.4..1.0.8 一节。本分支共同祖先为上游 `v1.0.0`（`3e6e35738439a078de11abfd315c7160ca6b8ad4`）。本记录覆盖上游 `v1.0.0..v1.0.4` 的 14 个提交：10 个功能/修复提交与 4 个版本提交。上游 HEAD 核对为 `051f94e`，本地审查基线为 `c013923`，公开发行边界为本分支 `v1.2.8 / e3e920a`。
 
 Git 祖先关系仍停留在 1.0.0；选择性移植不等于已 merge 上游 1.0.4。下表根据上游提交、本地 diff、现存代码和测试位置建立对应关系；“适配移植”不表示逐字 cherry-pick，也不代表逐项完成真实桌面/服务器验收。
+
+## 上游 1.0.4..1.0.8（核对日期 2026-11-24）
+
+上游 HEAD 核对为 `00158802`（1.0.8）。区间内 12 个提交：4 个版本提交 + 8 个功能/修复提交。下表逐个记录处置；「已有对应能力」以本分支文件为证，不主张与上游实现逐字相同。
+
+| 上游提交 / 版本 | 本分支处理 | 对应证据 |
+| --- | --- | --- |
+| [870173a](https://github.com/miskin-lee/EdgeTerm/commit/870173a) · 1.0.5 · 分组右键新建会话 | 已有对应能力 | `src/components/panels/SessionPanel.tsx:608` `panel.newSessionInGroup` → `onNewSession(group)`；`src/sessionDefaults.ts:47` 由分组类型推出会话类型与端口；用例 `src/components/panels/sessionGroupSession.test.ts` |
+| [1d68458](https://github.com/miskin-lee/EdgeTerm/commit/1d68458) · 1.0.5 · 移除标签通道重复实现（重构） | 未采纳：上游删掉的共享传输正是本分支在用的能力 | `src-tauri/src/session/ssh/transport.rs:13` `SharedTransport`、`:324` `SshTransports`；`src-tauri/src/session/reuse.rs:71` `ConnectionPool`；端口转发、编辑器、传输引擎都挂在其上；界面入口 `src/actions.ts:377` `duplicateSshChannel` |
+| [cd492da](https://github.com/miskin-lee/EdgeTerm/commit/cd492da) · 1.0.5 · 多行命令保留空行 | 已适配移植（更早） | `src/senderUnits.ts:15-25` 与上游同一实现（注释保留 #115）；`src/senderUnits.test.ts` here-document 用例 |
+| [f8a2780](https://github.com/miskin-lee/EdgeTerm/commit/f8a2780) · 1.0.6 · 查找框定位到活动窗格 | 已有对应能力 | `src/App.tsx:1104-1110` 把 `SearchOverlay` 作为 `Workspace` 的子节点；`src/components/Workspace.tsx:289-291` `pane-overlay` 跟随活动窗格（并额外跟随最大化窗格） |
+| [dbd39c2](https://github.com/miskin-lee/EdgeTerm/commit/dbd39c2) · 1.0.6 · 标签右键保存／复制会话 | 部分已有 → **本轮补齐复制** | 保存：`src/components/TabStrip.tsx:403-408`、`src/storeProfileActions.ts:46` `saveTabProfile`、用例 `src/tabSaveSession.test.ts`。复制此前只有 SSH 通道版本；本轮新增 `duplicateSession`（`src/actions.ts`），标签菜单对非 SSH 标签显示「复制会话」，用例 `src/tabDuplicateSession.test.ts` |
+| [a7d0923](https://github.com/miskin-lee/EdgeTerm/commit/a7d0923) · 1.0.6 · 传输按会话隔离、清理停滞进度 | 部分已有 → **本轮补齐面板页脚** | 后端按会话隔离早已存在（`src-tauri/src/file_transfer/manager.rs:65` `session_id`、`sessions.rs:336` `forget`），页脚汇总按会话过滤（`src/components/FilerTransferSummary.tsx:11`）。本轮修正面板底部的传输条：切换会话或连接断开时收起，不再留着指向已断开的 Cancel；用例 `src/components/panels/filerTransferCancel.test.ts` |
+| [e0f4ec8](https://github.com/miskin-lee/EdgeTerm/commit/e0f4ec8) · 1.0.7 · 文件列表按名称／大小／修改时间排序 | 已有对应能力（并带持久化） | `src/fileSort.ts:63` `sortFileEntries`、`:26` `toggleFileSort`、`:113` 存取；接线 `src/components/panels/FilerPanel.tsx:38,423`；用例 `src/fileSort.test.ts`、`src/components/panels/filerSort.test.ts` |
+| [ef45a21](https://github.com/miskin-lee/EdgeTerm/commit/ef45a21) · 1.0.8 · tmux 控制模式集成 | 未采纳 | 用户明确不用 tmux（第 153 轮指示）；本分支不提供该功能，也不移除既有终端能力 |
+| `7568e4e`／`28efdda`／`ece336b`／`051f94e`／`ced1b63`／`83fd059`／`694d26c`／`0015880` | 版本提交 | 不移植：本分支使用独立版本序列（当前 1.7.8），见 AGENTS.md「Published History」 |
+
+区间内 8 个功能/修复提交的处置：4 个已有对应能力、2 个在本轮补齐（标签复制、面板传输条）、1 个（共享传输重构）与本分支架构相反不采纳、1 个（tmux）按用户指示不采纳。
 
 ## 功能与修复对应
 
