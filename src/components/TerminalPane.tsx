@@ -88,7 +88,7 @@ export const SessionPane = memo(function SessionPane({ tab, visible, focused, st
     >
       {isFileSession(tab.info.kind) ? (
         <Suspense fallback={null}>
-          <FtpPane tab={tab} active={visible} />
+          <FtpPane tab={tab} active={visible} focused={focused} />
         </Suspense>
       ) : (
         <TerminalHost tab={tab} visible={visible} focused={focused} />

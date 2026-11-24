@@ -129,6 +129,32 @@ const mount = async () => {
   await flush();
 };
 
+it("takes the keyboard when it becomes the focused pane and focus had fallen away", async () => {
+  await act(async () => {
+    root.render(h(FtpPane, { tab: tab(), active: true, focused: true }));
+  });
+  await flush();
+  await flush();
+  // Closing the terminal tab that was in front leaves focus on the body; the
+  // file list is this pane's own entry point, so it takes it back.
+  const list = host.querySelector<HTMLElement>('[role="listbox"]')!;
+  expect(list).not.toBeNull();
+  expect(document.activeElement).toBe(list);
+});
+
+it("leaves the keyboard alone when a control already has it", async () => {
+  const outside = document.createElement("button");
+  document.body.appendChild(outside);
+  outside.focus();
+  await act(async () => {
+    root.render(h(FtpPane, { tab: tab(), active: true, focused: true }));
+  });
+  await flush();
+  await flush();
+  expect(document.activeElement).toBe(outside);
+  outside.blur();
+});
+
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.clearAllMocks();

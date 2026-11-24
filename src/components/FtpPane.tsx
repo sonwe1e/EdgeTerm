@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { reconnectSession } from "../actions";
 import { errorText } from "../errorInfo";
 import { FileBrowser, Props, ToolButton, formatBytes, remoteParent } from "./ftpPresentation";
@@ -35,7 +35,8 @@ interface PendingDelete {
   entries: FileEntry[];
 }
 
-export function FtpPane({ tab, active }: Props) {
+export function FtpPane({ tab, active, focused = false }: Props & { focused?: boolean }) {
+  const rootRef = useRef<HTMLDivElement>(null);
   const t = useT();
   const sessionId = tab.info.id;
   const [namePrompt, setNamePrompt] = useState<NamePrompt | null>(null);
@@ -60,6 +61,15 @@ export function FtpPane({ tab, active }: Props) {
       setPendingDelete(null);
     }
   }, [active]);
+  // Closing the tab that was in front used to leave the keyboard on the
+  // document body: the file list is this pane's own entry point, so it takes
+  // that focus — but never from a control the reader chose.
+  useEffect(() => {
+    if (!focused || !active) return;
+    if (document.activeElement !== document.body) return;
+    rootRef.current?.querySelector<HTMLElement>('[role="listbox"]')?.focus({ preventScroll: true });
+  }, [focused, active]);
+
   // The pane serves both FTP and SFTP file sessions; only the labels differ.
   const protocolLabel = tab.info.kind === "sftp" ? "SFTP" : "FTP";
   const {
@@ -273,7 +283,7 @@ export function FtpPane({ tab, active }: Props) {
   };
 
   return (
-    <div className={`ftp-workspace${active ? "" : " is-hidden"}`}>
+    <div ref={rootRef} className={`ftp-workspace${active ? "" : " is-hidden"}`}>
       {tab.state !== "connected" ? (
         <div className={`ftp-session-state is-${tab.state}`} role="status">
           <strong>
