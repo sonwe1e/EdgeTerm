@@ -264,9 +264,12 @@ export function CommandPalette({
           </div>
         ))}
         {flat.length === 0 && (
-          <p className="command-palette-empty" role="status">
-            {t("palette.noMatch", { query })}
-          </p>
+          <div className="command-palette-empty" role="status">
+            <p>{t("palette.noMatch", { query })}</p>
+            {/* Nothing is advertised elsewhere: a reader who does not already
+                know the shapes has no way to guess one from this dead end. */}
+            {onQuickConnect && <p>{t("palette.noMatchHint")}</p>}
+          </div>
         )}
       </div>
 

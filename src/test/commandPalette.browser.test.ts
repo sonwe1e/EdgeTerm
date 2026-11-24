@@ -292,3 +292,18 @@ it("does not show a blank account for a host typed without one", async () => {
   expect(first.textContent, "an untyped account is not a gap").not.toContain("SSH as ,");
   expect(first.textContent, "the row still says what it does").toContain("without saving");
 });
+
+it("says which input connects, and names both keys that close it", async () => {
+  mount(h(StrictMode, null, h(App)));
+  await twoFrames();
+  await pressPaletteChord();
+  await typeQuery("zzzznothing");
+  const empty = document.querySelector(".command-palette-empty");
+  expect(empty?.textContent, "the dead end names the shape that connects").toContain(
+    "user@host:port",
+  );
+  const footer = document.querySelector(".command-palette-footer")?.textContent ?? "";
+  // Tab closes the palette, so the footer must not advertise Escape alone.
+  expect(footer, "both closing keys are named").toContain("Tab");
+  expect(footer).toContain("Esc");
+});
