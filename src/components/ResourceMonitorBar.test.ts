@@ -52,10 +52,12 @@ const tab = (id = "ssh"): Tab =>
 // supposed to colour them: a class with no rule is a warning that never
 // reaches anyone, and the sparkline beside it is aria-hidden on purpose.
 import monitorStyles from "../styles/monitor.styles.css?raw";
-const styled = (selector: string) =>
-  new RegExp(
-    `\\.${selector.replace(/[.*+?^${}()|[\\]\\]/g, "\\const vitals = (host: HTMLElement) =>")}\\s*\\{`,
-  ).test(monitorStyles);
+const styled = (selector: string) => {
+  const at = monitorStyles.indexOf(selector);
+  if (at < 0) return false;
+  const rest = monitorStyles.slice(at + selector.length).trimStart();
+  return rest.startsWith("{") || rest.startsWith(",");
+};
 const vitals = (host: HTMLElement) =>
   Array.from(host.querySelectorAll(".vital")).map((node) => node.textContent);
 const values = (host: HTMLElement, selector: string) =>
