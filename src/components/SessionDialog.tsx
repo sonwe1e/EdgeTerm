@@ -17,6 +17,7 @@ import {
 import type { MessageKey, Translate } from "../i18n";
 import { ask, open as openDialog } from "../nativeDialog";
 import { IS_WINDOWS } from "../platform";
+import { recordingStem } from "../recordingName";
 import { defaultSessionPort, newSessionProfile } from "../sessionDefaults";
 
 // Kept here for the callers that already import it from the dialog.
@@ -542,13 +543,13 @@ export function SessionDialog({
               </div>
               <small className="session-field-hint">
                 {t("session.recordNameHint", {
-                  name: `${profile.name.trim() || defaultName()}_<date>_<time>.log`,
+                  name: `${recordingStem(profile.name.trim() || defaultName())}_<date>_<time>.log`,
                 })}
               </small>
             </div>
             <div className="session-note is-wide">
               <Icon name="info" />
-              <span>{t("session.recordNote")}</span>
+              <span>{t("session.recordNote", { command: IS_WINDOWS ? "type" : "cat" })}</span>
             </div>
           </>
         )}
@@ -1624,6 +1625,16 @@ export function SessionDialog({
                 {t(profile.kind === "local" ? "session.localStartHelp" : "session.connectionHelp")}
               </strong>
               <div>{t("session.retryHint")}</div>
+              {profile.record && (
+                // The recording folder is created before the transport starts,
+                // so an unusable one is the failure's whole cause; without this
+                // line the headline blames the address, network and credentials.
+                <div>
+                  {t("session.recordFolderBlamed", {
+                    path: profile.recordDir?.trim() || defaultRecordDir,
+                  })}
+                </div>
+              )}
               <details>
                 <summary>{t("session.errorDetails")}</summary>
                 <pre>{error}</pre>
