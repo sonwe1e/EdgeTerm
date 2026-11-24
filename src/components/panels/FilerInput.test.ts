@@ -382,4 +382,16 @@ describe("Filer inline move completion", () => {
     expect(host.textContent).toContain("current move failure");
     expect(useStore.getState().error).toBeNull();
   });
+  it("offers a first step in an empty folder and announces it", async () => {
+    vi.mocked(api.localHome).mockResolvedValue("/empty");
+    vi.mocked(api.localList).mockImplementation(async (path) => ({ path, entries: [] }));
+    await mount();
+    await act(async () => {});
+    const empty = host.querySelector(".panel-empty")!;
+    expect(empty, "the empty folder says so").not.toBeNull();
+    // Every other empty state is announced and offers a way out; this one used
+    // to be the exception on both counts.
+    expect(empty.getAttribute("role")).toBe("status");
+    expect(empty.querySelector(".panel-empty-action")?.textContent).toContain("New file");
+  });
 });

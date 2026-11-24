@@ -1056,7 +1056,7 @@ function FilerPanelBase() {
         ) : (
           <nav
             className="filer-crumbs"
-            aria-label={path || t("filer.local")}
+            aria-label={atDrivesRoot ? t("filer.drivesRoot") : path || t("filer.local")}
             onDoubleClick={startPathEdit}
           >
             {breadcrumbs.length > 0 ? (
@@ -1091,7 +1091,7 @@ function FilerPanelBase() {
               ])
             ) : (
               <span className="filer-path-placeholder" aria-current="location">
-                {path || t("filer.local")}
+                {atDrivesRoot ? t("filer.drivesRoot") : path || t("filer.local")}
               </span>
             )}
           </nav>
@@ -1246,8 +1246,20 @@ function FilerPanelBase() {
           </div>
         )}
         {!offlineReason && !error && entries.length === 0 && creating === null && (
-          <div className="panel-empty" role={busy ? "status" : undefined}>
-            {busy ? t("filer.loading") : t("filer.emptyFolder")}
+          // Offline, error and filtered-empty all pair a message with an action,
+          // and all are announced; an empty folder is the one state a reader
+          // reaches with nothing to do, so it gets both too.
+          <div className="panel-empty" role="status">
+            <span>{busy ? t("filer.loading") : t("filer.emptyFolder")}</span>
+            {!busy && (
+              <button
+                type="button"
+                className="panel-empty-action"
+                onClick={() => setCreating({ kind: "file", name: "" })}
+              >
+                {t("filer.newFileBtn")}
+              </button>
+            )}
           </div>
         )}
         {creating !== null && (

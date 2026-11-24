@@ -1021,6 +1021,9 @@ export const en = {
   "filer.downloadFileOrFolder": "Download file or folder",
   "filer.home": "Home folder",
   "filer.noMatches": "No files match “{filter}”.",
+  // The drive list's own name. The sentinel sent to the backend ("This PC")
+  // stays as it is; this is only what the reader sees.
+  "filer.drivesRoot": "This PC",
   "filer.parentFolder": "Parent folder",
   "filer.cdHere": "Open in Terminal",
   "filer.cdFailed": "No connected shell to change into {path}",

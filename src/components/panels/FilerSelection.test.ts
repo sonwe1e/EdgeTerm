@@ -1274,7 +1274,8 @@ describe("Filer multiple selection at the real panel entry", () => {
       vi.mocked(api.localList).mockResolvedValue({ path: "/selection", entries: [] });
       await mount();
       await act(async () => {});
-      expect(host.querySelector(".panel-empty")?.textContent).toBe("This folder is empty.");
+      // The message is what these cases assert; an action now sits beside it.
+      expect(host.querySelector(".panel-empty")?.textContent).toContain("This folder is empty.");
     });
   });
 
@@ -1750,7 +1751,8 @@ describe("Filer multiple selection at the real panel entry", () => {
       vi.mocked(api.localList).mockResolvedValue({ path: "/selection", entries: [] });
       await mount();
       await act(async () => {});
-      expect(host.querySelector(".panel-empty")?.textContent).toBe("This folder is empty.");
+      // The message is what these cases assert; an action now sits beside it.
+      expect(host.querySelector(".panel-empty")?.textContent).toContain("This folder is empty.");
       // The menu key is answered before the empty-list check, because the
       // folder's own menu is all an empty folder has to offer.
       key("ContextMenu");
