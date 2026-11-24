@@ -747,7 +747,13 @@ fn ftp_queue_is_pausable_and_cancellable_while_waiting() {
     );
     manager.control(&queued.id, "pause").unwrap();
     assert_eq!(
-        poll_status(&manager, &queued.id, Duration::from_secs(3), "paused"),
+        // A generous budget for this one transition: the worker is parked on
+        // the semaphore, so "pausing" becomes "paused" only once the runtime
+        // schedules that task again. The rest of the suite runs two threads,
+        // and under that load the wait has been observed past a 3s budget
+        // while the transition itself stayed prompt (0 failures in 8 isolated
+        // runs, twice failing inside a full suite).
+        poll_status(&manager, &queued.id, Duration::from_secs(15), "paused"),
         "paused"
     );
     manager.control(&queued.id, "cancel").unwrap();

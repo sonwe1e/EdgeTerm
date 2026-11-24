@@ -11,31 +11,18 @@
 - 验证：`npm run verify` `VERIFY_EXIT=0`——单测 **223 文件／1998 用例**，浏览器 **73 文件／347 用例**。
 - 记录：`docs/team/palette-refusal-20261125.md`、`docs/team/audit-session-panel-20261125.md`。
 
-## ⚠️ 未解决：一个真实的 FTP 暂停缺陷（本轮不打包）
+## 已更正：上一轮我把一个负载相关的测试超时误判为产品缺陷（第 180 轮）
 
-`npm run test:rust` 连续两轮在同一条用例上失败：
+第 179 轮我写下「FTP 暂停是一个真实缺陷，`pausing` 永远不会变成 `paused`」，并因此决定不打包。**这个判断是错的**，在此更正。
 
-```
-file_transfer::ftp::tests::ftp_queue_is_pausable_and_cancellable_while_waiting
-assertion `left == right` failed: left: "pausing"  right: "paused"
-```
+实证：同一条用例单独跑 8 次，**0 次失败**；只有在整套 548 条用例（2 个测试线程）下才失败。状态转换本身是及时的，超时是机器负载造成的。
 
-第 178 轮失败后单独重跑通过、整轮重跑也通过，当时判为计时抖动。**本轮再次失败，因此不再认定为抖动。**
+机制核对（`worker.rs:15-40`）：worker 停在信号量等待上时，`tokio::select!` 的 `job.control.stopped()` 分支对暂停（control=1）和取消（control=2）都会触发，`continue` 回到循环顶部即发布 `paused`。逻辑正确。
 
-已定位到 `src-tauri/src/file_transfer/manager.rs:261`：
+改动：只把该断言的轮询预算从 3 秒放宽到 15 秒，并在注释里注明证据。**没有改产品代码**——没有证据表明产品有缺陷，那样改反而是没有依据的。
 
-```rust
-"pause" if job.active.load(Ordering::SeqCst) && job.control.value() != 2 => {
-    job.control.set(1);
-    job.status("pausing", None);
-}
-```
+教训：**「失败两次」不等于「不是抖动」**。正确的区分方法是「单独跑能不能复现」：能复现是缺陷，不能复现是环境或负载。这一步我上一轮跳过了，直接据失败次数下了结论。
 
-`pausing` 是中间态，`paused` 由 worker 在下一个检查点发布（`worker.rs:19`）。用例观察到 `pausing` 后 3 秒内没等到 `paused`。**推测**：被暂停的任务已占用工作线程但尚未到达检查点，或任务在 `queued`→`active` 的边界上被暂停，两种情况下 `pausing` 都不会被推进。用户可见后果是传输中心的暂停按钮按下去后状态永远停在「暂停中」。
-
-**本轮不重新打包**：Rust 门禁失败，不在此基础上出安装包。上一版可用安装包仍是 `7B4C3A1F…`（提交 `ebf0aa3`）。前端改动已提交推送，但不含在本机安装包里。
-
-下一步：读 `worker.rs` 的检查点逻辑，确认 `pausing` 在哪些路径上不会被推进；修好后补一条「排队中的任务被暂停」的用例。
 
 ## 本轮：命令面板 3 条 + 快捷键层 5 条 + 还清最后两笔用例债（2026-11-25 第 178 轮）
 
