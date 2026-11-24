@@ -385,8 +385,12 @@ export const ForwardCenter = memo(function ForwardCenter() {
                                 title={t("forward.usePortTitle", { port: port.port })}
                                 aria-label={t("forward.usePortTitle", { port: port.port })}
                                 onClick={() =>
+                                  // Only the far end is the reader's choice here:
+                                  // replacing the whole form would turn a Remote
+                                  // tunnel into a Local one and throw away the
+                                  // listen address and port already typed.
                                   setSpec({
-                                    ...defaults,
+                                    ...spec,
                                     targetHost:
                                       port.host === "::"
                                         ? "::1"
