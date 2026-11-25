@@ -203,4 +203,28 @@ describe("read-only, on-demand image preview modal", () => {
     expect(next.image.style.transform).toContain("scale(0.485)");
     expect(host.querySelector("output")?.textContent).toBe("49%");
   });
+
+  it("shows decoded dimensions and toggles Fit and 100% on double-click", async () => {
+    api.previewImageFile.mockResolvedValue(Uint8Array.of(1));
+    await render(target());
+    const { stage, image } = decodeImage(2000, 1200);
+    expect(host.querySelector(".image-preview-destination")?.textContent).toContain("2000 × 1200");
+    expect(button("Fit").getAttribute("aria-pressed")).toBe("true");
+
+    act(() => {
+      stage.dispatchEvent(
+        new MouseEvent("dblclick", { bubbles: true, clientX: 600, clientY: 150 }),
+      );
+    });
+    expect(image.style.transform).toContain("scale(1)");
+    expect(button("100%").getAttribute("aria-pressed")).toBe("true");
+
+    act(() => {
+      stage.dispatchEvent(
+        new MouseEvent("dblclick", { bubbles: true, clientX: 600, clientY: 150 }),
+      );
+    });
+    expect(image.style.transform).toContain("scale(0.388)");
+    expect(button("Fit").getAttribute("aria-pressed")).toBe("true");
+  });
 });

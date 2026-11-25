@@ -3,6 +3,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
@@ -153,6 +154,27 @@ export function ImagePreviewDialog({ target, onClose }: Props) {
     setView((current) => zoomImageAt(current, imageSize, viewport, scale, 0, 0));
   };
 
+  const onStageDoubleClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!loaded || !imageSize) return;
+    const stage = stageRef.current;
+    if (!stage) return;
+    if (view.mode === "fit") {
+      const rect = stage.getBoundingClientRect();
+      setView((current) =>
+        zoomImageAt(
+          current,
+          imageSize,
+          viewport,
+          1,
+          event.clientX - rect.left - rect.width / 2,
+          event.clientY - rect.top - rect.height / 2,
+        ),
+      );
+    } else {
+      setView(fitImageView(imageSize, viewport));
+    }
+  };
+
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || !canPan) return;
     dragRef.current = {
@@ -231,7 +253,10 @@ export function ImagePreviewDialog({ target, onClose }: Props) {
           <strong title={target.name}>{target.name}</strong>
           <code title={target.path}>{target.path}</code>
         </div>
-        <small>{t("imagePreview.readOnly")}</small>
+        <small>
+          {imageSize ? `${imageSize.width} × ${imageSize.height} · ` : ""}
+          {t("imagePreview.readOnly")}
+        </small>
       </div>
       <div
         ref={stageRef}
@@ -240,6 +265,7 @@ export function ImagePreviewDialog({ target, onClose }: Props) {
         aria-label={t("imagePreview.viewport")}
         tabIndex={0}
         onKeyDown={onStageKeyDown}
+        onDoubleClick={onStageDoubleClick}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={stopDrag}

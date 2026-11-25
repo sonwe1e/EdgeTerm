@@ -189,4 +189,33 @@ describe("the command palette", () => {
     );
     expect(chords).toEqual(["Alt+N", "Ctrl+Shift+W"]);
   });
+
+  it("ignores stationary pointermove after keyboard navigation until the pointer moves", () => {
+    render({ open: true });
+    act(() => {
+      options()[2].dispatchEvent(
+        new PointerEvent("pointermove", { bubbles: true, clientX: 120, clientY: 80 }),
+      );
+    });
+    expect(options()[2].getAttribute("aria-selected")).toBe("true");
+
+    press("ArrowUp");
+    expect(options()[1].getAttribute("aria-selected")).toBe("true");
+
+    // Stationary cursor over another row during scroll must not hijack focus.
+    act(() => {
+      options()[0].dispatchEvent(
+        new PointerEvent("pointermove", { bubbles: true, clientX: 120, clientY: 80 }),
+      );
+    });
+    expect(options()[1].getAttribute("aria-selected")).toBe("true");
+
+    // Genuine pointer movement resumes hover tracking.
+    act(() => {
+      options()[0].dispatchEvent(
+        new PointerEvent("pointermove", { bubbles: true, clientX: 124, clientY: 82 }),
+      );
+    });
+    expect(options()[0].getAttribute("aria-selected")).toBe("true");
+  });
 });

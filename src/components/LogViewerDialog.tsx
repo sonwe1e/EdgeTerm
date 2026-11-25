@@ -206,6 +206,10 @@ export function LogViewerDialog({
   const highlight = matches[matchIndex];
   const body = page?.content ?? "";
   const find = query.length > 0 && highlight !== undefined;
+  const stepMatch = (delta: 1 | -1) => {
+    if (!matches.length) return;
+    setMatchIndex((index) => (index + delta + matches.length) % matches.length);
+  };
   const leaveFollow = () => setFollowing(false);
   const jump = (anchor: number | null, before: boolean) => {
     leaveFollow();
@@ -240,6 +244,11 @@ export function LogViewerDialog({
               setQuery(event.currentTarget.value);
               setMatchIndex(0);
             }}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" || event.nativeEvent.isComposing || !matches.length) return;
+              event.preventDefault();
+              stepMatch(event.shiftKey ? -1 : 1);
+            }}
           />
           <span className="log-viewer-match-count" role="status">
             {query
@@ -252,7 +261,7 @@ export function LogViewerDialog({
             disabled={!matches.length}
             aria-label={t("logViewer.previousMatch")}
             title={t("logViewer.previousMatch")}
-            onClick={() => setMatchIndex((index) => (index + matches.length - 1) % matches.length)}
+            onClick={() => stepMatch(-1)}
           >
             ↑
           </button>
@@ -262,7 +271,7 @@ export function LogViewerDialog({
             disabled={!matches.length}
             aria-label={t("logViewer.nextMatch")}
             title={t("logViewer.nextMatch")}
-            onClick={() => setMatchIndex((index) => (index + 1) % matches.length)}
+            onClick={() => stepMatch(1)}
           >
             ↓
           </button>

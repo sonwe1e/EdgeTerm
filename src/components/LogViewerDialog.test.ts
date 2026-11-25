@@ -209,3 +209,25 @@ it("resets the occurrence when Follow replaces the loaded search window", async 
   expect(matchCount()).toBe("1/2");
   expect(host.querySelector("pre")?.textContent).toBe("hit new\nhit two\n");
 });
+
+it("steps through matches with Enter and Shift+Enter in the search box", async () => {
+  api.readLogWindow.mockResolvedValue({ ...latest, content: "hit one\nhit two\nhit three\n" });
+  await mount();
+  setSearch("hit");
+  const input = host.querySelector<HTMLInputElement>(".log-viewer-search")!;
+  expect(matchCount()).toBe("1/3");
+
+  act(() => {
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  });
+  expect(matchCount()).toBe("2/3");
+  expect(textBeforeMatch()).toBe("hit one\n");
+
+  act(() => {
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", shiftKey: true, bubbles: true }),
+    );
+  });
+  expect(matchCount()).toBe("1/3");
+  expect(host.querySelector("pre")?.firstChild).toBe(host.querySelector("mark"));
+});

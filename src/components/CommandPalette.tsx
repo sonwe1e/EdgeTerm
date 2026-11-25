@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 
@@ -19,8 +20,7 @@ import {
   saveRecents,
   type PaletteCommand,
 } from "../commandPalette";
-import { parseQuickConnect, quickConnectLabel, type QuickTarget } from "../quickConnect";
-import { withoutTypedTarget } from "../commandPalette";
+import { parseQuickConnect, type QuickTarget } from "../quickConnect";
 import { useT } from "../useT";
 import { Icon } from "./icons";
 import { ModalDialog } from "./ModalDialog";
@@ -82,6 +82,8 @@ export function CommandPalette({
   const [active, setActive] = useState(0);
   const [recents, setRecents] = useState<string[]>(() => loadRecents());
   const inputRef = useRef<HTMLInputElement>(null);
+  const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
+  const keyboardNavRef = useRef(false);
 
   // Each open starts from a clean field: a query left over from the previous
   // visit would hide the very command the reader is looking for.
@@ -90,6 +92,8 @@ export function CommandPalette({
     setQuery("");
     setActive(0);
     setRecents(loadRecents());
+    lastPointerRef.current = null;
+    keyboardNavRef.current = false;
   }, [open]);
 
   const ranked = useMemo(() => {
@@ -110,23 +114,21 @@ export function CommandPalette({
     // field itself makes comes first, so a target that was connected to before
     // and is typed again would otherwise appear twice — with one id, one
     // aria-activedescendant and no row looking selected.
-    const recent = withoutTypedTarget(
-      recentTargets
-        .map((label) => parseQuickConnect(label))
-        .flatMap((entry) => (entry ? [entry] : [])),
-      target ? quickConnectLabel(target) : null,
-    ).map((entry) =>
-      // A remembered row says both where it came from and what it will use:
-      // only the first part tells it apart from the row the field makes.
-      quickConnectCommand(
-        entry,
-        t,
-        () => onQuickConnect(entry),
-        [t("palette.quickConnectRecent"), describeQuickConnect?.(entry)]
-          .filter((part): part is string => Boolean(part))
-          .join(" · "),
-      ),
-    );
+    const recent = recentTargets
+      .map((label) => parseQuickConnect(label))
+      .flatMap((entry) => (entry ? [entry] : []))
+      .map((entry) =>
+        // A remembered row says both where it came from and what it will use:
+        // only the first part tells it apart from the row the field makes.
+        quickConnectCommand(
+          entry,
+          t,
+          () => onQuickConnect(entry),
+          [t("palette.quickConnectRecent"), describeQuickConnect?.(entry)]
+            .filter((part): part is string => Boolean(part))
+            .join(" · "),
+        ),
+      );
     // The remembered targets are ranked like everything else, so a query they
     // do not match drops them and the "no match" exit stays reachable.
     return [...base, ...rankCommands(recent, query)];
@@ -191,21 +193,36 @@ export function CommandPalette({
     if (count === 0) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
+      keyboardNavRef.current = true;
       setActive((value) => (value + 1) % count);
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
+      keyboardNavRef.current = true;
       setActive((value) => (value - 1 + count) % count);
     } else if (event.key === "Home") {
       event.preventDefault();
+      keyboardNavRef.current = true;
       setActive(0);
     } else if (event.key === "End") {
       event.preventDefault();
+      keyboardNavRef.current = true;
       setActive(count - 1);
     } else if (event.key === "Enter") {
       event.preventDefault();
       const command = flat[active];
       if (command) run(command);
     }
+  };
+
+  // Ignore stationary pointermove events fired when keyboard scrolling slides
+  // rows underneath a resting cursor; real pointer movement resumes tracking.
+  const onOptionPointerMove = (index: number, event: ReactPointerEvent<HTMLDivElement>) => {
+    const previous = lastPointerRef.current;
+    const moved = previous === null || previous.x !== event.clientX || previous.y !== event.clientY;
+    lastPointerRef.current = { x: event.clientX, y: event.clientY };
+    if (keyboardNavRef.current && !moved) return;
+    keyboardNavRef.current = false;
+    setActive(index);
   };
 
   return (
@@ -264,7 +281,7 @@ export function CommandPalette({
                   className={"command-palette-option" + (index === active ? " is-active" : "")}
                   role="option"
                   aria-selected={index === active}
-                  onPointerMove={() => setActive(index)}
+                  onPointerMove={(event) => onOptionPointerMove(index, event)}
                   onClick={() => run(command)}
                 >
                   <span className="command-palette-label">{highlighted(command.label, query)}</span>
