@@ -229,6 +229,8 @@ window.__TAURI_INTERNALS__ = {
     if (command === "system_monospace_family") return null;
     if (command === "portable_mode") return false;
     if (command === "local_hostname") return "synthetic-host";
+    if (command === "default_recording_dir") return "/synthetic/recordings";
+    if (command === "credential_store_status") return { persistent: true, reason: null };
     // The three status popovers' own sources: host vitals, the transfer
     // queue, the tunnel list, and the port discovery the tunnel form starts
     // when it opens.
