@@ -21,7 +21,7 @@ export const lastPaths = new Map<string, string>();
  * parse of the directory finished. Local listings are not cached: they are
  * cheap and the disk is the source of truth. Bounded, oldest dropped first.
  */
-export const LISTING_CACHE_LIMIT = 24;
+const LISTING_CACHE_LIMIT = 24;
 
 export const listingCache = new Map<string, FileEntry[]>();
 

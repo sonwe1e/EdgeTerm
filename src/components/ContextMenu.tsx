@@ -19,7 +19,7 @@ import { submenuKey, useSubmenuHover } from "./submenuHover";
  */
 export type MenuMark = "check" | "radio";
 
-export interface MenuAction {
+interface MenuAction {
   label: string;
   /**
    * Text shown on hover when the label itself is cut short: a menu row stays
@@ -50,7 +50,7 @@ export interface MenuAction {
 }
 
 /** A quiet caption over the entries that follow, e.g. what a choice decides. */
-export interface MenuHeading {
+interface MenuHeading {
   heading: string;
 }
 
@@ -144,7 +144,7 @@ export function hasLeading(items: readonly unknown[]): boolean {
  * commands get a same-width blank so every label shares one left edge.
  * Shared with the menubar's dropdowns.
  */
-export function MenuCheck({ checked, mark = "check" }: { checked?: boolean; mark?: MenuMark }) {
+function MenuCheck({ checked, mark = "check" }: { checked?: boolean; mark?: MenuMark }) {
   if (checked === undefined) {
     return <span className="menu-check" aria-hidden="true" />;
   }

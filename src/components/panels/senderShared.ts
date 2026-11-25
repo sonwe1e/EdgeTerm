@@ -17,7 +17,7 @@ export type CommandTooltip = {
 };
 
 /** What the inputs held before Edit replaced them, restored on Cancel. */
-export type Draft = {
+type Draft = {
   text: string;
   tagName: string;
   ending: LineEnding;

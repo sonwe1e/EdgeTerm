@@ -180,7 +180,7 @@ export const FilerRow = memo(function FilerRow({
  * Right-aligned on its own, `512 B` and `1.2 KB` end one character apart,
  * because the unit is what is flush right and the number is not.
  */
-export function formatBytesParts(bytes: number): { value: string; unit: string } {
+function formatBytesParts(bytes: number): { value: string; unit: string } {
   const text = formatBytes(bytes);
   if (text === NO_VALUE) return { value: text, unit: "" };
   const cut = text.lastIndexOf(" ");
@@ -227,9 +227,9 @@ export const FilerEntryIcon = memo(function FilerEntryIcon({
 });
 
 /** Applications the user has opened files with, most recent first. */
-export const OPEN_WITH_KEY = FILER_OPEN_WITH_KEY;
+const OPEN_WITH_KEY = FILER_OPEN_WITH_KEY;
 
-export const OPEN_WITH_LIMIT = 6;
+const OPEN_WITH_LIMIT = 6;
 
 export function loadOpenWithApps(): string[] {
   try {
@@ -283,7 +283,7 @@ export function joinLocal(base: string, name: string): string {
 }
 
 /** One stop of a breadcrumb trail: what it shows and where it leads. */
-export interface PathSegment {
+interface PathSegment {
   label: string;
   target: string;
 }
@@ -330,7 +330,7 @@ export function pickedPaths(picked: string | string[] | null): string[] {
   return typeof picked === "string" ? [picked] : [];
 }
 
-export function entryKind(entry: FileEntry): FilerEntryKind {
+function entryKind(entry: FileEntry): FilerEntryKind {
   if (entry.isSymlink) return "symlink";
   return entry.isDir ? "directory" : "file";
 }
@@ -479,7 +479,7 @@ function localOffset(date: Date): string {
  * any more — a list row is read as one string, and two inks in a 10px cell
  * read as two different values.
  */
-export interface RowDateParts {
+interface RowDateParts {
   value: string;
   time: string;
 }

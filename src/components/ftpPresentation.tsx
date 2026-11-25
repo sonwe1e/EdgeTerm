@@ -448,7 +448,7 @@ export function FileBrowser({
  * (see useStableCallback); the drag/drop flags arrive as booleans so a
  * hover change re-renders at most the one row it moved to.
  */
-export const FtpFileRow = memo(function FtpFileRow({
+const FtpFileRow = memo(function FtpFileRow({
   entry,
   position,
   total,

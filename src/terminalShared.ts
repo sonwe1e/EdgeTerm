@@ -147,7 +147,7 @@ export function parseOsc9(data: string): ReportedCwd | null {
 }
 
 /** What a terminal's owner knows about the session behind a clicked link. */
-export interface TerminalLinkSession {
+interface TerminalLinkSession {
   id: string;
   kind: SessionKind;
   /** False while connecting, after a disconnect, and after an error. */
@@ -155,7 +155,7 @@ export interface TerminalLinkSession {
 }
 
 /** Where a Ctrl+clicked link can go; supplied by the terminal's owner. */
-export interface TerminalLinkContext {
+interface TerminalLinkContext {
   session: TerminalLinkSession | null;
   /** The status line; a tunnel's progress and failures are reported there. */
   onStatus?: (message: string, error?: boolean) => void;

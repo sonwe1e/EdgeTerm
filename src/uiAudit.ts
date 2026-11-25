@@ -158,7 +158,7 @@ interface Surface {
  * element's own background counts too, because a row that paints its own
  * surface draws its text on that.
  */
-export function surfaceBehind(element: Element): Surface {
+function surfaceBehind(element: Element): Surface {
   const chain: HTMLElement[] = [];
   for (let node: Element | null = element; node; node = node.parentElement) {
     if (node instanceof HTMLElement) chain.push(node);
@@ -206,7 +206,7 @@ export function isLargeText(fontSizePx: number, fontWeight: number): boolean {
   return fontSizePx >= 24 || (fontSizePx >= 18.66 && fontWeight >= 700);
 }
 
-export interface ContrastOptions {
+interface ContrastOptions {
   /** Ratio a normal text run must reach. Defaults to the WCAG AA 4.5:1. */
   normal?: number;
   /** Ratio large text must reach. Defaults to 3:1. */
@@ -282,7 +282,7 @@ const INTERACTIVE_SELECTOR = [
   '[role="slider"]',
 ].join(",");
 
-export interface TargetOptions {
+interface TargetOptions {
   /** The WCAG 2.2 AA target size. Defaults to its 24 CSS pixels. */
   min?: number;
   /**
@@ -434,7 +434,7 @@ export function clippedTextIssues(root: ParentNode): { issues: AuditIssue[]; ins
   return { issues, inspected };
 }
 
-export interface StyleCensus {
+interface StyleCensus {
   fontSize: Record<string, number>;
   lineHeight: Record<string, number>;
   radius: Record<string, number>;
@@ -496,7 +496,7 @@ const focusSnapshot = (element: Element): string => {
   return FOCUS_PROPS.map((name) => style[name as keyof CSSStyleDeclaration]).join("|");
 };
 
-export interface FocusOptions {
+interface FocusOptions {
   /** How many focusable controls to inspect; the whole shell is ~120. */
   limit?: number;
   ignore?: string;
@@ -558,7 +558,7 @@ export function focusRingIssues(
   }
   return { issues, inspected };
 }
-export interface FocusContrastReport {
+interface FocusContrastReport {
   issues: AuditIssue[];
   /** Rings whose colour could be read and compared. */
   inspected: number;

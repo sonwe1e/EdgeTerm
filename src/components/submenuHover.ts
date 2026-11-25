@@ -26,9 +26,9 @@ export const SUBMENU_GRACE_MS = 400;
  * How far the triangle's base reaches past the ends of the submenu's edge,
  * for hands that do not travel in straight lines.
  */
-export const SUBMENU_GRACE_MARGIN = 16;
+const SUBMENU_GRACE_MARGIN = 16;
 
-export interface Point {
+interface Point {
   x: number;
   y: number;
 }
@@ -95,7 +95,7 @@ interface Grace {
   until: number;
 }
 
-export interface SubmenuHover {
+interface SubmenuHover {
   /** Whether the entry's submenu is shown. */
   isOpen(key: string): boolean;
   /** Handlers for the `.menu-submenu-entry` element with this key. */

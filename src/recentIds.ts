@@ -12,7 +12,7 @@ export interface StorageLike {
   setItem(key: string, value: string): void;
 }
 
-export const safeStorage = (): StorageLike | null => {
+const safeStorage = (): StorageLike | null => {
   try {
     return typeof localStorage === "undefined" ? null : localStorage;
   } catch {

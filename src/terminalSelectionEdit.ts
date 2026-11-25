@@ -34,7 +34,7 @@ import { shellPromptEnd } from "./semanticColors";
  */
 
 /** Runtime state the caller owns; both must be false for an edit to go out. */
-export interface SelectionGuards {
+interface SelectionGuards {
   /** A command owns the terminal; the selection is on its output or prompt. */
   commandRunning: boolean;
   /** The session has ended; keystrokes stay local. */
@@ -46,7 +46,7 @@ const CURSOR_RIGHT = "\x1b[C";
 const DELETE_FORWARD = "\x1b[3~";
 
 /** The two halves of one edit: what the shell deletes, and where it goes next. */
-export interface SelectionEdit {
+interface SelectionEdit {
   /**
    * CSI D per character walked left to the selection's start, then CSI 3~ per
    * character deleted. Sent before a replacement's text, so the text lands in

@@ -11,7 +11,7 @@ import type { SelectMode } from "../fileBatch";
 import { typeToSelect, type TypeRun } from "../fileTypeSelect";
 import { useStableCallback } from "../useStableCallback";
 
-export interface FileListKeyboardOptions {
+interface FileListKeyboardOptions {
   /** The listing in display order; the cursor indexes into it. */
   entries: readonly FileEntry[];
   /** Row pitch in px, for the scroll maths when a row is outside the window. */
@@ -40,7 +40,7 @@ export interface FileListKeyboardOptions {
   typeSelect?: boolean;
 }
 
-export interface FileListKeyboard {
+interface FileListKeyboard {
   /** The row `aria-activedescendant` names, or null when it is not mounted. */
   activeDescendant: string | null;
   /** Key handling for the listbox container. */

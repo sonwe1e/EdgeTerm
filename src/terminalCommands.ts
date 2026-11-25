@@ -26,7 +26,7 @@ interface Context {
  * How many finished commands stay navigable. Markers are cheap, but a session
  * that has run thousands of commands should not accumulate them for ever.
  */
-export const COMMAND_HISTORY_LIMIT = 200;
+const COMMAND_HISTORY_LIMIT = 200;
 
 export class TerminalCommands {
   inputAnchor: InputAnchor | null = null;

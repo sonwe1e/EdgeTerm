@@ -2,7 +2,7 @@ import { SORT_STORAGE_KEY } from "./persistKeys";
 import type { FileEntry } from "./types";
 
 export type SortKey = "name" | "modified" | "size";
-export type SortDirection = "asc" | "desc";
+type SortDirection = "asc" | "desc";
 
 export interface FileSort {
   key: SortKey;

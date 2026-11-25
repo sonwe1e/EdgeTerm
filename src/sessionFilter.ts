@@ -6,7 +6,7 @@
  * the session connects: host, user, `user@host`, port, or a serial port name.
  * Matching any one of them is enough.
  */
-export interface FilterableProfile {
+interface FilterableProfile {
   name: string;
   host?: string | null;
   username?: string | null;

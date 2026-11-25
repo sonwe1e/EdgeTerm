@@ -94,3 +94,26 @@ src/editor/codemirror.test.ts(3,10): error TS2459: Module '"./codemirror"' decla
 ### 本轮一次自伤，与第 219 轮同类
 
 `FilerColumnResizer.tsx` 在 `src/components/panels/` 下，我把导入写成 `../dragCapture`，`tsc` 报 `TS2307 Cannot find module`。应为 `../../dragCapture`。**和上一轮 `terminalClipboard.ts` 的 `../errorInfo` 一模一样——都是没先确认文件深度就写相对路径。**这是本会话第三次同类错误。
+
+## 第 226 轮：C5 做完——107 个无导入方导出不再宣称自己是 API
+
+做法分两步，**第二步是关键**：
+
+1. 脚本分析：对全部非测试 src 建「导出名 → 是否有导入方」的图，**并处理 `import * as ns` 命名空间导入**（否则整个模块的导出会被误判为孤儿）。排除 `api.ts`／`bindings.ts`——那是 Tauri IPC 面，天生是契约。得到 170 个候选。
+2. **让编译器当裁判**：一次全部删掉，跑一次 `tsc`，把它点名的还原。
+
+`tsc` 点出 5 个我分析错了的，全部还原：
+
+- `createCodeEditor`（`CodeEditor.tsx` 经命名空间导入使用）
+- `ActivityKind`／`PastePrompt`／`ClipboardPrompt`（`store.ts` 导入）
+- `LINE_HEIGHT_RANGE`（`storePreferences.ts` 导入）
+
+**我的图分析漏了他们，编译器没有。**这正是本会话反复验证的那条：判断「有没有人用」要信编译器，不要信自己的搜索——无论是 grep、还是这次写的导入图。
+
+### 中途一次严重过度操作，已完整回退
+
+第一版脚本的正则匹配 `^export\s+(?=...)` 时**没有限定必须是声明**，结果把 **249 个文件里每一个 export 都删了**（含生成的 `bindings.ts` 111 个、`api.ts` 136 个）。`git checkout -- src` 完整回退，`tsc` 复查 TC=0，然后才重写成「先算孤儿、再删」。
+
+**这是本会话最危险的一次自伤**：它不是编译错误，是静默地把整个代码库的公开面删掉。幸而没有提交、没有推送，回退是干净的。教训：**批量改写前先在一份拷贝上试，或先打印将要改动的数量**——我当时如果先 `console.log` 一下匹配数，就会立刻发现 249 个文件不对。
+
+最终净删除 107 个 `export` 关键字，跨 57 个文件，`tsc` 干净、全套门禁绿。**C5 至此完成。**

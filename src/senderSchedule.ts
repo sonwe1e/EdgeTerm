@@ -60,7 +60,7 @@ export function storeRepeatSettings(settings: RepeatSettings): void {
   }
 }
 
-export interface ScheduleSpec {
+interface ScheduleSpec {
   text: string;
   ending: LineEnding;
   /**
@@ -96,7 +96,7 @@ function notify() {
   for (const listener of listeners) listener();
 }
 
-export function subscribeSchedule(listener: () => void): () => void {
+function subscribeSchedule(listener: () => void): () => void {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
@@ -134,7 +134,7 @@ function targetsOf(spec: ScheduleSpec): { ids: string[]; gone: boolean } {
  * Why a repeat could not start: a sentence the reader's language supplies, or
  * text from a parser that already says what is wrong.
  */
-export type ScheduleProblem = { key: "sender.emptyRepeat" | "sender.noSession" } | { text: string };
+type ScheduleProblem = { key: "sender.emptyRepeat" | "sender.noSession" } | { text: string };
 
 /**
  * Starts sending `spec` on its timer, replacing any schedule running. The

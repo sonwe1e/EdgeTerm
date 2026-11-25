@@ -17,7 +17,7 @@ export function logMatches(content: string, query: string, limit = MAX_LOG_MATCH
   return matches;
 }
 
-export type FollowDecision = "idle" | "append" | "reload" | "rotated" | "replaced";
+type FollowDecision = "idle" | "append" | "reload" | "rotated" | "replaced";
 
 /** Decide without touching file contents. The caller owns the SFTP reads. */
 export function classifyLogFollow(previous: LogWindow, next: LogWindow): FollowDecision {

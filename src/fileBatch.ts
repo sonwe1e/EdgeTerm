@@ -94,7 +94,7 @@ export interface BatchBlock {
 }
 
 /** What copying several entries into one folder runs into; see `batchCollisions`. */
-export interface BatchCollisions {
+interface BatchCollisions {
   /** Why the batch cannot start at all, or null. */
   blocked: BatchBlock | null;
   /**

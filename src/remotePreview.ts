@@ -15,14 +15,14 @@ import type { SessionKind } from "./types";
  */
 
 /** How long a freshly started tunnel may take to report `listening`. */
-export const TUNNEL_READY_TIMEOUT_MS = 10_000;
+const TUNNEL_READY_TIMEOUT_MS = 10_000;
 
 /** How often a starting tunnel is re-read while the click waits for it. */
-export const TUNNEL_READY_POLL_MS = 100;
+const TUNNEL_READY_POLL_MS = 100;
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-export interface TerminalUrlDecision {
+interface TerminalUrlDecision {
   /**
    * `forward`: the address belongs to the SSH server and needs a tunnel.
    * `direct`: open the link as written.
@@ -140,7 +140,7 @@ export interface RemotePreviewDeps {
 }
 
 /** Reports a message on the terminal's status line; `error` paints it as one. */
-export type StatusNotify = (message: string, error?: boolean) => void;
+type StatusNotify = (message: string, error?: boolean) => void;
 
 export interface RemotePreview {
   /**

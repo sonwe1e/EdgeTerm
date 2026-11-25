@@ -5,17 +5,17 @@ import { MAX_COMMAND_LENGTH, MAX_NAME_LENGTH, MAX_SNIPPETS, type Snippet } from 
  * file: names and commands only. Ids are local bookkeeping and would collide
  * on the machine that receives them.
  */
-export const SNIPPETS_FORMAT = "edgeterm-snippets";
-export const SNIPPETS_VERSION = 1;
+const SNIPPETS_FORMAT = "edgeterm-snippets";
+const SNIPPETS_VERSION = 1;
 
-export interface SnippetEntry {
+interface SnippetEntry {
   name: string;
   command: string;
 }
 
-export type ImportFailure = "not-json" | "wrong-format" | "empty";
+type ImportFailure = "not-json" | "wrong-format" | "empty";
 
-export type ImportResult =
+type ImportResult =
   | { ok: true; entries: SnippetEntry[]; skipped: number }
   | { ok: false; reason: ImportFailure };
 

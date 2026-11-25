@@ -33,7 +33,7 @@ export function groupCategory(kind: SessionKind): SessionKind {
 }
 
 /** A top-level Session-panel heading, covering one or more session kinds. */
-export interface SessionSection {
+interface SessionSection {
   /** Canonical grouping kind — used to create groups and look them up. */
   kind: SessionKind;
   /** Profile kinds listed under this heading. */
@@ -64,7 +64,7 @@ export function sectionLabel(kind: SessionKind, t: Translate): string {
 }
 
 /** A group with its nesting depth (0 = directly under the kind heading). */
-export interface GroupNode {
+interface GroupNode {
   group: SessionGroup;
   depth: number;
 }

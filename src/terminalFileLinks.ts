@@ -24,7 +24,7 @@ import type {
  */
 
 /** One clickable file path found in a line of terminal output. */
-export interface FileLinkMatch {
+interface FileLinkMatch {
   /** Offset of the first character of the reference in the line text. */
   start: number;
   /**
@@ -40,13 +40,13 @@ export interface FileLinkMatch {
 }
 
 /** Longest path accepted; longer tokens are log noise, not file references. */
-export const MAX_FILE_PATH_LENGTH = 1024;
+const MAX_FILE_PATH_LENGTH = 1024;
 
 /** Line numbers above this are not source references (path:99999999). */
-export const MAX_FILE_LINE = 10_000_000;
+const MAX_FILE_LINE = 10_000_000;
 
 /** How many directory reports are kept for attribution. */
-export const CWD_REPORT_LIMIT = 200;
+const CWD_REPORT_LIMIT = 200;
 
 /**
  * Extensions that make a bare filename a file reference without a directory or

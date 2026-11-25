@@ -1,7 +1,7 @@
 import type { ErrorCode } from "./bindings";
 
 /** The parts of a failure the UI acts on, however it crossed the IPC boundary. */
-export interface ErrorInfo {
+interface ErrorInfo {
   /** The backend's stable category, or `unknown` for legacy string errors. */
   code: ErrorCode;
   /** What to show the user. */

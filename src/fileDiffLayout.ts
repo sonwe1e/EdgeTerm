@@ -1,7 +1,7 @@
 import type { DiffRow } from "./api";
 
-export const DIFF_ROW_HEIGHT = 28;
-export const DIFF_LINE_HEIGHT = 20;
+const DIFF_ROW_HEIGHT = 28;
+const DIFF_LINE_HEIGHT = 20;
 
 export interface DiffChange {
   start: number;

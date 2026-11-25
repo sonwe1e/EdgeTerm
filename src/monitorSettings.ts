@@ -1,5 +1,5 @@
 import { RESOURCE_MONITOR_KEY } from "./persistKeys";
-export interface MonitorSettings {
+interface MonitorSettings {
   enabled: boolean;
   intervalSeconds: number;
 }

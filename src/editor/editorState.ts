@@ -5,7 +5,7 @@ import type { EditorState } from "@codemirror/state";
  * a caller can release a document without pulling the editor bundle into the
  * main chunk.
  */
-export interface SavedEditor {
+interface SavedEditor {
   state: EditorState;
   scrollTop: number;
 }

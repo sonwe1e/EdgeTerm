@@ -11,7 +11,7 @@
 // line instead, then put back. Elements that draw a tooltip of their own
 // opt out with `data-own-tooltip`.
 
-export const OVERFLOW_TOOLTIP_DELAY_MS = 450;
+const OVERFLOW_TOOLTIP_DELAY_MS = 450;
 /** How far up from the hovered node to look for the truncated label. */
 const MAX_DEPTH = 4;
 const GAP = 6;

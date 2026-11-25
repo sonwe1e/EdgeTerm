@@ -19,7 +19,7 @@ export const SENDER_COLORS = [
   "pink",
 ] as const;
 
-export type SenderColor = (typeof SENDER_COLORS)[number];
+type SenderColor = (typeof SENDER_COLORS)[number];
 
 const NAMES = new Set<string>(SENDER_COLORS);
 

@@ -36,7 +36,7 @@ import {
   logicalLineFromCells,
 } from "./terminalHistory";
 
-export interface HistoryCaptureOptions {
+interface HistoryCaptureOptions {
   /** Fraction of scrollback kept unwritten at the bottom before exporting. */
   scrollbackMarginRatio?: number;
   /** Epoch time of a line, or null for time 0; must be non-decreasing. */
@@ -45,7 +45,7 @@ export interface HistoryCaptureOptions {
   onMismatch?: (detail: string) => void;
 }
 
-export interface HistoryCapture {
+interface HistoryCapture {
   /** Call from xterm's onWriteParsed hook. */
   notifyWriteParsed(): void;
   /** Call when the terminal is cleared: starts a new numbering epoch. */

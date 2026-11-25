@@ -13,7 +13,7 @@ import type { AppData } from "./types";
 // imported sessions will ask again.
 
 /** Mirrors `APP_DATA_EXTENSION` in model.rs; the backend enforces it too. */
-export const DATA_FILE_EXTENSION = "edgeterm";
+const DATA_FILE_EXTENSION = "edgeterm";
 const fileFilters = () => [{ name: t("data.fileFilter"), extensions: [DATA_FILE_EXTENSION] }];
 
 const hasDataExtension = (path: string) => path.toLowerCase().endsWith(`.${DATA_FILE_EXTENSION}`);

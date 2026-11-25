@@ -16,7 +16,7 @@ import { DEFAULT_LINE_HEIGHT, LINE_HEIGHTS, lineHeightPercent } from "../lineHei
 import { ModalDialog } from "./ModalDialog";
 
 /** Everything the dialog hands back when Apply is pressed. */
-export interface DisplaySettings {
+interface DisplaySettings {
   panelFontSize: number;
   bufferFontSize: number;
   panelFontFamily: string;

@@ -47,14 +47,14 @@ export type Pressure = "ok" | "warn" | "crit";
  * utilization is not a fault when it is high — a training GPU is meant to be
  * pinned — so its tiers only mark saturation, not danger.
  */
-export const THRESHOLDS = {
+const THRESHOLDS = {
   cpu: { warn: 80, crit: 95 },
   memory: { warn: 90, crit: 97 },
   disk: { warn: 85, crit: 95 },
   accelerator: { warn: 90, crit: 99 },
 } as const;
 
-export type MetricKind = keyof typeof THRESHOLDS;
+type MetricKind = keyof typeof THRESHOLDS;
 
 /** Classifies a percentage against a gauge's thresholds. A missing value (the
  *  first delta sample, an unsupported host) is "ok", never a false alarm. */
@@ -88,7 +88,7 @@ export function peakUtilization(
  *  and either way the array is capped so memory stays flat. 60 points is more
  * than a sparkline can show and cheap to hold.
  */
-export const TREND_LIMIT = 60;
+const TREND_LIMIT = 60;
 
 /** Appends a sample and drops the oldest beyond `limit`. Returns a fresh array
  *  (so a memo on the result only re-runs when a sample actually arrives) and
@@ -130,7 +130,7 @@ export function series(
   return history.map((point) => point[field]);
 }
 
-export interface SparkPaths {
+interface SparkPaths {
   /** A path per contiguous run; empty when there is no trend. */
   line: string;
   /** The same runs closed to the baseline for a soft area fill. */

@@ -71,7 +71,7 @@ const COMPOSITION_KEYCODES = new Set([
   20, // CapsLock
 ]);
 
-export interface ImeInputHooks {
+interface ImeInputHooks {
   onCompositionStart?: () => void;
   /** Called after the last deferred read, including an empty/cancelled composition. */
   onCompositionSettled?: () => void;

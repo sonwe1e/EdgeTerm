@@ -18,9 +18,9 @@ export const BOTTOM_MAX = 600;
 export const MIN_CENTER_WIDTH = 320;
 export const MIN_TERMINAL_HEIGHT = 200;
 /** Menubar (28px) + status bar (24px), both fixed, plus the splitter line. */
-export const CHROME_HEIGHT = 28 + 24 + 1;
+const CHROME_HEIGHT = 28 + 24 + 1;
 
-export interface PanelSizing {
+interface PanelSizing {
   left: number;
   right: number;
   bottom: number;
@@ -103,7 +103,7 @@ function readStoredSizing(): Partial<PanelSizing> {
 }
 
 /** The dock widths the user actually arranged. */
-export interface PanelSizingPreference {
+interface PanelSizingPreference {
   left: number;
   right: number;
   bottom: number;

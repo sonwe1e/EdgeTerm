@@ -14,7 +14,7 @@ import { prependRecords } from "./terminalHistoryMaterialize";
  */
 const LOAD_CHUNK_RECORDS = 500;
 
-export interface ColdHistoryOptions {
+interface ColdHistoryOptions {
   terminal: Terminal;
   sessionId: string;
   /** Read per write; the settings dialog flips it at runtime. */

@@ -15,14 +15,14 @@ import type { LineEnding } from "./types";
  * agentic CLI holding the terminal, a serial device without a shell — the
  * way a paste is paced for such a device.
  */
-export const LINE_GAP_MS = 100;
+const LINE_GAP_MS = 100;
 /**
  * Longest wait for a tracked line's prompt before the next line goes
  * anyway: a prompt the heuristics never recognise again must not hang the
  * script, and typeahead is what a plain paste would have done from the
  * start.
  */
-export const LINE_TIMEOUT_MS = 30_000;
+const LINE_TIMEOUT_MS = 30_000;
 
 /** Lets a send in progress be abandoned between lines. */
 export interface StopSignal {
@@ -51,7 +51,7 @@ export function newStopSignal(): StopSignal {
 
 const busy = new Set<string>();
 
-export interface SendOutcome {
+interface SendOutcome {
   sent: string[];
   /** Sessions left out: a file transfer or another send owned them. */
   skipped: string[];

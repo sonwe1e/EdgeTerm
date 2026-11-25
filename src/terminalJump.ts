@@ -10,7 +10,7 @@ import { getController } from "./terminalRegistry";
  * keyboard, the palette and the menu all go through here.
  */
 
-export type JumpFamily = "command" | "failed" | "watch";
+type JumpFamily = "command" | "failed" | "watch";
 
 const EMPTY_MESSAGES: Record<JumpFamily, MessageKey> = {
   command: "status.noCommandToJump",

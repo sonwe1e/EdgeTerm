@@ -6,7 +6,7 @@
  * an alternative.
  */
 
-export interface EdgeRect {
+interface EdgeRect {
   top: number;
   bottom: number;
   left: number;

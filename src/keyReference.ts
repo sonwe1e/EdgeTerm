@@ -12,7 +12,7 @@ import { IS_MAC } from "./platform";
  * that file, so a handler that moves to another key cannot leave this table
  * claiming the old one.
  */
-export interface KeyReferenceEntry {
+interface KeyReferenceEntry {
   /** The keys as the dialog shows them, in this platform's spelling. */
   keys: string[];
   /** The file that handles them; relative to the repository root. */
@@ -21,7 +21,7 @@ export interface KeyReferenceEntry {
   labelKey: MessageKey;
 }
 
-export interface KeyReferenceGroup {
+interface KeyReferenceGroup {
   titleKey: MessageKey;
   entries: KeyReferenceEntry[];
 }

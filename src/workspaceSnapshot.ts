@@ -33,7 +33,7 @@ export function readSavedWorkspace(storage: Pick<Storage, "getItem">): {
     return { snapshot: null, unreadable: true };
   }
 }
-export const WORKSPACE_LIMIT = 128;
+const WORKSPACE_LIMIT = 128;
 
 export interface WorkspaceDirectories {
   terminal?: string;
@@ -41,7 +41,7 @@ export interface WorkspaceDirectories {
   local?: string;
 }
 
-export interface SavedTab {
+interface SavedTab {
   id: string;
   profile: SessionProfile;
   number: number;
@@ -85,7 +85,7 @@ const id = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0 && value.length < 256;
 
 /** An allowlist: adding a secret to SessionProfile cannot silently persist it. */
-export function workspaceProfile(value: unknown): SessionProfile | null {
+function workspaceProfile(value: unknown): SessionProfile | null {
   if (
     !object(value) ||
     !["local", "ssh", "sftp", "ftp", "telnet", "serial"].includes(String(value.kind))

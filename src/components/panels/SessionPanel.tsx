@@ -50,7 +50,7 @@ import { Icon } from "../icons";
 import { PublicKeyLoginDialog } from "../PublicKeyLoginDialog";
 import { SshReuseSetting } from "../SshReuseSetting";
 
-export const LOCAL_SHELL_PROFILE: SessionProfile = {
+const LOCAL_SHELL_PROFILE: SessionProfile = {
   id: "",
   name: "Local Shell",
   kind: "local",

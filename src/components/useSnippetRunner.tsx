@@ -20,7 +20,7 @@ import { SnippetsDialog } from "./SnippetsDialog";
  * App holds none of this: the feature is self-contained and can be moved or
  * tested without touching the window shell.
  */
-export interface SnippetRunner {
+interface SnippetRunner {
   openSnippets: () => void;
   runSnippet: (snippet: Snippet) => void;
   saveLastCommandAsSnippet: () => void;

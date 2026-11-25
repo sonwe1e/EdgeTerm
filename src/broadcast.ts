@@ -16,7 +16,7 @@ import { isFileSession, type SessionKind, type SessionState } from "./types";
  * "synchronized input" means to the people who use it — one command line,
  * every pane.
  */
-export interface BroadcastTab {
+interface BroadcastTab {
   info: { id: string; kind: SessionKind };
   state: SessionState;
   /** The saved session's group, when it has one; group-level exclusions read it. */

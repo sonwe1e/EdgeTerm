@@ -9,7 +9,7 @@
  * encoding_rs both resolve, so the two directions always agree.
  */
 
-export interface TerminalEncoding {
+interface TerminalEncoding {
   label: string;
   name: string;
 }

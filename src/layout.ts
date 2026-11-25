@@ -11,17 +11,17 @@
  * and the splitters it places stay simple.
  */
 
-export type SplitDirection = "row" | "column";
+type SplitDirection = "row" | "column";
 
 /** Where a new pane goes relative to an existing one. */
 export type Side = "left" | "right" | "up" | "down";
 
-export interface LeafNode {
+interface LeafNode {
   kind: "leaf";
   paneId: string;
 }
 
-export interface SplitNode {
+interface SplitNode {
   kind: "split";
   direction: SplitDirection;
   children: LayoutNode[];

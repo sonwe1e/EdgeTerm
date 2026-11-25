@@ -17,7 +17,7 @@ export interface DropTarget {
   dir: string;
 }
 
-export type DropAction =
+type DropAction =
   /** A local entry heading to the remote pane. */
   | { kind: "upload" }
   /** A remote entry heading to the local pane. */

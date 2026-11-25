@@ -25,7 +25,7 @@ export const MONO_FONT_FAMILY = `${MONO_FACES}, monospace`;
  * Interface font stack: the system UI face of each platform with CJK
  * fallbacks. `styles.css` carries the same value as the pre-script default.
  */
-export const UI_FONT_FAMILY =
+const UI_FONT_FAMILY =
   "-apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', 'PingFang SC', " +
   "'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', " +
   "'Source Han Sans SC', Roboto, sans-serif";
@@ -96,7 +96,7 @@ const UI_CANDIDATES = [
 ];
 
 /** Which list a font setting picks from. */
-export type FontRole = "mono" | "ui";
+type FontRole = "mono" | "ui";
 
 /** Wraps a family name so a name with spaces survives as one CSS token. */
 const quote = (family: string) => `"${family.replace(/["\\]/g, "")}"`;

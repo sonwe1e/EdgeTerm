@@ -19,13 +19,10 @@ export interface TypeRun {
 }
 
 /** The parts of a key press `typeToSelect` reads. */
-export type TypedKey = Pick<
-  KeyboardEvent,
-  "key" | "ctrlKey" | "metaKey" | "altKey" | "isComposing"
->;
+type TypedKey = Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "altKey" | "isComposing">;
 
 /** What a typed key means for a list; see `typeToSelect`. */
-export interface TypeSelectResult {
+interface TypeSelectResult {
   /** The run this key extends, to hand back on the next key. */
   run: TypeRun;
   /**

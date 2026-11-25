@@ -23,7 +23,7 @@ import {
 } from "./shortcuts";
 import { themeLabels, type ThemeMode } from "./types";
 
-export type PaletteGroupId =
+type PaletteGroupId =
   | "actions"
   | "layout"
   | "panels"
@@ -529,7 +529,7 @@ export function buildPaletteCommands(sources: PaletteSources): PaletteCommand[] 
 
   return commands;
 }
-export interface PaletteSection {
+interface PaletteSection {
   id: PaletteGroupId;
   commands: PaletteCommand[];
 }

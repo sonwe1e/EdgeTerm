@@ -48,7 +48,7 @@ export interface TypeAheadBuffer {
   at: number;
 }
 
-export interface TypeAheadKey {
+interface TypeAheadKey {
   key: string;
   ctrlKey: boolean;
   metaKey: boolean;

@@ -15,7 +15,7 @@
 export type FollowMode = "off" | "following" | "paused";
 
 /** Every session's mode; a session that is absent is "off". Never mutated. */
-export type FollowModes = Record<string, FollowMode>;
+type FollowModes = Record<string, FollowMode>;
 
 /**
  * How long the last report of a burst waits before the Filer navigates. A
@@ -123,7 +123,7 @@ const systemClock: FollowClock = {
   clearTimeout: (handle) => globalThis.clearTimeout(handle),
 };
 
-export interface FollowQueue {
+interface FollowQueue {
   /** Replaces the report already waiting for the session: only the last lands. */
   push: (sessionId: string, report: CwdReport) => void;
   /** Drops a waiting report; following stopped or the user took over. */

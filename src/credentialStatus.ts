@@ -6,7 +6,7 @@ import type { MessageKey } from "./i18n";
 // is typed, so a password that is not kept across restarts — or refused
 // outright because the stored file cannot be read — is not a surprise.
 
-export type CredentialHintKey = Extract<
+type CredentialHintKey = Extract<
   MessageKey,
   | "session.secretsRunOnlyPortable"
   | "session.secretsRunOnlyNoKeyStore"

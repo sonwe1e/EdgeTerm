@@ -7,7 +7,7 @@ import { forgetEditorState } from "./editor/editorState";
 import * as api from "./editor/textFile";
 import type { TextFile } from "./editor/editorTypes";
 
-export interface FileEditorTarget {
+interface FileEditorTarget {
   id: string;
   sessionId: string | null;
   path: string;

@@ -60,7 +60,7 @@ export function equalWeights(panels: readonly PanelName[]): DockWeights {
   return next;
 }
 
-export interface SplitPreview {
+interface SplitPreview {
   /** The weights the release would commit. */
   weights: DockWeights;
   /** Where the boundary line has travelled from its rest position, in pixels. */

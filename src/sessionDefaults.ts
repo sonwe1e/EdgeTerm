@@ -10,7 +10,7 @@ import {
  * because a session can also be started from a place that never opens it — a
  * link in the terminal output — and both must begin from the same defaults.
  */
-export const BLANK_SESSION: SessionProfile = {
+const BLANK_SESSION: SessionProfile = {
   id: "",
   name: "",
   kind: "ssh",
