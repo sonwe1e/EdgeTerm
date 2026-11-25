@@ -12,6 +12,7 @@ vi.mock("./ResourceMonitorBar", () => ({ ResourceMonitorBar: () => null }));
 vi.mock("./ForwardCenter", () => ({ ForwardCenter: () => null }));
 vi.mock("./TransferCenter", () => ({ TransferCenter: () => null }));
 
+import * as broadcast from "../broadcast";
 import { useStore } from "../store";
 import { StatusBar } from "./StatusBar";
 
@@ -86,4 +87,15 @@ it("shows no count for a single failure and no copy button for a notice", () => 
   act(() => useStore.getState().setStatus("Connected"));
   render();
   expect(host.querySelector('[aria-label="Copy the message"]')).toBeNull();
+});
+
+it("skips computing broadcast targets while synchronized input is off", () => {
+  const spy = vi.spyOn(broadcast, "broadcastTargets");
+  render();
+  act(() => useStore.getState().setStatus("Ping"));
+  expect(spy).not.toHaveBeenCalled();
+
+  act(() => useStore.getState().setBroadcastInput(true));
+  expect(spy).toHaveBeenCalled();
+  spy.mockRestore();
 });

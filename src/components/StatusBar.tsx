@@ -44,9 +44,10 @@ function StatusBarBase() {
   useEffect(() => {
     if (!broadcastInput) setTargetsOpen(false);
   }, [broadcastInput]);
-  const broadcastCount = useStore(
-    (s) =>
-      broadcastTargets(s.tabs, s.activeId, s.broadcastExcluded, s.broadcastExcludedGroups).length,
+  const broadcastCount = useStore((s) =>
+    s.broadcastInput
+      ? broadcastTargets(s.tabs, s.activeId, s.broadcastExcluded, s.broadcastExcludedGroups).length
+      : 0,
   );
   const error = useStore((s) => s.error);
   const errorRequestId = useStore((s) => s.errorRequestId);
