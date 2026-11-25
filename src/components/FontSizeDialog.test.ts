@@ -141,6 +141,32 @@ describe("display settings cold history opt-in", () => {
     reopen();
     expect(coldSwitch().checked).toBe(false);
   });
+
+  it("resets line spacing back to the default when Reset Defaults is clicked", () => {
+    act(() => {
+      root.render(
+        h(FontSizeDialog, {
+          panelFontSize: 15,
+          bufferFontSize: 16,
+          panelFontFamily: "Inter",
+          bufferFontFamily: "JetBrains Mono",
+          terminalScrollback: 25_000,
+          lineHeight: 1.55,
+          cursorStyle: "bar",
+          cursorBlink: false,
+          gpuRenderer: false,
+          onApply,
+          onClose,
+        }),
+      );
+    });
+    const lineSelect = host.querySelector<HTMLSelectElement>('select[aria-label="Line spacing"]')!;
+    expect(lineSelect.value).toBe("1.55");
+    clickButton("Reset Defaults");
+    expect(lineSelect.value).toBe("1.25");
+    apply();
+    expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ lineHeight: 1.25 }));
+  });
 });
 
 function inputValue(input: HTMLInputElement, value: string) {

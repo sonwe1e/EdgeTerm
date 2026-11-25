@@ -101,8 +101,16 @@ export function ShortcutsDialog({ bindings, onApply, onClose }: Props) {
           onApply(draft);
         }}
       >
-        <div className="dialog-header" id="shortcuts-title">
-          {t("sc.title")}
+        <div className="dialog-header">
+          <span id="shortcuts-title">{t("sc.title")}</span>
+          <button
+            className="panel-action"
+            type="button"
+            onClick={onClose}
+            aria-label={t("common.close")}
+          >
+            <Icon name="close" />
+          </button>
         </div>
         <div className="dialog-body shortcuts-dialog-body">
           <div className="shortcuts-list">

@@ -13,6 +13,7 @@ import {
 import type { CursorStyle } from "../terminal";
 import { useT } from "../useT";
 import { DEFAULT_LINE_HEIGHT, LINE_HEIGHTS, lineHeightPercent } from "../lineHeight";
+import { Icon } from "./icons";
 import { ModalDialog } from "./ModalDialog";
 
 /** Everything the dialog hands back when Apply is pressed. */
@@ -145,8 +146,16 @@ export function FontSizeDialog({
           });
         }}
       >
-        <div className="dialog-header" id="display-settings-title">
-          {t("fontDialog.title")}
+        <div className="dialog-header">
+          <span id="display-settings-title">{t("fontDialog.title")}</span>
+          <button
+            className="panel-action"
+            type="button"
+            onClick={onClose}
+            aria-label={t("common.close")}
+          >
+            <Icon name="close" />
+          </button>
         </div>
         <div className="dialog-body font-size-dialog-body">
           <label className="font-size-setting">
@@ -326,6 +335,7 @@ export function FontSizeDialog({
               setBufferSize(String(BUFFER_FONT_SIZE.default));
               setPanelFamily("");
               setBufferFamily("");
+              setSpacing(DEFAULT_LINE_HEIGHT);
               setScrollback(String(TERMINAL_SCROLLBACK.default));
               setCursor("block");
               setBlink(true);
