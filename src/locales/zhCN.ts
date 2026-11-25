@@ -421,6 +421,8 @@ export const zhCN: Catalog = {
   "quit.sessionMany": " 个活动会话",
   "quit.andMore": "…等另外 {count} 个",
   "quit.hint": "所有连接都将断开，其终端输出将被丢弃。",
+  "quit.transfersOne":
+    "退出会中断 1 个未完成的文件传输（含已暂停的任务）。要取消并在传输中心查看吗？",
   "quit.transfers":
     "退出将中断 {count} 个尚未完成的传输任务（含已暂停任务）。可取消退出，先到传输中心检查。",
   "closeChoice.title": "关闭 EdgeTerm",
@@ -866,6 +868,7 @@ export const zhCN: Catalog = {
   "sender.sentLines": "已发送 {count} 行",
   "sender.sentCommand": "已发送命令",
   "sender.sentOnly": "发送器：{what}",
+  "sender.skippedOneSession": "发送器：{what}；跳过了 1 个有文件传输或其他发送正在运行的会话",
   "sender.sentSkipped": "发送器：{what}；跳过 {count} 个正在进行文件传输或其他发送的会话",
   "sender.error": "发送器：{error}",
   "sender.repeatStopped": "发送器：已停止重复，会话已关闭",
@@ -1031,6 +1034,8 @@ export const zhCN: Catalog = {
   "filer.dateUnknown": "未知",
   "filer.tipType": "类型：{kind}",
   "filer.tipSize": "大小：{size}（{bytes} 字节）",
+  // 中文对 1 也通，但英文需要单数变体，两边键集合须一致。
+  "filer.tipSizeOne": "大小：{size}（1 字节）",
   "filer.tipOwner": "所有者：{owner}",
   "filer.oneItem": "{count} 个项目",
   "filer.manyItems": "{count} 个项目",
@@ -1232,6 +1237,9 @@ export const zhCN: Catalog = {
   "data.importSettingsKept": "，但粘贴警告与剪贴板保护保持原样",
   "data.importReplaceWarning":
     "其中 {count} 条会覆盖你已有的会话，它们当前的主机、名称与转发会被替换。覆盖前会把会话、分组与发送命令备份为配置目录下的 import-backup-*.edgeterm；设置不在该备份中。",
+  // 中文与计数无关，但英文需要单数变体，两边键集合须一致。
+  "data.importReplaceWarningOne":
+    "其中 1 条会覆盖你已有的会话，它当前的主机、名称与转发会被替换。覆盖前会把会话、分组与发送命令备份为配置目录下的 import-backup-*.edgeterm；设置不在该备份中。",
   "data.importExportedAt": "该文件的导出时间是 {when}。",
   "data.importSkippedOne": "；跳过 1 条发送命令（库已满）",
   "data.importSkippedMany": "；跳过 {count} 条发送命令（库已满）",

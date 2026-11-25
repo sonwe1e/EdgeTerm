@@ -362,7 +362,10 @@ export function entryTitle(entry: FileEntry, t: Translate = translateMsg): strin
     const size = formatBytes(entry.size);
     const exact = Number.isFinite(entry.size) && entry.size >= 0;
     attributes.push(
-      t("filer.tipSize", { size, bytes: exact ? entry.size.toLocaleString() : size }),
+      // A one-byte file printed "(1 bytes)".
+      entry.size === 1
+        ? t("filer.tipSizeOne", { size })
+        : t("filer.tipSize", { size, bytes: exact ? entry.size.toLocaleString() : size }),
     );
   }
   if (entry.permissions !== null) {

@@ -107,7 +107,11 @@ export async function importAppData(): Promise<void> {
     const replacing = data.profiles.filter((saved) => known.has(saved.id)).length;
     const details = [
       t("data.importDetail"),
-      replacing > 0 ? t("data.importReplaceWarning", { count: replacing }) : "",
+      replacing > 0
+        ? t(replacing === 1 ? "data.importReplaceWarningOne" : "data.importReplaceWarning", {
+            count: replacing,
+          })
+        : "",
       data.exportedAt ? t("data.importExportedAt", { when: data.exportedAt }) : "",
     ].filter(Boolean);
     const confirmed = await ask(

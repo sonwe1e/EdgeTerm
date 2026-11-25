@@ -441,6 +441,8 @@ export const en = {
   "quit.hint": "All connections will be disconnected and their terminal output discarded.",
   "quit.transfers":
     "Quitting will interrupt {count} unfinished file transfer(s), including paused tasks. Cancel to review them in the transfer center.",
+  "quit.transfersOne":
+    "Quitting will interrupt 1 unfinished file transfer, including paused tasks. Cancel to review it in the transfer center.",
   "closeChoice.title": "Close EdgeTerm",
   "closeChoice.body":
     "Minimize EdgeTerm to the system tray, where every session keeps running, or quit the app?",
@@ -910,6 +912,8 @@ export const en = {
   "sender.sentOnly": "Sender: {what}",
   "sender.sentSkipped":
     "Sender: {what}; skipped {count} session(s) with a file transfer or another send running",
+  "sender.skippedOneSession":
+    "Sender: {what}; skipped 1 session with a file transfer or another send running",
   "sender.error": "Sender: {error}",
   "sender.repeatStopped": "Sender: stopped repeating, the session was closed",
   "sender.repeatDone": "Sender: repeated the command {count} times, done",
@@ -1081,6 +1085,8 @@ export const en = {
   "filer.dateUnknown": "Unknown",
   "filer.tipType": "Type: {kind}",
   "filer.tipSize": "Size: {size} ({bytes} bytes)",
+  // A one-byte file gave "(1 bytes)".
+  "filer.tipSizeOne": "Size: {size} (1 byte)",
   "filer.tipOwner": "Owner: {owner}",
   "filer.oneItem": "{count} item",
   "filer.manyItems": "{count} items",
@@ -1288,6 +1294,11 @@ export const en = {
     ", but the paste warning and clipboard protection were kept as they are",
   "data.importReplaceWarning":
     "{count} of them replace sessions you already have, and their current hosts, names and forwards are overwritten. Sessions, groups and Sender commands are copied to import-backup-*.edgeterm beside the configuration first; settings are not part of that copy.",
+  // Re-importing after editing one session is the normal case, and then the
+  // verb and pronoun disagreed with the count on the sentence warning that
+  // hosts, names and forwards are about to be overwritten.
+  "data.importReplaceWarningOne":
+    "1 of them replaces a session you already have, and its current host, name and forwards are overwritten. Sessions, groups and Sender commands are copied to import-backup-*.edgeterm beside the configuration first; settings are not part of that copy.",
   "data.importExportedAt": "The file was exported at {when}.",
   "data.importSkippedOne": "; skipped 1 Sender command (library full)",
   "data.importSkippedMany": "; skipped {count} Sender commands (library full)",

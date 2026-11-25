@@ -32,3 +32,23 @@ F1、F3、F4 都是同一个模式（拆 One/Many 变体），F1 还要改三个
 **两条既有用例立刻红**，因为它们断言的正是坏掉的旧文案：`expect.stringContaining("1 item(s)")`。这就是「测试把 bug 固定住了」的典型形状——更新断言时把理由写进了注释，而不是默默改掉。
 
 另有一次流程失误：第一次跑门禁时 `format:check` 失败，因为我用 `biome format --write` 只格式化了我手动改的三个 `.ts`，**漏了两个 `.locales` 目录下的文件**。跑完整门禁才发现。
+
+## 第 216 轮：F3 与 F4 修完，i18n 审计队列清空
+
+四条字符串全部加了单数变体（英中各一份，键集合保持一致），四处调用点按计数选择：
+
+- `quit.transfersOne` —— 退出确认的 "1 unfinished file transfer(s)"
+- `sender.skippedOneSession` —— Sender 状态行的 "skipped 1 session(s)"
+- `filer.tipSizeOne` —— Filer 行提示的 "(1 bytes)"
+- `data.importReplaceWarningOne` —— 导入确认的 "1 of them replace … their current hosts"
+
+中文本身对 1 都通，所以四个中文变体只是把同样的文案再写一遍以保持键集合对齐——这一点在每个键旁边都注了明。
+
+### 本轮两次自伤，都是同一类
+
+1. 第一次给 `zhCN.ts` 加 `filer.tipSizeOne` 时其实**成功了**，下一轮我又加了一遍，`tsc` 报 `TS1117 一个字面量不能有重名属性`。
+2. `filerPresentation.tsx` 里我写了 `bytes === 1`，而那个名字在该作用域不存在（字节数是 `entry.size`），`tsc` 报 `TS2304`。
+
+**两次都是编译器一秒内纠正，没有留给运行时，也没有留给门禁。**但两次都是我「凭印象写代码」——没有先读当前文件状态就下笔。第 1 次更是跨轮重复劳动：上一轮的编辑结果我没有复核就重做。
+
+另有一条既有用例断言的正是坏文案（`"1 of them replace sessions you already have"`），已连同理由一起更新。

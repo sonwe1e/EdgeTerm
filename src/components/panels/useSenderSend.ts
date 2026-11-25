@@ -136,7 +136,10 @@ export function useSenderSend({ tabs, activeId, setStatus, t, activeTab }: Optio
         setStatus(
           skipped.length === 0
             ? t("sender.sentOnly", { what })
-            : t("sender.sentSkipped", { what, count: skipped.length }),
+            : t(skipped.length === 1 ? "sender.skippedOneSession" : "sender.sentSkipped", {
+                what,
+                count: skipped.length,
+              }),
         );
       }
     } catch (e) {

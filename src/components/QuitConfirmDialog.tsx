@@ -60,7 +60,9 @@ export function QuitConfirmDialog({ onConfirm, onCancel }: Props) {
         )}
         {live.length > 0 && <span className="confirm-dialog-hint">{t("quit.hint")}</span>}
         {transfers > 0 && (
-          <span className="confirm-dialog-hint">{t("quit.transfers", { count: transfers })}</span>
+          <span className="confirm-dialog-hint">
+            {transfers === 1 ? t("quit.transfersOne") : t("quit.transfers", { count: transfers })}
+          </span>
         )}
       </div>
       <div className="dialog-footer confirm-dialog-footer">

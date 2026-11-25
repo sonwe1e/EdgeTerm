@@ -133,6 +133,9 @@ it("warns how many sessions an import will replace", async () => {
   await importAppData();
 
   const [message] = vi.mocked(ask).mock.calls[0];
-  expect(message).toContain("1 of them replace sessions you already have");
+  // One replaced session used to read "1 of them replace ... their current
+  // hosts" - verb and pronoun disagreeing with the count on the sentence
+  // warning that hosts, names and forwards are about to be overwritten.
+  expect(message).toContain("1 of them replaces a session you already have");
   expect(message).toContain("exported at 2026-10-01T12:00:00Z");
 });
