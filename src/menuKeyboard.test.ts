@@ -25,6 +25,17 @@ describe("surfaceOwnsKeyboard", () => {
     menu.remove();
   });
 
+  it("claims the Sender's hand-rolled popover, which is a div not a dialog", () => {
+    const popover = document.createElement("div");
+    popover.setAttribute("role", "dialog");
+    const row = document.createElement("button");
+    popover.append(row);
+    document.body.append(popover);
+    expect(surfaceOwnsKeyboard(popover)).toBe(true);
+    expect(surfaceOwnsKeyboard(row)).toBe(true);
+    popover.remove();
+  });
+
   it("leaves the rest of the window to its own handlers", () => {
     const plain = document.createElement("button");
     document.body.append(plain);
