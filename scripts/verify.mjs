@@ -150,9 +150,16 @@ export function resolveAffectedTests(changedFiles, baseRoot = root) {
     for (const spec of extractRelativeImports(text, isCss)) {
       const target = resolveRelative(file, spec, known);
       if (!target) continue;
-      // Avoid fanning every single sub-stylesheet edit out through styles.css
-      // into all 75 browser suites during inner-loop `--changed` checks.
-      if (file === "src/styles.css" && target.startsWith("src/styles/")) continue;
+      // Avoid fanning stylesheet-only edits through component imports into
+      // App.tsx and dozens of browser suites during inner-loop `--changed`
+      // checks; CSS edits explicitly enqueue the token and visual audit suites.
+      if (
+        target.endsWith(".css") &&
+        !file.endsWith(".test.ts") &&
+        !file.endsWith(".browser.test.ts")
+      ) {
+        continue;
+      }
       let importers = reverse.get(target);
       if (!importers) {
         importers = new Set();
@@ -173,8 +180,11 @@ export function resolveAffectedTests(changedFiles, baseRoot = root) {
 
   for (const file of changedFiles) {
     enqueue(file);
-    if (file.endsWith(".css") && known.has("src/colourLiterals.test.ts")) {
-      enqueue("src/colourLiterals.test.ts");
+    if (file.endsWith(".css")) {
+      if (known.has("src/colourLiterals.test.ts")) enqueue("src/colourLiterals.test.ts");
+      if (known.has("src/test/uiAudit.browser.test.ts")) {
+        enqueue("src/test/uiAudit.browser.test.ts");
+      }
     }
     // Also match colocated *.test.ts / *.test.mjs if a file is imported indirectly
     // or tested via raw string/fs reads (e.g. CSS row-height tests).

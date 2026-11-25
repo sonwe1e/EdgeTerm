@@ -94,6 +94,11 @@ describe("verify", () => {
     const fromCss = resolveAffectedTests(["src/styles/transfer.styles.css"]);
     expect(fromCss.unit).toContain("src/colourLiterals.test.ts");
     expect(fromCss.unit).toContain("src/components/TransferCenter.rowHeight.test.ts");
+    expect(fromCss.browser).toEqual(["src/test/uiAudit.browser.test.ts"]);
+
+    const fromSettingsCss = resolveAffectedTests(["src/styles/settings.styles.css"]);
+    expect(fromSettingsCss.unit).toEqual(["src/colourLiterals.test.ts"]);
+    expect(fromSettingsCss.browser).toEqual(["src/test/uiAudit.browser.test.ts"]);
 
     const fromDialog = resolveAffectedTests(["src/components/FontSizeDialog.tsx"]);
     expect(fromDialog.unit).toContain("src/components/FontSizeDialog.test.ts");
