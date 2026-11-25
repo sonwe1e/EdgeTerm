@@ -483,8 +483,10 @@ export const en = {
   "deleteEntry.hintFile": "The file will be removed. This cannot be undone.",
   "deleteProfile.title": "Delete Session",
   "deleteProfile.hintStart": "The saved session, any stored credentials for it",
+  // The leading space separates this from hintStart, exactly as cmdOne and
+  // cmdMany do; without it the two sentences run together as "for itIts".
   "deleteProfile.cmdUnknown":
-    "Its saved Sender commands go with it, but the list could not be read — there may be more than this dialog can show.",
+    " Its saved Sender commands go with it, but the list could not be read — there may be more than this dialog can show.",
   "deleteProfile.cmdOne": " and its 1 saved Sender command",
   "deleteProfile.cmdMany": " and its {count} saved Sender commands",
   "deleteProfile.hintEnd": " will be removed. This cannot be undone.",

@@ -516,7 +516,7 @@ export const zhCN: Catalog = {
   "hostKey.recordedInValue": "{file}，第 {line} 行",
   "hostKey.hintStart":
     "只有在你预期如此时才接受 —— 例如服务器重装，或该地址现在属于另一台机器。密钥更改也可能意味着连接被拦截；如有疑问，请取消，并在服务器上对比指纹：",
-  "hostKey.hintEnd": " 。接受将替换为此主机记录的所有密钥。",
+  "hostKey.hintEnd": "。接受将替换为此主机记录的所有密钥。",
   "hostKey.accepting": "接受中…",
   "hostKey.accept": "接受新密钥",
   "search.noResults": "无结果",

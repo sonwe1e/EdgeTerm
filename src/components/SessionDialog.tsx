@@ -409,7 +409,12 @@ export function SessionDialog({
   const summary = (): string => {
     const name = PROTOCOL_NAMES[profile.kind];
     if (profile.kind === "local") {
-      return `${name} · ${profile.shell?.trim() || (IS_WINDOWS ? "%COMSPEC%" : "$SHELL")}`;
+      // A blank profile has no shell, and the subtitle is not the place for an
+      // environment-variable name: "Shell · %COMSPEC%" names an internal detail
+      // where the app already owns the phrase "default shell". (The form field
+      // below still uses the variable name as its placeholder, where it is
+      // legitimately telling the reader what an empty field means.)
+      return `${name} · ${profile.shell?.trim() || t("session.defaultShell")}`;
     }
     if (profile.kind === "serial") {
       const port = profile.portName?.trim();
