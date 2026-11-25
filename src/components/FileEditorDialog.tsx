@@ -54,6 +54,9 @@ export function FileEditorDialog() {
       dismissable={false}
       onClose={() => void closeFileEditor()}
       title={t("fileEditor.title")}
+      // role="dialog" does not take its name from content, so without this the
+      // largest surface in the app is announced as a bare "dialog".
+      labelledBy="file-editor-title"
       contentClassName="file-editor-dialog"
       onKeyDown={onKeyDown}
     >
