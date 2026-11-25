@@ -317,7 +317,7 @@ export function ModalDialog({
         // so focus landing on one made the trap treat it as "outside" and jump
         // to the first control — the footer below the headings became
         // unreachable by Tab.
-        "button, [href], input, select, textarea, summary, [tabindex]:not([tabindex='-1'])",
+        "button, [href], input, select, textarea, summary, [contenteditable], [tabindex]:not([tabindex='-1'])",
       ),
     ).filter(
       (element) =>

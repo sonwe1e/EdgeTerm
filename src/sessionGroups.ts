@@ -87,11 +87,24 @@ export function effectiveParentId(
 ): string | null {
   const parentId = group.parentId ?? null;
   if (parentId === null || parentId === group.id) return null;
-  return groups.some(
-    (g) => g.id === parentId && groupCategory(g.kind) === groupCategory(group.kind),
-  )
-    ? parentId
-    : null;
+  if (!groups.some((g) => g.id === parentId && groupCategory(g.kind) === groupCategory(group.kind)))
+    return null;
+  // A parent that exists but whose own chain loops is just as broken as one
+  // that is missing: childGroups walks down from the kind root and only
+  // descends through groups whose effective parent is null, so neither group
+  // in a cycle is ever visited. The folders would vanish from the tree with
+  // every session inside them, and nothing in the app could repair them.
+  // Same rule the backend applies in detach_invalid_parents.
+  const seen = new Set<string>([group.id]);
+  let cursor: string | null = parentId;
+  while (cursor !== null) {
+    if (seen.has(cursor)) return null;
+    seen.add(cursor);
+    const up = groups.find((g) => g.id === cursor);
+    if (!up) return null;
+    cursor = up.parentId ?? null;
+  }
+  return parentId;
 }
 
 /** The group a profile is drawn in, or null for its kind's root. */

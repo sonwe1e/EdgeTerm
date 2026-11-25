@@ -4,6 +4,7 @@
 import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { childGroups, flattenGroups } from "../../sessionGroups";
 
 vi.mock("../../platform", () => ({ HAS_TRAY: true, IS_MAC: false, IS_WINDOWS: true }));
 vi.mock("../../nativeDialog", () => ({
@@ -123,5 +124,32 @@ describe("group context menu", () => {
     )!;
     act(() => button.click());
     expect(onNewSession).toHaveBeenCalledWith();
+  });
+
+  it("keeps groups in a cycle at the kind root instead of dropping them", () => {
+    // childGroups walks down from the kind root and only descends through
+    // groups whose effective parent is null. Two groups that name each other
+    // as parent therefore qualify for neither level, so the folders - and
+    // every session filed in them - would vanish from the tree with no empty
+    // state and no way to repair them. The rule that already covers a missing
+    // parent has to cover a looping one too.
+    const cyclic: SessionGroup[] = [
+      { id: "a", name: "A", kind: "ssh", parentId: "b" },
+      { id: "b", name: "B", kind: "ssh", parentId: "a" },
+      { id: "solo", name: "Solo", kind: "ssh", parentId: null },
+    ];
+    expect(
+      childGroups(cyclic, "ssh", null)
+        .map((g) => g.id)
+        .sort(),
+    ).toEqual(["a", "b", "solo"]);
+    expect(flattenGroups(cyclic, "ssh").map((n) => n.group.id)).toEqual(["a", "b", "solo"]);
+    // A three-step loop is caught the same way as a two-step one.
+    const longer: SessionGroup[] = [
+      { id: "x", name: "X", kind: "ssh", parentId: "y" },
+      { id: "y", name: "Y", kind: "ssh", parentId: "z" },
+      { id: "z", name: "Z", kind: "ssh", parentId: "x" },
+    ];
+    expect(flattenGroups(longer, "ssh").map((n) => n.group.id)).toEqual(["x", "y", "z"]);
   });
 });
