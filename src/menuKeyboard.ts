@@ -1,5 +1,5 @@
 const EXTERNAL_KEYBOARD_SURFACES = 'dialog[open], .context-menu, [role="dialog"]';
-const ALL_KEYBOARD_SURFACES = `${EXTERNAL_KEYBOARD_SURFACES}, .menu-dropdown`;
+const ALL_KEYBOARD_SURFACES = `${EXTERNAL_KEYBOARD_SURFACES}, .menu-dropdown, .menu-item.is-open`;
 
 /**
  * Whether a key event's target belongs to a surface that owns the keyboard: a

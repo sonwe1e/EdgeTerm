@@ -1340,6 +1340,7 @@ function MenuDropdown({
   const menuId = useId();
   const triggerRows = useRef(new Map<string, HTMLDivElement>());
   const positionFrame = useRef(0);
+  const focusFrame = useRef(0);
   const submenu = useSubmenuHover(
     (entry) => panelsRef.current.get(entry.dataset.submenuKey ?? "") ?? null,
   );
@@ -1388,6 +1389,7 @@ function MenuDropdown({
     return () => {
       window.removeEventListener("resize", onResize);
       cancelAnimationFrame(positionFrame.current);
+      cancelAnimationFrame(focusFrame.current);
     };
   }, [positionSubmenus, schedulePosition]);
 
@@ -1397,8 +1399,10 @@ function MenuDropdown({
   /** Open a submenu from the keyboard and put focus at its first / last item. */
   const focusInto = (key: string, edge: "first" | "last") => {
     setKeyboardOpen(key);
+    cancelAnimationFrame(focusFrame.current);
     // The portal mounts once this state lands; focus after layout places it.
-    requestAnimationFrame(() => {
+    focusFrame.current = requestAnimationFrame(() => {
+      focusFrame.current = 0;
       const items = levelItems(submenuOf(key));
       (edge === "first" ? items[0] : items[items.length - 1])?.focus({ preventScroll: true });
     });
@@ -1414,12 +1418,22 @@ function MenuDropdown({
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
-    const item = target.closest<HTMLElement>(MENU_ITEM_SELECTOR);
-    if (!item) return;
-    const level = item.closest<HTMLElement>(".menu-dropdown");
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      onClose("title");
+      return;
+    }
+    if (event.key === "Tab") {
+      // Close without pulling focus back: Tab continues out of the bar.
+      onClose("tab");
+      return;
+    }
+    const level = target.closest<HTMLElement>(".menu-dropdown");
     const items = levelItems(level);
-    const index = items.indexOf(item);
-    if (index === -1) return;
+    if (items.length === 0) return;
+    const item = target.closest<HTMLElement>(MENU_ITEM_SELECTOR);
+    const index = item ? items.indexOf(item) : -1;
     const focusAt = (next: HTMLElement | undefined) => {
       event.preventDefault();
       next?.focus();
@@ -1428,14 +1442,16 @@ function MenuDropdown({
       case "ArrowDown":
         return focusAt(items[(index + 1) % items.length]);
       case "ArrowUp":
-        return focusAt(items[(index - 1 + items.length) % items.length]);
+        return focusAt(
+          items[index < 0 ? items.length - 1 : (index - 1 + items.length) % items.length],
+        );
       case "Home":
         return focusAt(items[0]);
       case "End":
         return focusAt(items[items.length - 1]);
       case "ArrowRight": {
         // Only a submenu parent has somewhere to go right to.
-        if (item.getAttribute("aria-haspopup") !== "menu") return;
+        if (!item || item.getAttribute("aria-haspopup") !== "menu") return;
         event.preventDefault();
         const key = item.parentElement?.dataset.submenuKey;
         if (key !== undefined) focusInto(key, "first");
@@ -1450,17 +1466,9 @@ function MenuDropdown({
         triggerRows.current.get(path)?.querySelector<HTMLElement>(":scope > .menu-entry")?.focus();
         return;
       }
-      case "Escape":
-        event.preventDefault();
-        event.stopPropagation();
-        onClose("title");
-        return;
-      case "Tab":
-        // Close without pulling focus back: Tab continues out of the bar.
-        onClose("tab");
-        return;
       case "Enter":
       case " ":
+        if (!item) return;
         // The entry's own click runs the command (or opens a submenu) and
         // closes the menu; the keyboard must not also fire a native click.
         event.preventDefault();
@@ -1476,6 +1484,7 @@ function MenuDropdown({
       ref={rootRef}
       className="menu-dropdown"
       role="menu"
+      tabIndex={-1}
       aria-label={label}
       aria-orientation="vertical"
       onKeyDown={onKeyDown}
@@ -1549,6 +1558,7 @@ function MenuDropdown({
                     data-submenu-path={key}
                     className="menu-dropdown menu-submenu menubar-submenu"
                     role="menu"
+                    tabIndex={-1}
                     aria-labelledby={`${menuId}-trigger-${key}`}
                   >
                     {children.map((child, childIndex) =>

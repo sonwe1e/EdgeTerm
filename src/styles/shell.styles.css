@@ -211,6 +211,9 @@
   transform-origin: top left;
   animation: menu-in 120ms cubic-bezier(0.2, 0, 0, 1);
 }
+.menu-dropdown:focus {
+  outline: none;
+}
 
 /* Where the engine can blur what lies behind, the panel lets a hint of the
    terminal through, the way native menus do; elsewhere it stays opaque. */

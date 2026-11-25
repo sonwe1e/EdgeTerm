@@ -18,7 +18,7 @@ export const parentPath = (path: string): string | null =>
  * parent menu scrollports without losing interface typography tokens.
  */
 export const submenuPortalHost = (root: HTMLElement | null): HTMLElement =>
-  root?.closest<HTMLElement>(".app") ?? document.body;
+  root?.closest<HTMLElement>("dialog[open]") ?? root?.closest<HTMLElement>(".app") ?? document.body;
 
 /** Whether any menu panel currently has a running CSS animation. */
 export const hasRunningAnimations = (elements: readonly (HTMLElement | null)[]): boolean =>

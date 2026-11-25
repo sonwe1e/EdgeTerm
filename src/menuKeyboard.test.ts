@@ -50,6 +50,18 @@ describe("surfaceOwnsKeyboard", () => {
     dropdown.remove();
   });
 
+  it("claims an open menubar title button but leaves closed menu titles alone", () => {
+    const title = document.createElement("button");
+    title.className = "menu-item is-open";
+    document.body.append(title);
+    expect(surfaceOwnsKeyboard(title)).toBe(true);
+    expect(externalSurfaceOwnsKeyboard(title)).toBe(false);
+
+    title.className = "menu-item";
+    expect(surfaceOwnsKeyboard(title)).toBe(false);
+    title.remove();
+  });
+
   it("leaves the rest of the window to its own handlers", () => {
     const plain = document.createElement("button");
     document.body.append(plain);

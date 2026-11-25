@@ -1414,6 +1414,21 @@ try {
           });
           await subTrigger.click({ timeout: 5000 });
           await page.waitForSelector(".menubar-submenu", { timeout: 5000 });
+          // Let menu-in animations finish before measuring final geometry.
+          await page.waitForFunction(
+            () =>
+              [...document.querySelectorAll(".menu-dropdown")].every((menu) =>
+                menu
+                  .getAnimations({ subtree: true })
+                  .every(
+                    (animation) =>
+                      animation.playState === "finished" || animation.playState === "idle",
+                  ),
+              ),
+            undefined,
+            { timeout: 3000 },
+          );
+          await call("frames");
           const check = await page.evaluate(() => {
             const parent = document.querySelector(".menubar .menu-dropdown");
             const sub = document.querySelector(".menubar-submenu");
@@ -1425,6 +1440,9 @@ try {
             const sr = sub.getBoundingClientRect();
             const tr = trigger.getBoundingClientRect();
             const failures = [];
+            if (getComputedStyle(sub).visibility !== "visible") {
+              failures.push(`submenu hidden: visibility=${getComputedStyle(sub).visibility}`);
+            }
             if (parent.scrollWidth > parent.clientWidth + 1) {
               failures.push(
                 `parent menu overflow-x: ${parent.scrollWidth} > ${parent.clientWidth}`,
@@ -1435,9 +1453,13 @@ try {
                 `submenu overlaps trigger: left=${sr.left} < trigger.right=${tr.right}`,
               );
             }
-            if (sr.right > window.innerWidth + 1 || sr.bottom > window.innerHeight + 1) {
+            if (
+              sr.top < 0 ||
+              sr.right > window.innerWidth + 1 ||
+              sr.bottom > window.innerHeight + 1
+            ) {
               failures.push(
-                `submenu clipped by viewport: right=${sr.right}/${window.innerWidth}, bottom=${sr.bottom}/${window.innerHeight}`,
+                `submenu clipped by viewport: top=${sr.top}, right=${sr.right}/${window.innerWidth}, bottom=${sr.bottom}/${window.innerHeight}`,
               );
             }
             return {

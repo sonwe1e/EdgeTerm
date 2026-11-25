@@ -172,8 +172,18 @@ it("keeps a tall View menu scrollable at 560px height while tracking and hiding 
   await twoFrames();
   expect(submenu.getBoundingClientRect().top).toBeLessThan(topBefore - 40);
 
+  // Clicking a separator inside a portaled submenu must not blur-dismiss the menubar.
+  const separator = submenu.querySelector<HTMLElement>(".menu-separator")!;
+  expect(separator).not.toBeNull();
+  await userEvent.click(separator);
+  await twoFrames();
+  expect(document.querySelector(".menubar .menu-dropdown")).not.toBeNull();
+
   // At a shorter viewport where scrolling pushes the trigger completely above
-  // the scrollport, the portaled submenu hides instead of floating orphaned.
+  // the scrollport, focus inside the portaled submenu hands off to the parent
+  // dropdown (not document.body) and arrow navigation keeps working.
+  findMenuRow(submenu, "Reset Panel Layout").focus();
+  expect(submenu.contains(document.activeElement)).toBe(true);
   await page.viewport(1100, 320);
   viewMenu.scrollTop = viewMenu.scrollHeight;
   viewMenu.dispatchEvent(new Event("scroll"));
@@ -182,6 +192,10 @@ it("keeps a tall View menu scrollable at 560px height while tracking and hiding 
     viewMenu.getBoundingClientRect().top + 2,
   );
   expect(!submenu.isConnected || getComputedStyle(submenu).visibility === "hidden").toBe(true);
+  expect(document.activeElement).toBe(viewMenu);
+  await userEvent.keyboard("{ArrowDown}");
+  expect(viewMenu.contains(document.activeElement)).toBe(true);
+  expect(document.activeElement?.getAttribute("role")).toMatch(/^menuitem/);
 });
 
 it("supports ArrowRight, ArrowDown, ArrowLeft and Escape across portaled menubar submenus", async () => {
@@ -224,6 +238,8 @@ it("flips a menubar submenu leftward near the right viewport edge", async () => 
 
   const submenu = openSubmenuFor(langTrigger);
   const subRect = submenu.getBoundingClientRect();
+  expect(submenu.dataset.side).toBe("left");
   expect(subRect.left).toBeGreaterThanOrEqual(4);
+  expect(subRect.right).toBeLessThanOrEqual(langTrigger.getBoundingClientRect().left);
   expect(subRect.right).toBeLessThanOrEqual(420 - 4);
 });
