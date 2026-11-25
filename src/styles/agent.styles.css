@@ -31,8 +31,9 @@
   border-color: color-mix(in srgb, var(--accent) 72%, transparent);
 }
 .agent-compose-launch:hover {
+  color: var(--accent-contrast);
+  background: var(--accent);
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 18%, var(--accent-soft));
 }
 /* The pane's width is stable while the sticky actions change size. Do not
    key this on overflow, which would make the label toggle itself on/off. */

@@ -624,7 +624,9 @@ textarea:focus-visible {
   content: "";
   position: absolute;
   inset: 0;
-  border: 1.5px solid var(--border-strong);
+  /* --fg-faint clears WCAG 2.2 SC 1.4.11 (3:1 non-text contrast) against
+     --bg-field across all four palettes (4.3-6.0:1). */
+  border: 1.5px solid var(--fg-faint);
   border-radius: inherit;
   pointer-events: none;
   transition: border-color var(--dur-1) ease;

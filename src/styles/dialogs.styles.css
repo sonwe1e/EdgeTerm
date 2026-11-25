@@ -333,6 +333,7 @@ dialog.dialog-backdrop.is-fallback[open] {
 
 .session-organization > summary,
 .session-advanced > summary {
+  min-height: var(--h-control);
   cursor: pointer;
   list-style: none;
 }
