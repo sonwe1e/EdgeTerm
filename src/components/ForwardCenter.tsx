@@ -7,7 +7,7 @@ import { useActiveTab, useStore } from "../store";
 import { VirtualFileRows } from "./VirtualFileRows";
 import { ask } from "../nativeDialog";
 import { StatusPopover } from "./StatusPopover";
-import { usePopoverDismiss } from "./usePopoverDismiss";
+import { focusPopoverTrigger, usePopoverDismiss } from "./usePopoverDismiss";
 import { useT } from "../useT";
 import type { MessageKey } from "../i18n";
 
@@ -221,7 +221,10 @@ export const ForwardCenter = memo(function ForwardCenter() {
           label={t("forward.sshPortForwarding")}
           title={t("forward.sshPortForwarding")}
           closeLabel={t("forward.closeTunnels")}
-          onClose={() => setOpen(false)}
+          onClose={() => {
+            setOpen(false);
+            focusPopoverTrigger(container);
+          }}
         >
           {error && (
             <div role="alert" className="status-popover-error">

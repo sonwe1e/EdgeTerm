@@ -7,7 +7,7 @@ import { transferBytes } from "../fileTransfers";
 import { useStore, type Tab } from "../store";
 import { Icon } from "./icons";
 import { StatusPopover } from "./StatusPopover";
-import { usePopoverDismiss } from "./usePopoverDismiss";
+import { focusPopoverTrigger, usePopoverDismiss } from "./usePopoverDismiss";
 import { translate } from "../i18n";
 import { useT } from "../useT";
 import { Sparkline } from "../monitor/Sparkline";
@@ -419,7 +419,10 @@ export const ResourceMonitorBar = memo(function ResourceMonitorBar({
           label={t("monitor.sshHostResources")}
           title={tab?.info.address ?? ""}
           closeLabel={t("monitor.closeResources")}
-          onClose={() => setOpen(false)}
+          onClose={() => {
+            setOpen(false);
+            focusPopoverTrigger(container);
+          }}
           className="monitor-popover"
           actions={
             <button

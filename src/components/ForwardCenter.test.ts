@@ -289,3 +289,24 @@ it("shows a failed tunnel in the button instead of only inside the popover", asy
   await act(async () => root.unmount());
   host.remove();
 });
+
+it("returns focus to the Tunnels trigger button when closed with the header button", async () => {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(h(ForwardCenter)));
+    const trigger = host.querySelector<HTMLButtonElement>("button.status-item")!;
+    await act(async () => trigger.click());
+    const close = host.querySelector<HTMLButtonElement>('[aria-label="Close tunnels"]')!;
+    await act(async () => {
+      close.focus();
+      close.click();
+    });
+    expect(host.querySelector(".status-popover")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+  }
+});

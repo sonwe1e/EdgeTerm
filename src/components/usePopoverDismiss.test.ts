@@ -85,3 +85,18 @@ it("closes on Escape and returns focus to the popover's first button", async () 
     await view.cleanup();
   }
 });
+
+it("does not dismiss on IME Escape while composing", async () => {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  const view = await mount();
+  try {
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", isComposing: true, bubbles: true }),
+      );
+    });
+    expect(view.close).not.toHaveBeenCalled();
+  } finally {
+    await view.cleanup();
+  }
+});

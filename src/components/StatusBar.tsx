@@ -13,7 +13,7 @@ import { BroadcastTargets } from "./BroadcastTargets";
 import { TransferCenter } from "./TransferCenter";
 import { ResourceMonitorBar } from "./ResourceMonitorBar";
 import { ForwardCenter } from "./ForwardCenter";
-import { usePopoverDismiss } from "./usePopoverDismiss";
+import { focusPopoverTrigger, usePopoverDismiss } from "./usePopoverDismiss";
 import { openAgentView } from "../agents/model";
 import { latencyLabel, subscribeLatency } from "../inputLatency";
 
@@ -198,20 +198,30 @@ function StatusBarBase() {
             {t("broadcast.indicator", { count: broadcastCount })}
           </button>
           {/* The recipients are editable beside it: "which shells" is the
-              question a reader asks right after turning this on. */}
-          <button
-            type="button"
-            className="status-item broadcast-targets-button"
-            title={t("broadcast.chooseTargets")}
-            aria-label={t("broadcast.chooseTargets")}
-            aria-haspopup="true"
-            aria-expanded={targetsOpen}
-            onClick={() => setTargetsOpen(!targetsOpen)}
-          >
-            <Icon name="chevron-down" />
-          </button>
-          <div ref={targetsRef}>
-            {targetsOpen && <BroadcastTargets onClose={() => setTargetsOpen(false)} />}
+              question a reader asks right after turning this on. Both the
+              trigger and the popover live inside targetsRef so clicking the
+              trigger while open toggles closed rather than dismissing on
+              pointerdown and immediately reopening on click. */}
+          <div className="broadcast-targets" ref={targetsRef}>
+            <button
+              type="button"
+              className="status-item broadcast-targets-button"
+              title={t("broadcast.chooseTargets")}
+              aria-label={t("broadcast.chooseTargets")}
+              aria-haspopup="true"
+              aria-expanded={targetsOpen}
+              onClick={() => setTargetsOpen(!targetsOpen)}
+            >
+              <Icon name="chevron-down" />
+            </button>
+            {targetsOpen && (
+              <BroadcastTargets
+                onClose={() => {
+                  setTargetsOpen(false);
+                  focusPopoverTrigger(targetsRef);
+                }}
+              />
+            )}
           </div>
         </>
       )}

@@ -15,7 +15,7 @@ import { readTransferOptions, saveTransferOptions, validRateLimitBps } from "../
 import { useStore } from "../store";
 import { VirtualFileRows } from "./VirtualFileRows";
 import { StatusPopover } from "./StatusPopover";
-import { usePopoverDismiss } from "./usePopoverDismiss";
+import { focusPopoverTrigger, usePopoverDismiss } from "./usePopoverDismiss";
 import { useT } from "../useT";
 import type { MessageKey } from "../i18n";
 
@@ -511,7 +511,10 @@ export function TransferCenter() {
       label={t("transfer.transfers")}
       title={t("transfer.transfers")}
       closeLabel={t("transfer.closeTransfers")}
-      onClose={() => setOpen(false)}
+      onClose={() => {
+        setOpen(false);
+        focusPopoverTrigger(container);
+      }}
       actions={
         <>
           {headerActions}

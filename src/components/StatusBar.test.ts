@@ -99,3 +99,47 @@ it("skips computing broadcast targets while synchronized input is off", () => {
   expect(spy).toHaveBeenCalled();
   spy.mockRestore();
 });
+
+it("toggles the broadcast targets popover cleanly and restores trigger focus on close", () => {
+  act(() => useStore.setState({ broadcastInput: true }));
+  render();
+
+  const trigger = host.querySelector<HTMLButtonElement>(".broadcast-targets-button")!;
+  expect(trigger).toBeTruthy();
+
+  // Dispatch pointerdown and click in separate commits, matching a real
+  // browser gesture where pointerdown commits before click runs.
+  const pressToggle = () => {
+    act(() => {
+      trigger.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    });
+    act(() => {
+      trigger.click();
+    });
+  };
+
+  pressToggle();
+  expect(host.querySelector(".broadcast-popover")).not.toBeNull();
+  // Clicking the trigger again while open must close the popover rather than
+  // letting pointerdown dismiss it and click immediately reopen it.
+  pressToggle();
+  expect(host.querySelector(".broadcast-popover")).toBeNull();
+
+  // Reopen, then close with the header X button: focus returns to the trigger.
+  pressToggle();
+  const closeButton = host.querySelector<HTMLButtonElement>(".status-popover-close")!;
+  act(() => {
+    closeButton.focus();
+    closeButton.click();
+  });
+  expect(host.querySelector(".broadcast-popover")).toBeNull();
+  expect(document.activeElement).toBe(trigger);
+
+  // Reopen, then press Escape: focus also returns to the trigger.
+  pressToggle();
+  act(() => {
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  });
+  expect(host.querySelector(".broadcast-popover")).toBeNull();
+  expect(document.activeElement).toBe(trigger);
+});

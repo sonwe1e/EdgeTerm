@@ -1,6 +1,10 @@
 /* The targets list for synchronized input: one row per connected shell, the
    same quiet rhythm as the other status popovers. */
 
+.broadcast-targets {
+  position: relative;
+}
+
 .broadcast-popover {
   width: min(360px, calc(100vw - 24px));
 }

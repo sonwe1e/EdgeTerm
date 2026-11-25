@@ -1,5 +1,15 @@
 import { useEffect, useRef, type RefObject } from "react";
 
+/**
+ * Returns focus to the status-bar trigger button that owns a popover.
+ * Prefers the explicit `button.status-item` trigger and falls back to the first
+ * button inside the wrapper for minimal test harnesses.
+ */
+export function focusPopoverTrigger(root: RefObject<HTMLElement | null>) {
+  const trigger = root.current?.querySelector<HTMLButtonElement>("button.status-item");
+  (trigger ?? root.current?.querySelector<HTMLButtonElement>("button"))?.focus();
+}
+
 /** Status popovers close when focus/pointer moves away or Escape is pressed. */
 export function usePopoverDismiss(
   open: boolean,
@@ -32,10 +42,10 @@ export function usePopoverDismiss(
       dismiss.current();
     };
     const escape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.isComposing) return;
       event.preventDefault();
       dismiss.current();
-      root.current?.querySelector("button")?.focus();
+      focusPopoverTrigger(root);
     };
     document.addEventListener("pointerdown", outside);
     document.addEventListener("focusin", outside);
