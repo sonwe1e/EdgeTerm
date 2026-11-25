@@ -6,7 +6,6 @@ import {
   OTHER_DEFAULTS,
   SHORTCUT_COMMANDS,
   chordLabel,
-  sameChord,
   shortcutHints,
   shortcutLabels,
   type ShortcutBindings,
@@ -50,12 +49,16 @@ describe("the shortcut table", () => {
     }
   });
 
-  it("keeps the two platform tables in step: a chord held on one, held on the other", () => {
+  // The invariant here is that neither table drops a command the other keeps.
+  // It used to also assert sameChord(mac, mac), which compares every field with
+  // itself and is true for any implementation that does not throw - it could
+  // not detect the divergence its name promised. The field-exact chord
+  // comparison lives in shortcuts.test.ts, which is where it belongs.
+  it("keeps the two platform tables in step: neither drops a command the other keeps", () => {
     for (const id of ids) {
       const mac = MAC_DEFAULTS[id];
       const other = OTHER_DEFAULTS[id];
       expect(Boolean(mac), `mac default for ${id}`).toBe(Boolean(other));
-      if (mac && other) expect(sameChord(mac, mac)).toBe(true);
     }
   });
 });

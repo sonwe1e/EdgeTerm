@@ -50,6 +50,8 @@ describe("credential store status", () => {
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.mocked(commands.credentialStoreStatus).mockRejectedValue(new Error("no ipc"));
     await expect(fetchCredentialStoreStatus()).resolves.toBeNull();
-    expect(logged).toHaveBeenCalled();
+    // The argument is the whole point: without a matcher, replacing
+    // console.error(error) with console.error("failed") leaves this green.
+    expect(logged).toHaveBeenCalledWith(expect.objectContaining({ message: "no ipc" }));
   });
 });

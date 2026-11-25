@@ -250,8 +250,17 @@ describe("workspace persistence", () => {
     const flushed = flushWorkspace();
     await vi.advanceTimersByTimeAsync(1800);
     await flushed;
+    // This block used to carry no assertion at all, so it could only fail by
+    // hanging. The storage read is not available here - saveCurrent defers its
+    // write and the fake timers have not run it - so the discriminating check
+    // is what the capture does with the reply that arrived after the flush.
     finish("/late");
     await captureWorkspaceDirectories();
+    // This tab is still connected, so the capture re-queries it and the reply
+    // resolves immediately - it lands. Pinned so a change to either the bound
+    // or the write-back is visible: dropping it would mean the restored
+    // session points at the pre-stall directory.
+    expect(useStore.getState().tabs[0].directories?.terminal).toBe("/late");
   });
 });
 
