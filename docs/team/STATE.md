@@ -5,6 +5,25 @@
 
 ---
 
+## 本轮：菜单栏子菜单 Portal 化修复与全链路浮层/交互盲区筛查（2026-11-26 第二轮）
+
+响应用户实测反馈「点击 `视图 -> 面板布局 / 主题` 后变成横向滚动条而非弹出式子菜单」，在本地 `main` 上连续落地 13 个单关注点提交（`73bbac4..c35c5ad`，未推送，版本号保持 `1.7.8`）：
+
+- **P0 根因与架构修复（菜单栏子菜单）**：
+  - 定位根因：`fd38442` 为 `.menu-item + .menu-dropdown` 增加 `overflow-y: auto` 后，按 CSS 规范 `overflow-y: auto` 隐式将 `overflow-x` 升为 `auto`，将 `MenuBar` 内联 `.menu-submenu` 困在父级菜单横向滚动盒内（而 `ContextMenu` 已在 `03dd1dc` Portal 化）。
+  - 抽取共享定位引擎 `src/components/submenuPlacement.ts` 供 `ContextMenu` 与 `MenuBar` 复用；将 `MenuBar` 子菜单经 `createPortal` 挂载至 `dialog[open] ?? .app ?? document.body`，保留 560px 矮窗垂直滚动与视口边缘左翻，滚出视口时自动隐藏并移交焦点。
+  - 新增 `src/test/menuBarSubmenu.browser.test.ts`（R7 负控制基线 3/4 失败，`View` 菜单 `scrollWidth 508 > 291`；修复后 4/4 全绿）与 `scripts/check-refinement-shots.mjs` 中 `menubar-view-layout`（暗色）、`menubar-view-theme`（亮色）视觉审计场景并人工目检 PNG。
+- **全链路盲区筛查与修复（7 项用户可见缺陷）**：
+  - `src/menuKeyboard.ts` / `MenuBar.tsx`：补齐 `.menu-dropdown` 与 `.menu-item.is-open` 全局快捷键拦截（拆分 `externalSurfaceOwnsKeyboard` 保留 `Alt`/`F10` 关闭菜单栏），补齐 `视图 -> 已保存命令…` 快捷键提示。
+  - `src/styles/forward.styles.css`：对齐 `TransferCenter` 为 `.forward-popover .status-popover-body > *` 与 `.forward-list` 增加 `flex-shrink: 0`，修复矮窗/展开远端端口发现时隧道列表塌缩至 `0px` 的缺陷（R7 负控制已验证）。
+  - `src/components/ResourceMonitorBar.tsx`：关闭「监控 SSH 主机」后浮层文案改为 `monitor.resourcesOff` 而非永久显示「正在读取资源…」。
+  - `src/components/StatusBar.tsx` / `usePopoverDismiss.ts` / 4 个状态浮层：将 `.broadcast-targets-button` 纳入 `targetsRef` 修复二次点击先关后重开，`Escape` 增加 `isComposing` 守卫，关闭按钮 `×` 经 `focusPopoverTrigger` 归还触发按钮焦点。
+  - `src/components/NumericSettingInput.tsx`：`TransferCenter` 与 `ResourceMonitorBar` 的 5 处数值设置改用可空草稿状态，支持清空与连续输入多位数并在失焦/回车时归一化夹逼，失焦态恒与受控值同步。
+  - `src/components/ComboBox.tsx`：无可见建议列表时（`shown === false`）放行 `Escape` 给外层对话框并清理陈旧过滤态。
+  - `src/styles/sender.styles.css` / `SenderPanel.tsx` / `SenderQuickbar.tsx`：精简底栏「更多」命令选择器提升至 `--z-popover`、响应式宽度 `min(340px, 100vw - 16px)`、高光与动效统一、支持搜索框回车直接执行首项与 IME 保护；新增 `--z-tooltip: 1100` 避免截断提示被浮层遮挡。
+- **独立只读复验（Round 2 Verifier）**：初审 `0b91806..dd8a365` 检出 2 条 P1（`.menu-dropdown`/`.menubar-submenu` 缺少 `tabIndex={-1}` 导致滚出焦点移交失效与点分隔线误关；`.menu-item.is-open` 未阻断全局快捷键）及 5 条 P2（`.overflow-tooltip` 层级、`ComboBox` 陈旧 `open`、`NumericSettingInput` 拒绝提交同步、`focusFrame` 清理、左翻/动画未落定断言），全部修复于 `f947b0b..c35c5ad` 并获复审 **APPROVE**。
+- **全量门禁结果**：`npm run verify`（`225/225` 单测文件 **2,027** 用例 + `76/76` 浏览器文件 **357** 用例，397.8s）、`npm run test:rust`（**549** 通过 / 0 失败 / 32 忽略，58.77s）、`npm run check:commits -- a0424e9..HEAD --typecheck --lint`（29 commits，0 errors，0 warnings）、**28 场景**视觉截图审计（0 warnings / 0 layoutFailures / 0 unknownIpc / 0 errors）。
+
 ## 本轮：视觉与交互体验全面打磨、代码质量整治与验证流程提速（2026-11-26）
 
 本地 `main` 上连续落地 15 个单关注点提交（`a0424e9..1a549bc`，未推送，版本号保持 `1.7.8`），覆盖视觉细节、交互缺陷、代码结构与验证提速：
