@@ -879,7 +879,7 @@
    anywhere: the long ones are paths and host names without spaces. */
 .overflow-tooltip {
   position: fixed;
-  z-index: 300;
+  z-index: var(--z-tooltip);
   display: none;
   max-width: min(520px, calc(100vw - 16px));
   padding: var(--sp-4) var(--sp-8);

@@ -123,6 +123,7 @@
   --z-hud: 200;
   --z-popover: 1000;
   --z-drag: 1001;
+  --z-tooltip: 1100;
   --z-dialog: 10000;
   /* Metrics. The values are pixel sizes, not rung numbers, so a declaration
      reading var(--sp-6) renders 6px and nobody has to remember whether rung
