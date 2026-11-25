@@ -517,3 +517,53 @@ it.each(["cancel", "change ending", "reject"])(
     );
   },
 );
+
+it("runs the top match on Enter in the compact saved-command picker while respecting IME", async () => {
+  const disk: SavedCommand = {
+    id: "disk",
+    name: "Disk usage",
+    text: "df -h",
+    ending: "lf",
+    scope: { type: "global" },
+  };
+  vi.mocked(api.listSenderCommands).mockResolvedValue([saved, disk]);
+  useStore.setState({
+    tabs: [senderTab("sender-session", "connected")],
+    activeId: "sender-session",
+  });
+  await render(true);
+  const more = [...host.querySelectorAll<HTMLButtonElement>(".sender-quick-button")].find((btn) =>
+    btn.textContent?.includes("More"),
+  )!;
+  await click(more);
+  const search = host.querySelector<HTMLInputElement>(".sender-more-search input")!;
+  expect(search).toBeTruthy();
+
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(search, "disk");
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  // IME confirmation and cancellation stay inside the picker.
+  await act(async () => {
+    search.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, key: "Enter", isComposing: true }),
+    );
+    search.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, key: "Escape", isComposing: true }),
+    );
+  });
+  expect(sendUnits).not.toHaveBeenCalled();
+  expect(host.querySelector(".sender-more-menu")).not.toBeNull();
+
+  await act(async () => {
+    search.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+  });
+  expect(host.querySelector(".sender-more-menu")).toBeNull();
+  expect(sendUnits).toHaveBeenCalledWith(
+    ["sender-session"],
+    ["df -h\n"],
+    "lf",
+    expect.any(Object),
+    expect.any(Function),
+  );
+});

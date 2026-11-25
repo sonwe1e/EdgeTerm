@@ -77,7 +77,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
       }
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      if (event.key === "Escape" && !event.isComposing) {
         event.preventDefault();
         setMoreAnchor(null);
         moreButtonRef.current?.focus();
@@ -203,6 +203,13 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
           .includes(moreQuery.toLocaleLowerCase().trim()),
       )
     : [];
+
+  const runFromMore = (command: SavedCommand) => {
+    closeMore();
+    setSelectedCommandId(command.id);
+    void sendCommand(command.text, command.ending, command.id);
+    if (activeId) getController(activeId)?.focus();
+  };
 
   const hideCommandTooltip = () => {
     if (tooltipTimer.current) {
@@ -560,6 +567,17 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
               placeholder={t("sender.findSavedCommand")}
               aria-label={t("sender.findSavedCommand")}
               onChange={(event) => setMoreQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (
+                  event.key === "Enter" &&
+                  !event.nativeEvent.isComposing &&
+                  !running &&
+                  moreMatches.length > 0
+                ) {
+                  event.preventDefault();
+                  runFromMore(moreMatches[0]);
+                }
+              }}
             />
           </div>
           <div className="sender-more-list">
@@ -570,12 +588,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
                 className="sender-more-item"
                 style={senderColorStyle(command.color)}
                 disabled={running}
-                onClick={() => {
-                  closeMore();
-                  setSelectedCommandId(command.id);
-                  void sendCommand(command.text, command.ending, command.id);
-                  if (activeId) getController(activeId)?.focus();
-                }}
+                onClick={() => runFromMore(command)}
               >
                 <Icon name="run-compact" />
                 <span className="sender-more-name">{command.name}</span>

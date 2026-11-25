@@ -153,8 +153,9 @@ export function SenderQuickbar({
           const rect = moreButtonRef.current?.getBoundingClientRect();
           if (!rect) return;
           setMoreQuery("");
+          const width = Math.min(340, Math.max(0, window.innerWidth - 16));
           setMoreAnchor({
-            left: Math.max(8, Math.min(rect.left, window.innerWidth - 348)),
+            left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
             bottom: window.innerHeight - rect.top + 4,
           });
         }}
