@@ -1,3 +1,4 @@
+import { loadIds, pushId, saveIds, type StorageLike } from "./recentIds";
 import { RECENT_PROFILES_KEY } from "./persistKeys";
 
 /**
@@ -7,52 +8,19 @@ import { RECENT_PROFILES_KEY } from "./persistKeys";
  */
 export const RECENT_PROFILES_LIMIT = 6;
 
-interface StorageLike {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-}
-
-const safeStorage = (): StorageLike | null => {
-  try {
-    return typeof localStorage === "undefined" ? null : localStorage;
-  } catch {
-    return null;
-  }
-};
-
 /** Profile ids, newest first; anything that is not a non-empty string is dropped. */
-export function loadRecentProfiles(storage: StorageLike | null = safeStorage()): string[] {
-  if (!storage) return [];
-  try {
-    const raw = storage.getItem(RECENT_PROFILES_KEY);
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    const ids: string[] = [];
-    for (const value of parsed) {
-      if (typeof value !== "string" || !value || ids.includes(value)) continue;
-      ids.push(value);
-      if (ids.length >= RECENT_PROFILES_LIMIT) break;
-    }
-    return ids;
-  } catch {
-    return [];
-  }
+export function loadRecentProfiles(storage: StorageLike | null = null): string[] {
+  return loadIds(RECENT_PROFILES_KEY, RECENT_PROFILES_LIMIT, storage ?? undefined);
 }
 
 /** Puts an id at the front, dropping its older copy and the ones that fall off. */
 export function rememberProfile(ids: readonly string[], id: string): string[] {
-  return [id, ...ids.filter((value) => value !== id)].slice(0, RECENT_PROFILES_LIMIT);
+  return pushId(ids, id, RECENT_PROFILES_LIMIT);
 }
 
 export function saveRecentProfiles(
   ids: readonly string[],
-  storage: StorageLike | null = safeStorage(),
+  storage: StorageLike | null = null,
 ): void {
-  if (!storage) return;
-  try {
-    storage.setItem(RECENT_PROFILES_KEY, JSON.stringify(ids.slice(0, RECENT_PROFILES_LIMIT)));
-  } catch {
-    // A full quota costs the list, never the connection.
-  }
+  saveIds(ids, RECENT_PROFILES_KEY, RECENT_PROFILES_LIMIT, storage ?? undefined);
 }

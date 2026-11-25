@@ -10,6 +10,7 @@
 
 import { translate, type MessageKey, type Translate } from "./i18n";
 import { COMMAND_RECENTS_KEY } from "./persistKeys";
+import { loadIds, pushId, saveIds, type StorageLike } from "./recentIds";
 import { quickConnectLabel, type QuickTarget } from "./quickConnect";
 import {
   chordLabel,
@@ -76,59 +77,22 @@ export interface PaletteCommand {
 /** How many commands a recents list keeps; older entries fall off the end. */
 export const RECENTS_LIMIT = 8;
 
-interface StorageLike {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-}
-
-const safeStorage = (): StorageLike | null => {
-  try {
-    return typeof localStorage === "undefined" ? null : localStorage;
-  } catch {
-    return null;
-  }
-};
-
 /**
  * The command ids this machine ran last, newest first. Anything that is not a
  * string, repeats and unknown ids are dropped: the list is a preference, and a
  * preference from an older build must never break the palette.
  */
-export function loadRecents(storage: StorageLike | null = safeStorage()): string[] {
-  if (!storage) return [];
-  try {
-    const raw = storage.getItem(COMMAND_RECENTS_KEY);
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    const ids: string[] = [];
-    for (const value of parsed) {
-      if (typeof value !== "string" || !value || ids.includes(value)) continue;
-      ids.push(value);
-      if (ids.length >= RECENTS_LIMIT) break;
-    }
-    return ids;
-  } catch {
-    return [];
-  }
+export function loadRecents(storage: StorageLike | null = null): string[] {
+  return loadIds(COMMAND_RECENTS_KEY, RECENTS_LIMIT, storage ?? undefined);
 }
 
 /** Records a run at the front of the recents list. */
 export function pushRecent(recents: readonly string[], id: string): string[] {
-  const next = [id, ...recents.filter((value) => value !== id)];
-  return next.slice(0, RECENTS_LIMIT);
+  return pushId(recents, id, RECENTS_LIMIT);
 }
 
-export function saveRecents(
-  recents: readonly string[],
-  storage: StorageLike | null = safeStorage(),
-): void {
-  if (!storage) return;
-  try {
-    storage.setItem(COMMAND_RECENTS_KEY, JSON.stringify(recents.slice(0, RECENTS_LIMIT)));
-  } catch {
-    // A full quota costs the recents list, never the command itself.
-  }
+export function saveRecents(recents: readonly string[], storage: StorageLike | null = null): void {
+  saveIds(recents, COMMAND_RECENTS_KEY, RECENTS_LIMIT, storage ?? undefined);
 }
 
 /** Case- and whitespace-insensitive form used for every comparison. */

@@ -52,3 +52,11 @@ C1–C5 都是真正的重构，每一处都贴近行为，本轮预算下不做
 为什么这条值得修：这两个入口**必须**就「什么算有效」和「无效时焦点落哪」达成一致，而它们是两份拷贝——给一边加规则、忘了另一边，就是 Save 与 Connect 之间一次无声的行为分裂。用户点了保存能过、点连接被拒，且没有任何提示解释为什么。
 
 本轮零自伤：一次读全两处、一次改完、typecheck 直接过。这是连续三轮里第一次没靠编译器纠正我。
+
+## 第 222 轮：C2 修好了
+
+新建 `src/recentIds.ts`，导出 `loadIds(key, limit, storage)`／`pushId(ids, id, limit)`／`saveIds(ids, key, limit, storage)` 与共用的 `StorageLike`／`safeStorage`。三个模块各自只留自己的键与上限。
+
+三个签名从 `storage: StorageLike | null = safeStorage()` 改成 `storage: StorageLike | null = null`，内部传 `storage ?? undefined` 让共享助手自己取默认值——这样三个模块仍然可以像以前一样被注入假存储，**三套既有测试一条没改就全绿**。
+
+本轮零自伤：先读全三处、再建模块、再逐个重写，typecheck 一次过。这是连续两轮零自伤（上一轮 C4 也是）。
