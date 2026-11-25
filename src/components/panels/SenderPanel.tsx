@@ -217,6 +217,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
           setSelectedCommandId={setSelectedCommandId}
           sendCommand={sendCommand}
           setContextMenu={setContextMenu}
+          contextMenu={contextMenu}
           moreButtonRef={moreButtonRef}
           moreAnchor={moreAnchor}
           closeMore={closeMore}
@@ -506,6 +507,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
             hideCommandTooltip={hideCommandTooltip}
             setSelectedCommandId={setSelectedCommandId}
             setContextMenu={setContextMenu}
+            contextMenu={contextMenu}
             running={running}
             showCommandTooltip={showCommandTooltip}
             sendCommand={sendCommand}

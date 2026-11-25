@@ -24,6 +24,8 @@ interface Props {
   hideCommandTooltip: () => void;
   setSelectedCommandId: Dispatch<SetStateAction<string | null>>;
   setContextMenu: Dispatch<SetStateAction<CommandContextMenu | null>>;
+  /** The row whose command menu is open, so its trigger can report it. */
+  contextMenu: CommandContextMenu | null;
   running: boolean;
   showCommandTooltip: (command: SavedCommand, element: HTMLElement) => void;
   sendCommand: (
@@ -49,6 +51,7 @@ export function SenderLibrary({
   hideCommandTooltip,
   setSelectedCommandId,
   setContextMenu,
+  contextMenu,
   running,
   showCommandTooltip,
   sendCommand,
@@ -164,6 +167,7 @@ export function SenderLibrary({
                 hideCommandTooltip={hideCommandTooltip}
                 setSelectedCommandId={setSelectedCommandId}
                 setContextMenu={setContextMenu}
+                expanded={contextMenu?.commandId === command.id}
               />
             </div>
           ))}

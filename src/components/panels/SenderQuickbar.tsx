@@ -27,6 +27,8 @@ interface Props {
     commandId?: string,
   ) => Promise<void>;
   setContextMenu: Dispatch<SetStateAction<CommandContextMenu | null>>;
+  /** The row whose command menu is open, so its trigger can report it. */
+  contextMenu: CommandContextMenu | null;
   moreButtonRef: RefObject<HTMLButtonElement | null>;
   moreAnchor: { left: number; bottom: number } | null;
   closeMore: () => void;
@@ -52,6 +54,7 @@ export function SenderQuickbar({
   setSelectedCommandId,
   sendCommand,
   setContextMenu,
+  contextMenu,
   moreButtonRef,
   moreAnchor,
   closeMore,
@@ -133,6 +136,7 @@ export function SenderQuickbar({
                 hideCommandTooltip={hideCommandTooltip}
                 setSelectedCommandId={setSelectedCommandId}
                 setContextMenu={setContextMenu}
+                expanded={contextMenu?.commandId === command.id}
               />
             </div>
           ))
