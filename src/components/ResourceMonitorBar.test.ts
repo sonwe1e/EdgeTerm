@@ -244,6 +244,44 @@ it("reports monitoring as off inside the popover instead of reading forever", as
   }
 });
 
+it("keeps intermediate numeric edits in the sample interval field and clamps on blur", async () => {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(h(ResourceMonitorBar, { tab: tab("ssh") })));
+    await act(async () => host.querySelector<HTMLButtonElement>(".resource-summary")!.click());
+    const interval = host.querySelector<HTMLInputElement>(
+      '[aria-label="Resource sample interval in seconds"]',
+    )!;
+    const setVal = (next: string) =>
+      act(() => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
+          interval,
+          next,
+        );
+        interval.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    act(() => interval.focus());
+    // Clearing the field before typing a new interval must stay empty instead
+    // of snapping back to "2".
+    setVal("");
+    expect(interval.value).toBe("");
+    setVal("15");
+    expect(interval.value).toBe("15");
+    // Out-of-range typing stays editable until blur clamps it to the valid range.
+    setVal("99");
+    expect(interval.value).toBe("99");
+    await act(async () => {
+      interval.blur();
+    });
+    expect(interval.value).toBe("30");
+  } finally {
+    act(() => root.unmount());
+    host.remove();
+  }
+});
+
 it("keeps one in-flight sample and cancels switched or hidden hosts without stale repaint", async () => {
   vi.useFakeTimers();
   let old!: (value: ResourceMetrics) => void;

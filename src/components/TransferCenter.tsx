@@ -14,6 +14,7 @@ import { Icon } from "./icons";
 import { readTransferOptions, saveTransferOptions, validRateLimitBps } from "../transferSettings";
 import { useStore } from "../store";
 import { VirtualFileRows } from "./VirtualFileRows";
+import { NumericSettingInput } from "./NumericSettingInput";
 import { StatusPopover } from "./StatusPopover";
 import { focusPopoverTrigger, usePopoverDismiss } from "./usePopoverDismiss";
 import { useT } from "../useT";
@@ -896,15 +897,12 @@ export function TransferCenter() {
         <div className="transfer-settings-grid">
           <label title={t("transfer.requestsHint")}>
             {t("transfer.requestsLabel")}
-            <input
+            <NumericSettingInput
               aria-label={t("transfer.requestsLabel")}
-              type="number"
               min={1}
               max={32}
               value={options.requests}
-              onChange={(e) => {
-                const requests = Number(e.target.value);
-                if (!Number.isInteger(requests) || requests < 1 || requests > 32) return;
+              onCommit={(requests) => {
                 const next = { ...options, requests };
                 setOptions(next);
                 saveTransferOptions(next);
@@ -913,15 +911,12 @@ export function TransferCenter() {
           </label>
           <label title={t("transfer.chunkHint")}>
             {t("transfer.chunkLabel")}
-            <input
+            <NumericSettingInput
               aria-label={t("transfer.chunkLabel")}
-              type="number"
               min={16}
               max={256}
               value={options.chunkKib}
-              onChange={(e) => {
-                const chunkKib = Number(e.target.value);
-                if (!Number.isInteger(chunkKib) || chunkKib < 16 || chunkKib > 256) return;
+              onCommit={(chunkKib) => {
                 const next = { ...options, chunkKib };
                 setOptions(next);
                 saveTransferOptions(next);
@@ -930,15 +925,12 @@ export function TransferCenter() {
           </label>
           <label title={t("transfer.filesHint")}>
             {t("transfer.filesLabel")}
-            <input
+            <NumericSettingInput
               aria-label={t("transfer.filesLabel")}
-              type="number"
               min={1}
               max={32}
               value={options.files}
-              onChange={(e) => {
-                const files = Number(e.target.value);
-                if (!Number.isInteger(files) || files < 1 || files > 32) return;
+              onCommit={(files) => {
                 const next = { ...options, files };
                 setOptions(next);
                 saveTransferOptions(next);
@@ -947,15 +939,12 @@ export function TransferCenter() {
           </label>
           <label title={t("transfer.rateLimitHint")}>
             {t("transfer.rateLimitLabel")}
-            <input
+            <NumericSettingInput
               aria-label={t("transfer.rateLimitLabel")}
-              type="number"
               min={0}
               max={1048576}
               value={rateKib(options)}
-              onChange={(e) => {
-                const kib = Number(e.target.value);
-                if (!Number.isInteger(kib) || kib < 0 || kib > 1048576) return;
+              onCommit={(kib) => {
                 const rateLimitBps = kib * 1024;
                 if (!validRateLimitBps(rateLimitBps)) return;
                 const next = { ...options, rateLimitBps };

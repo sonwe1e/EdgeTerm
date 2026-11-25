@@ -6,6 +6,7 @@ import { readMonitorSettings, saveMonitorSettings } from "../monitorSettings";
 import { transferBytes } from "../fileTransfers";
 import { useStore, type Tab } from "../store";
 import { Icon } from "./icons";
+import { NumericSettingInput } from "./NumericSettingInput";
 import { StatusPopover } from "./StatusPopover";
 import { focusPopoverTrigger, usePopoverDismiss } from "./usePopoverDismiss";
 import { translate } from "../i18n";
@@ -549,17 +550,12 @@ export const ResourceMonitorBar = memo(function ResourceMonitorBar({
             </label>
             <label className="monitor-interval">
               {t("monitor.sampleEvery")}
-              <input
-                type="number"
+              <NumericSettingInput
                 aria-label={t("monitor.sampleIntervalAria")}
                 min={1}
                 max={30}
                 value={settings.intervalSeconds}
-                onChange={(event) => {
-                  const value = Number(event.target.value);
-                  if (Number.isInteger(value) && value >= 1 && value <= 30)
-                    update({ ...settings, intervalSeconds: value });
-                }}
+                onCommit={(intervalSeconds) => update({ ...settings, intervalSeconds })}
               />
               s
             </label>

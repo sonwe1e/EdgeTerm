@@ -126,3 +126,26 @@ it("opens transfer settings expanded and moves keyboard focus to their summary",
   const input = document.querySelector<HTMLInputElement>(".transfer-settings input")!;
   expect(input.getBoundingClientRect().height).toBeGreaterThan(0);
 });
+
+it("lets keyboard users clear and type multi-digit Chunk (KiB) values", async () => {
+  localStorage.clear();
+  await page.viewport(900, 560);
+  useStore.getState().setLanguage("en");
+  mount(h(TransferCenter));
+  useFileTransfers.getState().openSettings();
+  await expect
+    .poll(() => document.querySelector<HTMLInputElement>('[aria-label="Chunk (KiB)"]'))
+    .not.toBeNull();
+  const chunk = document.querySelector<HTMLInputElement>('[aria-label="Chunk (KiB)"]')!;
+  chunk.focus();
+  await userEvent.clear(chunk);
+  expect(chunk.value).toBe("");
+  await userEvent.type(chunk, "128");
+  expect(chunk.value).toBe("128");
+  // Out-of-range draft clamps cleanly on blur instead of being ignored.
+  await userEvent.clear(chunk);
+  await userEvent.type(chunk, "8");
+  expect(chunk.value).toBe("8");
+  chunk.blur();
+  await expect.poll(() => chunk.value).toBe("16");
+});
