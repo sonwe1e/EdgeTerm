@@ -105,7 +105,6 @@ export function ComboBox({
 
   const matches = open ? comboMatches(options, value, open.filtered) : [];
   const shown = matches.length > 0;
-  const isOpen = open !== null;
   const typed = open?.filtered ? value.length : 0;
 
   // Stable so the dismissal listeners below can call it without re-binding
@@ -173,7 +172,7 @@ export function ComboBox({
   // anything but the list itself scrolling, the window changing size or
   // losing focus.
   useEffect(() => {
-    if (!isOpen) return;
+    if (!shown) return;
     const onMouseDown = (event: MouseEvent) => {
       const target = event.target as Node;
       if (fieldRef.current?.contains(target)) return;
@@ -193,7 +192,7 @@ export function ComboBox({
       window.removeEventListener("resize", close);
       window.removeEventListener("blur", close);
     };
-  }, [isOpen]);
+  }, [shown, close]);
 
   const step = (by: 1 | -1) => {
     if (!shown) {
@@ -263,7 +262,7 @@ export function ComboBox({
               }
               return;
             case "Escape":
-              if (isOpen) {
+              if (shown) {
                 // The list closes first; a second Esc closes the dialog that
                 // holds the field, which is the dialog's own contract.
                 event.preventDefault();

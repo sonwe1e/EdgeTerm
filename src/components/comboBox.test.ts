@@ -202,4 +202,33 @@ describe("ComboBox", () => {
     key("Escape");
     expect(dialogEscapes).toBe(1);
   });
+
+  it("lets Escape reach the holding dialog when typing leaves no popup visible", () => {
+    let dialogEscapes = 0;
+    function DialogHarness() {
+      const [value, setValue] = useState("");
+      return createElement(
+        "div",
+        { onKeyDown: () => void (dialogEscapes += 1) },
+        createElement(ComboBox, {
+          value,
+          onChange: setValue,
+          options: RATES,
+          listLabel: "Rates",
+        }),
+      );
+    }
+    act(() => root.render(createElement(DialogHarness)));
+    // Both a custom non-matching value and an exact preset match leave no
+    // visible listbox; Escape must not be swallowed when nothing is open.
+    type("500000");
+    expect(rows()).toEqual([]);
+    key("Escape");
+    expect(dialogEscapes).toBe(1);
+
+    type("115200");
+    expect(rows()).toEqual([]);
+    key("Escape");
+    expect(dialogEscapes).toBe(2);
+  });
 });
