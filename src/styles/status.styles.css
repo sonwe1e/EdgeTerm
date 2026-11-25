@@ -57,7 +57,7 @@
    number changes width. */
 .status-latency {
   font-variant-numeric: tabular-nums;
-  color: var(--fg-muted);
+  color: var(--fg-dim);
 }
 
 /* What the program says it is doing ("vim notes.txt", a nested prompt). It is
@@ -68,7 +68,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--fg-muted);
+  color: var(--fg-dim);
 }
 
 /* The protocol reads as one identity token: the field's name lives in its
@@ -211,8 +211,6 @@ button.status-item:focus-visible {
 }
 /* --- splitters ------------------------------------------------------------ */
 
-/* --- splitters ------------------------------------------------------------ */
-
 /* The splitter is the 1px divider itself; an 11px hit area (`::after`)
    straddles it, and a 4px accent line (`::before`) lights up as soon as the
    pointer enters that area.
@@ -283,10 +281,9 @@ button.status-item:focus-visible {
   left: -1.5px;
   width: 4px;
 }
-/* The guide moves during a dock drag;the dock itself moves on release. a side
-   dock's own edge is vertical and travels in: the dock itself moves on release. A side
-   dock's own edge is vertical and travels in X;the splitters that divide a
-   side dock are horizontal and travel in y, so both carry the same line. */
+/* The guide moves during a dock drag; the dock itself resizes on release. A
+   side dock's edge is vertical and travels in X; the splitters that divide a
+   side dock are horizontal and travel in Y, so both carry the same line. */
 .splitter.is-vertical[data-preview]::before {
   transform: translateX(var(--splitter-preview-x, 0px));
 }

@@ -92,8 +92,10 @@
    the segment — the tunnel form's direction control in a dialog row. */
 .settings-choices {
   display: flex;
-  flex: none;
+  flex: 0 1 auto;
   flex-wrap: wrap;
+  max-width: 100%;
+  min-width: 0;
   gap: var(--sp-6);
   margin: 0;
   padding: 0;
@@ -147,8 +149,10 @@
    panel reads the way a chosen option does. */
 .settings-checks {
   display: flex;
-  flex: none;
+  flex: 0 1 auto;
   flex-wrap: wrap;
+  max-width: 100%;
+  min-width: 0;
   gap: var(--sp-6);
 }
 

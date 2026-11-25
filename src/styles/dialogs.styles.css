@@ -1,6 +1,6 @@
 /* --- import OpenSSH config ------------------------------------------------ */
 .ssh-import-dialog {
-  width: min(640px, calc(100vw - 40px));
+  width: min(720px, calc(100vw - 40px));
 }
 .ssh-import-body {
   gap: var(--sp-10);
@@ -484,7 +484,7 @@ dialog.dialog-backdrop.is-fallback[open] {
   padding: var(--sp-4) var(--sp-8);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--bg-raised);
+  background: var(--bg-field);
 }
 
 .session-jump-step {
@@ -1468,11 +1468,8 @@ dialog.dialog-backdrop.is-fallback[open] {
    gains a section that lists, adds and removes a profile's forwards. Both
    speak the tunnel form's field pattern (forward.styles.css). */
 
-/* One track wider than the host/target/auth grid, and a little more room for
-   the routes the new column carries. */
-.ssh-import-dialog {
-  width: min(720px, calc(100vw - 40px));
-}
+/* One track wider than the host/target/auth grid; dialog width lives at the
+   top of this sheet alongside the other ssh-import rules. */
 
 .ssh-import-row.has-forwards {
   grid-template-columns:
@@ -1603,7 +1600,7 @@ dialog.dialog-backdrop.is-fallback[open] {
   white-space: nowrap;
 }
 .file-editor-destination small {
-  color: var(--text-muted);
+  color: var(--fg-dim);
 }
 .file-editor-empty {
   flex: 1;
@@ -1815,8 +1812,10 @@ dialog.dialog-backdrop.is-fallback[open] {
   line-height: 1.5;
 }
 .log-viewer-text mark {
+  padding: 0 1px;
+  border-radius: 2px;
   background: var(--accent);
-  color: var(--bg-terminal);
+  color: var(--accent-contrast);
 }
 .log-viewer-notice {
   padding: var(--sp-8) var(--sp-16);

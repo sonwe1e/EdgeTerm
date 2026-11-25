@@ -213,15 +213,13 @@
   font-family: var(--font-mono);
 }
 .agent-config {
-  padding: var(--sp-10);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-}
-.agent-config {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: var(--sp-6);
+  padding: var(--sp-10);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
 }
 .agent-config code,
 .agent-config small {

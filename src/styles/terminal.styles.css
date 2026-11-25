@@ -40,10 +40,16 @@
 }
 .terminal-search .search-field:focus-within {
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 .terminal-search .search-field.is-invalid {
   border-color: var(--red);
+}
+
+.terminal-search .search-field.is-invalid:focus-within {
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--red) 22%, transparent);
 }
 
 .terminal-search .search-field input {
@@ -51,6 +57,12 @@
   min-width: 0;
   border: none;
   background: none;
+}
+
+/* The wrapper draws the composite field's focus ring; suppress the global
+   input focus ring so it never collides with the inline toggle buttons. */
+.terminal-search .search-field input:focus {
+  box-shadow: none;
 }
 
 .search-toggle {

@@ -36,10 +36,11 @@
 }
 
 /* The queue's scroller: VirtualFileRows measures this element's parent, so it
-   must stay the scrolling box, bounded even for a long queue. */
+   must stay the scrolling box, bounded to three whole 100px job rows so the
+   fourth card is not sliced horizontally across its status pill. */
 .transfer-center-jobs {
   position: relative;
-  max-height: 320px;
+  max-height: 300px;
   overflow: auto;
 }
 /* ---- one queue row: identity, route, progress and stage ------------------ */
