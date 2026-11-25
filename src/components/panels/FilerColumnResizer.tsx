@@ -12,6 +12,8 @@ import { createFrameBatch } from "../../frameBatch";
 
 /** One arrow keypress moves the boundary by this many pixels. */
 const KEY_STEP = 8;
+import { releaseDrag } from "../../dragCapture";
+
 /** Shift turns a keypress into a coarse adjustment. */
 const KEY_STEP_LARGE = 32;
 
@@ -106,23 +108,10 @@ export function FilerColumnResizer({
     drag.current = null;
     active?.removeListeners();
     if (updateState) setDragging(false);
-    try {
-      if (active?.target.hasPointerCapture(active.pointerId)) {
-        active.target.releasePointerCapture(active.pointerId);
-      }
-    } catch (error) {
-      // The WebView may already have removed the pointer. Do not let that
-      // leave the global resize cursor or a queued resize alive.
-      if (!(error instanceof DOMException && error.name === "NotFoundError")) {
-        console.warn("Failed to release column resizer pointer capture", error);
-      }
-    } finally {
-      // Only a normal release commits the final frame. Interruptions discard
-      // pending work, without undoing widths already applied in earlier frames.
-      if (active && commit) batch.current!.flush();
-      else batch.current!.cancel();
-      live.current = null;
-    }
+    releaseDrag(active, commit, batch.current!, "column resizer");
+    // After the flush or cancel has settled, so the batch never reads a drag
+    // it is no longer allowed to apply.
+    live.current = null;
   }, []);
 
   useEffect(() => {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { releaseDrag } from "../dragCapture";
 import { createFrameBatch } from "../frameBatch";
 import { useT } from "../useT";
 
@@ -99,22 +100,7 @@ export function Splitter({
     drag.current = null;
     active?.removeListeners();
     if (updateState) setDragging(false);
-    try {
-      if (active?.target.hasPointerCapture(active.pointerId)) {
-        active.target.releasePointerCapture(active.pointerId);
-      }
-    } catch (error) {
-      // The WebView may already have removed the pointer. Do not let that
-      // leave the global resize cursor or a queued resize alive.
-      if (!(error instanceof DOMException && error.name === "NotFoundError")) {
-        console.warn("Failed to release splitter pointer capture", error);
-      }
-    } finally {
-      // Only a normal release commits the final frame. Interruptions discard
-      // pending work, without undoing sizes already applied in earlier frames.
-      if (active && commit) batch.current!.flush();
-      else batch.current!.cancel();
-    }
+    releaseDrag(active, commit, batch.current!, "splitter");
     // After the flush, so the owner's commit sees the width the release just
     // applied. Unmounts (updateState=false) end silently: there is no state
     // left to reconcile.

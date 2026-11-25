@@ -78,3 +78,19 @@ src/editor/codemirror.test.ts(3,10): error TS2459: Module '"./codemirror"' decla
 其余 8 个：`isRendered`、`workspaceTitle`、`entryKindLabel`、`paneCounter`、`endingText`、`sendCommandToSession`、`isFontInstalled`、`PALETTE_GROUPS`。其中 `export let paneCounter = 0` 额外暴露了无人消费的可变模块状态，现在只是模块私有的。
 
 **C5 只修了 8/112**，剩下的没有逐个验证——那需要同样的一删一跑 104 次，收益是「读者能分清哪些 export 是契约」。这个投入产出比留待判断，不在本轮硬做。
+
+## 第 224 轮：C1 修好了——代码质量审计 6 条全部闭合
+
+新建 `src/dragCapture.ts`，导出 `releaseDrag(active, commit, batch, label)`，里面正是两份拷贝共有的那段：try 里 `hasPointerCapture`/`releasePointerCapture`，catch 里除 `NotFoundError` 外 warn，finally 里 `commit ? flush : cancel`。
+
+**各处差异原样留在调用方**，这是这次提取没有改变行为的关键：
+
+- `Splitter`：`releaseDrag(...)` 之后仍有 `if (active && updateState) ended.current?.(commit)`——它原先就在整个 try/finally **之后**。
+- `FilerColumnResizer`：`releaseDrag(...)` 之后仍有 `live.current = null`——它原先在 finally 的**末尾**，即 flush/cancel 之后。两种顺序都保住了。
+- 警告字符串改成模板：`Failed to release ${label} pointer capture`，两个调用点分别传 `"splitter"`／`"column resizer"`。
+
+提取后约 80 行重复剩下约 30 行（各自的 `handleDown`/`handleMove` 仍近似但已带各自的注释与特有字段），共有的核心只有一处。
+
+### 本轮一次自伤，与第 219 轮同类
+
+`FilerColumnResizer.tsx` 在 `src/components/panels/` 下，我把导入写成 `../dragCapture`，`tsc` 报 `TS2307 Cannot find module`。应为 `../../dragCapture`。**和上一轮 `terminalClipboard.ts` 的 `../errorInfo` 一模一样——都是没先确认文件深度就写相对路径。**这是本会话第三次同类错误。
