@@ -28,7 +28,15 @@ window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
     if (command === "list_file_transfers")
       return [scenario === "failed" ? FAILED_TRANSFER : TRANSFER];
     if (command === "discover_listening_ports")
-      return { status: "idle", ports: [], truncated: false };
+      return {
+        status: "ok",
+        ports: [
+          { host: "0.0.0.0", port: 8000, process: "python3" },
+          { host: "127.0.0.1", port: 5432, process: "postgres" },
+          { host: "::", port: 6379, process: "redis-server" },
+        ],
+        truncated: false,
+      };
     if (command === "plugin:event|listen") return ++serial;
     if (command.startsWith("list_")) return [];
     if (command === "plugin:app|version") return "1.7.7";
@@ -228,5 +236,42 @@ describe("status popovers", () => {
     audit(tunnels, "failed tunnels");
     await closePopover("Tunnels");
     scenario = "ok";
+  });
+
+  it("keeps the tunnel list visible when discovery expands on a short viewport", async () => {
+    scenario = "ok";
+    await page.viewport(900, 500);
+    useStore.setState({
+      ...initial,
+      tabs: [tab()],
+      activeId: ID,
+      panes: [{ id: "root", activeTabId: ID }],
+      layout: { kind: "leaf", paneId: "root" },
+      activePaneId: "root",
+      panels: { sessions: false, filer: false, sender: false },
+      gpuRenderer: false,
+    });
+    useStore.getState().setLanguage("en");
+    useFileTransfers.setState({ jobs: {} });
+    mount(h(StrictMode, null, h(App)));
+    await twoFrames();
+    await twoFrames();
+
+    const tunnels = await openPopover("Tunnels");
+    const toggle = tunnels.querySelector<HTMLButtonElement>(".forward-discovery-toggle")!;
+    await userEvent.click(toggle);
+    await until(() => tunnels.querySelectorAll(".forward-listener").length > 0);
+    await twoFrames();
+
+    const jobsBox = tunnels.querySelector<HTMLElement>(".forward-jobs")!;
+    const listenersBox = tunnels.querySelector<HTMLElement>(".forward-listeners")!;
+    expect(
+      jobsBox.getBoundingClientRect().height,
+      "active tunnels list must not collapse when discovery opens",
+    ).toBeGreaterThanOrEqual(76);
+    expect(
+      listenersBox.getBoundingClientRect().height,
+      "discovered remote-port list must stay usable",
+    ).toBeGreaterThanOrEqual(68);
   });
 });

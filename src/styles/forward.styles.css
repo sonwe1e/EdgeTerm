@@ -5,6 +5,12 @@
 .forward-center {
   position: relative;
 }
+/* Mirror .transfer-center-popover: the popover body scrolls vertically, so its
+   children (form, discovery section, active tunnels list) keep their intrinsic
+   heights instead of shrinking overflow:auto lists down to 0px on short views. */
+.forward-popover .status-popover-body > * {
+  flex-shrink: 0;
+}
 /* --- create form --------------------------------------------------------- */
 
 .forward-form {
@@ -219,6 +225,7 @@
 
 .forward-list {
   position: relative;
+  flex-shrink: 0;
   overflow: auto;
 }
 
