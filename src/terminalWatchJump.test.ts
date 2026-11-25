@@ -63,6 +63,18 @@ describe("watch-mark jumps", () => {
     expect(controller.jumpToWatchMark(1), "nothing later").toBe(false);
   });
 
+  it("steps back to a mark sitting directly above the cursor", async () => {
+    const controller = createController();
+    // The cursor is on the line after the mark, so this is the first thing
+    // "previous" must find. The walk starts from the cursor, and the cursor is
+    // one buffer row below the mark - exactly the distance a buffer-relative
+    // starting point gets wrong.
+    await write(controller, "ERROR directly above\r\n");
+    const marks = controller.watchMarkLines();
+    expect(marks.length, "one marked row").toBe(1);
+    expect(controller.jumpToWatchMark(-1), "the mark above the cursor").toBe(true);
+  });
+
   it("reports nothing to land on when the buffer has no marks", async () => {
     const controller = createController();
     await write(controller, "clean run\r\n");

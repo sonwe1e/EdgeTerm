@@ -178,7 +178,13 @@ export class TerminalController {
     // The walk starts at the cursor and continues from the last landing, the
     // way editors step through matches: pressing "previous" twice must go two
     // commands up, not return to the same line.
-    const reference = this.commandJumpLine ?? buffer.baseY + buffer.cursorY;
+    // Absolute lines, the coordinate watchLines() and scrollToLine() both
+    // use. baseY + cursorY alone is a buffer-relative row, which is short by
+    // firstLineNumber - so the first jump started one line low and a mark
+    // sitting directly above the cursor was skipped, reporting "nothing
+    // earlier" with a mark right there.
+    const reference =
+      this.commandJumpLine ?? this.lineGutter.firstLineNumber + buffer.baseY + buffer.cursorY;
     let target: number | undefined;
     if (direction < 0) {
       for (let index = lines.length - 1; index >= 0; index -= 1) {
