@@ -11,12 +11,15 @@ export function SenderCommandOptions({
   hideCommandTooltip,
   setSelectedCommandId,
   setContextMenu,
+  expanded = false,
 }: {
   command: SavedCommand;
   t: Translate;
   hideCommandTooltip: () => void;
   setSelectedCommandId: Dispatch<SetStateAction<string | null>>;
   setContextMenu: Dispatch<SetStateAction<CommandContextMenu | null>>;
+  /** Whether this row's context menu is the open one. */
+  expanded?: boolean;
 }) {
   return (
     <button
@@ -25,6 +28,7 @@ export function SenderCommandOptions({
       aria-label={t("sender.optionsFor", { name: command.name })}
       title={t("sender.optionsFor", { name: command.name })}
       aria-haspopup="menu"
+      aria-expanded={expanded}
       onClick={(event) => {
         hideCommandTooltip();
         setSelectedCommandId(command.id);

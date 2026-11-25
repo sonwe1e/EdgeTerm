@@ -709,6 +709,10 @@ export default function GitWorkspaceDialog({
                 className="git-branch-button"
                 title={`${t("git.branchPicker")} · ${branch}`}
                 aria-haspopup="dialog"
+                // The folder menu beside it carries all three attributes; without
+                // expanded a reader gets no signal that a surface opened, and
+                // none when it closes.
+                aria-expanded={branches}
                 disabled={disabled}
                 onClick={() => {
                   setActionError(null);
