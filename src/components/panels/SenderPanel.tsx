@@ -83,12 +83,39 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
         moreButtonRef.current?.focus();
       }
     };
+    // This is a plain div, not a native dialog, so the browser will not keep
+    // Tab inside it. Without this, tabbing off the last row lands in the panel
+    // behind while the menu stays open over it. The rule is the one ModalDialog
+    // uses: with no explicit selection, first and last stop are the edges.
+    const containTab = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      const menu = moreMenuRef.current;
+      if (!menu) return;
+      const stops = Array.from(
+        menu.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((node) => node.offsetParent !== null || node === document.activeElement);
+      if (stops.length === 0) return;
+      const first = stops[0];
+      const last = stops[stops.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !menu.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
     document.addEventListener("mousedown", closeOutside, true);
     window.addEventListener("keydown", closeOnEscape, true);
+    window.addEventListener("keydown", containTab, true);
     window.addEventListener("resize", closeMore);
     return () => {
       document.removeEventListener("mousedown", closeOutside, true);
       window.removeEventListener("keydown", closeOnEscape, true);
+      window.removeEventListener("keydown", containTab, true);
       window.removeEventListener("resize", closeMore);
     };
   }, [moreAnchor, closeMore]);
@@ -520,6 +547,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
           ref={moreMenuRef}
           className="sender-more-menu"
           role="dialog"
+          aria-modal="true"
           aria-label={t("sender.findSaved")}
           style={{ left: moreAnchor.left, bottom: moreAnchor.bottom }}
         >
