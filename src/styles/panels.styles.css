@@ -426,10 +426,6 @@
 .context-submenu[data-side="left"] {
   transform-origin: top right;
 }
-.context-menu .menu-submenu-entry[data-submenu-side="left"].is-open::after {
-  left: auto;
-  right: 100%;
-}
 
 .menu-entry.is-danger {
   color: var(--red);

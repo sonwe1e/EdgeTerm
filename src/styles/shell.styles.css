@@ -321,6 +321,31 @@
   display: none;
 }
 
+/* Portaled menubar submenus escape the parent dropdown's overflow-y scrollport
+   (which forces overflow-x: auto by CSS spec), then measure and clamp against
+   the viewport via submenuPlacement.ts before becoming visible. */
+.menubar-submenu {
+  position: fixed;
+  display: block;
+  z-index: calc(var(--z-menu) + 1);
+  width: max-content;
+  min-width: min(200px, calc(100vw - 12px));
+  box-sizing: border-box;
+  max-width: min(440px, calc(100vw - 12px));
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  visibility: hidden;
+}
+
+.menubar-submenu[data-side="left"] {
+  transform-origin: top right;
+}
+
+.menu-submenu-entry[data-submenu-side="left"].is-open::after {
+  left: auto;
+  right: 100%;
+}
+
 /* Opened by the pointer (submenuHover.ts) or by the keyboard, both of which
    mark the row `is-open`. Focus alone must not keep it open: ArrowLeft
    closes the submenu and returns focus to this row. */

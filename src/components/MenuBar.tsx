@@ -2,11 +2,15 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactElement,
+  type RefObject,
   useCallback,
   useEffect,
+  useId,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { errorText } from "../errorInfo";
 import { GUIDE_URL } from "../distribution";
 import { getCurrentWindow, type Window as TauriWindow } from "@tauri-apps/api/window";
@@ -41,10 +45,16 @@ import { getController } from "../terminalRegistry";
 import { jumpInActiveTab } from "../terminalJump";
 import type { CloseAction } from "../storeTypes";
 import { THEME_MODES, themeLabels, type ThemeMode } from "../types";
+import { useStableCallback } from "../useStableCallback";
 import { useT } from "../useT";
 import { hasLeading, MenuLeading, menuRole, type MenuMark } from "./ContextMenu";
 import { Icon, type IconName } from "./icons";
 import { submenuKey, useSubmenuHover } from "./submenuHover";
+import {
+  hasRunningAnimations,
+  positionPortalSubmenus,
+  submenuPortalHost,
+} from "./submenuPlacement";
 
 // The menubar is also the title bar: it is the window drag region and shares
 // its row with the window controls, laid out like VS Code's custom title bar.
@@ -299,6 +309,10 @@ export function MenuBar(props: Props) {
   const openRef = useRef<string | null>(null);
   openRef.current = open;
   const titleRefs = useRef(new Map<string, HTMLButtonElement>());
+  const submenuPanels = useRef(new Map<string, HTMLElement>());
+  const ownsSubmenu = useStableCallback((node: Node | null): boolean =>
+    Boolean(node && [...submenuPanels.current.values()].some((panel) => panel.contains(node))),
+  );
   const macFullscreen = useWindowFlag(IS_MAC, readFullscreen);
   const maximized = useWindowFlag(!IS_MAC, readMaximized);
 
@@ -352,15 +366,19 @@ export function MenuBar(props: Props) {
     if (!open) return;
     const dismiss = (event: MouseEvent) => {
       const target = event.target;
-      // Anywhere but a menu title or its dropdown: outside the bar, the bar's
-      // blank drag area (window drag start), the app icon or window controls.
-      if (!(target instanceof Element) || !target.closest(".menu-item-slot")) {
+      // Anywhere but a menu title, its dropdown, or one of its portaled
+      // submenus: outside the bar, the bar's blank drag area, the app icon,
+      // or window controls.
+      if (
+        !(target instanceof Element) ||
+        (!target.closest(".menu-item-slot") && !ownsSubmenu(target))
+      ) {
         setOpen(null);
       }
     };
     document.addEventListener("mousedown", dismiss);
     return () => document.removeEventListener("mousedown", dismiss);
-  }, [open]);
+  }, [open, ownsSubmenu]);
 
   const withActive = (fn: (id: string) => void) => () => {
     if (activeId) fn(activeId);
@@ -1207,11 +1225,13 @@ export function MenuBar(props: Props) {
               key={menu.title}
               role="none"
               onBlur={(event) => {
-                // Focus moving inside the bar is the title-stepping path,
-                // which opens the next menu itself; only a move out of the
-                // bar dismisses.
+                // Focus moving inside the bar (title stepping) or into a
+                // portaled submenu stays within this menu; only leaving both
+                // dismisses.
                 const next = event.relatedTarget;
-                if (next instanceof Node && barRef.current?.contains(next)) return;
+                if (next instanceof Node && (barRef.current?.contains(next) || ownsSubmenu(next))) {
+                  return;
+                }
                 setOpen(null);
               }}
             >
@@ -1252,6 +1272,7 @@ export function MenuBar(props: Props) {
                   label={menu.title}
                   entries={menu.entries}
                   initialFocus={initialFocus.current}
+                  panelsRef={submenuPanels}
                   onClose={closeMenu}
                 />
               )}
@@ -1305,15 +1326,22 @@ function MenuDropdown({
   label,
   entries,
   initialFocus,
+  panelsRef,
   onClose,
 }: {
   label: string;
   entries: Menu["entries"];
   initialFocus: "first" | "last" | null;
+  panelsRef: RefObject<Map<string, HTMLElement>>;
   onClose: (mode: MenuClose) => void;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
-  const submenu = useSubmenuHover();
+  const menuId = useId();
+  const triggerRows = useRef(new Map<string, HTMLDivElement>());
+  const positionFrame = useRef(0);
+  const submenu = useSubmenuHover(
+    (entry) => panelsRef.current.get(entry.dataset.submenuKey ?? "") ?? null,
+  );
   // Which submenu the keyboard owns: a key, null after the keyboard closed
   // one, or undefined while the pointer model (submenuHover.ts) decides.
   const [keyboardOpen, setKeyboardOpen] = useState<string | null | undefined>(undefined);
@@ -1325,18 +1353,53 @@ function MenuDropdown({
   const shown = (key: string) =>
     keyboardOpen === undefined ? submenu.isOpen(key) : keyboardOpen === key;
 
-  /** The submenu panel under the entry with this key. */
-  const submenuOf = (key: string) =>
-    rootRef.current?.querySelector<HTMLElement>(`[data-submenu-key="${key}"] > .menu-submenu`) ??
-    null;
+  const positionSubmenus = useStableCallback(() => {
+    positionPortalSubmenus({
+      root: rootRef.current,
+      triggerRows: triggerRows.current,
+      panels: panelsRef.current,
+      onHidden: () => setKeyboardOpen(null),
+    });
+  });
+
+  const schedulePosition = useStableCallback((): void => {
+    if (positionFrame.current || panelsRef.current.size === 0) return;
+    positionFrame.current = requestAnimationFrame(() => {
+      positionFrame.current = 0;
+      positionSubmenus();
+      if (hasRunningAnimations([rootRef.current, ...panelsRef.current.values()])) {
+        schedulePosition();
+      }
+    });
+  });
+
+  useLayoutEffect(() => {
+    positionSubmenus();
+    schedulePosition();
+  });
+
+  useEffect(() => {
+    const onResize = () => {
+      positionSubmenus();
+      schedulePosition();
+    };
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      cancelAnimationFrame(positionFrame.current);
+    };
+  }, [positionSubmenus, schedulePosition]);
+
+  /** The portaled submenu panel under the entry with this key. */
+  const submenuOf = (key: string) => panelsRef.current.get(key) ?? null;
 
   /** Open a submenu from the keyboard and put focus at its first / last item. */
   const focusInto = (key: string, edge: "first" | "last") => {
     setKeyboardOpen(key);
-    // The panel renders hidden until this state lands; focus after it shows.
+    // The portal mounts once this state lands; focus after layout places it.
     requestAnimationFrame(() => {
       const items = levelItems(submenuOf(key));
-      (edge === "first" ? items[0] : items[items.length - 1])?.focus();
+      (edge === "first" ? items[0] : items[items.length - 1])?.focus({ preventScroll: true });
     });
   };
 
@@ -1378,12 +1441,12 @@ function MenuDropdown({
         return;
       }
       case "ArrowLeft": {
-        // Inside a submenu: close it and hand focus back to its parent row.
-        const parent = level?.closest<HTMLElement>(".menu-submenu-entry");
-        if (!parent) return;
+        // Inside a portaled submenu: close it and return focus to its trigger.
+        const path = level?.dataset.submenuPath;
+        if (path === undefined) return;
         event.preventDefault();
         setKeyboardOpen(null);
-        parent.querySelector<HTMLElement>(":scope > .menu-entry")?.focus();
+        triggerRows.current.get(path)?.querySelector<HTMLElement>(":scope > .menu-entry")?.focus();
         return;
       }
       case "Escape":
@@ -1405,6 +1468,8 @@ function MenuDropdown({
     }
   };
 
+  const portalHost = submenuPortalHost(rootRef.current);
+
   return (
     <div
       ref={rootRef}
@@ -1413,6 +1478,10 @@ function MenuDropdown({
       aria-label={label}
       aria-orientation="vertical"
       onKeyDown={onKeyDown}
+      onScroll={() => {
+        positionSubmenus();
+        schedulePosition();
+      }}
       {...submenu.rootProps}
     >
       {entries.map((entry, index) => {
@@ -1428,6 +1497,10 @@ function MenuDropdown({
           return (
             <div
               key={entry.label}
+              ref={(element) => {
+                if (element) triggerRows.current.set(key, element);
+                else triggerRows.current.delete(key);
+              }}
               className={`menu-submenu-entry${isOpen ? " is-open" : ""}`}
               role="none"
               data-submenu-key={key}
@@ -1441,10 +1514,12 @@ function MenuDropdown({
             >
               <button
                 type="button"
+                id={`${menuId}-trigger-${key}`}
                 className="menu-entry"
                 role="menuitem"
                 aria-haspopup="menu"
                 aria-expanded={isOpen}
+                aria-controls={isOpen ? `${menuId}-submenu-${key}` : undefined}
                 tabIndex={-1}
                 title={entry.label}
                 onClick={(event) => {
@@ -1462,30 +1537,44 @@ function MenuDropdown({
                   <Icon name="chevron-right" />
                 </span>
               </button>
-              <div className="menu-dropdown menu-submenu" role="menu" aria-label={entry.label}>
-                {children.map((child, childIndex) =>
-                  child === "separator" ? (
-                    <div key={childIndex} className="menu-separator" />
-                  ) : (
-                    <button
-                      key={child.label}
-                      type="button"
-                      className={`menu-entry${child.checked ? " is-checked" : ""}`}
-                      role={menuRole(child)}
-                      aria-checked={child.checked !== undefined ? child.checked : undefined}
-                      tabIndex={-1}
-                      title={child.label}
-                      onClick={() => {
-                        onClose("previous");
-                        child.action?.();
-                      }}
-                    >
-                      {showChildLeading && <MenuLeading entry={child} />}
-                      <span className="menu-entry-label">{child.label}</span>
-                    </button>
-                  ),
+              {isOpen &&
+                createPortal(
+                  <div
+                    ref={(element) => {
+                      if (element) panelsRef.current.set(key, element);
+                      else panelsRef.current.delete(key);
+                    }}
+                    id={`${menuId}-submenu-${key}`}
+                    data-submenu-path={key}
+                    className="menu-dropdown menu-submenu menubar-submenu"
+                    role="menu"
+                    aria-labelledby={`${menuId}-trigger-${key}`}
+                  >
+                    {children.map((child, childIndex) =>
+                      child === "separator" ? (
+                        <div key={childIndex} className="menu-separator" />
+                      ) : (
+                        <button
+                          key={child.label}
+                          type="button"
+                          className={`menu-entry${child.checked ? " is-checked" : ""}`}
+                          role={menuRole(child)}
+                          aria-checked={child.checked !== undefined ? child.checked : undefined}
+                          tabIndex={-1}
+                          title={child.label}
+                          onClick={() => {
+                            onClose("previous");
+                            child.action?.();
+                          }}
+                        >
+                          {showChildLeading && <MenuLeading entry={child} />}
+                          <span className="menu-entry-label">{child.label}</span>
+                        </button>
+                      ),
+                    )}
+                  </div>,
+                  portalHost,
                 )}
-              </div>
             </div>
           );
         }

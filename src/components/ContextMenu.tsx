@@ -12,6 +12,13 @@ import { createPortal } from "react-dom";
 import { useStableCallback } from "../useStableCallback";
 import { Icon, type IconName } from "./icons";
 import { submenuKey, useSubmenuHover } from "./submenuHover";
+import {
+  EDGE_MARGIN,
+  hasRunningAnimations,
+  parentPath,
+  positionPortalSubmenus,
+  submenuPortalHost,
+} from "./submenuPlacement";
 
 /**
  * Which control a checkable entry draws in the leading column: a box for an
@@ -73,11 +80,6 @@ interface Props {
 
 /** Approximate submenu width, used to decide which side it opens on. */
 const SUBMENU_WIDTH = 200;
-const SUBMENU_GAP = 4;
-const EDGE_MARGIN = 6;
-
-const parentPath = (path: string) =>
-  path.includes(".") ? path.slice(0, path.lastIndexOf(".")) : null;
 
 const MENU_ITEMS = '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]';
 const levelItems = (level: HTMLElement | null) =>
@@ -218,61 +220,13 @@ export function ContextMenu({ x, y, items, onClose, align = "left", className }:
   );
 
   const positionSubmenus = useStableCallback(() => {
-    const root = ref.current;
-    if (!root) return;
-    const rootStyle = getComputedStyle(root);
-    // Place ancestors before descendants so each anchor uses this frame's
-    // parent position, not the previous scroll/animation frame's geometry.
-    const levels = [...panels.current].sort(([a], [b]) => a.length - b.length);
-    let hiddenPath: string | undefined;
-    for (const [path, panel] of levels) {
-      const entry = triggerRows.current.get(path);
-      const owner = entry?.closest<HTMLElement>(".menu-dropdown");
-      if (!entry || !owner) continue;
-      const anchor = entry.getBoundingClientRect();
-      const ownerBox = owner.getBoundingClientRect();
-      const scale = owner.offsetHeight > 0 ? ownerBox.height / owner.offsetHeight : 1;
-      const visibleTop = ownerBox.top + owner.clientTop * scale;
-      const visibleBottom = visibleTop + owner.clientHeight * scale;
-      if (
-        owner.style.visibility === "hidden" ||
-        (owner.clientHeight > 0 && (anchor.bottom <= visibleTop || anchor.top >= visibleBottom))
-      ) {
-        // A scrolled-away trigger must not leave an actionable floating menu.
-        // Hide synchronously before React removes the branch; do not scroll
-        // the trigger back into view just to keep a submenu alive.
-        panel.style.visibility = "hidden";
-        hiddenPath ??= path;
-        if (panel.contains(document.activeElement)) owner.focus({ preventScroll: true });
-        continue;
-      }
-      panel.style.fontFamily = rootStyle.fontFamily;
-      panel.style.fontSize = rootStyle.fontSize;
-      panel.style.lineHeight = rootStyle.lineHeight;
-      const width = panel.offsetWidth;
-      const height = panel.offsetHeight;
-      const leftRoom = anchor.left - EDGE_MARGIN;
-      const rightRoom = window.innerWidth - EDGE_MARGIN - anchor.right;
-      const preferLeft = owner.dataset.side === "left" || (owner === root && placement.flipped);
-      const flipped = preferLeft
-        ? leftRoom >= width + SUBMENU_GAP || rightRoom < width + SUBMENU_GAP
-        : rightRoom < width + SUBMENU_GAP && leftRoom > rightRoom;
-      const wantedLeft = flipped ? anchor.left - width - SUBMENU_GAP : anchor.right + SUBMENU_GAP;
-      const padding = Number.parseFloat(getComputedStyle(panel).paddingTop) || 0;
-      const wantedTop = anchor.top - panel.clientTop - padding;
-      panel.style.left = `${Math.max(
-        EDGE_MARGIN,
-        Math.min(wantedLeft, window.innerWidth - width - EDGE_MARGIN),
-      )}px`;
-      panel.style.top = `${Math.max(
-        EDGE_MARGIN,
-        Math.min(wantedTop, window.innerHeight - height - EDGE_MARGIN),
-      )}px`;
-      panel.dataset.side = flipped ? "left" : "right";
-      entry.dataset.submenuSide = panel.dataset.side;
-      panel.style.visibility = "visible";
-    }
-    if (hiddenPath !== undefined) setKeyboardOpen(parentPath(hiddenPath));
+    positionPortalSubmenus({
+      root: ref.current,
+      triggerRows: triggerRows.current,
+      panels: panels.current,
+      rootFlipped: placement.flipped,
+      onHidden: (hiddenPath) => setKeyboardOpen(parentPath(hiddenPath)),
+    });
   });
 
   const schedulePosition = useStableCallback((): void => {
@@ -283,12 +237,7 @@ export function ContextMenu({ x, y, items, onClose, align = "left", className }:
       // A fixed portal escapes menu-in's containing block. Follow animated
       // anchors only until their real animations finish, not for the whole
       // time a menu is open and not for an assumed number of milliseconds.
-      const levels = [ref.current, ...panels.current.values()];
-      if (
-        levels.some((level) =>
-          level?.getAnimations?.().some((animation) => animation.playState === "running"),
-        )
-      ) {
+      if (hasRunningAnimations([ref.current, ...panels.current.values()])) {
         schedulePosition();
       }
     });
@@ -435,9 +384,7 @@ export function ContextMenu({ x, y, items, onClose, align = "left", className }:
     };
   }, [onClose]);
 
-  // .app has no transform/filter and carries the live interface type scale.
-  // A direct child escapes all menu scrollports without losing those tokens.
-  const portalHost = ref.current?.closest(".app") ?? document.body;
+  const portalHost = submenuPortalHost(ref.current);
 
   const renderItems = (level: MenuItem[], parent?: string) => {
     const showLeading = hasLeading(level);
