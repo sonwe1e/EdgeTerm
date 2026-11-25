@@ -268,6 +268,11 @@ export function ComboBox({
                 event.preventDefault();
                 event.stopPropagation();
                 close();
+              } else if (open) {
+                // No popup is visible, so let Escape reach the holding dialog
+                // while clearing stale filtered state so later external updates
+                // cannot pop the list back open unexpectedly.
+                close();
               }
               return;
           }

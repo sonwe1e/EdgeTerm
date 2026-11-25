@@ -231,4 +231,24 @@ describe("ComboBox", () => {
     key("Escape");
     expect(dialogEscapes).toBe(2);
   });
+
+  it("clears stale filtered state on passthrough Escape so external value updates stay closed", () => {
+    let setExternal!: (next: string) => void;
+    function ExternalHarness() {
+      const [value, setValue] = useState("");
+      setExternal = setValue;
+      return createElement(ComboBox, {
+        value,
+        onChange: setValue,
+        options: RATES,
+        listLabel: "Rates",
+      });
+    }
+    act(() => root.render(createElement(ExternalHarness)));
+    type("500000");
+    expect(rows()).toEqual([]);
+    key("Escape");
+    act(() => setExternal("9"));
+    expect(rows()).toEqual([]);
+  });
 });
