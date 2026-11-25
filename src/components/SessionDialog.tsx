@@ -869,7 +869,11 @@ export function SessionDialog({
     </>
   );
 
-  const save = async () => {
+  // Save and Connect must agree about what counts as valid and about where the
+  // caret lands when it is not. They were two copies of the same eleven lines,
+  // so adding a rule to one and not the other split the two entry points
+  // silently.
+  const prepare = (): ReturnType<typeof normalized> | null => {
     setConnectionError(false);
     const candidate = normalized();
     const validationError = validateProfile(candidate);
@@ -879,8 +883,14 @@ export function SessionDialog({
       // pinned above the buttons so it is visible wherever the body scrolled.
       const field = invalidField(candidate);
       if (field) focusField(field);
-      return;
+      return null;
     }
+    return candidate;
+  };
+
+  const save = async () => {
+    const candidate = prepare();
+    if (!candidate) return;
 
     setBusyAction("save");
     setBusy(true);
@@ -901,17 +911,8 @@ export function SessionDialog({
   };
 
   const connect = async () => {
-    setConnectionError(false);
-    const candidate = normalized();
-    const validationError = validateProfile(candidate);
-    if (validationError) {
-      setError(validationError);
-      // Put the caret on the field the message is about; the error itself is
-      // pinned above the buttons so it is visible wherever the body scrolled.
-      const field = invalidField(candidate);
-      if (field) focusField(field);
-      return;
-    }
+    const candidate = prepare();
+    if (!candidate) return;
 
     setBusyAction("connect");
     setBusy(true);
