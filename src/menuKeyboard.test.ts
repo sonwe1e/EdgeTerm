@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { surfaceOwnsKeyboard } from "./menuKeyboard";
+import { externalSurfaceOwnsKeyboard, surfaceOwnsKeyboard } from "./menuKeyboard";
 
 describe("surfaceOwnsKeyboard", () => {
   it("claims a native dialog and its contents", () => {
@@ -34,6 +34,20 @@ describe("surfaceOwnsKeyboard", () => {
     expect(surfaceOwnsKeyboard(popover)).toBe(true);
     expect(surfaceOwnsKeyboard(row)).toBe(true);
     popover.remove();
+  });
+
+  it("claims an open menubar dropdown and its portaled submenus for global shortcuts", () => {
+    const dropdown = document.createElement("div");
+    dropdown.className = "menu-dropdown menubar-submenu";
+    const row = document.createElement("button");
+    row.setAttribute("role", "menuitem");
+    dropdown.append(row);
+    document.body.append(dropdown);
+    expect(surfaceOwnsKeyboard(dropdown)).toBe(true);
+    expect(surfaceOwnsKeyboard(row)).toBe(true);
+    // Menubar's own Alt/F10 toggle still sees itself as non-external so it can close.
+    expect(externalSurfaceOwnsKeyboard(row)).toBe(false);
+    dropdown.remove();
   });
 
   it("leaves the rest of the window to its own handlers", () => {

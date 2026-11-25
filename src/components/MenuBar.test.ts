@@ -213,3 +213,14 @@ it("leaves F10 to an open context menu or an application that prevented it", () 
   expect(claimed.defaultPrevented).toBe(true);
   expect(menubarOpen()).toBe(false);
 });
+
+it("toggles an open menubar closed on Alt and displays the Saved Commands shortcut", () => {
+  openMenuNamed("View");
+  const snippetsRow = [...host.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((element) =>
+    element.textContent?.includes("Saved Commands"),
+  );
+  expect(snippetsRow, "View menu lists Saved Commands").toBeTruthy();
+  expect(snippetsRow!.querySelector(".menu-shortcut")?.textContent?.trim()).toBeTruthy();
+  plainAlt();
+  expect(host.querySelector(".menubar .menu-dropdown")).toBeNull();
+});
