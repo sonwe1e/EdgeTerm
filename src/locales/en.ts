@@ -1001,6 +1001,11 @@ export const en = {
   "filer.downloadReplace": "Overwrite",
   "filer.replaceTitle": "Replace Existing Items",
   "filer.replaceConfirm": "{count} item(s) already exist in this folder. Replace them?",
+  // The singular: a single re-upload of a same-named file is the common case,
+  // and this is the last line before an irreversible overwrite.
+  "filer.replaceConfirmOne": "A file with this name already exists in this folder. Replace it?",
+  "filer.downloadReplaceConfirmOne":
+    "A file with this name already exists in the destination folder. Downloading will overwrite it.",
   "filer.replace": "Replace",
   "filer.loading": "Loading…",
   "filer.noFolderOpen": "No folder is open yet",

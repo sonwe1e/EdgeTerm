@@ -24,3 +24,11 @@
 ## 本轮只修了三条最便宜的
 
 F1、F3、F4 都是同一个模式（拆 One/Many 变体），F1 还要改三个调用点。本轮预算修完 F2／F5／F6 三条就收，剩下三条连精确的键名与调用点都记在这里，下一轮可直接照做。
+
+## 第 215 轮：F1 修好了（含两条断言旧文案的既有用例）
+
+新增 `filer.replaceConfirmOne` 与 `filer.downloadReplaceConfirmOne`（英中各一条），三个调用点按 `clashes.length === 1` 选单数。
+
+**两条既有用例立刻红**，因为它们断言的正是坏掉的旧文案：`expect.stringContaining("1 item(s)")`。这就是「测试把 bug 固定住了」的典型形状——更新断言时把理由写进了注释，而不是默默改掉。
+
+另有一次流程失误：第一次跑门禁时 `format:check` 失败，因为我用 `biome format --write` 只格式化了我手动改的三个 `.ts`，**漏了两个 `.locales` 目录下的文件**。跑完整门禁才发现。

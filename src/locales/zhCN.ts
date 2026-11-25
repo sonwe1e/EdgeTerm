@@ -954,6 +954,9 @@ export const zhCN: Catalog = {
   "filer.downloadReplace": "覆盖",
   "filer.replaceTitle": "替换已有项目",
   "filer.replaceConfirm": "此文件夹中已有 {count} 个项目。要替换它们吗？",
+  // 单数形式：重新上传一个同名文件是最常见的情况，而这是不可逆覆盖前的最后一句话。
+  "filer.replaceConfirmOne": "此文件夹中已有同名文件。要替换它吗？",
+  "filer.downloadReplaceConfirmOne": "目标文件夹中已有同名文件，下载会覆盖它。",
   "filer.replace": "替换",
   "filer.loading": "正在加载…",
   "filer.noFolderOpen": "尚未打开任何文件夹",

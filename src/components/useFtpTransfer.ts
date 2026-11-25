@@ -130,12 +130,17 @@ export function useFtpTransfer({
         },
       );
     }
-    return ask(t("filer.replaceConfirm", { count: collisions.existing.length }), {
-      title: t("filer.replaceTitle"),
-      kind: "warning",
-      okLabel: t("filer.replace"),
-      cancelLabel: t("common.cancel"),
-    });
+    return ask(
+      collisions.existing.length === 1
+        ? t("filer.replaceConfirmOne")
+        : t("filer.replaceConfirm", { count: collisions.existing.length }),
+      {
+        title: t("filer.replaceTitle"),
+        kind: "warning",
+        okLabel: t("filer.replace"),
+        cancelLabel: t("common.cancel"),
+      },
+    );
   };
 
   /**

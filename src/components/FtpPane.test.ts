@@ -299,7 +299,10 @@ describe("FTP/SFTP dual-pane multi-selection and batch transfers", () => {
     });
     await flush();
     expect(nativeDialog.ask).toHaveBeenCalledWith(
-      expect.stringContaining("1 item(s)"),
+      // A single clash gets the singular wording: "1 item(s) already exist ...
+      // Replace them?" disagreed with itself three ways on the last line
+      // before an irreversible overwrite.
+      expect.stringContaining("A file with this name already exists"),
       expect.objectContaining({ title: "Replace Existing Items" }),
     );
     expect(api.transferFiles).not.toHaveBeenCalled();

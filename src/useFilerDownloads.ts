@@ -89,7 +89,9 @@ export function useFilerDownloads(
         );
         if (clashes.length > 0) {
           const confirmed = await ask(
-            t("filer.downloadReplaceConfirm", { count: clashes.length }),
+            clashes.length === 1
+              ? t("filer.downloadReplaceConfirmOne")
+              : t("filer.downloadReplaceConfirm", { count: clashes.length }),
             {
               title: t("filer.downloadReplaceTitle"),
               kind: "warning",
