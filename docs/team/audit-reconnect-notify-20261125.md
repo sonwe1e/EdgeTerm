@@ -37,3 +37,13 @@
 - **消息里的主机/端口错**：`connect_hop`、`profile.address()`、`verify.rs`、跳转 `Via.label` 对各类型默认端口（ssh/sftp 22、ftp 21、telnet 23）口径一致。
 
 **未观察（不作断言）**：`transport.rs:680` 的 `authenticate` 不在 `HANDSHAKE_TIMEOUT` 窗口内（代码有意如此，MFA 属于人）。我没有观察 russh 的 keepalive 是否在认证完成前运行，因此无法说「接受 TCP 后在认证阶段沉默的对端」会让标签挂住还是最终被判死。
+
+## 第 202 轮：R2 用保住守卫的方式修掉了
+
+第 201 轮我把 R2 记为「未修」，理由是那个 `false` 带着一段仍然成立的成文注释（对话框开着时 `onReconnect` 有守卫，Enter 不会抢走对话框的尝试）。
+
+本轮换了一条**不碰那个守卫**的路：对话框的 `onCancel` 原来只调 `setHostKeyPrompt(null)`，现在改调新增的 `declineHostKey(prompt)`——它清提示，并补写一次 `sessionClosedNotice()`。`failSession` 的那个 `false` 原样保留，注释也原样保留。
+
+效果是一样的（取消后终端里有了「按 Enter 重连」），但没有任何守卫被删，也没有任何注释被推翻。**上一轮我判断「必须删守卫才能修」是错的——那条注释说明的是对话框**开着时**的行为，而缺陷发生在对话框**关掉之后**，两者不冲突。**
+
+顺带清掉了 App.tsx 里因此不再使用的 `setHostKeyPrompt` 选择器。

@@ -773,6 +773,20 @@ export async function acceptHostKey(prompt: HostKeyPrompt): Promise<void> {
   void connectSession(prompt.sessionId, prompt.profile);
 }
 
+/**
+ * The reader declined to accept a changed host key. The failure line was
+ * already written when the session failed, and `failSession` deliberately
+ * suppressed the reconnect hint there because the dialog owns the next
+ * attempt while it is open (see `onReconnect`). Dismissing the dialog ends
+ * that ownership, so the hint is written here instead of being dropped:
+ * anyone who cancelled to compare the fingerprint out of band is left with
+ * a failure that names no way out, even though Enter still works.
+ */
+export function declineHostKey(prompt: HostKeyPrompt): void {
+  useStore.getState().setHostKeyPrompt(null);
+  getController(prompt.sessionId)?.writeText(sessionClosedNotice());
+}
+
 // --- Filer: reveal the shell's working directory ----------------------------
 
 let localHostname: Promise<string> | null = null;

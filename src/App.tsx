@@ -16,6 +16,7 @@ import { useShallow } from "zustand/react/shallow";
 
 import {
   acceptHostKey,
+  declineHostKey,
   openSession,
   reopenClosedTab,
   revealCwdInFiler,
@@ -220,7 +221,6 @@ export default function App() {
   const toggleZoomedPane = useStore((s) => s.toggleZoomedPane);
   const applyState = useStore((s) => s.applyState);
   const hostKeyPrompt = useStore((s) => s.hostKeyPrompt);
-  const setHostKeyPrompt = useStore((s) => s.setHostKeyPrompt);
   // A connection stops mid-handshake for each round; answer the oldest first.
   const authPrompt = useStore((s) => s.authPrompts[0] ?? null);
   const addAuthPrompt = useStore((s) => s.addAuthPrompt);
@@ -1346,7 +1346,7 @@ export default function App() {
         <HostKeyDialog
           prompt={hostKeyPrompt}
           onAccept={() => acceptHostKey(hostKeyPrompt)}
-          onCancel={() => setHostKeyPrompt(null)}
+          onCancel={() => declineHostKey(hostKeyPrompt)}
         />
       )}
 
