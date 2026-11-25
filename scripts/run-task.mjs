@@ -40,6 +40,8 @@ export function taskCommands(task, args = [], cargo = "cargo") {
       return [js("node_modules/@biomejs/biome/bin/biome", "format", "--write")];
     case "format:check":
       return [js("node_modules/@biomejs/biome/bin/biome", "format")];
+    case "verify":
+      return [js("scripts/verify.mjs")];
     case "tauri":
       return [js("node_modules/@tauri-apps/cli/tauri.js")];
     case "tauri:dev":
