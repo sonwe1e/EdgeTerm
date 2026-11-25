@@ -358,6 +358,10 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
       label: `${tab.number}. ${tabTitle(tab)}${details ? ` · ${details}` : ""}`,
       checked: tab.info.id === shownId,
       mark: "radio" as const,
+      swatch:
+        tab.info.color === ""
+          ? "var(--accent)"
+          : (tab.info.color ?? colorForSession(tab.info.profileId ?? tab.info.name)),
       action: () => setActive(tab.info.id),
     };
   });

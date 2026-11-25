@@ -331,18 +331,36 @@ dialog.dialog-backdrop.is-fallback[open] {
   color: var(--fg-dim);
 }
 
-.session-organization summary {
+.session-organization > summary,
+.session-advanced > summary {
   cursor: pointer;
   list-style: none;
 }
-.session-organization:not([open]) summary {
+.session-organization > summary::-webkit-details-marker,
+.session-advanced > summary::-webkit-details-marker {
+  display: none;
+}
+.session-organization > summary .icon,
+.session-advanced > summary .icon {
+  transition: transform var(--dur-2) ease;
+}
+.session-organization:not([open]) > summary,
+.session-advanced:not([open]) > summary {
   margin-bottom: 0;
 }
-.session-organization[open] summary .icon {
+.session-organization[open] > summary .icon,
+.session-advanced[open] > summary .icon {
   transform: rotate(90deg);
 }
-.session-organization summary:focus-visible {
+.session-organization > summary:focus-visible,
+.session-advanced > summary:focus-visible {
   outline: 2px solid var(--accent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .session-organization > summary .icon,
+  .session-advanced > summary .icon {
+    transition: none;
+  }
 }
 
 .session-section-heading small {
@@ -1587,14 +1605,8 @@ dialog.dialog-backdrop.is-fallback[open] {
 .session-forwards-form .btn {
   align-self: flex-end;
 }
-.session-advanced > summary {
-  cursor: pointer;
-  padding: 10px 0;
-  font-weight: 600;
-}
-
 .session-advanced > .session-form-grid {
-  padding-top: 12px;
+  padding-top: var(--sp-2);
 }
 
 .file-editor-dialog {

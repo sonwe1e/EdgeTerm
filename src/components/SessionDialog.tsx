@@ -1321,7 +1321,10 @@ export function SessionDialog({
                 initial?.backspace === "controlH",
             )}
           >
-            <summary>{t("session.advanced")}</summary>
+            <summary className="session-section-heading">
+              <Icon name="chevron-right" />
+              {t("session.advanced")}
+            </summary>
             {profile.kind === "ssh" && (
               <div className="session-form-grid">
                 {renderJumpHostField()}
