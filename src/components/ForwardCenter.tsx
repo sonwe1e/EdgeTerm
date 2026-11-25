@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { errorText } from "../errorInfo";
 import * as api from "../api";
+import { endpoint } from "../forwardRoute";
 import { transferBytes } from "../fileTransfers";
 import { useActiveTab, useStore } from "../store";
 import { VirtualFileRows } from "./VirtualFileRows";
@@ -39,8 +40,6 @@ const DISCOVERY_ID = "forward-discovery";
 
 const active = (row: api.PortForward) => ["starting", "listening", "stopping"].includes(row.status);
 const loopback = (host: string) => ["127.0.0.1", "::1", "localhost"].includes(host.toLowerCase());
-const endpoint = (host: string, port: number, auto: string) =>
-  `${host.includes(":") ? `[${host}]` : host}:${port || auto}`;
 
 export const ForwardCenter = memo(function ForwardCenter() {
   const t = useT();

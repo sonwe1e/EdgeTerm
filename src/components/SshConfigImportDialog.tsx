@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { errorText } from "../errorInfo";
 
 import * as api from "../api";
+import { forwardRoute } from "../forwardRoute";
 import { t as translateMsg, type MessageKey } from "../i18n";
 import { groupPath } from "../sessionGroups";
 import { useStore } from "../store";
@@ -37,18 +38,6 @@ const FORWARD_LETTER: Record<api.PortForwardSpec["direction"], MessageKey> = {
   local: "forward.letterLocal",
   remote: "forward.letterRemote",
   dynamic: "forward.letterDynamic",
-};
-
-/** `host:port`, bracketing an IPv6 literal; port 0 reads as "automatic". */
-const endpoint = (host: string, port: number, auto: string) =>
-  `${host.includes(":") ? `[${host}]` : host}:${port || auto}`;
-
-/** One forward as `listen → target`; a dynamic (SOCKS5) forward names no target. */
-const forwardRoute = (spec: api.PortForwardSpec, auto: string) => {
-  const listen = endpoint(spec.listenHost, spec.listenPort, auto);
-  if (spec.direction === "dynamic") return listen;
-  const host = spec.targetHost ?? "";
-  return `${listen} → ${host ? endpoint(host, spec.targetPort ?? 0, auto) : ""}`;
 };
 
 /**
