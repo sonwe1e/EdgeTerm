@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_TASKS,
   extractRelativeImports,
+  gitChangedFiles,
   parseVerifyArgs,
   planChangedRun,
   resolveAffectedTests,
@@ -54,15 +55,28 @@ describe("verify", () => {
     expect(() => parseVerifyArgs(["--since"])).toThrow(/--since requires/);
   });
 
-  it("classifies docs-only edits vs code edits", () => {
+  it("classifies empty, docs-only and code edits distinctly", () => {
+    expect(planChangedRun([])).toEqual({
+      empty: true,
+      docsOnly: false,
+      codeFiles: [],
+    });
     expect(planChangedRun(["docs/team/STATE.md", "README.md", "AGENTS.md"])).toEqual({
+      empty: false,
       docsOnly: true,
       codeFiles: [],
     });
     expect(planChangedRun(["src/components/StatusBar.tsx", "docs/notes.md"])).toEqual({
+      empty: false,
       docsOnly: false,
       codeFiles: ["src/components/StatusBar.tsx"],
     });
+  });
+
+  it("throws when --since names an invalid git ref instead of silently skipping tests", () => {
+    expect(() => gitChangedFiles("definitely-not-a-valid-git-ref-000000")).toThrow(
+      /invalid --since ref/i,
+    );
   });
 
   it("extracts relative JS/TS and CSS imports while stripping query suffixes", () => {

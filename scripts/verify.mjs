@@ -209,7 +209,7 @@ export function resolveAffectedTests(changedFiles, baseRoot = root) {
 }
 
 /**
- * Decide whether a changed file list is docs-only or touches testable code.
+ * Decide whether a changed file list is empty, docs-only, or touches testable code.
  */
 export function planChangedRun(files) {
   const normalized = [
@@ -219,28 +219,37 @@ export function planChangedRun(files) {
         .filter((file) => file.length > 0),
     ),
   ];
+  if (normalized.length === 0) {
+    return { empty: true, docsOnly: false, codeFiles: [] };
+  }
   const isDocOnly = (file) =>
     file.startsWith("docs/") || file.endsWith(".md") || file === "AGENTS.md";
   const codeFiles = normalized.filter((file) => !isDocOnly(file));
   if (codeFiles.length === 0) {
-    return { docsOnly: true, codeFiles: [] };
+    return { empty: false, docsOnly: true, codeFiles: [] };
   }
-  return { docsOnly: false, codeFiles };
+  return { empty: false, docsOnly: false, codeFiles };
 }
 
 /** Collect repo-relative changed/untracked paths from git. */
-function gitChangedFiles(since = null) {
+export function gitChangedFiles(since = null) {
   const files = new Set();
-  const collect = (args) => {
+  const collect = (args, strictLabel = null) => {
     const res = spawnSync("git", args, { cwd: root, encoding: "utf8", windowsHide: true });
-    if (res.status !== 0) return;
+    if (res.status !== 0) {
+      if (strictLabel) {
+        const detail = (res.stderr || res.stdout || "").trim();
+        throw new Error(`invalid ${strictLabel}: ${detail || `git exited ${res.status}`}`);
+      }
+      return;
+    }
     for (const line of (res.stdout || "").split(/\r?\n/)) {
       const trimmed = line.trim();
       if (trimmed) files.add(trimmed);
     }
   };
   if (since) {
-    collect(["diff", "--name-only", `${since}..HEAD`]);
+    collect(["diff", "--name-only", `${since}..HEAD`], `--since ref "${since}"`);
   }
   collect(["diff", "--name-only"]);
   collect(["diff", "--name-only", "--cached"]);
@@ -314,14 +323,19 @@ export function main(argv = process.argv.slice(2)) {
   if (parsed.changed) {
     const changedFiles = gitChangedFiles(parsed.since);
     const plan = planChangedRun(changedFiles);
-    const affected = plan.docsOnly
-      ? { unit: [], browser: [] }
-      : resolveAffectedTests(plan.codeFiles);
+    const affected =
+      plan.empty || plan.docsOnly
+        ? { unit: [], browser: [] }
+        : resolveAffectedTests(plan.codeFiles);
     const baseTasks = parsed.tasks.length > 0 ? parsed.tasks : DEFAULT_TASKS;
     for (const task of baseTasks) {
       if (task === "test" || task === "test:browser") {
         if (failed) {
           rows.push({ task, status: 0, ms: 0, ran: false });
+          continue;
+        }
+        if (plan.empty) {
+          rows.push({ task, status: 0, ms: 0, ran: false, note: "no changes" });
           continue;
         }
         if (plan.docsOnly) {
