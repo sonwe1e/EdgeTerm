@@ -226,7 +226,9 @@ describe("layout regressions (Wave B)", () => {
       true,
     );
     mount(h(App));
-    await expect.poll(() => getController(id)).toBeDefined();
+    // First terminal mount in this page dynamically loads xterm; allow headroom
+    // beyond Vitest's 1 s poll default on throttled Windows runners.
+    await expect.poll(() => getController(id), { timeout: 5000 }).toBeDefined();
     const terminal = getController(id)!;
     await wait(200);
     await new Promise<void>((resolve) =>
