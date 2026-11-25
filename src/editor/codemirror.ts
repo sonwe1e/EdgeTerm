@@ -410,10 +410,21 @@ export async function createCodeEditor(options: {
     setContent(content) {
       if (view.state.doc.toString() === content) return;
       // A reload is not an edit: rebuilding the state drops the history, so
-      // undo cannot walk back into a version the server no longer has.
+      // undo cannot walk back into a version the server no longer has. It
+      // also drops the find panel and the typed query - setState re-instantiates
+      // every view plugin, and the new state's search field starts empty. A
+      // reader who reloads the very file a build just rewrote loses the search
+      // they were running, silently, and has to retype it.
+      const query = mods.search.getSearchQuery(view.state);
+      const panelOpen = mods.search.searchPanelOpen(view.state);
       view.setState(
         EditorState.create({ doc: content, extensions: buildExtensions(mods, settings) }),
       );
+      if (query.search || panelOpen) {
+        view.dispatch({ effects: mods.search.setSearchQuery.of(query) });
+        // openSearchPanel is a Command, not a StateEffect: it takes the view.
+        if (panelOpen) mods.search.openSearchPanel(view);
+      }
     },
     revealLine(line) {
       if (!Number.isFinite(line) || line < 1) return;

@@ -30,3 +30,11 @@
 - **后端一致**：BOM 读时剥掉、写时加回（两半都是）；`TEXT_LIMIT` 4 MiB 与 `fileEditor.textOnly` 一致。
 
 两条**刻意未报**的非缺陷：`editorState.ts` 的保存/恢复缓存不可达（`FileEditorDialog` 传 `remember={false}`），是死代码但无用户影响；查找面板里无效正则不给错误提示——那是 CodeMirror 自己的面板，应用不拥有。
+
+## 第 204 轮：E2 修掉了
+
+在 `setContent` 里，重建 `EditorState` 之前用已有的 `getSearchQuery`／`searchPanelOpen` 读走查询词与面板开合状态，重建之后用 `setSearchQuery` 效果恢复查询词；面板原先开着就再把 `openSearchPanel` 作为 **Command**（不是 StateEffect，它收 view）调一次。
+
+第一次写成 `view.dispatch({ effects: mods.search.openSearchPanel.of() })`，`tsc` 直接报 `Property 'of' does not exist on type 'Command'`——编译器一秒内纠正了我对这个 API 的误用，没有留给运行时。
+
+这条**没有独立用例**：需要一次真实的「查找 → 重新载入 → 面板与查询词仍在」序列，而现有编辑器用例驱动的是 store 层而非 CodeMirror 实例。
