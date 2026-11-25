@@ -218,4 +218,27 @@ describe("the command palette", () => {
     });
     expect(options()[0].getAttribute("aria-selected")).toBe("true");
   });
+
+  it("ignores the very first stationary pointermove after keyboard-only navigation", () => {
+    render({ open: true });
+    press("ArrowDown");
+    expect(options()[1].getAttribute("aria-selected")).toBe("true");
+
+    // First synthetic pointermove fired when keyboard scroll moves rows under an
+    // untouched resting cursor must record coordinates without hijacking active.
+    act(() => {
+      options()[2].dispatchEvent(
+        new PointerEvent("pointermove", { bubbles: true, clientX: 200, clientY: 160 }),
+      );
+    });
+    expect(options()[1].getAttribute("aria-selected")).toBe("true");
+
+    // Moving the pointer to a new coordinate resumes pointer tracking.
+    act(() => {
+      options()[2].dispatchEvent(
+        new PointerEvent("pointermove", { bubbles: true, clientX: 205, clientY: 162 }),
+      );
+    });
+    expect(options()[2].getAttribute("aria-selected")).toBe("true");
+  });
 });

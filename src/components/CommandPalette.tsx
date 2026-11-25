@@ -110,10 +110,6 @@ export function CommandPalette({
     // the ranking decides where they belong, and each one is still a target, so
     // Enter reconnects. The row says it is a recent one rather than a fresh
     // reading of the field.
-    // The remembered rows are ranked like any other command, but the row the
-    // field itself makes comes first, so a target that was connected to before
-    // and is typed again would otherwise appear twice — with one id, one
-    // aria-activedescendant and no row looking selected.
     const recent = recentTargets
       .map((label) => parseQuickConnect(label))
       .flatMap((entry) => (entry ? [entry] : []))
@@ -215,12 +211,17 @@ export function CommandPalette({
   };
 
   // Ignore stationary pointermove events fired when keyboard scrolling slides
-  // rows underneath a resting cursor; real pointer movement resumes tracking.
+  // rows underneath a resting cursor (including the first scroll after a
+  // keyboard-only open); real pointer movement resumes tracking.
   const onOptionPointerMove = (index: number, event: ReactPointerEvent<HTMLDivElement>) => {
     const previous = lastPointerRef.current;
-    const moved = previous === null || previous.x !== event.clientX || previous.y !== event.clientY;
     lastPointerRef.current = { x: event.clientX, y: event.clientY };
-    if (keyboardNavRef.current && !moved) return;
+    if (
+      keyboardNavRef.current &&
+      (previous === null || (previous.x === event.clientX && previous.y === event.clientY))
+    ) {
+      return;
+    }
     keyboardNavRef.current = false;
     setActive(index);
   };
