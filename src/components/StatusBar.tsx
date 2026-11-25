@@ -1,4 +1,4 @@
-import { memo, useEffect, useState, useSyncExternalStore } from "react";
+import { memo, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { copiedErrorText } from "../errorInfo";
 import { revealLocalPath } from "../openExternal";
@@ -13,6 +13,7 @@ import { BroadcastTargets } from "./BroadcastTargets";
 import { TransferCenter } from "./TransferCenter";
 import { ResourceMonitorBar } from "./ResourceMonitorBar";
 import { ForwardCenter } from "./ForwardCenter";
+import { usePopoverDismiss } from "./usePopoverDismiss";
 import { openAgentView } from "../agents/model";
 import { latencyLabel, subscribeLatency } from "../inputLatency";
 
@@ -35,6 +36,8 @@ function StatusBarBase() {
   const broadcastInput = useStore((s) => s.broadcastInput);
   const setBroadcastInput = useStore((s) => s.setBroadcastInput);
   const [targetsOpen, setTargetsOpen] = useState(false);
+  const targetsRef = useRef<HTMLDivElement>(null);
+  usePopoverDismiss(targetsOpen, () => setTargetsOpen(false), targetsRef);
 
   // Turning the mode off (indicator, chord, last recipient leaving) also closes
   // the targets list: it describes a mode that no longer exists.
@@ -206,7 +209,9 @@ function StatusBarBase() {
           >
             <Icon name="chevron-down" />
           </button>
-          {targetsOpen && <BroadcastTargets onClose={() => setTargetsOpen(false)} />}
+          <div ref={targetsRef}>
+            {targetsOpen && <BroadcastTargets onClose={() => setTargetsOpen(false)} />}
+          </div>
         </>
       )}
       <ResourceMonitorBar tab={tab} />

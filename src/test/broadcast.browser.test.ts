@@ -226,8 +226,14 @@ describe("synchronized input", () => {
     expect(written("db"), "the unchecked shell is left alone").toBe("");
 
     // Unchecking the last recipient ends the mode rather than leaving a live
-    // indicator with nowhere to write.
-    const edgeRow = peerRows.find((row) => (row.textContent ?? "").includes("edge"))!;
+    // indicator with nowhere to write. The popover was closed for the keystroke
+    // above, so reopen it and re-read the rows: the earlier references are
+    // detached nodes now.
+    await userEvent.click(caret);
+    await twoFrames();
+    const edgeRow = Array.from(document.querySelectorAll<HTMLElement>(".broadcast-peer")).find(
+      (row) => (row.textContent ?? "").includes("edge"),
+    )!;
     await userEvent.click(edgeRow.querySelector<HTMLInputElement>("input[type='checkbox']")!);
     await twoFrames();
     expect(useStore.getState().broadcastInput, "no recipients left").toBe(false);
@@ -304,7 +310,12 @@ describe("synchronized input", () => {
     await twoFrames();
     expect(useStore.getState().broadcastExcludedGroups).toEqual(["prod"]);
 
-    // Typing now reaches the ungrouped shell only.
+    // Typing now reaches the ungrouped shell only. The popover closes when
+    // focus leaves it, so close it first; where a keystroke lands does not
+    // depend on the popover being open.
+    await userEvent.keyboard("{Escape}");
+    await twoFrames();
+    expect(document.querySelector(".broadcast-popover")).toBeNull();
     getController("build")!.focus();
     await twoFrames();
     await userEvent.keyboard("x");
@@ -312,11 +323,20 @@ describe("synchronized input", () => {
     expect(written("db"), "the excluded group received nothing").toBe("");
     expect(written("edge").length, "the ungrouped shell still got the key").toBeGreaterThan(0);
 
-    // Re-checking the group puts it back in the blast radius.
+    // Re-checking the group puts it back in the blast radius. Reopen the
+    // popover for the click, then close it again before typing: `box` is a
+    // detached node after the Escape above.
     WRITES.length = 0;
-    await userEvent.click(box);
+    await userEvent.click(document.querySelector<HTMLElement>(".broadcast-targets-button")!);
+    await twoFrames();
+    const again = Array.from(
+      document.querySelectorAll<HTMLElement>(".broadcast-groups label"),
+    ).find((node) => node.textContent?.includes("Group: Production"))!;
+    await userEvent.click(again.querySelector<HTMLInputElement>("input")!);
     await twoFrames();
     expect(useStore.getState().broadcastExcludedGroups).toEqual([]);
+    await userEvent.keyboard("{Escape}");
+    await twoFrames();
     getController("build")!.focus();
     await twoFrames();
     await userEvent.keyboard("y");
