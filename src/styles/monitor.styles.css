@@ -208,6 +208,10 @@
   background: var(--bg-panel-alt);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
+  transition: border-color var(--dur-2) ease;
+}
+.monitor-tile:hover {
+  border-color: var(--border-strong);
 }
 
 .monitor-tile-head {

@@ -142,7 +142,9 @@ dialog.dialog-backdrop.is-fallback[open] {
   background: var(--bg-panel);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-dialog);
+  box-shadow:
+    inset 0 1px 0 var(--menu-highlight),
+    var(--shadow-dialog);
   /* The box settles in the way a menu does (menu-in) instead of cutting in
      with the scrim: it is the largest surface that appears under the
      pointer, and an instant one reads as a glitch. `translate`, not
@@ -836,9 +838,6 @@ dialog.dialog-backdrop.is-fallback[open] {
 
 .font-size-setting input[type="range"] {
   width: 100%;
-  padding: 0;
-  border: 0;
-  accent-color: var(--accent);
 }
 
 .font-size-number {

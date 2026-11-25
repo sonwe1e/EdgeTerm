@@ -127,6 +127,10 @@
   border-radius: var(--radius-lg);
   color: var(--fg-dim);
   white-space: nowrap;
+  transition:
+    border-color var(--dur-1) ease,
+    background-color var(--dur-1) ease,
+    color var(--dur-1) ease;
 }
 
 .settings-choice:hover span {

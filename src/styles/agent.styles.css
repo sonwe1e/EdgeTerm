@@ -18,15 +18,21 @@
   padding: 0 var(--sp-8);
   /* --accent-bright is chosen to read on the terminal canvas; on the soft
      tint it fell to 4.21:1 in the light palette. The ink token is the same
-     hue carried to the depth its own tint needs. */
+     hue carried to the depth its own tint needs. Keep the resting border
+     quiet so the button does not fight the active tab; elevate it when an
+     agent tool is detected or hovered. */
   color: var(--accent-ink);
   background: var(--accent-soft);
-  border: 1px solid var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent);
   border-radius: var(--radius-sm);
   white-space: nowrap;
 }
+.agent-compose-launch.has-tool {
+  border-color: color-mix(in srgb, var(--accent) 72%, transparent);
+}
 .agent-compose-launch:hover {
-  filter: brightness(1.15);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, var(--accent-soft));
 }
 /* The pane's width is stable while the sticky actions change size. Do not
    key this on overflow, which would make the label toggle itself on/off. */

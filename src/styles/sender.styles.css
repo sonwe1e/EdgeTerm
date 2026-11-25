@@ -82,6 +82,10 @@
   color: var(--fg-dim);
   font-size: var(--fs-sm);
   white-space: nowrap;
+  transition:
+    background-color var(--dur-1) ease,
+    border-color var(--dur-1) ease,
+    color var(--dur-1) ease;
 }
 .sender-quick-button:hover,
 .sender-collapse:hover {
@@ -98,20 +102,25 @@
   background: var(--bg-active);
 }
 
-/* The primary action wears the interaction colour, not the panel's identity
-   colour: --panel-sender stays on the title pill, and a filled control reads
-   as "the thing to press" wherever it sits. */
+/* The primary action stays clearly distinguishable via the accent tint without
+   competing as a solid banner against the live terminal above it; hover lifts
+   it into the full solid accent fill. */
 .sender-quick-button.is-primary {
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  font-weight: 500;
+}
+.sender-quick-button.is-primary:hover {
   color: var(--accent-contrast);
   background: var(--accent);
   border-color: var(--accent);
 }
-/* Press darkens the fill rather than swapping in the selection tint. */
 .sender-quick-button.is-primary:active:not(:disabled) {
-  filter: brightness(0.9);
-}
-.sender-quick-button.is-primary:hover {
-  filter: brightness(1.1);
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-color: var(--accent);
+  filter: brightness(0.92);
 }
 
 .sender-quick-button.is-running {

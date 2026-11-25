@@ -16,7 +16,7 @@ export function AgentTabActions({ id }: { id: string }) {
       )}
       <button
         type="button"
-        className="agent-compose-launch"
+        className={`agent-compose-launch${tool ? " has-tool" : ""}`}
         title={t("agent.prompt")}
         aria-label={t("agent.prompt")}
         onClick={() => {

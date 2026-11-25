@@ -550,9 +550,7 @@ button {
   outline-offset: -2px;
 }
 
-input,
-select,
-textarea {
+:where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea) {
   font: inherit;
   color: var(--fg);
   background: var(--bg-field);
@@ -560,6 +558,18 @@ textarea {
   border-radius: var(--radius-md);
   padding: var(--sp-3) var(--sp-6);
   outline: none;
+  transition:
+    border-color var(--dur-2) ease,
+    box-shadow var(--dur-2) ease;
+}
+:where(
+  input:not(:disabled):not([readonly]):not([type="checkbox"]):not([type="radio"]):not(
+    [type="range"]
+  ):hover,
+  select:not(:disabled):hover,
+  textarea:not(:disabled):not([readonly]):hover
+) {
+  border-color: var(--border-strong);
 }
 /* The chrome is unselectable (see `body`), but the text a field holds is the
    user's own: `user-select` inherits into form controls, so without this a
@@ -587,12 +597,164 @@ select:focus-visible,
 textarea:focus-visible {
   outline: none;
 }
-/* A checkbox or radio keeps the platform's own glyph, so the soft field ring
-   above would not paint on it: keyboard focus needs the accent ring. */
+/* Custom checkboxes replace platform grey boxes with a crisp vector check that
+   honours all four palettes and --accent-contrast. The visible border lives on
+   ::after so the input's own border-color stays var(--border) and box-shadow
+   stays none (keeping focus-ring contrast audits exact), and :where() keeps
+   specificity at zero so hidden-switch patterns still override cleanly. */
+:where(input[type="checkbox"]) {
+  position: relative;
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  display: inline-grid;
+  place-content: center;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  padding: 0;
+  border: 0 solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-field);
+  cursor: pointer;
+  vertical-align: middle;
+  transition: background-color var(--dur-1) ease;
+}
+:where(input[type="checkbox"])::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1.5px solid var(--border-strong);
+  border-radius: inherit;
+  pointer-events: none;
+  transition: border-color var(--dur-1) ease;
+}
+:where(input[type="checkbox"])::before {
+  content: "";
+  position: relative;
+  z-index: 1;
+  width: 8px;
+  height: 5px;
+  border-left: 1.75px solid var(--accent-contrast);
+  border-bottom: 1.75px solid var(--accent-contrast);
+  transform: rotate(-45deg) scale(0.6) translate(0.5px, -1px);
+  opacity: 0;
+  transition:
+    opacity var(--dur-1) ease,
+    transform var(--dur-1) ease;
+}
+:where(input[type="checkbox"]):hover:not(:disabled)::after {
+  border-color: var(--accent);
+}
+:where(input[type="checkbox"]):checked,
+:where(input[type="checkbox"]):indeterminate {
+  background: var(--accent);
+}
+:where(input[type="checkbox"]):checked::after,
+:where(input[type="checkbox"]):indeterminate::after {
+  border-color: var(--accent);
+}
+:where(input[type="checkbox"]):checked::before {
+  opacity: 1;
+  transform: rotate(-45deg) scale(1) translate(0.5px, -1px);
+}
+:where(input[type="checkbox"]):indeterminate::before {
+  width: 8px;
+  height: 0;
+  border-left: 0;
+  border-bottom: 1.75px solid var(--accent-contrast);
+  transform: none;
+  opacity: 1;
+}
+:where(input[type="checkbox"]):disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+input[type="checkbox"]:focus,
+input[type="radio"]:focus,
+input[type="range"]:focus {
+  box-shadow: none;
+}
+/* Keyboard focus on checkboxes and radios wears the crisp accent outline
+   rather than the rectangular text-field halo. */
 input[type="checkbox"]:focus-visible,
 input[type="radio"]:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+/* Custom range sliders replace raw OS tracks with a machined 4px groove and a
+   14px circular thumb that carries the keyboard focus halo cleanly. */
+:where(input[type="range"]) {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+}
+:where(input[type="range"])::-webkit-slider-runnable-track {
+  height: 4px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--bg-track);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+:where(input[type="range"])::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border: 2px solid var(--bg-panel);
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--scrim) 85%, transparent);
+  transition:
+    transform var(--dur-1) ease,
+    box-shadow var(--dur-1) ease;
+}
+:where(input[type="range"]):hover:not(:disabled)::-webkit-slider-thumb {
+  transform: scale(1.14);
+}
+:where(input[type="range"]):active:not(:disabled)::-webkit-slider-thumb {
+  transform: scale(1.04);
+}
+:where(input[type="range"]):focus-visible::-webkit-slider-thumb {
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent),
+    0 1px 3px color-mix(in srgb, var(--scrim) 85%, transparent);
+}
+:where(input[type="range"])::-moz-range-track {
+  height: 4px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--bg-track);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+:where(input[type="range"])::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--bg-panel);
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--scrim) 85%, transparent);
+  transition:
+    transform var(--dur-1) ease,
+    box-shadow var(--dur-1) ease;
+}
+:where(input[type="range"]):focus-visible::-moz-range-thumb {
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent),
+    0 1px 3px color-mix(in srgb, var(--scrim) 85%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  :where(input[type="checkbox"])::before,
+  :where(input[type="range"])::-webkit-slider-thumb,
+  :where(input[type="range"])::-moz-range-thumb {
+    transition: none;
+  }
 }
 
 ::-webkit-scrollbar {

@@ -703,15 +703,32 @@
   width: 380px;
 }
 
-/* A filter bar between the path and the rows: typing narrows the listing in
-   place, and the count says how much of the folder is left on screen. */
+/* A filter bar between the path and the rows: matches .panel-filter's rounded
+   field treatment so Session and Filer panels speak one search-box grammar. */
 .filer-filter-row {
   display: flex;
+  flex: none;
   align-items: center;
   gap: var(--sp-6);
-  padding: var(--sp-4) var(--sp-8);
-  border-bottom: 1px solid var(--border);
-  color: var(--fg-dim);
+  height: var(--h-control-lg);
+  margin: var(--sp-6) var(--sp-10);
+  padding: 0 var(--sp-8);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-field);
+  color: var(--fg-faint);
+  transition:
+    border-color var(--dur-2) ease,
+    box-shadow var(--dur-2) ease;
+}
+
+.filer-filter-row:hover {
+  border-color: var(--border-strong);
+}
+
+.filer-filter-row:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 .filer-filter-icon {
@@ -721,16 +738,19 @@
 .filer-filter {
   flex: 1 1 auto;
   min-width: 0;
-  padding: 2px var(--sp-4);
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
   background: transparent;
   color: var(--fg);
   font: inherit;
 }
 
+.filer-filter:focus,
 .filer-filter:focus-visible {
-  border-color: var(--accent);
+  border: 0;
+  box-shadow: none;
   outline: none;
 }
 
