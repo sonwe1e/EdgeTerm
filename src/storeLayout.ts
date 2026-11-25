@@ -35,7 +35,7 @@ export const acknowledgeTab = (tabs: Tab[], id: string | null): Tab[] => {
   );
 };
 
-export let paneCounter = 0;
+let paneCounter = 0;
 
 export const newPaneId = (): string => `pane-${++paneCounter}`;
 

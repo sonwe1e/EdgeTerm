@@ -28,7 +28,7 @@ export function buildUnits(text: string, ending: LineEnding): SendUnit[] {
   return splitLines(text).map((line) => `${line}${endingText(ending)}`);
 }
 
-export function endingText(ending: LineEnding): string {
+function endingText(ending: LineEnding): string {
   if (ending === "lf") return "\n";
   if (ending === "crlf") return "\r\n";
   return "";

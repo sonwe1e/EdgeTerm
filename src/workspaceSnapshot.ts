@@ -217,7 +217,7 @@ function storedPaneIds(value: unknown, out = new Set<string>(), depth = 0): Set<
 }
 
 /** A tab name the user set: printable, bounded, and never blank. */
-export function workspaceTitle(value: unknown): string | undefined {
+function workspaceTitle(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   if (!trimmed || trimmed.length > 120 || /[\x00-\x1f\x7f]/.test(trimmed)) return undefined;

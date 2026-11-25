@@ -191,7 +191,7 @@ const measure = (context: CanvasRenderingContext2D, stack: string): number => {
 };
 
 /** True when `family` names a face this machine can actually render. */
-export function isFontInstalled(family: string): boolean {
+function isFontInstalled(family: string): boolean {
   const name = family.trim();
   if (!name) return false;
   if (probeContext === undefined) {

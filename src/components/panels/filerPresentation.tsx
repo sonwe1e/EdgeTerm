@@ -335,7 +335,7 @@ export function entryKind(entry: FileEntry): FilerEntryKind {
   return entry.isDir ? "directory" : "file";
 }
 
-export function entryKindLabel(kind: FilerEntryKind, t: Translate = translateMsg): string {
+function entryKindLabel(kind: FilerEntryKind, t: Translate = translateMsg): string {
   if (kind === "directory") return t("filer.kindFolder");
   if (kind === "symlink") return t("filer.kindLink");
   return t("filer.kindFile");

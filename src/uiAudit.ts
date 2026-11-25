@@ -131,7 +131,7 @@ export function domPath(element: Element, maxAncestors = 4): string {
 }
 
 /** True when the element's own box is rendered at all. */
-export function isRendered(element: Element): boolean {
+function isRendered(element: Element): boolean {
   if (!(element instanceof HTMLElement) && !(element instanceof SVGElement)) return false;
   const style = getComputedStyle(element);
   if (

@@ -60,3 +60,21 @@ C1–C5 都是真正的重构，每一处都贴近行为，本轮预算下不做
 三个签名从 `storage: StorageLike | null = safeStorage()` 改成 `storage: StorageLike | null = null`，内部传 `storage ?? undefined` 让共享助手自己取默认值——这样三个模块仍然可以像以前一样被注入假存储，**三套既有测试一条没改就全绿**。
 
 本轮零自伤：先读全三处、再建模块、再逐个重写，typecheck 一次过。这是连续两轮零自伤（上一轮 C4 也是）。
+
+## 第 223 轮：C5 修了 8 个（审计点了 9 个名，其中一个证明审计错了）
+
+做法是**让编译器当裁判**：逐个删 `export` 关键字，跑 `tsc`，看有没有人抱怨。9 个里 8 个干净通过——`tsc` 零错误，且 `noUnusedLocals` 也没响，说明每个都仍在模块内部被用，删的只是「这是公开 API」的宣称。
+
+**第 9 个证明了审计有误。** 审计报 `src/editor/codemirror.ts:333 languageFor` 没有导入方，我删了 export 之后 `tsc` 立刻报：
+
+```
+src/editor/codemirror.test.ts(3,10): error TS2459: Module '"./codemirror"' declares 'languageFor' locally, but it is not exported.
+```
+
+**它的测试就是导入方。**已还原。这不是我纠正了审计，是编译器纠正了我们两个——审计说它「读了导入点而非只搜名字」，但显然漏了测试文件。
+
+这也正好演示了本会话反复学到的那条：**「搜索没找到」不等于「不存在」**。这次是「审计的图分析没找到」，同理。
+
+其余 8 个：`isRendered`、`workspaceTitle`、`entryKindLabel`、`paneCounter`、`endingText`、`sendCommandToSession`、`isFontInstalled`、`PALETTE_GROUPS`。其中 `export let paneCounter = 0` 额外暴露了无人消费的可变模块状态，现在只是模块私有的。
+
+**C5 只修了 8/112**，剩下的没有逐个验证——那需要同样的一删一跑 104 次，收益是「读者能分清哪些 export 是契约」。这个投入产出比留待判断，不在本轮硬做。

@@ -33,7 +33,7 @@ export type PaletteGroupId =
   | "settings";
 
 /** The order groups appear in, which is also the order of the unfiltered list. */
-export const PALETTE_GROUPS: readonly PaletteGroupId[] = [
+const PALETTE_GROUPS: readonly PaletteGroupId[] = [
   "actions",
   "layout",
   "panels",
