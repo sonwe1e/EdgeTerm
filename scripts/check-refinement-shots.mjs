@@ -1396,6 +1396,91 @@ try {
     await closePopover();
   }
 
+  // 10. Menubar cascading submenus: verify portaled flyouts pop out beside the
+  //     parent dropdown without triggering horizontal overflow scrollbars.
+  const shootMenubarSubmenu = async (name, themeMode, submenuText) => {
+    await page.setViewportSize({ width: 1100, height: 720 });
+    await call("shell");
+    await call("theme", themeMode);
+    await shoot(
+      name,
+      async () => {
+        try {
+          const viewTrigger = page.locator(".menubar button.menu-item", { hasText: /^View$/ });
+          await viewTrigger.click({ timeout: 5000 });
+          await page.waitForSelector(".menubar .menu-dropdown", { timeout: 5000 });
+          const subTrigger = page.locator(".menubar .menu-dropdown button.menu-entry", {
+            hasText: submenuText,
+          });
+          await subTrigger.click({ timeout: 5000 });
+          await page.waitForSelector(".menubar-submenu", { timeout: 5000 });
+          const check = await page.evaluate(() => {
+            const parent = document.querySelector(".menubar .menu-dropdown");
+            const sub = document.querySelector(".menubar-submenu");
+            const trigger = document.querySelector(
+              ".menubar .menu-submenu-entry.is-open > button.menu-entry",
+            );
+            if (!parent || !sub || !trigger) return { ok: false, reason: "missing menu nodes" };
+            const pr = parent.getBoundingClientRect();
+            const sr = sub.getBoundingClientRect();
+            const tr = trigger.getBoundingClientRect();
+            const failures = [];
+            if (parent.scrollWidth > parent.clientWidth + 1) {
+              failures.push(
+                `parent menu overflow-x: ${parent.scrollWidth} > ${parent.clientWidth}`,
+              );
+            }
+            if (sr.left < tr.right - 1) {
+              failures.push(
+                `submenu overlaps trigger: left=${sr.left} < trigger.right=${tr.right}`,
+              );
+            }
+            if (sr.right > window.innerWidth + 1 || sr.bottom > window.innerHeight + 1) {
+              failures.push(
+                `submenu clipped by viewport: right=${sr.right}/${window.innerWidth}, bottom=${sr.bottom}/${window.innerHeight}`,
+              );
+            }
+            return {
+              ok: failures.length === 0,
+              failures,
+              parentRect: { left: pr.left, right: pr.right, width: pr.width },
+              submenuRect: { left: sr.left, right: sr.right, top: sr.top, bottom: sr.bottom },
+            };
+          });
+          layout[name] = check;
+          if (!check.ok) {
+            const reasons = check.failures ?? [check.reason];
+            for (const reason of reasons)
+              warnings.push({ shot: name, missing: `layout: ${reason}` });
+            layoutFailures.push({ scene: name, failures: reasons });
+          }
+        } catch (error) {
+          warnings.push({
+            shot: name,
+            missing: `menubar submenu did not open: ${error.message}`,
+          });
+        }
+      },
+      {
+        parentMenu: ".menubar .menu-dropdown",
+        submenu: ".menubar-submenu",
+      },
+    );
+    await page.keyboard.press("Escape");
+    await wait(80);
+    await page.keyboard.press("Escape");
+    await wait(80);
+  };
+
+  if (wantsScene("menubar-view-layout")) {
+    await shootMenubarSubmenu("menubar-view-layout", "dark", "Panel Layout");
+  }
+
+  if (wantsScene("menubar-view-theme")) {
+    await shootMenubarSubmenu("menubar-view-theme", "light", "Theme");
+    await call("theme", "dark");
+  }
+
   const unknownIpc = await page.evaluate(() => window.__refinement.unknown);
   const manifest = {
     at: new Date().toISOString(),
