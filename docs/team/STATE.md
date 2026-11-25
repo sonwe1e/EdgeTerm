@@ -5,6 +5,25 @@
 
 ---
 
+## 本轮：视觉与交互体验全面打磨、代码质量整治与验证流程提速（2026-11-26）
+
+本地 `main` 上连续落地 15 个单关注点提交（`a0424e9..1a549bc`，未推送，版本号保持 `1.7.8`），覆盖视觉细节、交互缺陷、代码结构与验证提速：
+
+- **视觉与无障碍（四主题全覆盖）**：
+  - 修复 9 处未定义 CSS 变量（`--fg-muted`/`--bg-raised`/`--text-muted`）并在 `src/colourLiterals.test.ts` 新增全量 token 解析守卫（负控制检出 9 处）。
+  - 修复搜索浮层双焦框碰撞、设置页 `Timestamp & Line` 横向溢出、传输中心列表第 4 行腰斩、`LogViewer` `<mark>` 对比度缺陷。
+  - 在 `foundation.styles.css` 以零特异度 `:where()` 实现自定义 checkbox（未勾选边框用 `--fg-faint` 达 WCAG 1.4.11 4.3–6.0:1，且保持 `focusSweep` 负控制精准）与 4px 凹槽自定义 range 滑块；平衡 `Agent prompt`、`+ New command`、状态栏展开态视觉层级；升级 `.forward-directions` 为凹槽+凸起滑块分段器；统一 `Filer`/`Session` 筛选框与浮层顶部高光/入场动效（均配 `prefers-reduced-motion`）。
+- **交互与缺陷修复**：
+  - 修复 `FontSizeDialog`「恢复默认」漏重置 `lineHeight` 的缺陷（R7 负控制已验证），对齐 GPU/冷历史/回滚行数栅格，并为显示设置和快捷键弹窗补齐标题栏关闭按钮。
+  - `TabStrip`「所有会话」下拉补齐会话色点（空色回退 `var(--accent)` 匹配 `.tab-dot`）；`SessionDialog`「高级」折叠区统一 Codicon 旋转箭头与 24px 目标高度；收紧 `SessionPanel` 中英文筛选占位符避免 240px 默认宽度下截断。
+  - `LogViewerDialog` 搜索框支持 `Enter`/`Shift+Enter` 步进匹配；`ImagePreviewDialog` 支持双击指针居中切换适配/100% 并显示解码分辨率；`CommandPalette` 防护键盘滚动（含首次打开后首滚）被静止光标劫持，清理死代码与过期注释。
+- **代码质量与验证提速**：
+  - `StatusBar` 在 `broadcastInput` 关闭时短路 `broadcastTargets` 扫描；将误放于 `ftp.styles.css` 末尾的 490 行终端样式原样迁回相邻的 `terminal.styles.css`。
+  - `scripts/verify.mjs` 合并单次 Windows 受控预算（快速三件套 16.52s → 11.65s，-29.5%），新增 `--changed` 静态反向依赖图预检，限制纯 CSS 改动仅扇出到 token/视觉审计用例（123s → ~14s），并对非法 `--since` ref 显式报错、区分空改动与 docs-only。
+  - `scripts/check-refinement-shots.mjs` 补齐 `set_tray_labels`/`default_recording_dir`/`credential_store_status` IPC stub 并新增 `--only=` 场景过滤与 5 个覆盖场景；`layoutDock.browser.test.ts` 放宽冷启动 xterm 挂载轮询超时至 5s 消除 Windows 降优先级下抖动。
+- **独立复验（只读审查子代理）**：复审 `a0424e9..ffb574b` 检出 4 条真实问题（未勾选 checkbox 边框对比度、`.agent-compose-launch:hover` 对比度、CommandPalette 首滚光标劫持、`verify.mjs` 非法 `--since` 静默跳过）与 1 条 720×560 折叠区高度审计项，全部修复并补齐负控制测试。
+- **全量门禁结果**：`npm run verify`（`224/224` 单测文件 **2,014** 用例 + `75/75` 浏览器文件 **351** 用例，377.0s）、`npm run test:rust`（**549** 通过 / 0 失败 / 32 忽略，58.7s）、`npm run check:commits -- a0424e9..HEAD --typecheck --lint`（15 commits，0 errors，0 warnings）、`npm run build`（4.91s）、26 场景视觉截图审计（0 warnings / 0 layoutFailures / 0 unknownIpc / 0 errors）。
+
 ## 流程决定：`git push` 永远不与 `check:commits` 同命令（2026-11-25 第 200 轮）
 
 本轮犯了这个会话里**第四次**「先推送后门禁」。找到根因了，不是记性，是**结构**：
