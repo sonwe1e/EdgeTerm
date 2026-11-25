@@ -226,6 +226,24 @@ it("reports an unsupported host as a state rather than an empty cluster", async 
   }
 });
 
+it("reports monitoring as off inside the popover instead of reading forever", async () => {
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(h(ResourceMonitorBar, { tab: tab("ssh") })));
+    await act(async () => host.querySelector<HTMLButtonElement>(".resource-summary")!.click());
+    const toggle = host.querySelector<HTMLInputElement>('[aria-label="Monitor SSH hosts"]')!;
+    expect(toggle.checked).toBe(true);
+    await act(async () => toggle.click());
+    expect(toggle.checked).toBe(false);
+    const note = host.querySelector(".status-popover-note")?.textContent ?? "";
+    expect(note).toBe("Resources off");
+    expect(note).not.toContain("Reading resources");
+  } finally {
+    act(() => root.unmount());
+  }
+});
+
 it("keeps one in-flight sample and cancels switched or hidden hosts without stale repaint", async () => {
   vi.useFakeTimers();
   let old!: (value: ResourceMetrics) => void;

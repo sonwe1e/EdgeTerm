@@ -446,7 +446,9 @@ export const ResourceMonitorBar = memo(function ResourceMonitorBar({
             leave the body with nothing to draw. Saying so is the difference
             between "a reading is coming" and a panel that looks broken. */}
           {!sample && !error && (
-            <p className="status-popover-note">{t("monitor.readingResources")}</p>
+            <p className="status-popover-note">
+              {settings.enabled ? t("monitor.readingResources") : t("monitor.resourcesOff")}
+            </p>
           )}
           {sample?.status === "ok" && (
             <>
