@@ -26,9 +26,23 @@ const require = createRequire(import.meta.url);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const resultsArg = process.argv[2] ?? "";
 if (!/^[a-z0-9-]+$/.test(resultsArg)) {
-  console.error("usage: node scripts/check-refinement-shots.mjs <results-name>");
+  console.error(
+    "usage: node scripts/check-refinement-shots.mjs <results-name> [--only=scene1,scene2]",
+  );
   process.exit(2);
 }
+const onlyArg = process.argv.slice(3).find((arg) => arg.startsWith("--only="));
+const onlyScenes = onlyArg
+  ? new Set(
+      onlyArg
+        .slice("--only=".length)
+        .split(",")
+        .map((name) => name.trim())
+        .filter(Boolean),
+    )
+  : null;
+const wantsScene = (name) => !onlyScenes || onlyScenes.has(name);
+const wantsAny = (...names) => !onlyScenes || names.some((name) => onlyScenes.has(name));
 const outDir = path.join(repoRoot, ".tmp", "records", "refinement-shots", resultsArg);
 const buildDir = path.join(repoRoot, ".tmp", "refinement-shots-build", `dist-${resultsArg}`);
 // Optional copies of the earlier tab component and stylesheet let a visual
@@ -227,7 +241,7 @@ window.__TAURI_INTERNALS__ = {
     if (command === "plugin:app|version") return "1.0.0";
     if (command === "plugin:window|is_maximized" || command === "plugin:window|is_fullscreen") return false;
     if (command === "plugin:updater|check") return null;
-    if (["set_startup_theme", "set_close_to_tray", "show_main_window", "finish_main_window",
+    if (["set_startup_theme", "set_close_to_tray", "set_tray_labels", "show_main_window", "finish_main_window",
          "plugin:window|set_title", "plugin:window|set_focus"].includes(command)) return;
     // Unknown commands invalidate the evidence at the end. First answer with
     // an empty value so the remaining scenes can still be inspected. A
@@ -578,42 +592,155 @@ try {
 
   // 1. The app shell: session tree, Filer, Sender quickbar and the status bar
   //    with a live session's details.
-  await shoot("shell", () => call("shell"), {
-    sessionTree: ".panel-body[role=tree]",
-    filerList: ".filer-list",
-    senderQuickbar: ".sender-quickbar",
-    statusbar: ".statusbar",
-    statusGroup: ".status-group",
-    panelHeaderRule: ".panel-header",
-  });
+  if (wantsScene("shell")) {
+    await shoot("shell", () => call("shell"), {
+      sessionTree: ".panel-body[role=tree]",
+      filerList: ".filer-list",
+      senderQuickbar: ".sender-quickbar",
+      statusbar: ".statusbar",
+      statusGroup: ".status-group",
+      panelHeaderRule: ".panel-header",
+    });
+  }
 
-  await shoot("multi-tabs", () => call("multiTabs"), {
-    running: ".tab.is-command-running",
-    complete: ".tab.is-command-complete",
-    error: ".tab.is-error",
-  });
-  await shoot(
-    "multi-tabs-menu",
-    async () => {
-      const button = page.locator('.tabstrip-actions button[aria-haspopup="menu"]');
-      const rect = await button.boundingBox();
-      if (!rect) throw new Error("all-sessions button is not visible");
-      await page.mouse.click(rect.x + rect.width / 2, rect.y + rect.height / 2);
-      await page.waitForSelector(".tab-list-menu", { timeout: 5000 });
-    },
-    { list: ".tab-list-menu", items: ".tab-list-menu [role=menuitemradio]" },
-  );
-  await page.keyboard.press("Escape");
-  await page.setViewportSize({ width: 900, height: 560 });
-  await call("theme", "light");
-  await shoot("multi-tabs-narrow-light", () => call("multiTabs"), {
-    running: ".tab.is-command-running",
-    complete: ".tab.is-command-complete",
-    error: ".tab.is-error",
-  });
-  await page.setViewportSize({ width: 1100, height: 720 });
-  await call("theme", "dark");
-  await call("shell");
+  if (wantsScene("shell-light")) {
+    await shoot(
+      "shell-light",
+      async () => {
+        await call("shell");
+        await call("theme", "light");
+      },
+      {
+        sessionTree: ".panel-body[role=tree]",
+        filerList: ".filer-list",
+        senderQuickbar: ".sender-quickbar",
+        statusbar: ".statusbar",
+      },
+    );
+    await call("theme", "dark");
+  }
+
+  if (wantsScene("shell-serialx-dark")) {
+    await shoot(
+      "shell-serialx-dark",
+      async () => {
+        await call("shell");
+        await call("theme", "serialx-dark");
+      },
+      {
+        sessionTree: ".panel-body[role=tree]",
+        filerList: ".filer-list",
+        senderQuickbar: ".sender-quickbar",
+        statusbar: ".statusbar",
+      },
+    );
+    await call("theme", "dark");
+  }
+
+  if (wantsScene("command-palette")) {
+    await shoot(
+      "command-palette",
+      async () => {
+        await call("shell");
+        await page.getByRole("menuitem", { name: "View", exact: true }).click({ timeout: 5000 });
+        await page
+          .locator(".menu-dropdown .menu-entry", { hasText: "Command Palette" })
+          .first()
+          .click({ timeout: 5000 });
+        await page.waitForSelector(".command-palette", { timeout: 5000 });
+        await page.locator(".command-palette-input").fill("theme");
+      },
+      {
+        dialog: ".command-palette",
+        input: ".command-palette-input",
+        option: ".command-palette-option",
+        highlight: ".command-palette-label mark",
+      },
+    );
+    await page.keyboard.press("Escape");
+    await page.waitForSelector(".command-palette", { state: "hidden", timeout: 3000 });
+  }
+
+  if (wantsScene("search-overlay")) {
+    await shoot(
+      "search-overlay",
+      async () => {
+        await call("shell");
+        await page.getByRole("menuitem", { name: "Search", exact: true }).click({ timeout: 5000 });
+        await page
+          .locator(".menu-dropdown .menu-entry", { hasText: "Find" })
+          .first()
+          .click({ timeout: 5000 });
+        await page.waitForSelector(".terminal-search", { timeout: 5000 });
+        await page.locator(".terminal-search input").fill("ssh");
+      },
+      {
+        search: ".terminal-search",
+        field: ".terminal-search .search-field",
+        toggle: ".terminal-search .search-toggle",
+      },
+    );
+    await page.locator(".terminal-search .panel-action").last().click();
+    await page.waitForSelector(".terminal-search", { state: "detached", timeout: 3000 });
+  }
+
+  if (wantsScene("settings-dialog")) {
+    await shoot(
+      "settings-dialog",
+      async () => {
+        await call("shell");
+        await page.getByRole("menuitem", { name: "View", exact: true }).click({ timeout: 5000 });
+        await page
+          .locator(".menu-dropdown .menu-entry", { hasText: "Settings" })
+          .last()
+          .click({ timeout: 5000 });
+        await page.waitForSelector(".settings-dialog", { timeout: 10000 });
+      },
+      {
+        dialog: ".settings-dialog",
+        group: ".settings-group",
+        choice: ".settings-choice",
+      },
+    );
+    await page.locator(".settings-dialog .btn", { hasText: "Close" }).first().click();
+    await page.waitForSelector(".settings-dialog", { state: "detached", timeout: 3000 });
+  }
+
+  if (wantsAny("multi-tabs", "multi-tabs-menu", "multi-tabs-narrow-light")) {
+    if (wantsAny("multi-tabs", "multi-tabs-menu")) {
+      await shoot("multi-tabs", () => call("multiTabs"), {
+        running: ".tab.is-command-running",
+        complete: ".tab.is-command-complete",
+        error: ".tab.is-error",
+      });
+    }
+    if (wantsScene("multi-tabs-menu")) {
+      await shoot(
+        "multi-tabs-menu",
+        async () => {
+          const button = page.locator('.tabstrip-actions button[aria-haspopup="menu"]');
+          const rect = await button.boundingBox();
+          if (!rect) throw new Error("all-sessions button is not visible");
+          await page.mouse.click(rect.x + rect.width / 2, rect.y + rect.height / 2);
+          await page.waitForSelector(".tab-list-menu", { timeout: 5000 });
+        },
+        { list: ".tab-list-menu", items: ".tab-list-menu [role=menuitemradio]" },
+      );
+      await page.keyboard.press("Escape");
+    }
+    if (wantsScene("multi-tabs-narrow-light")) {
+      await page.setViewportSize({ width: 900, height: 560 });
+      await call("theme", "light");
+      await shoot("multi-tabs-narrow-light", () => call("multiTabs"), {
+        running: ".tab.is-command-running",
+        complete: ".tab.is-command-complete",
+        error: ".tab.is-error",
+      });
+      await page.setViewportSize({ width: 1100, height: 720 });
+      await call("theme", "dark");
+    }
+    await call("shell");
+  }
 
   /**
    * Dismisses whatever dialog is open and proves it is gone. A click is not a
@@ -653,71 +780,60 @@ try {
   //    sizing and radius work lands in. The button is pressed for real rather
   //    than through a synthetic event, and the dialog is lazy so the wait has
   //    to cover its chunk arriving.
-  await shoot(
-    "session-dialog",
-    async () => {
-      try {
-        await page
-          .getByRole("button", { name: "New session", exact: true })
-          .click({ timeout: 5000 });
-        await page.waitForSelector(".session-dialog", { timeout: 15000 });
-      } catch (error) {
-        warnings.push({ shot: "session-dialog", missing: `dialog did not open: ${error.message}` });
-      }
-    },
-    {
-      dialog: ".session-dialog",
-      sessionField: ".session-field",
-      section: ".session-section",
-      primaryButton: ".btn.is-primary",
-    },
-  );
+  if (wantsScene("session-dialog")) {
+    await shoot(
+      "session-dialog",
+      async () => {
+        try {
+          await page
+            .getByRole("button", { name: "New session", exact: true })
+            .click({ timeout: 5000 });
+          await page.waitForSelector(".session-dialog", { timeout: 15000 });
+        } catch (error) {
+          warnings.push({
+            shot: "session-dialog",
+            missing: `dialog did not open: ${error.message}`,
+          });
+        }
+      },
+      {
+        dialog: ".session-dialog",
+        sessionField: ".session-field",
+        section: ".session-section",
+        primaryButton: ".btn.is-primary",
+      },
+    );
+    await dismissDialog();
+  }
 
   // 3. Display Settings — the dialog with its own multi-column grid, which
-  //    §6.2.1 says keeps that layout. Reached through the real menubar. The
-  //    session editor is dismissed through its own Cancel button rather than
-  //    Escape: a native modal owns the top layer, so a key sent to whatever
-  //    happens to hold focus never reaches the dialog that would answer it.
-  await shoot(
-    "display-settings",
-    async () => {
-      try {
-        await page
-          .locator(".session-dialog .btn", { hasText: "Cancel" })
-          .first()
-          .click({ timeout: 5000 });
-        await page.waitForSelector(".session-dialog", { state: "detached", timeout: 5000 });
-      } catch (error) {
-        warnings.push({
-          shot: "display-settings",
-          missing: `could not dismiss the session editor: ${error.message}`,
-        });
-      }
-      try {
-        // Display Settings lives in the View menu, not Help.
-        await page.getByRole("menuitem", { name: "View", exact: true }).click({ timeout: 5000 });
-        await page
-          .locator(".menu-dropdown .menu-entry", { hasText: "Display Settings" })
-          .first()
-          .click({ timeout: 5000 });
-        await page.waitForSelector(".font-size-dialog", { timeout: 10000 });
-      } catch (error) {
-        warnings.push({
-          shot: "display-settings",
-          missing: `dialog did not open: ${error.message}`,
-        });
-      }
-    },
-    {
-      dialog: ".font-size-dialog",
-      setting: ".font-size-setting",
-    },
-  );
-
-  // The dialog is the subject of the shot above, so it has to be gone before
-  // the next one: a modal left standing covers the Filer while every
-  // selector behind it still counts as present.
-  await dismissDialog();
+  //    §6.2.1 says keeps that layout. Reached through the real menubar.
+  if (wantsScene("display-settings")) {
+    await shoot(
+      "display-settings",
+      async () => {
+        try {
+          // Display Settings lives in the View menu, not Help.
+          await page.getByRole("menuitem", { name: "View", exact: true }).click({ timeout: 5000 });
+          await page
+            .locator(".menu-dropdown .menu-entry", { hasText: "Display Settings" })
+            .first()
+            .click({ timeout: 5000 });
+          await page.waitForSelector(".font-size-dialog", { timeout: 10000 });
+        } catch (error) {
+          warnings.push({
+            shot: "display-settings",
+            missing: `dialog did not open: ${error.message}`,
+          });
+        }
+      },
+      {
+        dialog: ".font-size-dialog",
+        setting: ".font-size-setting",
+      },
+    );
+    await dismissDialog();
+  }
 
   /** Viewer checks are additional gates; the existing popover oracles below
       stay unchanged. Deliberate image/log canvas scrolling is not overflow
@@ -846,330 +962,339 @@ try {
     { suffix: "", width: 1100, height: 720, theme: "dark" },
     { suffix: "-narrow-light", width: 900, height: 560, theme: "light" },
   ]) {
+    const imageShot = "image-preview" + scene.suffix;
+    const logShot = "log-viewer" + scene.suffix;
+    if (!wantsAny(imageShot, logShot, logShot + "-search")) continue;
     await page.setViewportSize({ width: scene.width, height: scene.height });
     await call("theme", scene.theme);
     await call("ssh");
-    const imageRow = page.locator(".filer-entry", { hasText: "preview-1280x720.png" });
-    await imageRow.waitFor({ state: "visible", timeout: 8000 });
-    const imageCallsStart = await page.evaluate(() => window.__refinement.calls.length);
-    const imageShot = "image-preview" + scene.suffix;
-    await shoot(
-      imageShot,
-      async () => {
-        await imageRow.dblclick();
-        await page.getByRole("dialog", { name: "Image preview", exact: true }).waitFor();
-        await page.waitForFunction(
-          () => document.querySelector(".image-preview-stage img")?.naturalWidth === 1280,
-        );
-      },
-      {
-        dialog: ".image-preview-dialog",
-        image: ".image-preview-stage img",
-        toolbar: ".image-preview-toolbar",
-      },
-    );
-    await auditViewer(imageShot, "image", imageCallsStart);
-    await page
-      .locator(".image-preview-dialog")
-      .getByRole("button", { name: "Close", exact: true })
-      .click();
-    await page.waitForSelector(".image-preview-dialog", { state: "detached" });
+    if (wantsScene(imageShot)) {
+      const imageRow = page.locator(".filer-entry", { hasText: "preview-1280x720.png" });
+      await imageRow.waitFor({ state: "visible", timeout: 8000 });
+      const imageCallsStart = await page.evaluate(() => window.__refinement.calls.length);
+      await shoot(
+        imageShot,
+        async () => {
+          await imageRow.dblclick();
+          await page.getByRole("dialog", { name: "Image preview", exact: true }).waitFor();
+          await page.waitForFunction(
+            () => document.querySelector(".image-preview-stage img")?.naturalWidth === 1280,
+          );
+        },
+        {
+          dialog: ".image-preview-dialog",
+          image: ".image-preview-stage img",
+          toolbar: ".image-preview-toolbar",
+        },
+      );
+      await auditViewer(imageShot, "image", imageCallsStart);
+      await page
+        .locator(".image-preview-dialog")
+        .getByRole("button", { name: "Close", exact: true })
+        .click();
+      await page.waitForSelector(".image-preview-dialog", { state: "detached" });
+    }
 
-    const logCallsStart = await page.evaluate(() => window.__refinement.calls.length);
-    const logShot = "log-viewer" + scene.suffix;
-    await shoot(
-      logShot,
-      async () => {
-        await page.locator(".filer-entry", { hasText: "worker.log" }).click({ button: "right" });
-        await page
-          .getByRole("menuitem", { name: "View large text (read-only)", exact: true })
-          .click();
-        await page
-          .getByRole("dialog", { name: "Large text viewer · Read-only", exact: true })
-          .waitFor();
-        await page.waitForFunction(() =>
-          document.querySelector(".log-viewer-text")?.textContent?.includes("latest result: ready"),
+    if (wantsAny(logShot, logShot + "-search")) {
+      const logCallsStart = await page.evaluate(() => window.__refinement.calls.length);
+      await shoot(
+        logShot,
+        async () => {
+          await page.locator(".filer-entry", { hasText: "worker.log" }).click({ button: "right" });
+          await page
+            .getByRole("menuitem", { name: "View large text (read-only)", exact: true })
+            .click();
+          await page
+            .getByRole("dialog", { name: "Large text viewer · Read-only", exact: true })
+            .waitFor();
+          await page.waitForFunction(() =>
+            document
+              .querySelector(".log-viewer-text")
+              ?.textContent?.includes("latest result: ready"),
+          );
+        },
+        {
+          dialog: ".log-viewer-dialog",
+          text: ".log-viewer-text",
+          toolbar: ".log-viewer-toolbar",
+          range: ".log-viewer-range",
+        },
+      );
+      await auditViewer(logShot, "log", logCallsStart);
+      if (wantsScene(logShot + "-search")) {
+        await shoot(
+          logShot + "-search",
+          async () => {
+            await page
+              .getByRole("searchbox", { name: "Find in loaded window" })
+              .fill("checkpoint=saved");
+            await page.locator(".log-viewer-text mark").waitFor();
+          },
+          { dialog: ".log-viewer-dialog", match: ".log-viewer-text mark" },
         );
-      },
-      {
-        dialog: ".log-viewer-dialog",
-        text: ".log-viewer-text",
-        toolbar: ".log-viewer-toolbar",
-        range: ".log-viewer-range",
-      },
-    );
-    await auditViewer(logShot, "log", logCallsStart);
-    await shoot(
-      logShot + "-search",
-      async () => {
-        await page
-          .getByRole("searchbox", { name: "Find in loaded window" })
-          .fill("checkpoint=saved");
-        await page.locator(".log-viewer-text mark").waitFor();
-      },
-      { dialog: ".log-viewer-dialog", match: ".log-viewer-text mark" },
-    );
-    await auditViewer(logShot + "-search", "log", logCallsStart, true);
-    await page
-      .locator(".log-viewer-dialog")
-      .getByRole("button", { name: "Close", exact: true })
-      .click();
-    await page.waitForSelector(".log-viewer-dialog", { state: "detached" });
+        await auditViewer(logShot + "-search", "log", logCallsStart, true);
+      }
+      await page
+        .locator(".log-viewer-dialog")
+        .getByRole("button", { name: "Close", exact: true })
+        .click();
+      await page.waitForSelector(".log-viewer-dialog", { state: "detached" });
+    }
   }
   await page.setViewportSize({ width: 1100, height: 720 });
   await call("theme", "dark");
 
   // 6. The Sender expanded — the compose row and the command library.
-  await shoot(
-    "sender-expanded",
-    async () => {
-      await call("shell");
-      // The expanded/collapsed choice is read from localStorage once at mount,
-      // so the panel has to be remounted to see the other state.
-      await page.evaluate(() =>
-        localStorage.setItem(
-          "edgeterm.panelSizing",
-          JSON.stringify({
-            left: 260,
-            right: 320,
-            bottom: 300,
-            senderExpanded: true,
-          }),
-        ),
-      );
-      await page.reload();
-      await page.waitForFunction(() => window.__refinementReady === true, undefined, {
-        timeout: 30000,
-      });
-      await call("shell");
-    },
-    {
-      compose: ".sender-compose",
-      textarea: ".sender-command-input",
-      library: ".sender-library",
-      saveButton: ".sender-save-btn",
-    },
-  );
-
-  // 7. Host resources on the connected SSH session. The vitals cluster polls
-  //    the sampling stub, so a few samples land before the popover opens and
-  //    its sparklines have a trend rather than one point. The Sender expansion
-  //    from the previous scene is dropped first: these shots review the
-  //    popover against the shell's normal proportions, not an expanded panel.
-  await shoot(
-    "monitor",
-    async () => {
-      try {
-        await page.evaluate(() => localStorage.removeItem("edgeterm.panelSizing"));
+  if (wantsScene("sender-expanded")) {
+    await shoot(
+      "sender-expanded",
+      async () => {
+        await call("shell");
+        // The expanded/collapsed choice is read from localStorage once at mount,
+        // so the panel has to be remounted to see the other state.
+        await page.evaluate(() =>
+          localStorage.setItem(
+            "edgeterm.panelSizing",
+            JSON.stringify({
+              left: 260,
+              right: 320,
+              bottom: 300,
+              senderExpanded: true,
+            }),
+          ),
+        );
         await page.reload();
         await page.waitForFunction(() => window.__refinementReady === true, undefined, {
           timeout: 30000,
         });
-        await call("ssh");
-        await wait(4600);
-        await clickFirst([
-          ".resource-monitor button[aria-expanded]",
-          ".resource-monitor button",
-          ".resource-summary",
-        ]);
-        await page.waitForSelector(".status-popover", { timeout: 8000 });
-      } catch (error) {
-        warnings.push({
-          shot: "monitor",
-          missing: `resource popover did not open: ${error.message}`,
-        });
-      }
-    },
-    {
-      statusPopover: ".status-popover.monitor-popover",
-      head: ".status-popover-head",
-      body: ".status-popover-body",
-      tiles: ".monitor-grid .monitor-tile",
-      sparkline: ".monitor-grid .monitor-spark",
-      devices: ".monitor-devices",
-    },
-  );
-  await auditScene("monitor", {
-    rowGroups: [
-      { selector: ".monitor-tile", fit: true },
-      { selector: ".monitor-device", fit: true },
-      { selector: ".monitor-controls", fit: true },
-    ],
-    containers: [".status-popover-body", ".monitor-grid", ".monitor-devices"],
-    contrast: [
-      ".monitor-tile-label",
-      ".monitor-tile-value",
-      ".monitor-tile-detail",
-      ".monitor-device-kind",
-      ".monitor-device-name",
-      ".monitor-device-value",
-      ".monitor-device-meta",
-    ],
-  });
-  await closePopover();
-
-  // 7b. The same monitor surface at 1440x900, above the 1100px breakpoint:
-  //     the compact fallback must be gone and the vitals cluster must be what
-  //     the bar shows, with every vital inside the 24px strip and the four
-  //     gauges keeping their row pitch. The 1100x720 scene above stays as the
-  //     compact-breakpoint evidence.
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await shoot(
-    "monitor-wide",
-    async () => {
-      try {
-        await call("ssh");
-        await wait(600);
-        await clickFirst([
-          ".resource-monitor button[aria-expanded]",
-          ".resource-monitor button",
-          ".resource-summary",
-        ]);
-        await page.waitForSelector(".status-popover", { timeout: 8000 });
-      } catch (error) {
-        warnings.push({
-          shot: "monitor-wide",
-          missing: `resource popover did not open: ${error.message}`,
-        });
-      }
-    },
-    {
-      statusPopover: ".status-popover.monitor-popover",
-      vitals: ".resource-vitals",
-      wide: ".resource-wide",
-    },
-  );
-  await auditScene("monitor-wide", {
-    rowGroups: [
-      {
-        selector: ".monitor-tile",
-        fit: true,
-        count: 4,
-        rowPitch: true,
-        grid: { within: ".monitor-grid", rows: 2, columns: 2, gapVar: "--sp-8" },
+        await call("shell");
       },
-      { selector: ".monitor-device", fit: true },
-      { selector: ".monitor-controls", fit: true },
-    ],
-    containers: [".status-popover-body", ".monitor-grid", ".monitor-devices"],
-    elements: {
-      visible: [".resource-wide"],
-      hidden: [".resource-compact"],
-      fitWithin: [
-        { selector: ".resource-vitals", within: ".statusbar" },
-        { selector: ".vital", within: ".statusbar", maxHeight: 24 },
+      {
+        compose: ".sender-compose",
+        textarea: ".sender-command-input",
+        library: ".sender-library",
+        saveButton: ".sender-save-btn",
+      },
+    );
+    await page.evaluate(() => localStorage.removeItem("edgeterm.panelSizing"));
+    await page.reload();
+    await page.waitForFunction(() => window.__refinementReady === true, undefined, {
+      timeout: 30000,
+    });
+  }
+
+  // 7. Host resources on the connected SSH session.
+  if (wantsAny("monitor", "monitor-wide")) {
+    if (wantsScene("monitor")) {
+      await shoot(
+        "monitor",
+        async () => {
+          try {
+            await call("ssh");
+            await wait(4600);
+            await clickFirst([
+              ".resource-monitor button[aria-expanded]",
+              ".resource-monitor button",
+              ".resource-summary",
+            ]);
+            await page.waitForSelector(".status-popover", { timeout: 8000 });
+          } catch (error) {
+            warnings.push({
+              shot: "monitor",
+              missing: `resource popover did not open: ${error.message}`,
+            });
+          }
+        },
+        {
+          statusPopover: ".status-popover.monitor-popover",
+          head: ".status-popover-head",
+          body: ".status-popover-body",
+          tiles: ".monitor-grid .monitor-tile",
+          sparkline: ".monitor-grid .monitor-spark",
+          devices: ".monitor-devices",
+        },
+      );
+      await auditScene("monitor", {
+        rowGroups: [
+          { selector: ".monitor-tile", fit: true },
+          { selector: ".monitor-device", fit: true },
+          { selector: ".monitor-controls", fit: true },
+        ],
+        containers: [".status-popover-body", ".monitor-grid", ".monitor-devices"],
+        contrast: [
+          ".monitor-tile-label",
+          ".monitor-tile-value",
+          ".monitor-tile-detail",
+          ".monitor-device-kind",
+          ".monitor-device-name",
+          ".monitor-device-value",
+          ".monitor-device-meta",
+        ],
+      });
+      await closePopover();
+    }
+
+    if (wantsScene("monitor-wide")) {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await shoot(
+        "monitor-wide",
+        async () => {
+          try {
+            await call("ssh");
+            await wait(wantsScene("monitor") ? 600 : 4600);
+            await clickFirst([
+              ".resource-monitor button[aria-expanded]",
+              ".resource-monitor button",
+              ".resource-summary",
+            ]);
+            await page.waitForSelector(".status-popover", { timeout: 8000 });
+          } catch (error) {
+            warnings.push({
+              shot: "monitor-wide",
+              missing: `resource popover did not open: ${error.message}`,
+            });
+          }
+        },
+        {
+          statusPopover: ".status-popover.monitor-popover",
+          vitals: ".resource-vitals",
+          wide: ".resource-wide",
+        },
+      );
+      await auditScene("monitor-wide", {
+        rowGroups: [
+          {
+            selector: ".monitor-tile",
+            fit: true,
+            count: 4,
+            rowPitch: true,
+            grid: { within: ".monitor-grid", rows: 2, columns: 2, gapVar: "--sp-8" },
+          },
+          { selector: ".monitor-device", fit: true },
+          { selector: ".monitor-controls", fit: true },
+        ],
+        containers: [".status-popover-body", ".monitor-grid", ".monitor-devices"],
+        elements: {
+          visible: [".resource-wide"],
+          hidden: [".resource-compact"],
+          fitWithin: [
+            { selector: ".resource-vitals", within: ".statusbar" },
+            { selector: ".vital", within: ".statusbar", maxHeight: 24 },
+          ],
+        },
+        contrast: [
+          ".monitor-tile-label",
+          ".monitor-tile-value",
+          ".monitor-tile-detail",
+          ".monitor-device-kind",
+          ".monitor-device-name",
+          ".monitor-device-value",
+          ".monitor-device-meta",
+        ],
+      });
+      await closePopover();
+      await page.setViewportSize({ width: 1100, height: 720 });
+    }
+  }
+
+  // 8. The transfer queue
+  if (wantsScene("transfers")) {
+    await shoot(
+      "transfers",
+      async () => {
+        try {
+          await call("ssh");
+          await call("transferPulse");
+          await clickFirst([".transfer-center button[aria-expanded]", ".transfer-center button"]);
+          await page.waitForSelector(".status-popover", { timeout: 8000 });
+        } catch (error) {
+          warnings.push({
+            shot: "transfers",
+            missing: `transfer popover did not open: ${error.message}`,
+          });
+        }
+      },
+      {
+        statusPopover: ".status-popover.transfer-center-popover",
+        head: ".status-popover-head",
+        body: ".status-popover-body",
+        jobRows: ".status-popover .transfer-job",
+        statusPill: ".status-popover .transfer-status",
+        progress: ".status-popover .transfer-job-track",
+        failedFilesToggle: ".status-popover .transfer-job-failures",
+      },
+    );
+    await auditScene("transfers", {
+      rowGroups: [{ selector: ".transfer-job", fit: true, pitch: 100 }],
+      containers: [".status-popover-body", ".transfer-center-jobs"],
+      contrast: [".transfer-status", ".transfer-job-name", ".transfer-job-meta-text"],
+    });
+    await closePopover();
+  }
+
+  if (wantsScene("transfers-route-detail")) {
+    await shoot(
+      "transfers-route-detail",
+      async () => {
+        try {
+          await call("ssh");
+          await clickFirst([".transfer-center button[aria-expanded]", ".transfer-center button"]);
+          await page.waitForSelector(".status-popover", { timeout: 8000 });
+          await page
+            .locator(".status-popover .transfer-job-context")
+            .first()
+            .click({ timeout: 4000 });
+          await page.waitForSelector(".transfer-detail-text", { timeout: 4000 });
+        } catch (error) {
+          warnings.push({
+            shot: "transfers-route-detail",
+            missing: `route detail did not open: ${error.message}`,
+          });
+        }
+      },
+      { details: ".transfer-detail-text", context: ".transfer-job-context" },
+    );
+    await closePopover();
+  }
+
+  if (wantsScene("transfers-failed")) {
+    await shoot(
+      "transfers-failed",
+      async () => {
+        try {
+          await call("ssh");
+          await clickFirst([".transfer-center button[aria-expanded]", ".transfer-center button"]);
+          await page.waitForSelector(".status-popover", { timeout: 8000 });
+          await page
+            .locator(".status-popover .transfer-job-failures")
+            .first()
+            .click({ timeout: 4000 });
+          await page
+            .locator(".status-popover .transfer-failures")
+            .scrollIntoViewIfNeeded({ timeout: 4000 });
+        } catch (error) {
+          warnings.push({
+            shot: "transfers-failed",
+            missing: `failed-file list did not open: ${error.message}`,
+          });
+        }
+      },
+      {
+        statusPopover: ".status-popover.transfer-center-popover",
+        failures: ".status-popover .transfer-failures",
+        failureRows: ".status-popover .transfer-failure-row",
+      },
+    );
+    await auditScene("transfers-failed", {
+      rowGroups: [
+        { selector: ".transfer-job", fit: true, pitch: 100 },
+        { selector: ".transfer-failure-row", fit: true, pitch: 24 },
       ],
-    },
-    contrast: [
-      ".monitor-tile-label",
-      ".monitor-tile-value",
-      ".monitor-tile-detail",
-      ".monitor-device-kind",
-      ".monitor-device-name",
-      ".monitor-device-value",
-      ".monitor-device-meta",
-    ],
-  });
-  await closePopover();
-  await page.setViewportSize({ width: 1100, height: 720 });
-
-  // 8. The transfer queue: a running upload, a failed upload with failed
-  //    files, and a completed download, all seeded through list_file_transfers.
-  await shoot(
-    "transfers",
-    async () => {
-      try {
-        await call("ssh");
-        await call("transferPulse");
-        await clickFirst([".transfer-center button[aria-expanded]", ".transfer-center button"]);
-        await page.waitForSelector(".status-popover", { timeout: 8000 });
-      } catch (error) {
-        warnings.push({
-          shot: "transfers",
-          missing: `transfer popover did not open: ${error.message}`,
-        });
-      }
-    },
-    {
-      statusPopover: ".status-popover.transfer-center-popover",
-      head: ".status-popover-head",
-      body: ".status-popover-body",
-      jobRows: ".status-popover .transfer-job",
-      statusPill: ".status-popover .transfer-status",
-      progress: ".status-popover .transfer-job-track",
-      failedFilesToggle: ".status-popover .transfer-job-failures",
-    },
-  );
-  await auditScene("transfers", {
-    rowGroups: [{ selector: ".transfer-job", fit: true, pitch: 100 }],
-    containers: [".status-popover-body", ".transfer-center-jobs"],
-    contrast: [".transfer-status", ".transfer-job-name", ".transfer-job-meta-text"],
-  });
-  await closePopover();
-
-  // A long route is opened through the actual row control. This captures the
-  // selectable detail as well as the truncated summary it expands from.
-  await shoot(
-    "transfers-route-detail",
-    async () => {
-      try {
-        await call("ssh");
-        await clickFirst([".transfer-center button[aria-expanded]", ".transfer-center button"]);
-        await page.waitForSelector(".status-popover", { timeout: 8000 });
-        await page
-          .locator(".status-popover .transfer-job-context")
-          .first()
-          .click({ timeout: 4000 });
-        await page.waitForSelector(".transfer-detail-text", { timeout: 4000 });
-      } catch (error) {
-        warnings.push({
-          shot: "transfers-route-detail",
-          missing: `route detail did not open: ${error.message}`,
-        });
-      }
-    },
-    { details: ".transfer-detail-text", context: ".transfer-job-context" },
-  );
-  await closePopover();
-
-  // 8b. The failed files behind the queue's failed row: the toggle opens the
-  //     per-file reasons, which is the evidence the row alone cannot carry.
-  await shoot(
-    "transfers-failed",
-    async () => {
-      try {
-        await call("ssh");
-        await clickFirst([".transfer-center button[aria-expanded]", ".transfer-center button"]);
-        await page.waitForSelector(".status-popover", { timeout: 8000 });
-        await page
-          .locator(".status-popover .transfer-job-failures")
-          .first()
-          .click({ timeout: 4000 });
-        await page
-          .locator(".status-popover .transfer-failures")
-          .scrollIntoViewIfNeeded({ timeout: 4000 });
-      } catch (error) {
-        warnings.push({
-          shot: "transfers-failed",
-          missing: `failed-file list did not open: ${error.message}`,
-        });
-      }
-    },
-    {
-      statusPopover: ".status-popover.transfer-center-popover",
-      failures: ".status-popover .transfer-failures",
-      failureRows: ".status-popover .transfer-failure-row",
-    },
-  );
-  await auditScene("transfers-failed", {
-    rowGroups: [
-      { selector: ".transfer-job", fit: true, pitch: 100 },
-      { selector: ".transfer-failure-row", fit: true, pitch: 24 },
-    ],
-    containers: [".status-popover-body", ".transfer-center-jobs", ".transfer-failure-rows"],
-    contrast: [".transfer-status", ".transfer-job-name", ".transfer-job-meta-text"],
-  });
-  await closePopover();
+      containers: [".status-popover-body", ".transfer-center-jobs", ".transfer-failure-rows"],
+      contrast: [".transfer-status", ".transfer-job-name", ".transfer-job-meta-text"],
+    });
+    await closePopover();
+  }
 
   // The tunnel surface is measured three times (dark/light, narrow/wide), so
   // its row and contrast expectations live in one object.
@@ -1184,92 +1309,90 @@ try {
     ],
   };
 
-  // 9. The tunnel centre: one local forward and one dynamic (SOCKS5) forward,
-  //    plus the remote-listener discovery the create form starts on open.
-  await shoot(
-    "tunnels",
-    async () => {
-      try {
-        await call("ssh");
-        await clickFirst([".forward-center button[aria-expanded]", ".forward-center button"]);
-        await page.waitForSelector(".status-popover", { timeout: 8000 });
-      } catch (error) {
-        warnings.push({
-          shot: "tunnels",
-          missing: `tunnel popover did not open: ${error.message}`,
-        });
-      }
-    },
-    {
-      statusPopover: ".status-popover.forward-popover",
-      head: ".status-popover-head",
-      body: ".status-popover-body",
-      createForm: ".status-popover .forward-form",
-      tunnelRows: ".status-popover .forward-job",
-      route: ".status-popover .forward-route",
-      badge: ".status-popover .forward-job-badge",
-    },
-  );
-  await auditScene("tunnels", tunnelAudit);
-  await closePopover();
+  if (wantsScene("tunnels")) {
+    await shoot(
+      "tunnels",
+      async () => {
+        try {
+          await call("ssh");
+          await clickFirst([".forward-center button[aria-expanded]", ".forward-center button"]);
+          await page.waitForSelector(".status-popover", { timeout: 8000 });
+        } catch (error) {
+          warnings.push({
+            shot: "tunnels",
+            missing: `tunnel popover did not open: ${error.message}`,
+          });
+        }
+      },
+      {
+        statusPopover: ".status-popover.forward-popover",
+        head: ".status-popover-head",
+        body: ".status-popover-body",
+        createForm: ".status-popover .forward-form",
+        tunnelRows: ".status-popover .forward-job",
+        route: ".status-popover .forward-route",
+        badge: ".status-popover .forward-job-badge",
+      },
+    );
+    await auditScene("tunnels", tunnelAudit);
+    await closePopover();
+  }
 
-  // 10. The same tunnel surface at 1440x900 in the light theme: the shared
-  //     frame has to hold a wide viewport and the second palette, not only
-  //     the 1100x720 dark default.
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await call("theme", "light");
-  await shoot(
-    "tunnels-wide",
-    async () => {
-      try {
-        await call("ssh");
-        await clickFirst([".forward-center button[aria-expanded]", ".forward-center button"]);
-        await page.waitForSelector(".status-popover", { timeout: 8000 });
-      } catch (error) {
-        warnings.push({
-          shot: "tunnels-wide",
-          missing: `tunnel popover did not open: ${error.message}`,
-        });
-      }
-    },
-    {
-      statusPopover: ".status-popover.forward-popover",
-      head: ".status-popover-head",
-      body: ".status-popover-body",
-      tunnelRows: ".status-popover .forward-job",
-      route: ".status-popover .forward-route",
-    },
-  );
-  await auditScene("tunnels-wide", tunnelAudit);
-  await closePopover();
+  if (wantsScene("tunnels-wide")) {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await call("theme", "light");
+    await shoot(
+      "tunnels-wide",
+      async () => {
+        try {
+          await call("ssh");
+          await clickFirst([".forward-center button[aria-expanded]", ".forward-center button"]);
+          await page.waitForSelector(".status-popover", { timeout: 8000 });
+        } catch (error) {
+          warnings.push({
+            shot: "tunnels-wide",
+            missing: `tunnel popover did not open: ${error.message}`,
+          });
+        }
+      },
+      {
+        statusPopover: ".status-popover.forward-popover",
+        head: ".status-popover-head",
+        body: ".status-popover-body",
+        tunnelRows: ".status-popover .forward-job",
+        route: ".status-popover .forward-route",
+      },
+    );
+    await auditScene("tunnels-wide", tunnelAudit);
+    await closePopover();
+  }
 
-  // 11. The same surface at the shell's smallest supported size (900x560),
-  //     back in the dark theme: the frame has to stay inside the viewport and
-  //     the status bar has to keep its triggers on screen.
-  await page.setViewportSize({ width: 900, height: 560 });
-  await call("theme", "dark");
-  await shoot(
-    "tunnels-narrow",
-    async () => {
-      try {
-        await call("ssh");
-        await clickFirst([".forward-center button[aria-expanded]", ".forward-center button"]);
-        await page.waitForSelector(".status-popover", { timeout: 8000 });
-      } catch (error) {
-        warnings.push({
-          shot: "tunnels-narrow",
-          missing: `tunnel popover did not open: ${error.message}`,
-        });
-      }
-    },
-    {
-      statusbar: ".statusbar",
-      statusPopover: ".status-popover.forward-popover",
-      tunnelRows: ".status-popover .forward-job",
-    },
-  );
-  await auditScene("tunnels-narrow", tunnelAudit);
-  await closePopover();
+  if (wantsScene("tunnels-narrow")) {
+    await page.setViewportSize({ width: 900, height: 560 });
+    await call("theme", "dark");
+    await shoot(
+      "tunnels-narrow",
+      async () => {
+        try {
+          await call("ssh");
+          await clickFirst([".forward-center button[aria-expanded]", ".forward-center button"]);
+          await page.waitForSelector(".status-popover", { timeout: 8000 });
+        } catch (error) {
+          warnings.push({
+            shot: "tunnels-narrow",
+            missing: `tunnel popover did not open: ${error.message}`,
+          });
+        }
+      },
+      {
+        statusbar: ".statusbar",
+        statusPopover: ".status-popover.forward-popover",
+        tunnelRows: ".status-popover .forward-job",
+      },
+    );
+    await auditScene("tunnels-narrow", tunnelAudit);
+    await closePopover();
+  }
 
   const unknownIpc = await page.evaluate(() => window.__refinement.unknown);
   const manifest = {
