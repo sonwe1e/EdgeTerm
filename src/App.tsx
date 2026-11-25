@@ -329,6 +329,10 @@ export default function App() {
   const panelPreferencesRevision = useStore((s) => s.panelPreferencesRevision);
   const widthRefs = useRef({ left: leftWidth, right: rightWidth });
   widthRefs.current = { left: leftWidth, right: rightWidth };
+  // A dock boundary's share of the window, the way the pane divider reports
+  // its own. Without it a keyboard reader hears "Resize pane" and no number.
+  const shareOf = (px: number, total: number) =>
+    total > 0 ? Math.round((px / total) * 100) : null;
   // What the user asked each dock to be — the persisted preference — as
   // distinct from the size currently shown. A window too small for the docks
   // shrinks what is shown (the resize handler below re-fits from these values)
@@ -1138,6 +1142,7 @@ export default function App() {
                 onResize={(delta) => applySideFrame("left", delta)}
                 onEnd={() => endSideDrag()}
                 readout={() => sideDrag.current?.shown ?? null}
+                value={shareOf(leftWidth, window.innerWidth)}
                 onReset={() => resetSide("left")}
               />
             </>
@@ -1161,6 +1166,7 @@ export default function App() {
                 onResize={(delta) => applySideFrame("right", delta)}
                 onEnd={() => endSideDrag()}
                 readout={() => sideDrag.current?.shown ?? null}
+                value={shareOf(rightWidth, window.innerWidth)}
                 onReset={() => resetSide("right")}
               />
               <DockArea dock="right" panels={right} size={rightWidth} render={renderPanel} />
@@ -1172,6 +1178,7 @@ export default function App() {
           <>
             <Splitter
               orientation="horizontal"
+              value={shareOf(senderCompact ? 42 : bottomHeight, window.innerHeight)}
               onResize={(delta) => {
                 const dragBottom = (height: number) => {
                   const next = clampBottom(height - delta, window.innerHeight);

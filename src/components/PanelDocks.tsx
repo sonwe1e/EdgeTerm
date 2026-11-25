@@ -18,6 +18,7 @@ import {
   previewSplit,
   saveDockWeights,
   weightOf,
+  shareOfDock,
 } from "../dockSplits";
 import { DOCK_NAMES, dockLabels, dockOf, panelLabels, type PanelDock } from "../panelDock";
 import { type PanelName, useStore } from "../store";
@@ -471,6 +472,9 @@ export function DockArea({ dock, panels, size, render }: DockAreaProps) {
                 const live = splitDrag.current;
                 return live ? live.shownFrom : null;
               }}
+              // The panel above this boundary as a share of the dock, so a
+              // keyboard reader hears a number and not just "Resize pane".
+              value={shareOfDock(weightOf(weights, panels[index - 1]), weights)}
               onReset={resetSplit}
             />
           )}

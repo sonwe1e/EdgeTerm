@@ -24,6 +24,19 @@ export function weightOf(weights: DockWeights, panel: PanelName): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 1;
 }
 
+/** The panels above a dock boundary as a share of the dock, for aria-valuenow. */
+export function shareOfDock(weight: number, weights: DockWeights): number | null {
+  const seen = new Set<PanelName>();
+  let total = 0;
+  for (const name of Object.keys(weights) as PanelName[]) {
+    if (seen.has(name)) continue;
+    seen.add(name);
+    total += weightOf(weights, name);
+  }
+  if (total <= 0) return null;
+  return Math.round((weight / total) * 100);
+}
+
 function totalWeight(panels: readonly PanelName[], weights: DockWeights): number {
   return panels.reduce((sum, panel) => sum + weightOf(weights, panel), 0);
 }
