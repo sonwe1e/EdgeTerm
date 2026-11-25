@@ -5,16 +5,16 @@ vi.mock("./api", () => ({
   zmodemReadBytes: vi.fn(),
 }));
 import * as api from "./api";
-import { BufferedFileWriter, ChunkedFileReader, FILE_CHUNK_SIZE } from "./terminalTransfer";
+import { BufferedFileWriter, ChunkedFileReader } from "./terminalTransfer";
 afterEach(() => vi.clearAllMocks());
 
 describe("binary file streaming", () => {
-  // The chunk size is a cross-language contract: `write_transfer_bytes` in
-  // src-tauri/src/commands/binary_transfer.rs rejects anything larger than its
-  // own ZMODEM_FILE_CHUNK_SIZE. Asserting the literal keeps this side pinned.
-  it("uses 1 MiB chunks, the Rust transfer limit", () => {
-    expect(FILE_CHUNK_SIZE).toBe(1_048_576);
-  });
+  // The chunk size is a cross-language contract with `write_transfer_bytes` in
+  // src-tauri/src/commands/binary_transfer.rs. It used to be pinned by a test
+  // that read only this TypeScript constant, so a Rust-side change was invisible
+  // and the comment claimed a verification it could not perform. The case below
+  // hard-codes the same split against real write calls, which fails on the same
+  // data with an honest signal.
 
   it("owns queued input, writes bounded chunks in order and finishes at the exact size", async () => {
     const progress = vi.fn();

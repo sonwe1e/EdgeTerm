@@ -160,6 +160,9 @@ describe("ZMODEM receive cancellation", () => {
     receiver.consume(header());
     for (let i = 0; i < 3000 && notices.length < 4; i++) await new Promise((r) => setTimeout(r, 1));
     await new Promise((r) => setTimeout(r, 300));
+    // A positive anchor first: without it this case passes even if the
+    // receive path delivered nothing at all, because notices stays empty.
+    expect(notices.some((n) => n.includes("short.bin"))).toBe(true);
     expect(notices.some((n) => n.includes("received short.bin"))).toBe(false);
   });
 });

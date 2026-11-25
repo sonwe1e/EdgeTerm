@@ -37,14 +37,14 @@ describe("the shortcut table", () => {
       ["other", OTHER_DEFAULTS],
     ];
     for (const [name, defaults] of platforms) {
-      const taken: string[] = [];
       for (const id of ids) {
         const chord = defaults[id];
         if (!chord) continue;
-        const label = chordLabel(chord);
-        expect(label, `${name} label for ${id}`).toBeTruthy();
-        expect(taken, `${name}: ${id} reuses ${label}`).not.toContain(label);
-        taken.push(label);
+        // Only the label is checked here. The "no two commands share a chord"
+        // invariant is owned by shortcuts.test.ts, which compares the fields
+        // exactly; chordLabel branches on the runtime platform, so this copy
+        // labelled the mac table with Windows modifiers on a Windows build.
+        expect(chordLabel(chord), `${name} label for ${id}`).toBeTruthy();
       }
     }
   });
