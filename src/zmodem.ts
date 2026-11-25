@@ -6,13 +6,13 @@ import {
   type Session,
 } from "zmodem.js";
 import { ZmodemInput } from "./zmodemInput";
+import { errorText } from "./errorInfo";
 
 import * as api from "./api";
 import { open as openDialog, save as saveDialog } from "./nativeDialog";
 import {
   BufferedFileWriter,
   concatBytes,
-  errorMessage,
   FILE_CHUNK_SIZE,
   formatBytes,
   formatProgress,
@@ -404,7 +404,7 @@ export class ZmodemController {
   private failSession(session: Session | null, error: unknown) {
     if (this.failed || this.disposed) return;
     this.failed = true;
-    const message = errorMessage(error);
+    const message = errorText(error);
     this.report(`ZMODEM failed: ${message}`, "error");
 
     if (session && !session.has_ended()) {

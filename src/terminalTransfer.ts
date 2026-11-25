@@ -1,5 +1,4 @@
 import * as api from "./api";
-import { errorText } from "./errorInfo";
 
 /**
  * Pieces shared by the terminal's automatic file transfer (ZMODEM in
@@ -158,10 +157,6 @@ export function formatBytes(bytes: number): string {
     unit = units[index];
   }
   return `${value >= 10 ? value.toFixed(1) : value.toFixed(2)} ${unit}`;
-}
-
-export function errorMessage(error: unknown): string {
-  return errorText(error);
 }
 
 export function withTimeout<T>(

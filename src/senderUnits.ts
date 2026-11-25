@@ -33,9 +33,3 @@ export function endingText(ending: LineEnding): string {
   if (ending === "crlf") return "\r\n";
   return "";
 }
-
-export function endingLabel(ending: LineEnding): string {
-  if (ending === "lf") return "append \\n";
-  if (ending === "crlf") return "append \\r\\n";
-  return "no line ending";
-}

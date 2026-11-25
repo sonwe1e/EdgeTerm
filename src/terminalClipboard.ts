@@ -7,7 +7,8 @@ import { needsPasteWarning } from "./terminalPaste";
 import { beginTerminalDrag } from "./terminalDragSelection";
 import { scheduleSelectionRestore, selectionEdit } from "./terminalSelectionEdit";
 import { RightClickAction } from "./terminalShared";
-import { errorMessage, type TransferNoticeKind } from "./terminalTransfer";
+import type { TransferNoticeKind } from "./terminalTransfer";
+import { errorText } from "./errorInfo";
 
 interface Context {
   readonly host: HTMLElement | null;
@@ -176,7 +177,7 @@ export class TerminalClipboard {
       },
       (error: unknown) => {
         if (current()) {
-          this.context.showTransferNotice(`Paste failed: ${errorMessage(error)}`, "error");
+          this.context.showTransferNotice(`Paste failed: ${errorText(error)}`, "error");
         }
       },
     );
@@ -295,7 +296,7 @@ export class TerminalClipboard {
    */
   private writeClipboard(text: string) {
     void writeSystemClipboard(text).catch((error: unknown) => {
-      this.context.showTransferNotice(`Copy failed: ${errorMessage(error)}`, "error");
+      this.context.showTransferNotice(`Copy failed: ${errorText(error)}`, "error");
     });
   }
 

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import { namesTaken, sameFileName } from "./fileNames";
-import { downloadClashes } from "./useFilerDownloads";
 
 // The one question every write to the user's disk asks: is this name already
 // taken on this volume? It used to be written three times, and the move copy
@@ -24,16 +23,6 @@ describe("namesTaken", () => {
   });
 });
 
-describe("downloadClashes", () => {
-  it("is the same question the move asks", () => {
-    // A volume that ignores case cannot tell these apart; one that does not must.
-    for (const fold of [true, false]) {
-      const names = ["README.md", "notes.txt", "Notes.txt"];
-      const present = ["readme.md", "notes.txt"];
-      expect(downloadClashes(names, present, fold)).toEqual(namesTaken(names, present, fold));
-      expect(downloadClashes(names, present, fold)).toEqual(
-        names.filter((name) => present.some((other) => sameFileName(other, name, fold))),
-      );
-    }
-  });
-});
+// downloadClashes used to be a second name for namesTaken; its only test
+// asserted the two were equal, which kept passing after either was deleted. The
+// rule is now tested once, under its own name, above.

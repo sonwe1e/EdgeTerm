@@ -15,13 +15,6 @@ import { useStableCallback } from "./useStableCallback";
  * case treats `README.md` as the existing `readme.md`, so the question has to be
  * asked there too — otherwise the engine writes over the file without one.
  */
-export function downloadClashes(
-  names: readonly string[],
-  present: readonly string[],
-  foldCase: boolean,
-): string[] {
-  return namesTaken(names, present, foldCase);
-}
 
 /** Only choosing a destination blocks this entry; submitted jobs belong to the backend queue. */
 export function useFilerDownloads(
@@ -82,7 +75,7 @@ export function useFilerDownloads(
           .then((listing) => listing.entries.map((entry) => entry.name))
           .catch(() => [] as string[]);
         if (!current()) return;
-        const clashes = downloadClashes(
+        const clashes = namesTaken(
           entries.map((entry) => entry.name),
           present,
           IS_MAC || IS_WINDOWS,
