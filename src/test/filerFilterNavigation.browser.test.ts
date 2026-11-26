@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
 import { FilerPanel } from "../components/panels/FilerPanel";
+import { lastPaths } from "../components/panels/filerDirectoryCache";
 import { useStore } from "../store";
 import { browserAfterEach, mount, twoFrames } from "./browserHarness";
 import "../styles.css";
@@ -72,6 +73,7 @@ window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
 
 beforeEach(() => {
   localStorage.clear();
+  lastPaths.clear();
   useStore.getState().setLanguage("en");
 });
 
@@ -82,6 +84,34 @@ afterEach(async () => {
 
 const names = () =>
   [...document.querySelectorAll(".filer-entry .row-label")].map((node) => node.textContent);
+
+it("keeps the current folder visible when navigating and narrowing the path bar", async () => {
+  const folder = "/alpha/bravo/charlie/delta/echo/foxtrot/golf";
+  const { container } = mount(
+    h("div", { style: { width: 360, height: 600, display: "flex" } }, h(FilerPanel)),
+  );
+  await expect.poll(() => names().length).toBeGreaterThan(0);
+  await page.getByRole("button", { name: "Edit path" }).click();
+  const input = page.getByRole("textbox", { name: "Edit path" });
+  await input.fill(folder);
+  await userEvent.keyboard("{Enter}");
+  const trail = container.querySelector<HTMLElement>(".filer-crumbs")!;
+  await expect.poll(() => trail.getAttribute("aria-label")).toBe(folder);
+  const current = trail.querySelector<HTMLElement>('[aria-current="location"]')!;
+  const fits = () => {
+    const bounds = trail.getBoundingClientRect();
+    const crumb = current.getBoundingClientRect();
+    return crumb.left >= bounds.left - 1 && crumb.right <= bounds.right + 1;
+  };
+  expect(trail.scrollWidth).toBeGreaterThan(trail.clientWidth);
+  expect(fits()).toBe(true);
+  (container.firstElementChild as HTMLElement).style.width = "240px";
+  await twoFrames();
+  expect(fits()).toBe(true);
+  trail.scrollLeft = 0;
+  await page.getByRole("button", { name: "alpha", exact: true }).click();
+  await expect.poll(() => trail.getAttribute("aria-label")).toBe("/alpha");
+});
 
 it("names its own keys for assistive technology", async () => {
   mount(h(FilerPanel));

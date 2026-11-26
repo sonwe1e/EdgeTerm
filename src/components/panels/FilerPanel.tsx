@@ -417,6 +417,18 @@ function FilerPanelBase() {
    * Empty at the drives root, which is not a real path.
    */
   const breadcrumbs = path && !atDrivesRoot ? pathSegments(path) : [];
+  const trailRef = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const trail = trailRef.current;
+    if (!trail || !path || atDrivesRoot || editingPath) return;
+    const showCurrentFolder = () => {
+      trail.scrollLeft = trail.scrollWidth;
+    };
+    showCurrentFolder();
+    const observer = new ResizeObserver(showCurrentFolder);
+    observer.observe(trail);
+    return () => observer.disconnect();
+  }, [path, atDrivesRoot, editingPath]);
 
   /** Re-sorts the list for a clicked column caption and remembers the choice. */
   const sortBy = (key: SortKey) => {
@@ -1058,6 +1070,7 @@ function FilerPanelBase() {
           />
         ) : (
           <nav
+            ref={trailRef}
             className="filer-crumbs"
             aria-label={atDrivesRoot ? t("filer.drivesRoot") : path || t("filer.local")}
             onDoubleClick={startPathEdit}
