@@ -26,8 +26,24 @@
 | [v1.7.3](https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.7.3) | 2026-11-08 | [4cbbb6f](https://github.com/sonwe1e/EdgeTerm/commit/4cbbb6f2551370e3ce6d6939d8b3423d53055324) | Windows x64 安装包、便携包、独立诊断工具、SHA256SUMS；实验性无缝冷历史（默认关闭）、oh-my-pi 识别、Agent 侧栏固定宽度、显示设置保存时机修复，见[发布说明](release-1.7.3.zh-CN.md) |
 | [v1.7.6](https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.7.6) | 2026-11-16 | [c86b9c9](https://github.com/sonwe1e/EdgeTerm/commit/c86b9c94f1b0331c9c3e4e2b9710fb0d7429f38e) | Windows x64 安装包、便携包、独立诊断工具、SHA256SUMS；上游 1.0.5–1.0.7 的选择性移植、Filer 图片预览与日志查看器、编辑器/IME 与菜单可达性修复，见[发布说明](release-1.7.6.zh-CN.md) |
 | [v1.7.7](https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.7.7) | 2026-11-18 | [ab5ee7b](https://github.com/sonwe1e/EdgeTerm/commit/ab5ee7b6cb77f8e167fa4b16f556ebf3e62a3ecd) | Windows x64 安装包、便携包、独立诊断工具、SHA256SUMS；Filer 拖拽移动文件、移动时的同名与大小写冲突拒绝、配置与导出的原子写入与导入回滚，见[发布说明](release-1.7.7.zh-CN.md) |
+| [v1.8.0](https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.8.0) | 2026-11-26 | [dcb1470](https://github.com/sonwe1e/EdgeTerm/commit/dcb1470b57b06f106baae171f2c7b00bfff1a9ca) | Windows x64 安装包、便携包、诊断工具及校验清单。广播输入、Sender、深目录导航、终端回看与 Git 工作区，见[发布说明](release-1.8.0.zh-CN.md) |
 
 截至 2026-10-28，本分支没有公开的 macOS/Linux 安装包，也没有签名自动更新清单。上游提供这些平台的发布包，不代表本分支已完成这些平台的构建或验证。`v1.0.0` 是保留的共同基线标签，不是本分支独立发布的 Release；本地其他 `v0.*`、`v1.0.*` 标签也不能当作本分支发布记录。
+
+## 1.8.0 构建与发布记录
+
+2026-11-26 17:02（北京时间）公开发布。带注释标签 `v1.8.0` 指向 `dcb1470b57b06f106baae171f2c7b00bfff1a9ca`。相对 Windows 构建所用的 `3bd3ca4`，最后三次提交仅涉及浏览器测试与发布说明。已从公开发布页重新下载四个附件，逐一核对大小和 SHA-256。
+
+| 正式附件 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| `EdgeTerm_1.8.0_x64-setup.exe` | 4265964 | `f767540219b07d5346c09bcfc90bb7afc512cdd1b848420b5c8c7a1a4c66f016` |
+| `EdgeTerm_1.8.0_x64-portable.zip` | 5308843 | `56b14eef7540c44fbbc6c9dff86780e8fa00c67b14fe58fdf0e542c846dfba56` |
+| `EdgeTerm_1.8.0_windows-diagnostics.zip` | 5470 | `ebfd46be4e174b3135d7a06d986f23206d3a91dadc20085001333f7b00a0938c` |
+| `SHA256SUMS.txt` | 298 | `bdbd9037442a1653aaf83feedef9688819a8aeaffd572224629913512d9c2765` |
+
+发布提交的 GitHub Actions 三项作业 frontend、browser、rust 均通过。非阻断 npm audit 报告 7 项开发依赖告警（3 高、4 中）。[CI 记录](https://github.com/sonwe1e/EdgeTerm/actions/runs/45786997021)
+
+Windows 验证通过 2,028 个单元测试、358 个浏览器测试、549 个常规 Rust 测试。32 个 Rust 用例默认忽略，其中另行执行 9 个 FTP、SFTP 和 SSH Git 真实回环用例，全部通过。发布过程新增的 9 个提交逐个通过类型和提交信息检查。隔离桌面运行便携版，验证双 cmd 广播与关闭、Sender 多目标执行、深目录定位与点击上级，以及 8 个文件的二进制读写。解包比较表明，安装包与便携包内的主程序仅有 Tauri 包类型标记不同。本次未覆盖已有安装上的升级、实体串口及 macOS/Linux 桌面。Windows 安装包和程序未签名。
 
 ## 1.7.7 构建与发布记录
 
