@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
 import App from "../App";
+import { IS_WINDOWS } from "../platform";
 import { defaultShortcuts } from "../shortcuts";
 import { useStore, type Tab } from "../store";
 import { disposeController, getController } from "../terminalRegistry";
@@ -163,10 +164,9 @@ describe("copy the last command", () => {
     await until(() => getController(ID)!.lastCommandText() === "ls");
 
     await runPaletteCommand("Copy Last Command Output");
-    // Diagnostics on failure: the status bar says which half refused.
-    expect({ clipboard: CLIPBOARD, status: useStore.getState().status }, "after the second copy") // Terminal rows are joined with CRLF, as they are on the wire and in other
-      // terminal clients' "copy output".
-      .toEqual({ clipboard: ["file-a\r\nfile-b"], status: "Copied to the clipboard" });
+    // xterm's selection uses the host platform's line ending.
+    expect(CLIPBOARD).toEqual([IS_WINDOWS ? "file-a\r\nfile-b" : "file-a\nfile-b"]);
+    expect(useStore.getState().status).toBe("Copied to the clipboard");
   });
 
   it("refuses, with a status message, before any command has finished", async () => {
