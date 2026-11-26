@@ -156,7 +156,9 @@ describe("resources and sender", () => {
     expect(popover.textContent).toContain("RTX 4090");
     audit(popover, "resources", 6, 2);
     const close = popover.querySelector<HTMLElement>(".status-popover-close")!;
-    expect(close.getBoundingClientRect().height, "close target").toBeGreaterThanOrEqual(24);
+    // DOMRect can lose a fraction of a thousandth of a pixel in the popover transform.
+    const height = close.getBoundingClientRect().height;
+    expect(Math.round(height * 1000) / 1000, "close target").toBeGreaterThanOrEqual(24);
   });
 
   it("keeps the sender panel readable and hittable", async () => {
