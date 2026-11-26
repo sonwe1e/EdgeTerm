@@ -1,4 +1,5 @@
 use super::*;
+use crate::model::TrayLabels;
 
 /// Remembers the theme the front end is showing, so the next launch creates
 /// its window in the matching background colour (`store::save_startup_theme`).
@@ -55,10 +56,7 @@ pub fn hide_main_window(window: tauri::WebviewWindow) -> Result<()> {
 /// language as the window it brought back.
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
-pub fn set_tray_labels(
-    window: tauri::WebviewWindow,
-    labels: crate::tray::TrayLabels,
-) -> Result<()> {
+pub fn set_tray_labels(window: tauri::WebviewWindow, labels: TrayLabels) -> Result<()> {
     #[cfg(any(windows, target_os = "macos"))]
     {
         use tauri::Manager;

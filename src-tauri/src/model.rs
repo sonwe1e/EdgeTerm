@@ -686,6 +686,18 @@ pub fn shell_words(
     split_command_line(line, windows)
 }
 
+/// The three entries' text. The front end sends them so the menu speaks the
+/// interface's language: this is the only surface left when the window is
+/// parked in the tray, and it carries the app's only Quit entry.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrayLabels {
+    pub open: String,
+    pub toggle: String,
+    pub quit: String,
+}
+
 pub fn default_shell() -> String {
     #[cfg(windows)]
     {

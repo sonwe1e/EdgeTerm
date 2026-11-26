@@ -14,6 +14,7 @@
 //! arrives through `set_close_to_tray`. Neither side holds the other's
 //! state, and the mirrored write is idempotent, so the two cannot loop.
 
+use crate::model::TrayLabels;
 use std::sync::Mutex;
 
 use tauri::AppHandle;
@@ -21,18 +22,6 @@ use tauri::Manager;
 
 /// The tray's check item was flipped; the payload is the new state.
 pub const EVENT_CLOSE_TO_TRAY_CHANGED: &str = "app:close-to-tray-changed";
-
-/// The three entries' text. The front end sends them so the menu speaks the
-/// interface's language: this is the only surface left when the window is
-/// parked in the tray, and it carries the app's only Quit entry.
-#[cfg_attr(feature = "bindings", derive(specta::Type))]
-#[derive(Clone, Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TrayLabels {
-    pub open: String,
-    pub toggle: String,
-    pub quit: String,
-}
 
 impl Default for TrayLabels {
     fn default() -> Self {
