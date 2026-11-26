@@ -1,5 +1,5 @@
 import { createElement as h, StrictMode } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
 import App from "../App";
@@ -121,7 +121,14 @@ const runCommand = async (command: string) => {
 };
 
 describe("copy the last command", () => {
+  beforeEach(() => {
+    // Linux uses the Web Clipboard API, Windows and macOS use native IPC.
+    vi.spyOn(navigator.clipboard, "writeText").mockImplementation(async (text) => {
+      CLIPBOARD.push(text);
+    });
+  });
   afterEach(async () => {
+    vi.restoreAllMocks();
     await browserAfterEach();
     disposeController(ID);
     useStore.setState(initial, true);
