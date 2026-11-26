@@ -27,8 +27,22 @@
 | [v1.7.6](https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.7.6) | 2026-11-16 | [c86b9c9](https://github.com/sonwe1e/EdgeTerm/commit/c86b9c94f1b0331c9c3e4e2b9710fb0d7429f38e) | Windows x64 安装包、便携包、独立诊断工具、SHA256SUMS；上游 1.0.5–1.0.7 的选择性移植、Filer 图片预览与日志查看器、编辑器/IME 与菜单可达性修复，见[发布说明](release-1.7.6.zh-CN.md) |
 | [v1.7.7](https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.7.7) | 2026-11-18 | [ab5ee7b](https://github.com/sonwe1e/EdgeTerm/commit/ab5ee7b6cb77f8e167fa4b16f556ebf3e62a3ecd) | Windows x64 安装包、便携包、独立诊断工具、SHA256SUMS；Filer 拖拽移动文件、移动时的同名与大小写冲突拒绝、配置与导出的原子写入与导入回滚，见[发布说明](release-1.7.7.zh-CN.md) |
 | [v1.8.0](https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.8.0) | 2026-11-26 | [dcb1470](https://github.com/sonwe1e/EdgeTerm/commit/dcb1470b57b06f106baae171f2c7b00bfff1a9ca) | Windows x64 安装包、便携包、诊断工具及校验清单。广播输入、Sender、深目录导航、终端回看与 Git 工作区，见[发布说明](release-1.8.0.zh-CN.md) |
+| [v1.8.1](https://github.com/sonwe1e/EdgeTerm/releases/tag/v1.8.1) | 2026-11-26 | [03c391d](https://github.com/sonwe1e/EdgeTerm/commit/03c391d597d595099d68e3c25ed84ae533ab2e9d) | Windows x64 安装包、便携包、诊断工具及校验清单。更新构建和测试依赖，详见[发布说明](release-1.8.1.zh-CN.md) |
 
 截至 2026-10-28，本分支没有公开的 macOS/Linux 安装包，也没有签名自动更新清单。上游提供这些平台的发布包，不代表本分支已完成这些平台的构建或验证。`v1.0.0` 是保留的共同基线标签，不是本分支独立发布的 Release；本地其他 `v0.*`、`v1.0.*` 标签也不能当作本分支发布记录。
+
+## 1.8.1 构建与发布记录
+
+Windows x64 修订版，发布提交为 `03c391d597d595099d68e3c25ed84ae533ab2e9d`。上版审计的 7 项开发依赖告警均已解决，本次 GitHub 官方 npm 审计含开发依赖，全部等级合计 0 项。前端、浏览器、Rust 三项作业均通过。[CI 记录](https://github.com/sonwe1e/EdgeTerm/actions/runs/45796644271)
+
+本机完成 Windows 全量验证与 NSIS 构建，并运行打包后的便携版，验证双 cmd 广播与 Sender、深路径导航和文件读写。已解包核验安装器内的程序，未执行覆盖升级。四个正式附件已从公开发布页回下载并核对 SHA-256。
+
+| 正式附件 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| `EdgeTerm_1.8.1_windows-diagnostics.zip` | 5470 | `9b7a90d11e108eb0d17d99da5d737a98e43e641e5327d2b3481eb4a061438f30` |
+| `EdgeTerm_1.8.1_x64-portable.zip` | 5309251 | `307351ce37ec59344eb0715ac9e92ac6a7c00b5610099a75b9fca06ad8864881` |
+| `EdgeTerm_1.8.1_x64-setup.exe` | 4266053 | `d94a0231a9d56ea9861f97e1d96c6e8c97970adc1d3fff5a80276eb86ef3acf5` |
+| `SHA256SUMS.txt` | 298 | `47d05be3369c18e03775c060203c785622f41b5454f877bb1cd12e10af55dfa2` |
 
 ## 1.8.0 构建与发布记录
 
