@@ -88,7 +88,7 @@ window.__TAURI_INTERNALS__ = {
     if (command === "plugin:app|version") return "1.0.0";
     if (command === "plugin:window|is_maximized" || command === "plugin:window|is_fullscreen") return false;
     if (command === "plugin:updater|check") return null;
-    if (["set_startup_theme", "set_close_to_tray", "show_main_window", "finish_main_window", "plugin:window|set_title"].includes(command)) return;
+    if (["set_startup_theme", "set_close_to_tray", "set_tray_labels", "show_main_window", "finish_main_window", "plugin:window|set_title"].includes(command)) return;
     unknown.push({ command, args });
     throw Error("Unexpected app-font fixture IPC: " + command);
   },
