@@ -21,6 +21,7 @@ vi.mock("../../nativeDialog", () => ({
 
 import * as api from "../../api";
 import { sendUnits } from "../../senderSend";
+import { IS_WINDOWS } from "../../platform";
 import { useStore, type Tab } from "../../store";
 import type { SavedCommand } from "../../types";
 import { SenderPanel } from "./SenderPanel";
@@ -149,6 +150,22 @@ it("sends a compact saved command with its stored ending to the active session",
     ["sender-session"],
     ["status\r\n"],
     "crlf",
+    expect.any(Object),
+    expect.any(Function),
+  );
+});
+
+it("uses a submitting line ending for Windows cmd when a local tab opens", async () => {
+  await render();
+  const tab = senderTab("cmd", "connected", "local");
+  tab.info.address = "C:\\Windows\\System32\\cmd.exe";
+  await act(() => useStore.setState({ tabs: [tab], activeId: "cmd" }));
+  type("echo ready");
+  await click(host.querySelector<HTMLButtonElement>(".sender-send:not(.is-stop)")!);
+  expect(sendUnits).toHaveBeenCalledWith(
+    ["cmd"],
+    [IS_WINDOWS ? "echo ready\r\n" : "echo ready\n"],
+    IS_WINDOWS ? "crlf" : "lf",
     expect.any(Object),
     expect.any(Function),
   );

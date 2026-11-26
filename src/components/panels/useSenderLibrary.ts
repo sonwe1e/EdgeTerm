@@ -31,7 +31,7 @@ interface Options {
   tagName: string;
   ending: LineEnding;
   setTagName: Dispatch<SetStateAction<string>>;
-  setEnding: Dispatch<SetStateAction<LineEnding>>;
+  setEnding: (ending: LineEnding) => void;
   compact: boolean;
   onExpandedChange: (expanded: boolean) => void;
   closeMore: () => void;

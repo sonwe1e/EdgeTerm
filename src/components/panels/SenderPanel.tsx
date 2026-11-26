@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SenderLibrary } from "./SenderLibrary";
+import { IS_WINDOWS } from "../../platform";
 import { SenderQuickbar } from "./SenderQuickbar";
 import { SenderRepeat } from "./SenderRepeat";
 import {
@@ -38,7 +39,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
 
   const [text, setText] = useState("");
   const [tagName, setTagName] = useState("");
-  const [ending, setEnding] = useState<LineEnding>("lf");
+  const [chosenEnding, setEnding] = useState<LineEnding | null>(null);
   const [commandTooltip, setCommandTooltip] = useState<CommandTooltip | null>(null);
   const [moreAnchor, setMoreAnchor] = useState<{ left: number; bottom: number } | null>(null);
   const [moreQuery, setMoreQuery] = useState("");
@@ -128,6 +129,13 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
   };
 
   const activeTab = tabs.find((tab) => tab.info.id === activeId);
+  // cmd.exe's console input submits on CR. Keep the user's explicit ending
+  // (including a saved command's LF) and other shells' existing default.
+  const isCmd =
+    IS_WINDOWS &&
+    activeTab?.info.kind === "local" &&
+    /(?:^|[\\/])cmd(?:\.exe)?["']?(?:\s|$)/i.test(activeTab.info.address);
+  const ending = chosenEnding ?? (isCmd ? "crlf" : "lf");
   const {
     setStatus,
     visibleCommands,
