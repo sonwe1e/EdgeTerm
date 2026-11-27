@@ -58,9 +58,78 @@ patch-id 对应只证明补丁等效，不能证明每个中间提交可构建�
 | `rewrite/by-feature` | `f73bad9` | 2 个独有补丁，归档为 `archive/2026-11-16/rewrite-by-feature` 后删除 |
 | `spike/p2p-term` | `9236632` | 125 个独有补丁，归档为 `archive/2026-11-16/spike-p2p-term` 后删除 |
 
-`codex/edgeterm-terminal-stability-20261111` 在清理后的 `git fetch --prune` 中才被发现：本地远端跟踪引用此前缺失，初版快照因此漏记。该 tip 是 main 的祖先，已一并删除。本地 `codex/release-1.3.0`、`codex/release-1.5.0`（均已合入 main）与合入后的 `codex/upstream-ports-20261116` 一并删除；`archive/2026-10-23/*` 本地归档保留。四个 `archive/2026-11-16/*` 引用已推送到 `origin`，因此远端仍可取回这些历史 tip；它们不是开发基线，不要在其上继续开发或整条合入 main。本页上一节"远端分支分类（本次保留）"是 2026-10-23 的历史快照，不代表清理后的远端状态。
+`codex/edgeterm-terminal-stability-20261111` 在清理后的 `git fetch --prune` 中才被发现：本地远端跟踪引用此前缺失，初版快照因此漏记。该 tip 是 main 的祖先，已一并删除。本地 `codex/release-1.3.0`、`codex/release-1.5.0`（均已合入 main）与合入后的 `codex/upstream-ports-20261116` 一并删除；`archive/2026-10-23/*` 本地归档保留。四个 `archive/2026-11-16/*` 引用已推送到 `origin`，因此远端仍可取回这些历史 tip；它们不是开发基线，不要在其上继续开发或整条合入 main。本页上一节"远端分支分类（本次保留）"是 2026-10-23 的历史快照，不代表清理后的远端状态。2026-11-27 补记：这四个远端引用现已不在 `origin`，本机归档也已删除，见下一节。
 
 恢复已删原分支：`git branch <原名> <表中 tip>`，需要远端同名分支时再 `git push origin <branch>`。
+
+## 2026-11-27 核对与清理（1.8.1）
+
+核对基线为 `main / c813abe`（已发布 1.8.1）；当日 `git ls-remote --heads origin` 只返回 `main`。本轮只调整本机引用并更新记录，没有改写主线、移动标签或改动应用代码。
+
+### PR 与远端分支
+
+本仓库 36 个 PR 均已关闭：35 个合并，#2 是未合并的草稿。#1、#3–#6 的分支处置见上一节；其余 30 个（#7–#36）于 2026-11-22 12:36–19:59（北京时间）合并，远端 head 分支此后已删除。#19 以 #15 的分支为 base、#21 以 #20 的分支为 base，先进入该分支，再随它合入 main。30 个 head 提交都是 main 的祖先；下表的 head 提交取自 GitHub 的 PR 记录。
+
+| PR | head 分支 | head 提交 | 说明 |
+| --- | --- | --- | --- |
+| #7 | `codex/edgeterm-sender-repeat-20261120` | `3c26d56` |  |
+| #8 | `codex/edgeterm-filer-epoch-20261120` | `aa36037` |  |
+| #9 | `codex/edgeterm-viewport-fit-20261120` | `b394a8c` |  |
+| #10 | `codex/edgeterm-filer-create-navigation-20261120` | `f18f10b` |  |
+| #11 | `codex/edgeterm-pristine-editor-save-20261120` | `4a1515a` |  |
+| #12 | `fix/log-viewer-follow-match` | `176a62f` |  |
+| #13 | `fix/ftp-delete-feedback` | `d1fbb7b` |  |
+| #14 | `fix/find-late-controller` | `ad1370c` |  |
+| #15 | `fix/ftp-restore-navigation` | `47b9105` | #19 的 base |
+| #16 | `fix/reserve-focus-region-f6` | `883e6ea` |  |
+| #17 | `fix/tab-strip-roving-focus` | `db83218` |  |
+| #18 | `fix/reverse-focus-cycle-entry` | `9442f44` |  |
+| #19 | `fix/ftp-transfer-refresh-navigation` | `f5a985b` | 堆叠于 #15 |
+| #20 | `fix/ftp-local-parent-navigation` | `00b3121` | #21 的 base |
+| #21 | `fix/ftp-child-drop-preflight` | `4922550` | 堆叠于 #20 |
+| #22 | `fix/ftp-transfer-attempt-ownership` | `b4ace37` |  |
+| #23 | `fix/sender-preserve-draft-ending` | `608a302` |  |
+| #24 | `fix/terminal-selection-delete` | `8906afc` |  |
+| #25 | `fix/ftp-operation-feedback` | `5ede4cd` |  |
+| #26 | `fix/ftp-restore-side` | `6912869` |  |
+| #27 | `fix/ftp-refresh-wait` | `4cef459` |  |
+| #28 | `fix/filer-create-feedback` | `83d0a3e` |  |
+| #29 | `fix/search-pending-query` | `7ae805f` |  |
+| #30 | `fix/tab-focus-intent` | `a7f287e` |  |
+| #31 | `fix/shortcut-reserved-owner` | `3a41158` |  |
+| #32 | `feat/git-workspace` | `92120d7` |  |
+| #33 | `fix/plan-window-assertion` | `93375d3` |  |
+| #34 | `fix/filer-rename-feedback` | `8e420bd` |  |
+| #35 | `fix/search-pending-direction` | `c858b4c` |  |
+| #36 | `fix/git-workspace-ux` | `765bcf7` |  |
+
+恢复已删 head 分支：`git branch <分支名> <head 提交>`。GitHub 也保留每个 PR 的 `refs/pull/<编号>/head`，可 `git fetch origin pull/<编号>/head` 取回。
+
+GitHub 事件流中可见 2026-11-22 对其中 18 个 head 分支的删除记录（`fix/ftp-child-drop-preflight`、`fix/ftp-delete-feedback` 各两条），其余 12 个未见记录；事件流不完整，远端现状以 `git ls-remote` 为准。
+
+上一节记为已推送到 `origin` 的四个 `archive/2026-11-16/*` 远端引用现已不在远端：事件流可见 `cold-history-agent-stability`、`gpui-rewrite`、`rewrite-by-feature` 于 2026-11-24 20:53（北京时间）被删除；`spike-p2p-term` 未见删除记录，但同样不在远端。
+
+### 本地归档分支
+
+七个本机归档分支逐条核对后，都没有 main 之外需要保留的内容，本轮删除本机引用。删除前把它们相对 `origin/main`、`upstream/main` 的独有对象打成 bundle：`.tmp/records/archive-branches-20261127/edgeTerm-archive-20261127.bundle`，8920323 字节，SHA-256 `0cf282ed2fcb0540a2d8e65213a852b4897eab5b43b6624150309832e5f80f7d`，依赖 main 上的四个基线提交（`033c6dfe`、`3e6e3573`、`392718ed`、`492680bf`）；同目录的 `refs-before-delete.txt` 记有删除前的七个引用。bundle 是本机文件，不是远端备份；`.tmp/` 被忽略，清理该目录前需另行保存。
+
+| 归档分支 | 删除前 tip | 核对结果 |
+| --- | --- | --- |
+| `archive/2026-10-23/flow181` | `cec0f9e6` | 19 个提交的 patch-id 均在 main 有等效项；tip 文件树与 main `bf5f6d8` 相同 |
+| `archive/2026-10-23/by-feature` | `c588c739` | tip 文件树与 main `c2f6d51` 相同，不同的只有中间历史 |
+| `archive/2026-10-23/pre-resplit` | `7f670bd3` | 快照内容经重拆进入 main；按行比对，未在当前 main 找到的只有一个旧 agent 计划文件（31 行）和分布在 13 个文件里的 23 行零散改动 |
+| `archive/2026-11-16/rewrite-by-feature` | `f73bad9e` | 是 `archive/2026-10-23/by-feature` 的祖先；tip 文件树与 main `5f1d540` 相同 |
+| `archive/2026-11-16/cold-history-agent-stability` | `c136a842` | PR #2 的 head，9 个提交可由 `refs/pull/2/head` 取回；`git merge-tree` 对当前 main 有 9 个文件冲突，冷历史的后续修复已在 main 另行提交 |
+| `archive/2026-11-16/gpui-rewrite` | `c48a98d0` | 上游 `gpui-rewrite` 仍在，tip 相同 |
+| `archive/2026-11-16/spike-p2p-term` | `9236632c` | 上游 `spike/p2p-term` 仍在，tip 相同 |
+
+删除后曾从 bundle 把七个分支取回临时命名空间，tip 与删除前逐一相同，随后删除临时引用。恢复命令：`git fetch .tmp/records/archive-branches-20261127/edgeTerm-archive-20261127.bundle '+refs/heads/archive/*:refs/heads/archive/*'`。本页 2026-10-23 一节里用 `git branch -m` 改回归档名的做法自此不再适用。
+
+### 其他核对
+
+- 标签：本分支 21 个自有标签中，`v1.6.2` 仍只在本地（见发布索引的 1.6.2 构建记录），其余 20 个与远端一致；本地独有的另有 `v1.0.1`–`v1.0.8` 上游标签。
+- 上游：`upstream/main` 为 `0015880`（1.0.8），落后的 26 个提交处置均已记入[上游移植记录](upstream-ports.zh-CN.md)，没有新增。
+- 本机残留：2026-11-16 的 stash（`codex/upstream-ports-20261116` 上的上游复核草稿，内容已被主线定稿取代）导出为 `.tmp/stash-20261116-upstream-review.patch` 后丢弃；8 个 `refs/codex/turn-diffs/checkpoints/*`（指向 tree 对象）已删除，清单在 `.tmp/codex-checkpoint-refs-20261127.txt`。
 
 ## 后续规则
 
